@@ -25,17 +25,17 @@ def test_module_prefixes_are_unique() -> None:
     assert len(prefixes) == len(set(prefixes)), "two modules share a prefix"
 
 
-def test_app_builds(app) -> None:  # noqa: ANN001
+def test_app_builds(app) -> None:
     assert app.title == "BharatPath"
 
 
-async def test_health_endpoint(client) -> None:  # noqa: ANN001
+async def test_health_endpoint(client) -> None:
     response = await client.get("/api/v1/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
 
-async def test_openapi_schema_generates(client) -> None:  # noqa: ANN001
+async def test_openapi_schema_generates(client) -> None:
     """The OpenAPI export is a deliverable, not a side effect."""
     response = await client.get("/api/v1/openapi.json")
     assert response.status_code == 200
@@ -45,6 +45,6 @@ async def test_openapi_schema_generates(client) -> None:  # noqa: ANN001
 
 
 @pytest.mark.parametrize("path", ["/api/v1/health", "/api/v1/health/ready"])
-async def test_correlation_id_on_every_response(client, path: str) -> None:  # noqa: ANN001
+async def test_correlation_id_on_every_response(client, path: str) -> None:
     response = await client.get(path)
     assert response.headers.get("X-Request-ID")

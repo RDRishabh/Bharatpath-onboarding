@@ -80,9 +80,17 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 10
     env:
-      DATABASE_URL: postgresql+asyncpg://bharatpath:bharatpath@localhost:5432/bharatpath
+      # The app connects as a role with NO BYPASSRLS that owns nothing, so
+      # Row-Level Security genuinely applies to it. Migrations run as a
+      # separate owner role. Using one role for both is how an RLS design
+      # ends up doing nothing while still looking correct.
+      DATABASE_URL: postgresql+asyncpg://bharatpath_app:bharatpath_app@localhost:5432/bharatpath
+      DATABASE_URL_APP: postgresql+asyncpg://bharatpath_app:bharatpath_app@localhost:5432/bharatpath
+      DATABASE_URL_MIGRATOR: postgresql+asyncpg://bharatpath_migrator:bharatpath_migrator@localhost:5432/bharatpath
+      DATABASE_ADMIN_URL: postgresql+asyncpg://bharatpath_admin:bharatpath_admin@localhost:5432/bharatpath
       REDIS_URL: redis://localhost:6379/0
       ENVIRONMENT: local
+      CI: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -90,6 +98,36 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[dev]"
+
+      - name: create extensions and roles
+        env:
+          PGPASSWORD: bharatpath
+        run: |
+          psql -h localhost -U bharatpath -d bharatpath \
+            -v ON_ERROR_STOP=1 -f scripts/init_db_extensions.sql
+          psql -h localhost -U bharatpath -d bharatpath \
+            -v ON_ERROR_STOP=1 -f scripts/init_db_roles.sql
+
+      - name: run migrations
+        # As the migrator role, which owns the tables. If this ran as the app
+        # role, that role would own every table and RLS would silently stop
+        # applying to it.
+        env:
+          DATABASE_URL: postgresql+asyncpg://bharatpath_migrator:bharatpath_migrator@localhost:5432/bharatpath
+        run: alembic upgrade head
+
+      - name: verify RLS is actually on
+        # Cheap catalog assertion. If the migration ever stops enabling RLS,
+        # the integration tests would still pass against an empty database -
+        # this fails instead.
+        env:
+          PGPASSWORD: bharatpath
+        run: |
+          COUNT=$(psql -h localhost -U bharatpath -d bharatpath -tAc \
+            "SELECT count(*) FROM pg_policies WHERE schemaname = 'public'")
+          echo "row-level security policies found: $COUNT"
+          test "$COUNT" -ge 12
+
       - name: pytest
         run: pytest --cov=app --cov-report=term-missing --cov-report=xml
       - uses: actions/upload-artifact@v4

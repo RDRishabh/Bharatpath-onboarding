@@ -109,8 +109,16 @@ module = "app.modules.*.domain"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "testcontainers.*", "schemathesis.*"]
+module = ["celery.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Celery ships no type stubs, so `@celery_app.task` is an untyped decorator
+# and every task it wraps is inferred as untyped. Narrowed to app.tasks so the
+# relaxation cannot leak into the layers where types are doing real work -
+# the tasks themselves are thin wrappers over services, which stay checked.
+module = "app.tasks.*"
+disallow_untyped_decorators = false
 
 # ---------------------------------------------------------------------------
 # pytest

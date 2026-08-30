@@ -25,7 +25,7 @@ def _error_classes() -> list[type[errors.AppError]]:
 
 @pytest.mark.parametrize("cls", _error_classes(), ids=lambda c: c.__name__)
 def test_every_error_has_a_stable_code(cls: type[errors.AppError]) -> None:
-    assert cls.code and cls.code != errors.AppError.code or cls is errors.AppError
+    assert (cls.code and cls.code != errors.AppError.code) or cls is errors.AppError
     assert cls.code.islower(), "codes are lower_snake_case and machine-readable"
     assert " " not in cls.code
 

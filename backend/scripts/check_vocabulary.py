@@ -53,8 +53,19 @@ BANNED: dict[str, str] = {
 SCAN_SUFFIXES = {".py", ".sql", ".json", ".yaml", ".yml", ".toml", ".md", ".txt", ".ini", ".cfg"}
 
 SKIP_DIRS = {
-    ".git", ".venv", "venv", "__pycache__", ".mypy_cache", ".ruff_cache",
-    ".pytest_cache", "node_modules", ".idea", ".vscode", "htmlcov", "dist", "build",
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    "node_modules",
+    ".idea",
+    ".vscode",
+    "htmlcov",
+    "dist",
+    "build",
 }
 
 # This file names every banned term by definition, and so does its test.

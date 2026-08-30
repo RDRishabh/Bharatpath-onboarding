@@ -149,9 +149,7 @@ async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
         body["params"] = exc.params
     if request_id := getattr(request.state, "request_id", None):
         body["request_id"] = request_id
-    return JSONResponse(
-        status_code=exc.status_code, content=body, media_type=PROBLEM_JSON
-    )
+    return JSONResponse(status_code=exc.status_code, content=body, media_type=PROBLEM_JSON)
 
 
 async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:

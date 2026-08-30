@@ -20,9 +20,7 @@ pytestmark = pytest.mark.invariant
 
 
 def test_no_banned_vocabulary_anywhere() -> None:
-    result = subprocess.run(  # noqa: S603
-        [sys.executable, str(SCRIPT)], capture_output=True, text=True, cwd=ROOT
-    )
+    result = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True, cwd=ROOT)
     assert result.returncode == 0, (
         "Invariant 6 violated. This is a legal requirement (PRD section 3 "
         f"rule 5), not a style preference.\n\n{result.stdout}"
@@ -50,9 +48,9 @@ def test_scan_detects_violations(offending_line: str) -> None:
     finally:
         sys.path.pop(0)
 
-    assert any(
-        re.search(p, offending_line, re.IGNORECASE) for p in checker.BANNED
-    ), f"guard failed to flag: {offending_line!r}"
+    assert any(re.search(p, offending_line, re.IGNORECASE) for p in checker.BANNED), (
+        f"guard failed to flag: {offending_line!r}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -73,6 +71,4 @@ def test_approved_vocabulary_passes(innocent_line: str) -> None:
     finally:
         sys.path.pop(0)
 
-    assert not any(
-        re.search(p, innocent_line, re.IGNORECASE) for p in checker.BANNED
-    )
+    assert not any(re.search(p, innocent_line, re.IGNORECASE) for p in checker.BANNED)

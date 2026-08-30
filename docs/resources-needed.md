@@ -282,7 +282,7 @@ Not resources, but they block work exactly as hard. Full plain-language versions
 
 | Ref | Decision | Blocks | Owner |
 |---|---|---|---|
-| N1 | Approve `scoring-approach.md` | **Day 8** | Client |
+| ~~N1~~ | ~~Approve `scoring-approach.md`~~ | — | ✅ **Approved 2026-08-30** |
 | N2 | Data residency — may CV text be processed outside India? | **Day 8** | Client's counsel |
 | N3 | Calibration corpus — 50–100 real CVs plus expected bands | **Day 8** | Client, one working session |
 | N4 | ⚠️ Written acknowledgement of the bulk-extraction risk | **Day 14** | Client decision |
@@ -464,7 +464,7 @@ Tick as they land. Anything unticked on Day 1 is a day at risk.
 - [ ] Course catalogue and price *(N8)*
 - [ ] Subscription and employer-access prices; college seat pricing *(N8)*
 - [ ] Employer type and industry lists, plus the three onboarding form specs *(Q9)*
-- [ ] **Approve `scoring-approach.md`** *(N1)*
+- [x] **Approve `scoring-approach.md`** *(N1)* — **approved 2026-08-30**
 - [ ] **Data-residency decision — may CV text leave India?** *(N2, counsel)*
 - [ ] **Calibration corpus: 50–100 CVs with expected bands** *(N3, working session)*
 - [ ] Scoring weights and dimension importance — falls out of the calibration session

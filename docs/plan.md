@@ -1789,8 +1789,8 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 
 | Day | Focus | Status |
 |---|---|---|
-| 1 | Scaffold, CI, module skeletons, invariants 5 & 6 | ☐ |
-| 2 | Schema, RLS, audit, idempotency, outbox, OpenAPI stub publish | ☐ |
+| 1 | Scaffold, CI, module skeletons, invariants 5 & 6 | ☑ **done 2026-08-30** |
+| 2 | Schema, RLS, audit, idempotency, outbox, OpenAPI stub publish | ☑ **done 2026-08-30** |
 | 3 | Cognito: pools, JWKS, phone OTP, Google, email | ☐ |
 | 4 | MFA, memberships, role/tenant deps (anonymous flow removed in v4) | ☐ |
 | 5 | Cross-tenant suite, permission matrix — **Week 1 gate** | ☐ |
@@ -1814,8 +1814,8 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 
 | # | Invariant | Lands | Status |
 |---|---|---|---|
-| 5 | No age-gating | Day 1 | ☐ |
-| 6 | No financial framing | Day 1 | ☐ |
+| 5 | No age-gating | Day 1 | ☑ **green** |
+| 6 | No financial framing | Day 1 | ☑ **green** |
 | 1 | Score reproducible — **incl. add-ons and the stored extraction chain** | Day 8 | ☐ |
 | 2 | Scale **700–990**; base not floor; stored == displayed | Day 8 | ☐ |
 | 3 | Score not human-editable, **directly or indirectly** | Day 8 | ☐ |
@@ -1848,7 +1848,7 @@ Resolved by the client's comments and note. Full detail in [§13](#13-decisions-
 | R9 | Incomplete-profile nudges | ☑ **Resolved 2026-08-27** |
 | R10 | Scoring arithmetic closes exactly at 990 | ☑ **Resolved 2026-08-27** |
 | R11 | Score never explained to the candidate | ☑ **Resolved 2026-08-27** |
-| R12 | Reproducible AI scoring approach | ⚠ **Designed — awaiting client approval** |
+| R12 | Reproducible AI scoring approach | ☑ **APPROVED 2026-08-30** |
 | R13 | Pay-first for all three audiences | ☑ **Resolved 2026-08-27** |
 | R14 | No unlocks — whole database per paid period | ☑ **Resolved 2026-08-27** ⚠ risk open |
 | R15 | KYB form + switchable auto-approval; payment is the gate | ☑ **Resolved 2026-08-27** |
@@ -1868,7 +1868,7 @@ Resolved by the client's comments and note. Full detail in [§13](#13-decisions-
 | Q3 | Explainable, or not? | — | — | ☑ **Answered 08-27** — never explained (R11) |
 | Q4 | Add-on points: per item or lifetime? | — | — | ☑ **Answered 08-27** (R10) |
 | Q5 | Do add-on points clip at 990? | — | — | ☑ **Answered 08-27** — cannot exceed it (R10) |
-| **N1** | **Approve `scoring-approach.md`** | **Blocker** | Day 8 | ☐ Open |
+| **N1** | **Approve `scoring-approach.md`** | ~~Blocker~~ | Day 8 | ☑ **APPROVED 2026-08-30** |
 | **N2** | **Data residency: can CV text leave India?** | **Blocker** | Day 8 | ☐ Open |
 | **N3** | **Calibration corpus — 50–100 real CVs + expected bands** | **Blocker** | Day 8 | ☐ Open |
 | **N4** | **Written acknowledgement of the bulk-extraction risk** | **Risk** | Day 14 | ☐ Open |

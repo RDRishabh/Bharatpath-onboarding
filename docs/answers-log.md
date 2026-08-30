@@ -22,10 +22,13 @@
 | 4 | Our questions Q6–Q13, answered 27 Aug late | 8 | 6 | 2 partial |
 | 5 | Raised by us after their answers | 4 | 0 | 4 |
 | 6 | **Raised by us on review, 30 Aug** | **4** | **0** | **4** |
-| | **Total** | **44** | **32** | **12** |
+| 6a | **Client answer, 30 Aug** | — | **1** | — |
+| | **Total** | **44** | **33** | **11** |
 
-**Nothing is blocking Day 1.** Four items block Day 8 (all scoring-related), one needs a written
-answer before Day 14, and one has a legal review cycle attached and needs starting now.
+**Nothing is blocking Day 1.** ✅ **`scoring-approach.md` was approved on 30 August (Round 6a).**
+Two Day 8 blockers remain and neither is engineering: the **data-residency decision** (counsel) and
+the **50–100 CV calibration corpus** (a working session). One item needs a written answer before
+Day 14, and the deletion policy has a legal review cycle attached and needs starting now.
 
 **New on 30 August.** A review of this log against the PRD and SRS found **three questions that
 had never been put to the client at all** — course content, the unlock rescission, and prices —
@@ -666,7 +669,7 @@ score than anything written in code.
 | # | Item | Blocks | Owner |
 |---|---|---|---|
 | 5.1 | 🔴 Written acknowledgement of the bulk-extraction risk | Day 14 | Client decision |
-| 3.4 | Approve `scoring-approach.md` | Day 8 | Client |
+| ~~3.4~~ | ~~Approve `scoring-approach.md`~~ | — | ✅ **Approved 2026-08-30** |
 | 5.2 | Data residency — can CV data leave India? | Day 8 | Client's counsel |
 | 5.5 | Calibration corpus — 50–100 CVs | Day 8 | Client working session |
 | 5.4 | Score-explanation rescission, plus the §4.5 knock-on | Day 8 | Client, one sentence |
@@ -680,6 +683,48 @@ score than anything written in code.
 | **6.3** | **Referral-code consent vs. PRD rule 8's "invite-and-accept"** | Day 17 | Client, one sentence |
 | **6.4** | **Plans, prices and the course catalogue** | Day 15 | Client |
 | — | Language list and translation funding | Day 19 | Client |
+
+---
+
+## Round 6a — Client answer, 30 August
+
+### 6a.1 ✅ `scoring-approach.md` APPROVED
+
+**Answer — client, 2026-08-30:** approved.
+
+**Closes N1**, which was one of three blockers on Day 8 and the only one that
+was purely a sign-off. The extraction-plus-deterministic-scoring design is now
+the agreed approach:
+
+- The model **never emits a score.** It reads the CV and returns
+  schema-validated facts plus bounded ordinal ratings; versioned code turns
+  those into points.
+- `replay()` recomputes from the **stored** model response and never re-invokes
+  the model, so replay is bit-identical in perpetuity.
+- Extraction is **content-addressed and cached**, so identical CVs are
+  guaranteed identical scores.
+- A schema with no score field **cannot be talked into awarding one**, which
+  converts CV prompt-injection into ordinary resume fraud that the integrity
+  module already owns.
+
+**What this does NOT unblock.** Day 8 still has two open blockers, and neither
+is engineering:
+
+| Ref | Still needed | Owner |
+|---|---|---|
+| **N2** | Data residency — may CV text be processed outside India? Determines which client library the scoring module is built against. | Client's counsel |
+| **N3** | Calibration corpus — 50–100 real CVs with expected bands, plus the relative importance of the dimensions. | Client, one working session |
+
+Without N3 the weights are invented rather than calibrated and the golden-corpus
+CI gate has nothing to gate against. Approval of the *approach* does not supply
+the *judgment* — that is what the calibration session is for.
+
+**Also still outstanding and now more urgent:** counsel's re-review of the score
+(`plan.md` §13 Legal). The approved design is an AI-influenced hiring signal
+that the subject cannot query, sold with items that provably raise it. Any
+sign-off obtained before 27 August was given against a different product.
+
+→ `plan.md` §3, §6, Day 8; `scoring-approach.md`.
 
 ---
 

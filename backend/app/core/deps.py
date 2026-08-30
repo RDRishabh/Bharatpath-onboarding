@@ -16,8 +16,8 @@ the wrong thing to do about it.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,7 +83,7 @@ async def current_user(
 CurrentUser = Annotated[TenantContext, Depends(current_user)]
 
 
-def require_role(*roles: str):  # noqa: ANN201 - returns a FastAPI dependency
+def require_role(*roles: str) -> Callable[[TenantContext], Awaitable[TenantContext]]:
     """Authorisation is by role, never by URL prefix.
 
     A candidate hitting an `/employer/*` route is rejected here, not by
@@ -101,7 +101,7 @@ def require_role(*roles: str):  # noqa: ANN201 - returns a FastAPI dependency
     return _dep
 
 
-def require_tenant():  # noqa: ANN201
+def require_tenant() -> Callable[[TenantContext], Awaitable[TenantContext]]:
     async def _dep(user: CurrentUser) -> TenantContext:
         if user.tenant_id is None:
             raise PermissionDeniedError()

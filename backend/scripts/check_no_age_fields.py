@@ -43,8 +43,17 @@ AGE_GATE_RE = re.compile(
 
 SCAN_SUFFIXES = {".py", ".sql", ".json", ".yaml", ".yml"}
 SKIP_DIRS = {
-    ".git", ".venv", "venv", "__pycache__", ".mypy_cache", ".ruff_cache",
-    ".pytest_cache", "node_modules", "htmlcov", "dist", "build",
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    "node_modules",
+    "htmlcov",
+    "dist",
+    "build",
 }
 SKIP_FILES = {
     "scripts/check_no_age_fields.py",
@@ -75,9 +84,12 @@ def scan_orm_columns(path: Path, text: str) -> list[str]:
     except SyntaxError:
         return found
     for node in ast.walk(tree):
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            if FIELD_RE.search(node.target.id):
-                found.append(f"ORM/model field '{node.target.id}' (line {node.lineno})")
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and FIELD_RE.search(node.target.id)
+        ):
+            found.append(f"ORM/model field '{node.target.id}' (line {node.lineno})")
     return found
 
 

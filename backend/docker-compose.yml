@@ -22,6 +22,7 @@ services:
       # role. RLS is the second line of tenant isolation and it silently does
       # nothing if the app connects as the table owner.
       - ./scripts/init_db_roles.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
+      - ./scripts/init_db_extensions.sql:/docker-entrypoint-initdb.d/05-extensions.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bharatpath"]
       interval: 5s

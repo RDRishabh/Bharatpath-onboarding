@@ -14,7 +14,6 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     DateTime,
-    ForeignKey,
     Index,
     Integer,
     String,
@@ -22,7 +21,8 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -46,9 +46,7 @@ class AuditEvent(Base):
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), index=True)
     request_id: Mapped[str | None] = mapped_column(String(64))
     # `metadata` is reserved by SQLAlchemy's Declarative API.
-    event_metadata: Mapped[dict[str, Any]] = mapped_column(
-        "metadata", JSONB, default=dict
-    )
+    event_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
@@ -76,9 +74,7 @@ class IdempotencyKey(Base):
     state: Mapped[str] = mapped_column(String(16), default="IN_PROGRESS")
     response_status: Mapped[int | None] = mapped_column(Integer)
     response_body: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
@@ -130,6 +126,4 @@ class ConfigValue(Base):
     )
     note: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        UniqueConstraint("key", "version", name="uq_config_key_version"),
-    )
+    __table_args__ = (UniqueConstraint("key", "version", name="uq_config_key_version"),)

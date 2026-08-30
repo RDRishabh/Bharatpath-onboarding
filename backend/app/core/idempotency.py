@@ -32,7 +32,7 @@ RETENTION: Final = timedelta(hours=24)
 IDEMPOTENT_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
         "payment",
-        "subscription_purchase",   # replaces "unlock" (R14)
+        "subscription_purchase",  # replaces "unlock" (R14)
         "application_create",
         "job_publish",
         "hire_confirm",
@@ -69,9 +69,12 @@ async def claim(
             expires_at=datetime.now(UTC) + RETENTION,
         )
         .on_conflict_do_nothing(index_elements=["key", "endpoint"])
+        # RETURNING rather than rowcount: a conflict returns no row, so this
+        # tells us whether WE won the insert. rowcount is driver-dependent and
+        # not typed on the async Result.
+        .returning(IdempotencyKey.key)
     )
-    result = await session.execute(stmt)
-    if result.rowcount:
+    if (await session.execute(stmt)).scalar_one_or_none() is not None:
         return None  # we hold the lock
 
     existing = (

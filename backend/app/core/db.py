@@ -60,9 +60,7 @@ def get_engine() -> AsyncEngine:
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
     global _session_factory
     if _session_factory is None:
-        _session_factory = async_sessionmaker(
-            get_engine(), expire_on_commit=False, autoflush=False
-        )
+        _session_factory = async_sessionmaker(get_engine(), expire_on_commit=False, autoflush=False)
     return _session_factory
 
 
@@ -100,22 +98,20 @@ async def tenant_session(tenant_id: UUID | None) -> AsyncIterator[AsyncSession]:
     header, that is the bug SRS 2.24.7 exists to prevent.
     """
     factory = get_session_factory()
-    async with factory() as session:
-        async with session.begin():
-            if tenant_id is not None:
-                await session.execute(
-                    text("SET LOCAL app.tenant_id = :tid"),
-                    {"tid": str(tenant_id)},
-                )
-            yield session
+    async with factory() as session, session.begin():
+        if tenant_id is not None:
+            await session.execute(
+                text("SET LOCAL app.tenant_id = :tid"),
+                {"tid": str(tenant_id)},
+            )
+        yield session
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency for routes with no tenant scope (auth, public)."""
     factory = get_session_factory()
-    async with factory() as session:
-        async with session.begin():
-            yield session
+    async with factory() as session, session.begin():
+        yield session
 
 
 async def check_database_liveness() -> dict[str, Any]:
@@ -124,7 +120,7 @@ async def check_database_liveness() -> dict[str, Any]:
         async with get_engine().connect() as conn:
             await conn.execute(text("SELECT 1"))
         return {"status": "up"}
-    except Exception:  # noqa: BLE001 - health must never raise
+    except Exception:
         return {"status": "down"}
 
 

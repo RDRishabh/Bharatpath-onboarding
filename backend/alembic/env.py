@@ -13,13 +13,12 @@ from alembic import context
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.core.db import Base
-from app.settings import get_settings
-
 # Importing the registry pulls in every module's models so autogenerate can
 # see the whole schema. Without this, autogenerate silently drops tables.
 import app.core.models  # noqa: F401
+from app.core.db import Base
 from app.modules import ALL_MODULES  # noqa: F401
+from app.settings import get_settings
 
 config = context.config
 if config.config_file_name is not None:
@@ -42,9 +41,7 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(
-        connection=connection, target_metadata=target_metadata, compare_type=True
-    )
+    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
     with context.begin_transaction():
         context.run_migrations()
 

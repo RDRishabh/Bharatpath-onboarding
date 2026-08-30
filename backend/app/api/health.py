@@ -47,5 +47,5 @@ async def _check_redis() -> dict[str, str]:
             return {"status": "up"}
         finally:
             await client.aclose()
-    except Exception:  # noqa: BLE001 - health must never raise
+    except Exception:
         return {"status": "down"}

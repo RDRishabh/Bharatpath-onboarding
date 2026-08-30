@@ -20,9 +20,7 @@ pytestmark = pytest.mark.invariant
 
 def test_no_age_or_dob_fields_anywhere() -> None:
     """The whole repository is free of age and date-of-birth constructs."""
-    result = subprocess.run(  # noqa: S603
-        [sys.executable, str(SCRIPT)], capture_output=True, text=True, cwd=ROOT
-    )
+    result = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True, cwd=ROOT)
     assert result.returncode == 0, (
         "Invariant 5 violated. PRD section 3 rule 4 forbids age or "
         f"date-of-birth anywhere in the product.\n\n{result.stdout}"
@@ -56,9 +54,7 @@ def test_scan_detects_violations(tmp_path: Path, offending_line: str) -> None:
     finally:
         sys.path.pop(0)
 
-    hit = checker.FIELD_RE.search(offending_line) or checker.AGE_GATE_RE.search(
-        offending_line
-    )
+    hit = checker.FIELD_RE.search(offending_line) or checker.AGE_GATE_RE.search(offending_line)
     assert hit is not None, f"guard failed to flag: {offending_line!r}"
     assert isinstance(hit, re.Match)
 

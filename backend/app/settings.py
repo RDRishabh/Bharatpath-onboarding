@@ -15,7 +15,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator
+from pydantic import PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "dev", "staging", "prod"]
@@ -91,9 +91,7 @@ class Settings(BaseSettings):
 
     @field_validator("database_admin_url", mode="after")
     @classmethod
-    def _admin_url_must_differ(
-        cls, v: PostgresDsn | None, info: object
-    ) -> PostgresDsn | None:
+    def _admin_url_must_differ(cls, v: PostgresDsn | None, info: object) -> PostgresDsn | None:
         # A bypass role that is the same connection as the app role is not a
         # bypass role, it is a mistake that removes RLS everywhere.
         return v
@@ -106,4 +104,4 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Settings are read once per process and cached."""
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

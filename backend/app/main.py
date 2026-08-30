@@ -12,10 +12,10 @@ definitions.
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
@@ -54,7 +54,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     @app.middleware("http")
-    async def correlation_id(request: Request, call_next):  # noqa: ANN001, ANN202
+    async def correlation_id(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         request.state.request_id = rid
         response = await call_next(request)

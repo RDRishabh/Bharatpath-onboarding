@@ -12,17 +12,15 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, Field
-
-T = TypeVar("T")
 
 MAX_PAGE_SIZE = 100
 DEFAULT_PAGE_SIZE = 50
 
 
-class Page(BaseModel, Generic[T]):
+class Page[T](BaseModel):
     items: list[T]
     next_cursor: str | None = None
     total: int | None = Field(

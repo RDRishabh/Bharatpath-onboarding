@@ -18,6 +18,7 @@ import sys
 from typing import Any
 
 import structlog
+from structlog.typing import EventDict, WrappedLogger
 
 # Keys whose values are replaced wholesale, at any depth.
 REDACTED_KEYS = frozenset(
@@ -75,13 +76,10 @@ def _scrub(value: Any, depth: int = 0) -> Any:
     return value
 
 
-def redact_pii(
-    _logger: Any, _method: str, event_dict: dict[str, Any]
-) -> dict[str, Any]:
+def redact_pii(_logger: WrappedLogger, _method: str, event_dict: EventDict) -> EventDict:
     """structlog processor. Runs on every event, in every environment."""
     return {
-        k: (REDACTION if k.lower() in REDACTED_KEYS else _scrub(v))
-        for k, v in event_dict.items()
+        k: (REDACTION if k.lower() in REDACTED_KEYS else _scrub(v)) for k, v in event_dict.items()
     }
 
 
@@ -97,11 +95,7 @@ def configure_logging(*, debug: bool = False) -> None:
             redact_pii,
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
-            (
-                structlog.dev.ConsoleRenderer()
-                if debug
-                else structlog.processors.JSONRenderer()
-            ),
+            (structlog.dev.ConsoleRenderer() if debug else structlog.processors.JSONRenderer()),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(
             logging.DEBUG if debug else logging.INFO

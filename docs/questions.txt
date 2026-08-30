@@ -202,9 +202,10 @@ F. DATA DELETION POLICY — WE NEED A DATE, NOT JUST AN ANSWER
 
 G. STILL WITH YOU FROM THE PREVIOUS ROUND — THE SCORING ITEMS
 
-  Three things on the score, all needed before we build it:
+  You have approved the scoring approach document - thank you, that closes the
+  first of these three. Two remain, and both are needed before we build it:
 
-    1. Approve the scoring approach document we sent (scoring-approach.md).
+    1. DONE - scoring-approach.md approved 30 August.
     2. Tell us whether candidate CV data may be processed outside India. This
        needs your lawyer. Details in the previous version of this file.
     3. Send us 50 to 100 real CVs with a rough sense of what each should score,

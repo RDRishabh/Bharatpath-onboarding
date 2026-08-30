@@ -21,7 +21,7 @@ fastest-growing table in the schema.
 
 from __future__ import annotations
 
-import enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
@@ -33,7 +33,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-class AuditAction(str, enum.Enum):
+class AuditAction(StrEnum):
     """Every action that reveals private data or exercises privilege.
 
     Add to this enum rather than passing a free string, so the admin audit

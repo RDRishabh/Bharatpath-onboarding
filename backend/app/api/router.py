@@ -20,6 +20,4 @@ api_router.include_router(health.router)
 
 for _module in ALL_MODULES:
     if (_router := _module.get_router()) is not None:
-        api_router.include_router(
-            _router, prefix=_module.prefix, tags=[_module.name]
-        )
+        api_router.include_router(_router, prefix=_module.prefix, tags=[_module.name])
