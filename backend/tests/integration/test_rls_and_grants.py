@@ -24,7 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 APP_URL = os.getenv("DATABASE_URL_APP") or os.getenv("DATABASE_URL", "")
-MIGRATOR_URL = os.getenv("DATABASE_URL_MIGRATOR") or APP_URL
+# Writes go through the BYPASSRLS admin role, NOT the migrator. FORCE ROW
+# LEVEL SECURITY applies to the table owner too, so the migrator cannot insert
+# tenant-scoped rows without a tenant context - and a fixture seeding two
+# different tenants cannot have one. Only BYPASSRLS gets past FORCE.
+SEED_URL = os.getenv("DATABASE_ADMIN_URL") or os.getenv("DATABASE_URL_MIGRATOR") or APP_URL
 IN_CI = os.getenv("CI") == "true"
 
 
@@ -62,7 +66,7 @@ async def _require_db() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_unset_tenant_returns_no_rows_not_all_rows() -> None:
+async def test_unset_tenant_returns_no_rows_not_all_rows(seeded_tenants) -> None:
     """Forgetting to set the tenant must fail CLOSED.
 
     This is the single most important property of the RLS design. The policy
@@ -70,6 +74,8 @@ async def test_unset_tenant_returns_no_rows_not_all_rows() -> None:
     when unset; a NULL comparison matches nothing. The failure mode of a
     forgotten `SET LOCAL` is therefore an empty result, not the whole table.
     """
+    # seeded_tenants has just written two jobs. Without rows present this
+    # assertion would pass against an empty table and prove nothing.
     async with _sessions(APP_URL)() as session, session.begin():
         rows = (await session.execute(text("SELECT count(*) FROM jobs"))).scalar_one()
         assert rows == 0, (
@@ -155,18 +161,67 @@ async def test_scores_are_insert_only() -> None:
             assert "permission denied" in str(exc.value).lower()
 
 
-async def test_score_range_is_enforced_by_the_database() -> None:
-    """INVARIANT 2. 700-990, checked below the application."""
-    async with _sessions(MIGRATOR_URL)() as session, session.begin():
-        with pytest.raises((DBAPIError, ProgrammingError)):
+@pytest.mark.parametrize(
+    ("raw", "base", "addon", "why"),
+    [
+        (1200, 900, 90, "above the 990 ceiling"),
+        (650, 650, 0, "below the 700 base"),
+        (995, 900, 95, "add-on total above the +90 cap"),
+        (800, 700, 50, "raw_value does not equal base + addon"),
+    ],
+)
+async def test_score_constraints_are_enforced_by_the_database(
+    seeded_candidate, raw: int, base: int, addon: int, why: str
+) -> None:
+    """INVARIANT 2 and 4-prime, checked below the application.
+
+    Uses REAL parent rows deliberately. An earlier version passed random
+    UUIDs for user_id and resume_version_id, so every insert died on a
+    foreign-key violation before the CHECK constraints were ever evaluated -
+    a green test that proved the foreign keys worked and said nothing at all
+    about the score bounds.
+    """
+    user_id, version_id = seeded_candidate
+
+    async with _sessions(SEED_URL)() as session, session.begin():
+        with pytest.raises((DBAPIError, ProgrammingError)) as exc:
             await session.execute(
                 text(
                     "INSERT INTO scores (id, user_id, resume_version_id, "
                     "algorithm_version, raw_value, base_value, addon_value, "
                     "contribution_version) VALUES (gen_random_uuid(), "
-                    "gen_random_uuid(), gen_random_uuid(), 'v0', 1200, 900, 90, 'v1')"
-                )
+                    ":u, :v, 'v0', :raw, :base, :addon, 'v1')"
+                ),
+                {
+                    "u": str(user_id),
+                    "v": str(version_id),
+                    "raw": raw,
+                    "base": base,
+                    "addon": addon,
+                },
             )
+        # It must be a CHECK violation, not a foreign key one.
+        assert "ck_scores" in str(exc.value), f"expected a CHECK failure for: {why}"
+
+
+async def test_a_valid_score_is_accepted(seeded_candidate) -> None:
+    """The constraints must not be so tight that a legitimate score fails.
+
+    790 = 700 base + 30 (one course) + 60 (three interviews), with a resume
+    judged at 0. The exact worked example the client gave on 2026-08-27.
+    """
+    user_id, version_id = seeded_candidate
+
+    async with _sessions(SEED_URL)() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO scores (id, user_id, resume_version_id, "
+                "algorithm_version, raw_value, base_value, addon_value, "
+                "contribution_version) VALUES (gen_random_uuid(), "
+                ":u, :v, 'v0-placeholder', 790, 700, 90, 'v1')"
+            ),
+            {"u": str(user_id), "v": str(version_id)},
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +237,7 @@ async def test_publish_gate_fires_on_a_direct_insert(seeded_tenants) -> None:
     """
     tenant_a, _ = seeded_tenants
 
-    async with _sessions(MIGRATOR_URL)() as session, session.begin():
+    async with _sessions(SEED_URL)() as session, session.begin():
         await session.execute(
             text("UPDATE employers SET kyb_status = 'DRAFT' WHERE tenant_id = :t"),
             {"t": str(tenant_a)},
@@ -213,7 +268,7 @@ async def test_duplicate_active_application_is_refused(seeded_tenants) -> None:
     tenant_a, _ = seeded_tenants
     job_id, candidate_id = uuid.uuid4(), uuid.uuid4()
 
-    async with _sessions(MIGRATOR_URL)() as session, session.begin():
+    async with _sessions(SEED_URL)() as session, session.begin():
         await session.execute(
             text(
                 "INSERT INTO users (id, pool, phone, status, locale) "

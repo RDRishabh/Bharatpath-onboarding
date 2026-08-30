@@ -21,14 +21,16 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load_metadata() -> object:
-    """Import every module's models so the metadata is complete."""
-    import app.core.models  # noqa: F401
-    from app.core.db import Base
-    from app.modules import ALL_MODULES
+    """The same loader Alembic uses, deliberately.
 
-    for module in ALL_MODULES:
-        importlib.import_module(f"app.modules.{module.name}.models")
-    return Base.metadata
+    An earlier version of this file had its own import loop while
+    `alembic/env.py` had a different (incomplete) one - so these guards
+    passed against complete metadata while the migration ran against empty
+    metadata and died in CI. One loader, one thing to get right.
+    """
+    from app.core.metadata import load_all_models
+
+    return load_all_models()
 
 
 def _load_baseline() -> ModuleType:
@@ -162,3 +164,69 @@ def test_no_table_stores_an_otp() -> None:
             assert "otp" not in column.name.lower(), (
                 f"{table_name}.{column.name} looks like it stores an OTP value"
             )
+
+
+def test_importing_app_modules_alone_does_not_populate_metadata() -> None:
+    """The bug that broke the first migration run, pinned as a test.
+
+    `alembic/env.py` used to do `from app.modules import ALL_MODULES` and
+    assume the metadata was complete. It is not: that loads each module's
+    `__init__.py`, which carries only `name`, `prefix` and `get_router()`.
+    The ORM classes live in `<module>/models.py` and nothing imports them by
+    side effect, so the baseline migration ran against an empty metadata and
+    died with `KeyError: 'users'`.
+
+    This asserts the property that actually matters -- `load_all_models()` is
+    the thing that populates it -- so anyone tempted to "simplify" env.py back
+    to a bare package import finds out here rather than in CI.
+    """
+    from app.core.metadata import load_all_models
+
+    metadata = load_all_models()
+    assert "users" in metadata.tables
+    assert len(metadata.tables) >= 39
+
+
+def test_migration_batches_have_no_forward_foreign_keys() -> None:
+    """The baseline creates tables in batches, so order matters.
+
+    `create_all` sorts by dependency *within* the list it is given. It cannot
+    know about a table in a later batch, so a foreign key pointing forward
+    fails at migration time with a confusing error about a missing relation.
+    """
+    metadata = _load_metadata()
+    baseline = _load_baseline()
+    source = (ROOT / "alembic" / "versions" / "0001_baseline_schema.py").read_text(encoding="utf-8")
+
+    # The order the batch functions are called in `upgrade()`.
+    order = [
+        "_create_core_tables",
+        "_create_identity_tables",
+        "_create_candidate_tables",
+        "_create_employer_tables",
+        "_create_billing_tables",
+        "_create_college_tables",
+    ]
+    upgrade_body = source.split("def upgrade()")[1].split("def downgrade()")[0]
+    called = [fn for fn in order if fn in upgrade_body]
+    assert called == order, "batch order changed - update this test deliberately"
+
+    created: set[str] = set()
+    problems: list[str] = []
+
+    for fn_name in order:
+        block = source.split(f"def {fn_name}()")[1].split("\ndef ")[0]
+        batch = {name for name in metadata.tables if f'"{name}"' in block}
+
+        for table_name in batch:
+            for fk in metadata.tables[table_name].foreign_keys:
+                target = fk.column.table.name
+                if target not in created and target not in batch:
+                    problems.append(f"{table_name} -> {target} (created later)")
+        created |= batch
+
+    assert not problems, f"foreign keys pointing at a later batch: {problems}"
+    assert created == set(metadata.tables), (
+        f"tables created by no batch: {sorted(set(metadata.tables) - created)}"
+    )
+    assert baseline.TENANT_SCOPED_TABLES  # sanity: the module loaded

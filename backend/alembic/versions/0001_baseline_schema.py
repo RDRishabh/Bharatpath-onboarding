@@ -23,6 +23,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0001_baseline"
 down_revision: str | None = None
@@ -104,16 +105,16 @@ def _create_core_tables() -> None:
     op.create_table(
         "audit_events",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column("actor_id", sa.dialects.postgresql.UUID(as_uuid=True), index=True),
+        sa.Column("actor_id", postgresql.UUID(as_uuid=True), index=True),
         sa.Column("actor_role", sa.String(64), nullable=False),
         sa.Column("action", sa.String(64), nullable=False, index=True),
         sa.Column("target_type", sa.String(64), nullable=False),
         sa.Column("target_id", sa.String(64), index=True),
-        sa.Column("tenant_id", sa.dialects.postgresql.UUID(as_uuid=True), index=True),
+        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), index=True),
         sa.Column("request_id", sa.String(64)),
         sa.Column(
             "metadata",
-            sa.dialects.postgresql.JSONB,
+            postgresql.JSONB,
             nullable=False,
             server_default=sa.text("'{}'::jsonb"),
         ),
@@ -135,7 +136,7 @@ def _create_core_tables() -> None:
         sa.Column("request_hash", sa.String(64), nullable=False),
         sa.Column("state", sa.String(16), nullable=False, server_default="IN_PROGRESS"),
         sa.Column("response_status", sa.Integer),
-        sa.Column("response_body", sa.dialects.postgresql.JSONB),
+        sa.Column("response_body", postgresql.JSONB),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -149,14 +150,14 @@ def _create_core_tables() -> None:
         "outbox",
         sa.Column(
             "id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             primary_key=True,
             server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column("event_type", sa.String(128), nullable=False, index=True),
         sa.Column("aggregate_type", sa.String(64), nullable=False),
         sa.Column("aggregate_id", sa.String(64), nullable=False),
-        sa.Column("payload", sa.dialects.postgresql.JSONB, nullable=False),
+        sa.Column("payload", postgresql.JSONB, nullable=False),
         sa.Column("published_at", sa.DateTime(timezone=True)),
         sa.Column("attempts", sa.Integer, nullable=False, server_default="0"),
         sa.Column(
@@ -180,12 +181,12 @@ def _create_core_tables() -> None:
         "config_values",
         sa.Column(
             "id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             primary_key=True,
             server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column("key", sa.String(128), nullable=False, index=True),
-        sa.Column("value", sa.dialects.postgresql.JSONB, nullable=False),
+        sa.Column("value", postgresql.JSONB, nullable=False),
         sa.Column("version", sa.Integer, nullable=False, server_default="1"),
         sa.Column(
             "effective_from",
@@ -204,12 +205,24 @@ def _create_core_tables() -> None:
 # SQLAlchemy cannot express -- RLS, grants, triggers -- are written by hand.
 # ---------------------------------------------------------------------------
 def _create_from_metadata(*table_names: str) -> None:
-    from app.core.db import Base
+    # Load the models here rather than trusting the caller. This migration
+    # failed in CI with KeyError: 'users' because env.py imported
+    # `app.modules` (the packages) but never `<module>.models` (the ORM
+    # classes), so the metadata was empty. Idempotent - imports are cached.
+    from app.core.metadata import load_all_models
 
+    metadata = load_all_models()
     bind = op.get_bind()
-    Base.metadata.create_all(
+    missing = [n for n in table_names if n not in metadata.tables]
+    if missing:
+        raise RuntimeError(
+            f"No ORM model registered for: {missing}. "
+            "Metadata is incomplete - see app/core/metadata.py."
+        )
+
+    metadata.create_all(
         bind=bind,
-        tables=[Base.metadata.tables[name] for name in table_names],
+        tables=[metadata.tables[name] for name in table_names],
         checkfirst=False,
     )
 

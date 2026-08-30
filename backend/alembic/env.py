@@ -16,8 +16,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # Importing the registry pulls in every module's models so autogenerate can
 # see the whole schema. Without this, autogenerate silently drops tables.
 import app.core.models  # noqa: F401
-from app.core.db import Base
-from app.modules import ALL_MODULES  # noqa: F401
+from app.core.metadata import load_all_models
 from app.settings import get_settings
 
 config = context.config
@@ -55,7 +54,10 @@ def _migration_url() -> str:
 
 
 config.set_main_option("sqlalchemy.url", _migration_url())
-target_metadata = Base.metadata
+
+# Populate the metadata BEFORE autogenerate or any migration reads it.
+# Importing `app.modules` alone leaves it empty - see app/core/metadata.py.
+target_metadata = load_all_models()
 
 
 def run_migrations_offline() -> None:
