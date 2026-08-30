@@ -24,7 +24,37 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", str(get_settings().database_url))
+
+def _migration_url() -> str:
+    """Migrations run as the OWNER role, never as the application role.
+
+    RLS does not apply to a table's owner. If migrations ran as the same role
+    the application connects as, that role would own every table and every
+    policy would become decorative - visible in the catalog, enforcing
+    nothing. Nothing would error; isolation would just stop existing.
+
+    So this refuses to guess. If no migrator URL is configured we fail with an
+    explanation rather than falling back to `database_url`, because the
+    fallback is exactly the mistake worth preventing.
+    """
+    settings = get_settings()
+    if settings.database_url_migrator is not None:
+        return str(settings.database_url_migrator)
+
+    raise RuntimeError(
+        "DATABASE_URL_MIGRATOR is not set.\n\n"
+        "Migrations must run as the role that OWNS the tables "
+        "(bharatpath_migrator), not as the application role. Row-Level "
+        "Security does not apply to a table's owner, so running migrations "
+        "as the app role would silently disable tenant isolation while every "
+        "policy still looked correct.\n\n"
+        "Local: copy .env.example to .env - it sets this for you.\n"
+        "Deployed: the migration task's env must supply it from Secrets "
+        "Manager."
+    )
+
+
+config.set_main_option("sqlalchemy.url", _migration_url())
 target_metadata = Base.metadata
 
 

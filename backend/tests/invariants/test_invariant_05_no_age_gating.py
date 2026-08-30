@@ -63,15 +63,22 @@ def test_scan_detects_violations(tmp_path: Path, offending_line: str) -> None:
     "innocent_line",
     [
         "max_age = 3600  # cache TTL in seconds",
+        "max_age=600,  # CORS preflight cache",
         "message_age_seconds = 42",
         "cache_control = 'max-age=600'",
     ],
 )
 def test_scan_does_not_flag_innocent_age_words(innocent_line: str) -> None:
-    """`max-age` on a cookie is not age-gating a person.
+    """`max-age` on a cookie or a CORS preflight is not age-gating a person.
 
     A guard with false positives gets skipped, and a skipped guard is worse
-    than no guard because it looks like coverage.
+    than no guard because it still looks like coverage.
+
+    **This checks BOTH regexes, deliberately.** An earlier version checked
+    only AGE_GATE_RE, so it passed while FIELD_RE was the one flagging
+    `max_age` - the suite went green and the guard then failed the build the
+    first time anyone configured CORS. Asserting against half the guard is
+    not asserting against the guard.
     """
     sys.path.insert(0, str(ROOT / "scripts"))
     try:
@@ -79,4 +86,5 @@ def test_scan_does_not_flag_innocent_age_words(innocent_line: str) -> None:
     finally:
         sys.path.pop(0)
 
-    assert checker.AGE_GATE_RE.search(innocent_line) is None
+    assert checker.AGE_GATE_RE.search(innocent_line) is None, "AGE_GATE_RE false positive"
+    assert checker.FIELD_RE.search(innocent_line) is None, "FIELD_RE false positive"

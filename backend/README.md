@@ -20,9 +20,64 @@ docker compose up -d              # postgres, redis, localstack, mailhog
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
-alembic upgrade head
+alembic upgrade head              # runs as the MIGRATOR role, not the app role
 uvicorn app.main:app --reload
 ```
+
+**Everything above runs on your machine.** No AWS account, no credentials, no
+network. `.env.example` is a local-only template — deployed environments have
+no `.env` file at all and get the same variable names injected from AWS Secrets
+Manager by the ECS task definition.
+
+## How developers actually test
+
+The short version: **almost everything runs locally against `docker compose`.**
+You do not point a local process at a deployed database, and you never point
+one at production.
+
+| Dependency | Locally | Why |
+|---|---|---|
+| **Postgres** | Real Postgres 16 in Docker | RLS, JSONB, partial indexes and `SET LOCAL` all behave differently on SQLite — testing against it would prove nothing |
+| **Redis** | Real Redis in Docker | |
+| **S3 / SQS / Secrets Manager** | **LocalStack** — `AWS_ENDPOINT_URL` points boto3 at the container | Presigned URLs, multipart uploads and queue semantics are close enough to be worth exercising |
+| **Email** | **Mailhog** at :8025 — catches mail, sends nothing | |
+| **Twilio OTP** | **Test credentials against the real API.** Exercises the genuine flow; sends no messages, costs nothing | The one vendor that needs no stub, which is why auth carries no stub risk into Week 2 |
+| **Cognito** | ⚠️ **Cannot be emulated.** LocalStack's free tier has no Cognito | Use a shared **dev** pool, or a fake JWT issuer in tests. Never a production pool |
+| **Bedrock / Textract / Transcribe** | ⚠️ **No local emulation.** Behind `ResumeExtractor` / `TranscriptionProvider` interfaces with stubs | Real calls go to a shared **dev** AWS account when you need them |
+| **Payment gateway** | Provider sandbox mode + our simulating stub | Sandbox gives real webhook signatures to verify against |
+
+**The three-tier rule most teams follow, and the one worth following here:**
+
+1. **Local** — everything containerised. Fast, offline, free, and you can wipe
+   the database without asking anyone.
+2. **Shared dev AWS account** — for the handful of things with no local
+   emulator (Cognito, Bedrock, Transcribe). Real services, disposable data.
+3. **Staging** — a full mirror of production. This is where you test the
+   deploy, not the code.
+
+**Nobody connects a local process to production.** Not to debug, not "just to
+read". Production holds real candidates' resumes, phone numbers and email
+addresses; under the DPDP Act, a developer laptop with a production connection
+string is an unmanaged copy of that data. If you need production-shaped data,
+use an anonymised dump.
+
+## Where configuration comes from, per environment
+
+| | Local | dev / staging / prod |
+|---|---|---|
+| Source | `.env` file (from `.env.example`) | Env vars injected from **AWS Secrets Manager** by the ECS task definition |
+| DB credentials | Fake, matching `scripts/init_db_roles.sql` | Real, rotated, never in the repo |
+| `AWS_ENDPOINT_URL` | `http://localhost:4566` (LocalStack) | **Unset** — boto3 talks to real AWS |
+| `AWS_ACCESS_KEY_ID` | The literal string `test` | **Not set at all.** ECS tasks get temporary credentials from their **IAM task role** |
+
+That last row matters. **Long-lived AWS access keys should not exist in a
+deployed environment.** They cannot be rotated without a deploy, they leak
+through logs and backups, and they never expire. If you find yourself pasting
+an `AKIA…` key into a config, something has gone wrong upstream — the answer
+is an IAM role.
+
+`app/settings.py` reads all of this once at boot and never logs it;
+`app/core/logging.py` redacts it if it ever reaches a log line anyway.
 
 - API — <http://localhost:8000/api/v1>
 - Interactive docs — <http://localhost:8000/docs>

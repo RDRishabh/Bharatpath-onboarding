@@ -27,9 +27,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Fields that gate or describe a PERSON's age.
+#
+# Deliberately does NOT include `max_age`: that is standard HTTP vocabulary
+# (Cache-Control, cookies, CORS preflight) with no connection to gating
+# anyone, and flagging it produces noise on ordinary correct code. A noisy
+# guard gets switched off, and a switched-off guard is worse than a narrower
+# one because it still looks like coverage.
+#
+# `min_age` and `age_limit` stay - neither has an innocent technical meaning.
 FIELD_RE = re.compile(
     r"\b(date_of_birth|dateofbirth|dob|birth_date|birthdate|birthday|"
-    r"age_years|user_age|min_age|max_age|age_limit|is_adult|is_minor|age_verified)\b",
+    r"age_years|user_age|candidate_age|applicant_age|min_age|age_limit|"
+    r"is_adult|is_minor|age_verified|age_group|age_bracket)\b",
     re.IGNORECASE,
 )
 

@@ -11,6 +11,8 @@ Everything written about this build, and the client's own source documents.
 | [answers-log.md](answers-log.md) | **The archive.** Every question ever put to the client, their answer verbatim, the date, and what we did about it. Nothing summarised away — where an answer was later contradicted, both versions are here. |
 | [scoring-approach.md](scoring-approach.md) | How an AI-driven score is made reproducible. **Awaiting client approval — this blocks Day 8.** |
 | [resources-needed.md](resources-needed.md) | Everything the build depends on but cannot produce itself: AWS, vendors, registrations, legal sign-offs, content. With owners and lead times. |
+| [deployment-and-local-dev.md](deployment-and-local-dev.md) | **Read this before your first commit.** How the app runs locally and in AWS, what a container actually is, where configuration comes from in each environment, and how connections are made. Written as an Azure-to-AWS translation. |
+| [how-it-all-connects.md](how-it-all-connects.md) | **For the frontend developer too.** How the four clients reach the API, why the frontend is not a container, CORS, auth flow, contract-first working, and what a typical day looks like. |
 
 ## Source documents
 

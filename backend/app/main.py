@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
@@ -51,6 +52,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/docs" if not settings.is_production else None,
         redoc_url=None,
         lifespan=lifespan,
+    )
+
+    # CORS. The three web consoles are served from different hosts than this
+    # API, so a browser treats every call as cross-origin and blocks it unless
+    # the server says otherwise. The mobile app is unaffected -- CORS is a
+    # browser mechanism and native clients ignore it.
+    #
+    # `allow_credentials=True` with `allow_origins=["*"]` is refused by every
+    # browser and is a real vulnerability besides, so origins are always an
+    # explicit list, set per environment.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
+        # Without this the browser hides these from JavaScript, so clients
+        # cannot read the correlation id to quote in a bug report.
+        expose_headers=["X-Request-ID"],
+        max_age=600,  # cache the preflight, so OPTIONS is not sent every call
     )
 
     @app.middleware("http")

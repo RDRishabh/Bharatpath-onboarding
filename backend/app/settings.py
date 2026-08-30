@@ -49,9 +49,35 @@ class Settings(BaseSettings):
     # "admin flag" on the normal session - they are different code paths.
     database_admin_url: PostgresDsn | None = None
 
+    # Migrations run as a role that OWNS the tables. The application must not.
+    #
+    # This is not a stylistic split. RLS does not apply to a table's owner, so
+    # if Alembic ran as `database_url`, the application role would end up
+    # owning every table and Row-Level Security would silently stop applying -
+    # while every policy still showed up in `\d+` looking perfectly correct.
+    # Nothing would fail; tenant isolation would just quietly not be there.
+    database_url_migrator: PostgresDsn | None = None
+
     # -- redis -------------------------------------------------------------
     redis_url: RedisDsn
     membership_cache_ttl_seconds: int = 60
+
+    # -- CORS --------------------------------------------------------------
+    # Which browser origins may call this API. The three web consoles are
+    # served from different hosts than the API, so without this the browser
+    # blocks every request before it leaves the machine.
+    #
+    # The mobile app is NOT affected: CORS is a browser mechanism and native
+    # HTTP clients ignore it entirely.
+    #
+    # Set per environment. Never "*" -- with credentials in play a wildcard is
+    # both refused by browsers and a genuine security hole.
+    cors_allowed_origins: list[str] = [
+        "http://localhost:3000",  # employer console, dev
+        "http://localhost:3001",  # college console, dev
+        "http://localhost:3002",  # admin console, dev
+        "http://localhost:5173",  # Vite default
+    ]
 
     # -- aws ---------------------------------------------------------------
     aws_region: str = "ap-south-1"
