@@ -1,0 +1,35 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      # Invariants 5 and 6 cost an hour to write and run forever. They are
+      # cheap enough to run on every commit, not just in CI.
+      - id: invariant-05-no-age-gating
+        name: "invariant 5: no age-gating"
+        entry: python backend/scripts/check_no_age_fields.py
+        language: system
+        pass_filenames: false
+
+      - id: invariant-06-no-financial-framing
+        name: "invariant 6: no financial framing"
+        entry: python backend/scripts/check_vocabulary.py
+        language: system
+        pass_filenames: false

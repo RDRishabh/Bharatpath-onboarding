@@ -1,0 +1,59 @@
+# Local development stack. Everything the service needs, nothing it does not.
+#
+# LocalStack stands in for S3 and SQS so the async paths are exercised for real
+# rather than mocked. Cognito and Twilio are NOT here: Cognito's custom-auth
+# Lambda triggers are infrastructure owned by another team, and Twilio provides
+# test credentials that exercise the real API without sending messages, which
+# is why authentication carries no stub risk into week 2.
+
+name: bharatpath
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bharatpath
+      POSTGRES_PASSWORD: bharatpath
+      POSTGRES_DB: bharatpath
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Creates the application role WITHOUT BYPASSRLS plus the admin-bypass
+      # role. RLS is the second line of tenant isolation and it silently does
+      # nothing if the app connects as the table owner.
+      - ./scripts/init_db_roles.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bharatpath"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      SERVICES: s3,sqs,secretsmanager
+      DEBUG: "0"
+    ports: ["4566:4566"]
+    volumes:
+      - ./scripts/init_localstack.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal s3 ls || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports: ["1025:1025", "8025:8025"]   # SMTP, web UI
+
+volumes:
+  pgdata:
