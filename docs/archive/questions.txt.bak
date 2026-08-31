@@ -1,0 +1,375 @@
+BHARATPATH — QUESTIONS FOR THE CLIENT
+Prepared 27 August 2026, after the document comments and the note received today.
+
+WHY THIS FILE EXISTS
+--------------------
+We have applied everything that was clear to the build plan. This file lists only the
+things we could not act on, because the answer changes what we build. Thirteen questions.
+
+Three of them stop work if they are not answered:
+  Q1  and  Q2  — we cannot build the scoring engine (needed by Day 8)
+  Q8           — we cannot build the employer unlock (needed by Day 14)
+
+Everything else we can start on and finish later, but the sooner they land the less
+rework there is.
+
+Each question below has: what you told us, why we are stuck, and what we need back.
+Written plainly so it can be read out on a call or pasted into the group.
+
+
+================================================================================
+GROUP A — THE SCORE
+The four questions here are all about the same thing: the new numbers do not add up,
+and we do not want to guess.
+================================================================================
+
+Q1. CAN YOU WALK US THROUGH THE SCORE WITH ONE REAL EXAMPLE?   [BLOCKS DAY 8]
+
+  You told us:  "Base - 700, max - 990 ... critically judge and give points out of
+                200 points (990-790)"
+
+  Where we are stuck:
+    Those numbers do not fit together. If everyone starts at 700, and the judged part
+    is worth 200 points, the highest anyone can reach is 900 — not 990.
+    But you have also written the judged part as running from 790 to 990, which
+    suggests something else lifts a candidate from 700 up to 790 first, and nobody
+    has told us what that is.
+
+    So there is a 90-point gap we cannot explain:
+
+         700 ............ 790 =============================== 990
+          ^                ^                                    ^
+        base       what fills this?              the 200 points you described
+
+  What we need:
+    Take one real CV. Tell us the number it should come out with, and show us how you
+    got there step by step. One worked example answers this faster than any amount of
+    written explanation.
+
+
+Q2. IS THE 200-POINT PART SCORED BY AN AI, OR BY FIXED RULES?   [BLOCKS DAY 8]
+
+  You told us:  "Critically judge and give points out of 200 points"
+
+  Why we are asking:
+    "Critically judge" sounds like an AI reading the CV and forming an opinion, rather
+    than a fixed formula. Both are possible to build. But they are built very
+    differently, so we need to know before we start.
+
+    The reason this matters: you have asked that the score be reproducible — the same
+    CV must always give the same number. A fixed formula does that naturally. An AI
+    does not; ask it twice and you can get two answers.
+
+    We can still make an AI-based score reproducible, but only by locking the AI
+    version, saving its exact answer against the score, and replaying that saved
+    answer instead of asking again. That is a real design and we will build it
+    properly — we just cannot start it while it might be the wrong design.
+
+  What we need:
+    Just tell us which one. If it is an AI, we will design for it.
+
+
+Q3. IS THE SCORE EXPLAINED TO THE CANDIDATE, OR NOT?
+
+  You told us two different things:
+    In the document:  "Score is not explainable but is reproducible"
+    In the note:      "critically judge and give points out of 200 points,
+                       explaination required"
+
+  Why we are asking:
+    The first says do not show people how the number was reached. The second says an
+    explanation is required. These cannot both be built.
+
+    It also matters because the original requirement document promises the candidate a
+    category-by-category breakdown and improvement tips on the results screen. If the
+    score is no longer explained, that screen needs to change.
+
+  What we need:
+    Tell us what the candidate actually sees after their CV is scored:
+      (a) the number only
+      (b) the number plus a written comment on their CV, but no formula
+      (c) the number plus a full breakdown by category, as originally specified
+
+    Our guess is (b) — no formula shown, but a written reason. Confirm or correct.
+
+
+Q4. ARE THE COURSE AND INTERVIEW POINTS PER ITEM, OR A ONE-TIME TOTAL?
+
+  You told us:  "Course/Videos - Add 30 to the score"
+                "Mock Interview - Per Session 20 points increase, up to 60 points"
+
+  Why we are asking:
+    The interview one is clear: 20 points each time, three times maximum, 60 total.
+    The course one is not. If a candidate finishes five courses, is that 30 points or
+    150 points?
+
+  What we need, three short answers:
+    - Is +30 per course, or +30 no matter how many courses they do?
+    - If it is per course, is there a maximum?
+    - If a subscription lapses and is renewed, do the points reset, or are they kept
+      permanently once earned?
+
+
+Q5. DO THE EXTRA POINTS STOP AT 990?
+
+  Why we are asking:
+    If a candidate's CV already scores 985 and they then complete a course worth 30
+    points, do they end up at 990 (capped) or at 1015 (above your stated maximum)?
+
+  What we need:
+    One line. Our assumption is that nothing ever goes above 990 — confirm.
+
+
+================================================================================
+GROUP B — MONEY AND ACCESS
+================================================================================
+
+Q6. IS THE SCORE ITSELF BEHIND THE PAYWALL?
+
+  You told us:  "Only Sign Up is allowed, nothing else, not even the resume upload,
+                 paid first audience only"
+                "Student -> Subscription (Nothing free)"
+
+  Why we are asking:
+    Read together, these say: a person signs up, then has to pay, and only then can
+    they upload their CV and see a score.
+
+    We can build that. But we want to say plainly that it is a significant change of
+    direction. The original plan was that the free score is what brings people to the
+    platform — they see their number, they are impressed, and then they buy. If the
+    score is now behind payment, the platform is asking people to pay before they have
+    seen anything, which is a much harder sell and changes how the app is marketed.
+
+    This is your business decision, not ours. We only want it stated clearly rather
+    than assumed.
+
+  What we need:
+    Confirm the order:
+      (a) sign up -> pay -> upload CV -> see score        (what we have understood)
+      (b) sign up -> upload CV -> see score free -> pay for courses and interviews
+      (c) something else
+
+
+Q7. KYB — AUTOMATIC, OR MANUAL?
+
+  You told us two different things, three days apart:
+    24 August, on the doc:  "Manual, uploading will be there but manual"
+    27 August, in the note: "KYB won't be there, automatic approval"
+
+  What we have done in the meantime:
+    We have built it so that both work. The full verification process exists in the
+    system, but there is a single setting that currently approves every employer
+    automatically. Turning real verification back on later is a settings change, not
+    a rebuild. That costs us an hour now and protects you either way.
+
+  One thing we must put on record:
+    With automatic approval, any business that signs up can post jobs and pay to see
+    candidates' phone numbers and email addresses, with no check that the business is
+    real. That is a fraud risk and a risk to your candidates' personal data. Your own
+    requirement documents currently say verification is mandatory before a job goes
+    live. We are comfortable building it your way — we just need you to have decided
+    it knowingly.
+
+  What we need:
+    Confirm: automatic approval for now, and we keep the switch. Or tell us manual
+    review is back, and we turn it on.
+
+
+Q8. WHAT DOES AN EMPLOYER TIER ACTUALLY INCLUDE?   [BLOCKS DAY 14]
+
+  You asked this yourself in the document, and it was not answered:
+    "How will the unlock work, subscription based? allowing 50 unlocks at once under
+     tiers or one at a time."
+
+  Why we are asking:
+    This is the single biggest open item on the employer side. The two options are
+    entirely different systems:
+
+      Option A — the tier includes a bundle. An employer pays for a tier and gets, say,
+                 50 unlocks. We count down from 50. When it hits zero they upgrade.
+
+      Option B — the tier is an access fee. The employer pays a monthly fee to use the
+                 platform, and then pays separately each time they unlock a candidate.
+
+      Option C — both. A tier includes 50, and they can buy more on top.
+
+  What we need:
+    Which option, and the numbers. Also: if an employer unlocks the same candidate
+    twice, are they charged twice? (We have assumed no — once unlocked, always
+    unlocked, charged once.)
+
+
+Q9. PLEASE SEND THE EMPLOYER TYPE AND INDUSTRY LISTS.
+
+  You told us:  "Employer - MNC, Industry"
+
+  Why we are asking:
+    We have added both fields. But they have to be a fixed list of choices, not a
+    free-typing box — otherwise one employer types "Manufacturing", another types
+    "manufacturing ltd", and no filter or pricing rule will ever work properly.
+
+  What we need:
+    - The full list of employer types. Is it just MNC and non-MNC? Or MNC / Large /
+      SME / Startup, or something else?
+    - The full list of industries. Twenty to thirty options is normal.
+    - Does the employer type affect what they pay? (We suspect it does, given the
+      "Flat Fee / Tier" model.)
+
+
+Q10. COLLEGE SEATS — WHAT HAPPENS WHEN THEY RUN OUT?
+
+  You told us:  "College -> B2B Deal, No of Seats will be assigned from the admin.
+                 (CRUD Operations and stop operations in backend admin)"
+
+  Why we are asking:
+    We have built seat allocation and an admin control to stop a college. Two things
+    are not defined:
+
+    First, if a college is given 500 seats and uploads 600 students, what should
+    happen? Block the extra 100? Let them all in and bill the college for 600? Let
+    them in but only show analytics for 500?
+
+    Second, when your admin uses "stop operations" on a college, what exactly stops?
+    Only the college staff losing access to their dashboard? Or do the students who
+    joined through that college lose their accounts too? We have assumed the college
+    staff only, and students keep their own accounts — please confirm, because the
+    other reading would cut off real candidates.
+
+  What we need:
+    An answer to both.
+
+
+Q11. DO SUBSCRIPTIONS RENEW AUTOMATICALLY?
+
+  You told us:  "Subscription ... Per month/quarterly/semester/annually"
+
+  Why we are asking:
+    There are two ways to do this in India and the difference is large.
+
+      Manual — when the month ends, the candidate gets a reminder and pays again
+               themselves. Simple. We can build this quickly.
+
+      Automatic — the money is taken automatically each month. In India this requires
+               setting up a UPI mandate with each individual user first, which is a
+               separate approval flow with its own rules and limits. It is more work,
+               it needs the payment gateway to support it, and it needs to be part of
+               the sign-up experience.
+
+    Automatic renewal keeps far more customers. Manual is cheaper to build. It is
+    worth a proper decision, not a default.
+
+  What we need:
+    Which one for launch. If automatic, we also need to confirm your payment gateway
+    supports recurring UPI mandates before we design around it.
+
+
+Q12. WE NEED THREE CHANGES CONFIRMED IN WRITING.
+
+  Why we are asking:
+    This is not us being difficult. Your specification documents list a set of things
+    the finished build will be checked against — that is the list we get measured on
+    at handover. Three of your new instructions contradict that list. If we simply
+    follow the new instruction, the build technically fails its own acceptance test,
+    and that becomes an argument at the end of the project rather than now.
+
+    A one-line email or a WhatsApp message from you is enough. We are not asking for
+    a formal document.
+
+  The three items:
+
+    1. Paid add-ons now change the score.
+       Your rule 3 currently says paid add-ons must NEVER change the core score, and
+       that this must be provable. Your comment "It will change it" reverses that.
+       We need that reversal confirmed.
+
+    2. Sign-up is required before anything.
+       Your specification lists "Candidate can reach the first score before mandatory
+       account creation" as something the build must do. Your new instruction is the
+       opposite. We need the old requirement formally withdrawn.
+
+    3. Duplicate CV detection is dropped.
+       Your requirements name duplicate and copied CVs as the main thing the integrity
+       system should catch. Your comment says "Don't flag for duplicates". Confirm we
+       are removing it. (To be clear: we are NOT removing the check that stops one
+       candidate applying to the same job twice — that is unrelated and it stays.)
+
+
+Q13. WHAT HAPPENS TO SOMEONE'S DATA WHEN THEY ASK TO BE DELETED?
+     [This one needs your lawyer, and lawyers take time — please start it now.]
+
+  Why we are asking:
+    Three of your own requirements pull against each other:
+      - Users must be able to have their data deleted on request.
+      - The audit trail can never be altered or deleted.
+      - Payment and subscription records have to be kept by law for several years.
+
+    So when a candidate asks to be deleted, we cannot delete everything, and we cannot
+    keep everything. Someone has to decide the line — and that someone is a lawyer,
+    not us. We should not be inventing your data retention policy.
+
+  What we need:
+    A short written policy answering:
+      - Which details are permanently erased (name, phone, email, CV file)?
+      - Which are kept but anonymised, so records still add up?
+      - How long are payment and subscription records kept?
+      - What stays in the audit trail after a user is deleted?
+
+    We need this by roughly three weeks in. Given legal review takes time, please
+    start it this week.
+
+
+================================================================================
+ONE THING WE WANT TO RAISE, SEPARATE FROM THE QUESTIONS
+================================================================================
+
+Your own requirements ban any wording that makes this look like a credit score, and
+they describe this as a legal requirement rather than a preference. The reason is
+obvious once said out loud: a three-digit number shown to Indian consumers looks
+exactly like a CIBIL score.
+
+The new instructions change the shape of that risk. The product now sells something
+that provably increases that number, and the number itself sits behind a paid
+subscription. "Pay us and your score goes up" is a harder thing to defend than
+"here is your score, free".
+
+We are not refusing to build it, and we are not lawyers. But if your counsel signed
+off on the score at any point, they signed off on a different product to this one.
+Please have them look again before we build the scoring engine — that is roughly two
+weeks away. It costs a day now. It costs a rebuild later.
+
+
+================================================================================
+WHAT WE HAVE ALREADY ACTIONED — NO REPLY NEEDED
+================================================================================
+
+These were clear, and the build plan has been updated already:
+
+  - Paid add-ons now raise the score. Course +30, interview +20 per session up to +60.
+    We have added a hard limit so no amount of buying can push a score past the
+    maximum.
+  - Score range is now 700 to 990, replacing 680 to 999.
+  - No browsing without an account. Sign-up now comes before everything, CV upload
+    included. This removed our riskiest piece of work and a data-protection concern.
+  - Employers never see the real underlying score, even after paying to unlock.
+    They see the same floored number the candidate sees. This closes a question that
+    had been blocking us.
+  - Revenue model rebuilt around subscriptions, courses, employer tiers and college
+    seats, with admin control over seats and the ability to stop a college.
+  - Duplicate CV flagging removed.
+  - Employer type and industry fields added, waiting on your lists.
+  - Reminder notifications added for people who sign up but never upload a CV.
+  - Mock interview confirmed as recorded, not a live phone call.
+
+
+================================================================================
+ONE MORE THING YOU SHOULD KNOW
+================================================================================
+
+The changes above remove roughly a day and a half of work and add four to six days.
+They also land on the hardest days in the schedule — the scoring engine, the unlock,
+and payments — which were already the three days with no room in them.
+
+We are not asking for anything here. We are telling you now rather than in week three
+that the four-week timeline needs re-cutting against this new scope. We will come back
+with a revised schedule once the blocking questions above are answered, because two of
+them change how big the work actually is.

@@ -1,0 +1,93 @@
+; Module boundary contracts. These are what make later service extraction
+; mechanical rather than archaeological, and two of them enforce product
+; invariants directly. See docs/plan.md section 2 and section 4.
+;
+; Run with:  lint-imports
+
+[importlinter]
+root_package = app
+include_external_packages = True
+
+; ---------------------------------------------------------------------------
+; INVARIANT 4' — add-on modules can never write a score.
+;
+; The original rule was "questionnaire and interview must not import scoring",
+; which enforced the now-rescinded rule that add-ons never move the score.
+; The client reversed that on 2026-08-24 ("It will change it"), so the
+; dependency was INVERTED, not deleted: `scoring` reads add-on completion
+; events; the add-on modules still import nothing from `scoring`.
+;
+; Keeping this contract is what stops an add-on module reaching in and
+; awarding itself points.
+; ---------------------------------------------------------------------------
+[importlinter:contract:addons-never-import-scoring]
+name = Add-on modules must not import scoring (invariant 4-prime)
+type = forbidden
+source_modules =
+    app.modules.questionnaire
+    app.modules.interview
+    app.modules.courses
+forbidden_modules =
+    app.modules.scoring
+
+; ---------------------------------------------------------------------------
+; Layering inside every module: routers -> services -> repositories.
+; A router that touches a repository has skipped the transaction boundary
+; and the business rules with it.
+; ---------------------------------------------------------------------------
+[importlinter:contract:layers]
+name = Routers never touch repositories
+type = forbidden
+source_modules =
+    app.modules.*.router
+forbidden_modules =
+    app.modules.*.repository
+
+; ---------------------------------------------------------------------------
+; Cross-module access goes through the public service, never through another
+; module's repository or ORM models. This is the single rule that makes a
+; module extractable into its own service later.
+; ---------------------------------------------------------------------------
+[importlinter:contract:module-privacy]
+name = A module's repository and models are private to it
+type = forbidden
+source_modules =
+    app.modules.candidate
+    app.modules.resume
+    app.modules.scoring
+    app.modules.integrity
+    app.modules.questionnaire
+    app.modules.interview
+    app.modules.courses
+    app.modules.employer
+    app.modules.kyb
+    app.modules.jobs
+    app.modules.applications
+    app.modules.discovery
+    app.modules.billing
+    app.modules.subscriptions
+    app.modules.college
+    app.modules.analytics
+    app.modules.admin
+    app.modules.notifications
+    app.modules.privacy
+forbidden_modules =
+    app.modules.identity.repository
+    app.modules.identity.models
+
+; ---------------------------------------------------------------------------
+; domain.py is pure. No I/O, no DB, no HTTP, no clock, no randomness that
+; isn't passed in. This is what makes the invariant property tests possible.
+; ---------------------------------------------------------------------------
+[importlinter:contract:domain-is-pure]
+name = domain.py imports no I/O
+type = forbidden
+source_modules =
+    app.modules.*.domain
+forbidden_modules =
+    sqlalchemy
+    redis
+    boto3
+    httpx
+    fastapi
+    app.core.db

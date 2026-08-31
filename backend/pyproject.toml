@@ -1,0 +1,138 @@
+[project]
+name = "bharatpath-backend"
+version = "0.1.0"
+description = "BharatPath — one shared backend for the candidate, employer, college and admin surfaces."
+requires-python = ">=3.12"
+
+dependencies = [
+    # web
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "python-multipart>=0.0.12",
+    # db
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    # cache / locks / throttles
+    "redis>=5.2",
+    # async work
+    "celery[sqs]>=5.4",
+    # aws
+    "boto3>=1.35",
+    # auth
+    "pyjwt[crypto]>=2.10",
+    "httpx>=0.28",
+    # observability
+    "structlog>=24.4",
+    "opentelemetry-api>=1.28",
+    "opentelemetry-sdk>=1.28",
+    "opentelemetry-instrumentation-fastapi>=0.49b0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "hypothesis>=6.115",
+    "testcontainers[postgres]>=4.8",
+    "schemathesis>=3.38",
+    "polyfactory>=2.18",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "import-linter>=2.1",
+    "pre-commit>=4.0",
+    "types-boto3",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+# ---------------------------------------------------------------------------
+# ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "B",         # bugbear
+    "C4",        # comprehensions
+    "UP",        # pyupgrade
+    "ASYNC",     # async correctness
+    "S",         # bandit
+    "T20",       # no print()
+    "SIM",       # simplify
+    "RUF",
+]
+ignore = [
+    "S101",   # assert — we use it in tests and in invariant guards
+    "B008",   # FastAPI Depends() in defaults is the documented idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "T20"]
+"scripts/**" = ["T20"]        # the invariant scripts print their findings by design
+"alembic/**" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# ---------------------------------------------------------------------------
+# mypy — strict on domain.py, where the business rules live
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+# domain.py holds pure functions and state machines. It is the one layer where a
+# type error is a business-rule error, so it gets the strictest setting we have.
+module = "app.modules.*.domain"
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["celery.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Celery ships no type stubs, so `@celery_app.task` is an untyped decorator
+# and every task it wraps is inferred as untyped. Narrowed to app.tasks so the
+# relaxation cannot leak into the layers where types are doing real work -
+# the tasks themselves are thin wrappers over services, which stay checked.
+module = "app.tasks.*"
+disallow_untyped_decorators = false
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "invariant: proves one of the rules in docs/plan.md section 1. Never delete these.",
+    "integration: needs a real Postgres via testcontainers.",
+    "contract: fuzzes the generated OpenAPI schema.",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/worker.py", "*/migrations/*"]

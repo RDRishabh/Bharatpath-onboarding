@@ -1,0 +1,1112 @@
+# BharatPath — Backend Build Plan
+
+> **Version 3** · 2026-08-24 · Supersedes the 21-week plan.
+> Changes: Q1, Q3, Q4 answered by the client (see [§13](#13-decisions-and-open-questions));
+> schedule compressed to a **4-week / 20-working-day** sprint;
+> **Twilio selected for OTP and SMS delivery** ([§5.8](#58-otp-delivery-via-twilio-decided)).
+>
+> **Scope of this document.** The backend only: one shared FastAPI service plus async workers,
+> consumed by all four surfaces (Candidate mobile, Employer console, College console, Admin
+> console). Infrastructure is provisioned by someone else — see [§12](#12-external-dependencies).
+>
+> **How to use it.** [§8](#8-the-four-week-build) is a day-by-day schedule. Each day has a
+> deliverable; each week has a gate that must be green before the next week starts. Tick boxes in
+> [§14](#14-progress-tracker). Amend this file when reality disagrees with it.
+>
+> **Source of truth.** `Docs/Product Requirements Document.pdf` (PRD) and
+> `Docs/BharatPath_SRS_User_Flows_Interface_Specifications_v3_Phone_Interview.docx.pdf` (SRS).
+
+---
+
+## Table of contents
+
+1. [The nine invariants — and how code enforces each](#1-the-nine-invariants)
+2. [Architecture decision: modular monolith](#2-architecture-decision-modular-monolith)
+3. [Stack](#3-stack)
+4. [Repository layout](#4-repository-layout)
+5. [Cross-cutting foundations](#5-cross-cutting-foundations)
+6. [Data model — the spine](#6-data-model--the-spine)
+7. [API conventions](#7-api-conventions)
+8. [The four-week build](#8-the-four-week-build)
+9. [Testing strategy](#9-testing-strategy)
+10. [Security and privacy checklist](#10-security-and-privacy-checklist)
+11. [Performance budget](#11-performance-budget)
+12. [External dependencies](#12-external-dependencies)
+13. [Decisions and open questions](#13-decisions-and-open-questions)
+14. [Progress tracker](#14-progress-tracker)
+
+---
+
+## 1. The nine invariants
+
+The PRD calls these "non-negotiable product rules" (PRD §3). Treat them as **architectural
+invariants, not features**. Each is paired below with the mechanism that makes violating it hard,
+and the test that proves it. If a rule is only enforced by "the developer remembered," it is not
+enforced.
+
+Under a compressed schedule these matter *more*, not less — they are the part of the codebase that
+cannot be fixed in a follow-up sprint, because getting them wrong means rewriting everything built
+on top.
+
+| # | Rule (PRD §3) | Enforcement mechanism | Proving test |
+|---|---|---|---|
+| 1 | Score explainable and reproducible | Every `scores` row stores `resume_version_id` + `algorithm_version`. A `replay(score_id)` function recomputes from stored inputs and must return an identical value. | Golden-file test: replay every score in a fixture corpus, assert identical breakdown. |
+| 2 | Display floor of 680, calculated value unchanged | Raw score persisted; floor applied **only** in the Pydantic response schema as a computed field. No query ever filters on the display value. | Serializer unit test: raw 540 produces display 680, raw untouched in DB. |
+| 3 | Score never human-editable | No route accepts a score value. DB grant: application role has no `UPDATE` on `scores`. Writes go through `scoring.persist()` only. | Route-table test asserting no endpoint exposes a writable score field; DB permission test. |
+| 4 | Paid add-ons never change the core score | `questionnaire` and `interview` modules import nothing from `scoring` and have no write path to it. | `import-linter` contract in CI; integration test asserting score identical before/after add-on completion. |
+| 5 | No age-gating | No `date_of_birth` / `age` column anywhere. No validator referencing 18. | Schema scan test failing on any column matching `dob\|date_of_birth\|age`. |
+| 6 | No financial or lending framing | Banned-vocabulary check across source, migrations, schemas, locale files: "credit score", "loan", "creditworth", "eligibility score", "CIBIL". | `scripts/check_vocabulary.py` as a CI gate. |
+| 7 | Employers see masked data pre-unlock | Discovery returns a `MaskedCandidate` schema that **structurally cannot** hold name, phone, email, or raw score. Unlocked reads use a different schema and a different repository method. | Contract test fuzzing discovery responses, asserting no PII field present; JSON shape snapshot. |
+| 8 | No job publish before KYB approval | `publish()` domain service raises unless `kyb_status == APPROVED`, backed by a Postgres trigger blocking `status='PUBLISHED'` for unverified employers. | Integration test that bypasses the API and calls the repository directly — must still fail. |
+| 9 | College consent required; every reveal audited | `student_consents` is joined by the query itself (inner join, not a Python `if`). Audit writes happen in the same transaction as the reveal. | Test that removing consent makes rows disappear from analytics; audit-count assertion on every reveal endpoint. |
+
+**The pattern to internalise:** push each rule to the lowest layer that can enforce it —
+database constraint > repository query shape > domain service > API schema > UI. The SRS is
+explicit that clients must not carry business rules (SRS §2.24.1) and that tenant IDs come from
+server context, never client input (SRS §2.24.7).
+
+---
+
+## 2. Architecture decision: modular monolith
+
+**Build one deployable FastAPI application with hard internal module boundaries, plus a separate
+worker deployable running the same codebase.** Not microservices.
+
+Why:
+
+- The PRD forbids per-surface backends (PRD §1.1) but says nothing about internal decomposition.
+- Every high-risk invariant above is a *cross-entity transactional* concern — unlock must bill,
+  reveal, and audit atomically; scoring must version-link to a resume; consent must join to
+  analytics. Distributed transactions would make exactly the things the client will audit you on
+  harder to get right.
+- One developer, four weeks. A service mesh buys nothing and costs days.
+
+Boundaries are enforced by `import-linter` in CI, so extracting services later is mechanical
+rather than archaeological. The two modules most likely to be extracted first — `scoring` and
+`resume` parsing — sit behind explicit interfaces from day one.
+
+```
+                    ┌─────────────────────────────────────────┐
+   4 clients ──────▶│  FastAPI app        (service: api)      │
+   (mobile, 3 web)  │  routers → services → repositories      │
+                    └──────────────┬──────────────────────────┘
+                                   │ enqueue
+                    ┌──────────────▼──────────────────────────┐
+                    │  Celery workers     (service: worker)   │
+                    │  parse · score · integrity · evaluate   │
+                    │  notify · roster-import · expiry        │
+                    └──────────────┬──────────────────────────┘
+                                   │
+       ┌───────────────┬───────────┴──────────┬────────────────┐
+       ▼               ▼                      ▼                ▼
+   PostgreSQL       Redis                   SQS               S3
+   (RLS, audit)  (cache, locks)          (broker)     (resumes, audio)
+                                                              ▲
+                                              Cognito ────────┘
+                                          (2 user pools, JWKS)
+```
+
+**Two deployables, one image.** `uvicorn app.main:app` and `celery -A app.worker worker` from the
+same container image, so worker and API can never drift on model definitions.
+
+---
+
+## 3. Stack
+
+| Concern | Choice | Notes |
+|---|---|---|
+| Framework | **FastAPI**, Python 3.12 | Async throughout. Pydantic v2 schemas double as the API contract. |
+| ORM | **SQLAlchemy 2.0** async with `asyncpg` | 2.0 style only — `select()`, no legacy `Query`. |
+| Migrations | **Alembic** | One migration per PR, never edited after merge. |
+| DTOs | **Pydantic v2** | Separate `Create` / `Update` / `Read` schemas. Never expose ORM models directly. |
+| **Identity** | **AWS Cognito** — two user pools *(decided, Q4)* | See [§5.7](#57-cognito-integration-decided). API verifies JWTs against pool JWKS; **role and tenant come from our DB, not from token claims.** |
+| TOTP | **Cognito software-token MFA** (native) | Business and admin pool only (PRD §8). No `pyotp` needed. |
+| **OTP + SMS delivery** | **Twilio Verify** (OTP) and **Twilio Messaging** (notifications) *(decided)* | Verify is called from the Cognito custom-auth Lambdas. Cognito's built-in SMS goes via SNS and is **not** used. See [§5.8](#58-otp-delivery-via-twilio-decided). |
+| Background jobs | **Celery** with SQS broker, Redis result backend | SQS has no native ETA/countdown. Use **EventBridge Scheduler hitting a trigger endpoint** for periodic work (application expiry, DSR sweeps), not Celery Beat. |
+| Cache, locks, rate limits | **Redis** via `redis.asyncio` | Also caches the membership lookup (60 s TTL) and holds OTP throttles. |
+| Object storage | **boto3** with presigned URLs | Resumes and interview audio never public (SRS §1.4.2). |
+| Audio | **Opus or AAC, mono, 16 kHz** *(audio-only, Q3)* | ~15–25 KB per 30 s answer. Sized for low-end Android on 2G. |
+| Testing | **pytest**, `pytest-asyncio`, `httpx.AsyncClient`, `testcontainers-python` | Real Postgres in tests. Never SQLite — RLS and JSONB behave differently, and those are what you are testing. |
+| Fixtures | **polyfactory** | Typed factories off the Pydantic and SQLAlchemy models. |
+| Contract testing | **schemathesis** | Fuzzes the generated OpenAPI schema. Catches masking leaks well. |
+| Lint and format | **ruff**, **mypy** strict on every `domain.py` | |
+| Boundaries | **import-linter** | Enforces invariant 4 and the module layering. |
+| Secrets | Env vars sourced from Secrets Manager, read once at boot | Never in code, never in the repo, never logged. |
+| Observability | `structlog` JSON logs, OpenTelemetry traces | Correlation ID on every request and every job. |
+
+**Deliberately deferred:** OpenSearch (use Postgres `pg_trgm` + `tsvector`), GraphQL, event
+sourcing, a standalone scoring microservice.
+
+---
+
+## 4. Repository layout
+
+```
+bharatpath-backend/
+├── app/
+│   ├── main.py                    # FastAPI app factory, router registration
+│   ├── worker.py                  # Celery app factory
+│   ├── settings.py                # Pydantic Settings, env-driven
+│   │
+│   ├── core/
+│   │   ├── db.py                  # async engine, session factory, RLS session dep
+│   │   ├── tenant.py              # TenantContext — from DB membership, never request body
+│   │   ├── cognito.py             # JWKS cache, token verification, admin API client
+│   │   ├── deps.py                # current_user, require_role, require_tenant
+│   │   ├── idempotency.py         # idempotency-key dependency and store
+│   │   ├── pagination.py          # cursor pagination primitives
+│   │   ├── errors.py              # AppError hierarchy → RFC 7807 responses
+│   │   ├── audit.py               # audit_event() — the ONLY way to write audit rows
+│   │   ├── outbox.py              # transactional outbox writer and relay
+│   │   └── logging.py             # structlog config, PII redaction filter
+│   │
+│   ├── modules/
+│   │   ├── identity/              # users, sessions, anonymous subjects, claim flow
+│   │   ├── candidate/             # candidate profile, settings, language preference
+│   │   ├── resume/                # upload, parse jobs, versions, review and confirm
+│   │   ├── scoring/               # engine interface, versions, history, breakdown
+│   │   ├── integrity/             # signals, severity policy, search suppression
+│   │   ├── questionnaire/         # optional attribute questionnaire — no scoring import
+│   │   ├── interview/             # audio sessions, chunk upload, evaluation
+│   │   ├── employer/              # employer tenant, team members, roles
+│   │   ├── kyb/                   # submissions, documents, review state machine
+│   │   ├── jobs/                  # composer, validation, publish gate, lifecycle
+│   │   ├── applications/          # apply, stages, withdraw, expiry, hire confirm
+│   │   ├── discovery/             # masked search, unlock, entitlement checks
+│   │   ├── billing/               # wallet ledger, payments, entitlements
+│   │   ├── college/               # institution tenant, roster, invites, consent
+│   │   ├── analytics/             # cohort aggregates, placement tracking
+│   │   ├── admin/                 # queues, drill-downs, disputes
+│   │   ├── notifications/         # event → channel fan-out, templates
+│   │   └── privacy/               # export and deletion requests, DSR tracking
+│   │
+│   └── tasks/                     # Celery task definitions, thin wrappers over services
+│
+├── alembic/versions/
+├── tests/
+│   ├── unit/                      # pure domain logic, no DB
+│   ├── integration/               # real Postgres via testcontainers
+│   ├── contract/                  # schemathesis plus masking and leak assertions
+│   └── invariants/                # one file per rule in §1 — never delete these
+├── scripts/
+│   ├── check_vocabulary.py        # invariant 6
+│   ├── check_no_age_fields.py     # invariant 5
+│   └── seed_dev.py
+├── .importlinter                  # module boundary contracts
+├── docker-compose.yml             # postgres, redis, localstack, mailhog, cognito-local
+├── pyproject.toml
+└── plan.md                        # this file
+```
+
+**Every module has the same internal shape:**
+
+```
+modules/<name>/
+├── router.py        # FastAPI routes — HTTP concerns only, no business logic
+├── schemas.py       # Pydantic request/response DTOs
+├── models.py        # SQLAlchemy ORM models
+├── repository.py    # all DB access for this module
+├── service.py       # business rules, transaction boundaries
+├── domain.py        # pure functions, state machines, no I/O  (mypy strict)
+└── events.py        # domain events this module emits
+```
+
+Rule: **routers never touch repositories; services never touch `Request`.** A module may import
+another module's `service`, never its `repository` or `models`. That one rule is what makes later
+extraction possible, and `import-linter` checks it so it does not depend on discipline.
+
+**This layout is also what makes AI-assisted generation fast.** Seventeen modules with an
+identical seven-file shape is a template you fill, not seventeen designs. Generate the skeleton
+for all of them on Day 1 and the rest of the sprint is filling in `domain.py` and `service.py`,
+which is where the actual thinking lives.
+
+---
+
+## 5. Cross-cutting foundations
+
+These exist before feature work (Week 1) because retrofitting any of them is a rewrite.
+
+### 5.1 Tenant isolation — the highest-risk requirement
+
+SRS §2.24.7 is blunt: Employer A must never query Employer B's data, and tenant IDs must come from
+server context. Defence in depth, three layers:
+
+1. **Postgres Row-Level Security.** Every tenant-scoped table carries `tenant_id`. Policy:
+   `USING (tenant_id = current_setting('app.tenant_id')::uuid)`. The application connects as a
+   role that is not the table owner and does **not** have `BYPASSRLS`.
+2. **Session-scoped setting.** The DB session dependency issues `SET LOCAL app.tenant_id = :tid`
+   at the start of every transaction, with `tid` resolved from the authenticated user's
+   membership. `SET LOCAL` dies with the transaction, so a pooled connection cannot carry tenancy
+   across requests.
+3. **Repository-level filter** as belt and braces, plus an integration suite that, for every
+   tenant-scoped endpoint, authenticates as tenant A and requests tenant B's resource ID —
+   expecting **404, not 403**, since 403 confirms the resource exists.
+
+Admin roles use a **separate session factory** that assumes a bypass role, and every such session
+emits an audit event. There is no "admin flag" on the normal session — the two are different code
+paths.
+
+### 5.2 Audit trail — append-only, in-transaction
+
+PRD §3.9 and SRS §2.24.5. Must be append-only from the application path and searchable by actor,
+action, target, and time (SRS §2.25.4).
+
+- Table `audit_events(id, actor_id, actor_role, action, target_type, target_id, tenant_id, metadata jsonb, occurred_at, request_id)`.
+- Application DB role is granted `INSERT` and `SELECT` only. `REVOKE UPDATE, DELETE`.
+- Written **inside the same transaction as the reveal it records**. If the audit write fails, the
+  reveal rolls back. That is the entire point — do not make it async.
+- Archived nightly to S3 with Object Lock in compliance mode for tamper-evidence.
+- **Do not use QLDB** — AWS has deprecated it. Append-only Postgres plus Object Lock archival is
+  the current-correct answer when someone asks why not a ledger database.
+
+### 5.3 Idempotency
+
+SRS §2.24.4 names six operations: payment, unlock, application creation, publishing, hire
+confirmation, roster import. Implement once as a FastAPI dependency:
+
+```
+POST with header  Idempotency-Key: <client uuid>
+  → table idempotency_keys(key, endpoint, request_hash, response_status,
+                           response_body jsonb, state, created_at, expires_at)
+  → INSERT ... ON CONFLICT DO NOTHING        (the row is the lock)
+  → exists, COMPLETED, request_hash matches  → replay stored response
+  → exists, request_hash differs             → 422 idempotency key reuse
+  → exists, IN_PROGRESS                      → 409 with Retry-After
+```
+
+24-hour retention. Applied by decorating the route, and a test asserts all six named operations
+carry the dependency, so it cannot be silently forgotten.
+
+### 5.4 Transactional outbox
+
+Notifications, analytics rollups, and search reindexing must not fire on a transaction that later
+rolls back. Domain events append to an `outbox` table inside the business transaction; a relay task
+polls and publishes to SQS/EventBridge with at-least-once delivery. Consumers are idempotent by
+event ID.
+
+### 5.5 Error contract
+
+RFC 7807 `application/problem+json` for every error, with a stable machine-readable `code`. All
+four clients must localise error messages (PRD §8: no hardcoded user-facing strings), so the API
+returns codes and parameters and clients own the copy. **The backend never returns a user-facing
+English sentence as the display string.**
+
+### 5.6 Configuration and feature flags
+
+Score display floor (680), integrity severity thresholds, application expiry window, unlock
+pricing, and the pipeline stage set are all **configuration versioned in the database**, not
+constants. The SRS says integrity rules are "configuration-driven and versioned" (SRS §1.4.5), and
+the scoring specification arrives later under NDA. Assume every number in the spec will change at
+least once.
+
+### 5.7 Cognito integration *(decided, Q4)*
+
+**Two user pools**, matching the two authentication models the PRD requires:
+
+| Pool | Users | Mechanism |
+|---|---|---|
+| `bharatpath-candidates` | Candidates / students | Custom auth flow (phone OTP) via three Lambda triggers; Google as a federated IdP; email as a standard flow |
+| `bharatpath-business` | Employer, college, admin users | Username + password, **software-token MFA required** (SRS §1.3.4) |
+
+**How the API uses it:**
+
+- Verify the RS256 JWT against the issuing pool's JWKS, cached in memory with periodic refresh.
+  Validate `iss`, `token_use`, `client_id`, and expiry. Reject tokens from the wrong pool for the
+  route's surface.
+- **Authorization does not come from Cognito.** Role and tenant are read from our `memberships`
+  table on every request, cached in Redis for 60 seconds. Cognito groups and custom claims are
+  *not* the authority.
+
+  This is a deliberate decision worth defending: token claims go stale. If an employer removes a
+  recruiter, that recruiter's existing access token would remain valid until expiry — a
+  membership revocation that does not take effect is exactly the tenant-isolation failure SRS
+  §2.24.7 forbids. A 60-second Redis cache on a DB read costs microseconds and revokes in
+  seconds.
+- `cognito_sub` is stored on `users` as the external identity link. Our `users.id` remains the
+  internal primary key — never expose `cognito_sub` in an API response.
+
+**The anonymous-to-account flow** (PRD §4.1 requires a score before signup) does *not* use Cognito
+identity pools. Simpler and fully under our control:
+
+```
+1. POST /api/v1/public/session   → anonymous_subjects row + opaque bearer token (24 h TTL)
+2. Candidate uploads resume, gets parsed, confirms, receives score — all against that subject
+3. Candidate signs up through Cognito → receives a real JWT
+4. POST /api/v1/auth/claim  { anonymous_token }  with the Cognito JWT
+   → one transaction: create/find user, re-parent resume_versions + scores, burn the token
+```
+
+Unclaimed anonymous subjects and their data are purged on a scheduled sweep — retention window is
+[§13 Q7](#still-open), still open.
+
+**What Cognito does not solve.** Custom auth for phone OTP requires three Lambda triggers
+(`DefineAuthChallenge`, `CreateAuthChallenge`, `VerifyAuthChallenge`) that are **infrastructure**,
+not application code — they are on the dependency list in [§12](#12-external-dependencies). And
+Cognito's built-in SMS routes through SNS, which we are not using — OTP delivery is Twilio's job.
+See [§5.8](#58-otp-delivery-via-twilio-decided).
+
+### 5.8 OTP delivery via Twilio *(decided)*
+
+**Twilio Verify**, called from inside the Cognito custom-auth Lambdas. Cognito owns the session and
+issues the tokens; Twilio owns code generation, delivery, expiry, retry, and abuse controls.
+
+```
+Candidate enters phone
+   │
+   ▼
+POST /api/v1/auth/otp/start          ← our app: outer throttle + audit only
+   │
+   ▼
+Cognito InitiateAuth (CUSTOM_AUTH)
+   │
+   ├─ DefineAuthChallenge   → issue CUSTOM_CHALLENGE
+   └─ CreateAuthChallenge   → Twilio Verify: verifications.create(to, channel="sms")
+                              (Twilio generates and sends the code — we never see it)
+   ▼
+Candidate enters code
+   │
+   ▼
+Cognito RespondToAuthChallenge
+   │
+   └─ VerifyAuthChallenge   → Twilio Verify: verificationChecks.create(to, code)
+                              → approved? issue tokens : fail the challenge
+```
+
+**Why Verify rather than raw Twilio Messaging.** Verify handles code generation, single-use
+enforcement, expiry, resend throttling, and carrier-level fraud controls — all of which SRS §1.3.1
+requires ("OTP attempts must be rate limited", "expired OTPs cannot be reused") and all of which
+would otherwise be code we write and test. It also means **no OTP value ever touches our database
+or logs**, which removes a real class of leak. The `otp_challenges` table from the original design
+is gone.
+
+We keep one thing on our side: a **coarse outer throttle** in Redis keyed by phone and by IP, in
+front of the Cognito call. Twilio's limits protect Twilio's spend; ours protects against someone
+walking the phone-number space. Both are needed.
+
+**Two call sites, one Twilio account:**
+
+| Purpose | Product | Lives in |
+|---|---|---|
+| Candidate login OTP | Twilio **Verify** | Cognito Lambda triggers (**infra scope**) |
+| Notification SMS (application status, invites) | Twilio **Messaging** | Our `SmsProvider` interface (**our scope**, Day 19) |
+
+That split matters for the engagement boundary: **the Twilio credentials for OTP live in a Lambda
+you do not own.** Whoever provisions the Lambdas needs the Twilio Account SID, Auth Token, and
+Verify Service SID in Secrets Manager. Flag it early — it is the kind of handoff that surfaces on
+Day 3 and costs a day.
+
+**Twilio test credentials unblock Day 3.** Twilio provides test credentials and magic numbers that
+exercise the full API without sending real messages or incurring cost. The OTP path can therefore be
+built and integration-tested **for real** during the sprint rather than against a stub — a genuine
+improvement to the plan's risk profile, since authentication is no longer carrying stub risk into
+Week 2.
+
+**DLT is still required — Twilio does not remove it.** This is the most common misconception about
+using an international provider for Indian SMS. TRAI's DLT regime binds the *sender*, not the
+gateway: you still register a Principal Entity, a sender ID (header), and message templates on a
+DLT platform, and link the resulting entity and template IDs to your Twilio account. Twilio has a
+documented onboarding process for exactly this. Undelivered-to-India traffic without it is the
+default outcome, not an edge case.
+
+> **Ask Twilio directly, early:** whether Verify's India SMS templates are pre-registered under
+> Twilio's own entity or must be registered under the client's. The answer changes the lead time
+> materially, and it is not something to assume in either direction.
+
+**Cost note.** Verify is priced per verification rather than per message — roughly an order of
+magnitude above raw SMS. Immaterial in dev (a few dollars across the sprint on test credentials),
+but at production volume the difference between per-verification and per-message pricing is a real
+number. Worth modelling before launch, not after — and worth knowing that Design B below exists as
+the cheaper fallback.
+
+**Fallback design, if the client wants message branding or cheaper unit economics:** generate the
+code in `CreateAuthChallenge`, send it with Twilio **Messaging** against a DLT-registered template,
+and compare in `VerifyAuthChallenge`. More code, full control of the message body, per-SMS pricing.
+The interface boundary is identical, so this is a swap inside the Lambdas — it does not touch our
+application code.
+
+---
+
+## 6. Data model — the spine
+
+Not exhaustive. These are the tables the invariants hang off. The full schema arrives with the
+NDA'd API contracts (PRD §10) — expect to reconcile.
+
+**Identity and tenancy**
+
+```
+users(id, cognito_sub, pool, phone, email, status, locale, created_at)
+anonymous_subjects(id, token_hash, created_at, expires_at, claimed_by_user_id)
+tenants(id, type[EMPLOYER|COLLEGE], name, status)
+memberships(id, user_id, tenant_id, role, status)      -- 9 roles, SRS §1.2
+otp_throttles                                          -- Redis, not Postgres
+```
+
+Sessions and refresh tokens are Cognito's concern, not ours. We store no password hashes and no
+TOTP secrets — that removes an entire class of liability from the codebase. **There is no
+`otp_challenges` table**: Twilio Verify generates and checks the code, so no OTP value is ever
+persisted or logged on our side ([§5.8](#58-otp-delivery-via-twilio-decided)). `otp_throttles` in
+Redis is our outer rate limit only, not code storage.
+
+**Resume and score — the reproducibility chain**
+
+```
+resume_files(id, subject_id, s3_key, mime, bytes, scan_status, uploaded_at)
+resume_versions(id, subject_id, source[UPLOAD|PASTE|MANUAL], parsed jsonb,
+                confirmed_at, supersedes_id, created_at)
+scores(id, subject_id, resume_version_id, algorithm_version,
+       raw_value int, breakdown jsonb, suggestions jsonb, computed_at)
+```
+
+`subject_id` points at either a `users.id` or an `anonymous_subjects.id` — re-parented on claim.
+`scores` is INSERT-only with no UPDATE grant. The displayed value is derived at serialization,
+never stored. "Score history" is simply all rows of `scores` — never deleted, never mutated.
+
+**Integrity**
+
+```
+integrity_signals(id, candidate_id, resume_version_id, rule_id, rule_version,
+                  severity, evidence jsonb, state, resolved_by, resolved_at)
+```
+
+**Employer side**
+
+```
+employers(tenant_id, legal_name, kyb_status, verified_at)
+kyb_submissions(id, tenant_id, state, submitted_at, reviewed_by, decision_reason)
+kyb_documents(id, submission_id, doc_type, s3_key)
+jobs(id, tenant_id, title, description, skills, salary_min, salary_max,
+     min_score int, status, published_at, closed_at)
+applications(id, job_id, candidate_id, stage, created_at, expires_at)
+application_events(id, application_id, from_stage, to_stage, actor_id, occurred_at)
+```
+
+`salary_min` and `salary_max` are `NOT NULL` — PRD §5.2 makes salary range mandatory.
+`applications` carries a partial unique index on `(job_id, candidate_id)` where stage is
+non-terminal, which makes the duplicate-application rule a database guarantee rather than a race
+condition.
+
+**Discovery and billing**
+
+```
+unlocks(id, tenant_id, candidate_id, price_minor, wallet_txn_id, unlocked_at,
+        UNIQUE(tenant_id, candidate_id))          -- unlock once, bill once
+wallet_ledger(id, tenant_id, delta_minor, balance_after_minor, reason,
+              reference_type, reference_id, created_at)      -- append-only
+payments(id, subject_id, provider, provider_ref, amount_minor, status,
+         signature_verified_at, raw_callback jsonb)
+entitlements(id, subject_id, product, granted_by_payment_id, consumed_at, expires_at)
+```
+
+**Interview** *(audio-only, in-app — Q1 and Q3)*
+
+```
+interview_sessions(id, subject_id, entitlement_id, state, question_set_version,
+                   device_check_id, started_at, completed_at)
+interview_answers(id, session_id, question_index, s3_key, duration_ms,
+                  upload_state, uploaded_at)
+device_checks(id, subject_id, mic_ok, audio_out_ok, network_kbps, storage_mb,
+              quiet_env_ok, passed, checked_at)
+```
+
+No camera field, no video field, no lighting field. See [§13](#resolved).
+
+**College side**
+
+```
+colleges(tenant_id, name, verified_at)
+roster_imports(id, tenant_id, file_s3_key, total_rows, valid_rows, state)
+roster_entries(id, import_id, tenant_id, phone, email, match_user_id, invite_state)
+student_consents(id, tenant_id, candidate_id, scope[ROSTER|INDIVIDUAL],
+                 granted_at, revoked_at)
+```
+
+Analytics INNER JOINs `student_consents`. Revocation sets a timestamp; it never deletes a row.
+
+**Cross-cutting**
+
+```
+audit_events(...)             -- §5.2
+idempotency_keys(...)         -- §5.3
+outbox(...)                   -- §5.4
+config_values(key, value jsonb, version, effective_from)
+dsr_requests(id, subject_id, type[EXPORT|DELETE], state, due_at, completed_at)
+```
+
+Two modelling decisions worth defending in review:
+
+- **Money is `*_minor` integers** (paise). Never floats, never `Decimal` at the API boundary.
+- **Consent revocation is a timestamp, not a deletion** — you must be able to prove what was
+  visible to whom on a given date.
+
+---
+
+## 7. API conventions
+
+Fix these on Day 1. Changing them later means changing four clients.
+
+- **Base path** `/api/v1`. Version in the path, never in a header.
+- **Surface-scoped routers** for readability, one app:
+  `/api/v1/candidate/*`, `/api/v1/employer/*`, `/api/v1/college/*`, `/api/v1/admin/*`,
+  plus `/api/v1/auth/*` and `/api/v1/public/*`.
+  This is namespacing for clarity — **authorisation is by role and tenant, never by path
+  prefix**. A candidate hitting an `/employer/*` route is rejected by the role dependency, not by
+  routing.
+- **Cursor pagination**, not offset. `?cursor=<opaque>&limit=50`, response
+  `{ items, next_cursor, total? }`. `total` appears only where it is cheap and safe
+  (SRS §2.24.2 explicitly says show totals only where the API can safely provide them).
+- **Async operations** return `202` with `{ job_id, status_url }`. Clients poll `status_url`.
+  Applies to parsing, scoring, integrity, interview evaluation, roster import (SRS §2.24.3).
+- **Errors** are RFC 7807 with a stable `code`. Never leak internal identifiers or SQL.
+- **Timestamps** are UTC ISO-8601 with `Z`. The client renders IST; the server never does.
+- **Enums are SCREAMING_SNAKE strings** matching the SRS state names exactly
+  (`SUBMITTED`, `VIEWED`, `SHORTLISTED`, `INTERVIEW`, `HIRED`, `REJECTED`, `WITHDRAWN`, `EXPIRED`).
+- **OpenAPI is the deliverable.** Export `openapi.json` on every merge to `main` and publish it —
+  the mobile and web developers generate clients from it. In a 4-week sprint with parallel client
+  teams, publish it from **Day 2** with stub endpoints, so they are never blocked on you.
+
+---
+
+## 8. The four-week build
+
+### 8.0 What four weeks buys — and what it does not
+
+The compression from the original 21-week estimate is real but conditional. State these
+assumptions to the client in writing, because the schedule only holds if they are true:
+
+**Assumed, and the plan depends on it:**
+
+1. **AI-assisted generation across the whole codebase** — 17 modules with an identical seven-file
+   shape, CRUD layers, Pydantic schemas, Alembic migrations, and the first draft of every test
+   suite. This is where the multiple genuinely comes from: boilerplate goes from days to hours.
+2. **Most external vendors stay stubbed** behind interfaces. Payments, KYB, and speech-to-text are
+   not integrated inside the four weeks — their lead times ([§12](#12-external-dependencies))
+   exceed the sprint on their own. **Twilio is the exception**: its test credentials let the OTP
+   path be built for real on Day 3, so authentication carries no stub risk into Week 2. Only the
+   switch to live delivery is DLT-gated.
+3. **The scoring engine stays `v0-placeholder`.** The real algorithm is NDA-gated and has not
+   arrived.
+4. **Infrastructure is provisioned and ready by Day 1** — including the Cognito pools and their
+   three Lambda triggers. A day lost waiting on infra is a day lost from the sprint, and there is
+   no slack in it.
+5. **Q2, Q5, Q6 answered by Day 8.** Billing model (Q5) is on the critical path for Week 3.
+6. Full-time, uninterrupted work. No parallel client meetings eating build days.
+
+**What is delivered at the end of Week 4:** a code-complete backend — every endpoint, the full
+schema, all state machines, all nine invariants enforced and tested, OpenAPI published, running
+against stubs. That is a real, demonstrable, integration-ready system.
+
+**What is not delivered, and needs Week 5+:** vendor swap-ins as credentials arrive, load testing
+and performance tuning, penetration testing, localisation content for 6–8 languages, real
+algorithm integration, and operational runbooks. **The backend is code-complete in four weeks; it
+is launchable when the external dependencies land.** Those are two different dates, and the
+client should be told both.
+
+**The honest risk:** AI accelerates writing code far more than it accelerates *deciding* what the
+code should do. The days below that are dense with judgment — Day 4 (anonymous claim flow),
+Day 8 (score reproducibility), Day 14 (unlock concurrency), Day 18 (consent-gated analytics) —
+will not compress the way the CRUD days will. If the schedule slips, it slips there. Protect those
+days.
+
+---
+
+### Week 1 — The security spine · Days 1–5
+
+The one week where speed must not win over care. Everything after this rests on it.
+
+**Day 1 — Scaffold and CI**
+- Repo per [§4](#4-repository-layout); `pyproject.toml`, ruff, mypy, pre-commit, `.importlinter`.
+- `docker-compose.yml`: Postgres 16, Redis, LocalStack (S3/SQS), Mailhog.
+- Settings via Pydantic Settings. `GET /api/v1/health` with DB and Redis liveness.
+- **Generate all 17 module skeletons** — seven files each, empty but wired and registered.
+- CI: lint, type-check, test against a real Postgres service, build image, export `openapi.json`.
+- `scripts/check_vocabulary.py` and `check_no_age_fields.py` green in CI (invariants 5 and 6 done
+  on Day 1 — they cost an hour and run forever).
+
+**Day 2 — Schema and the transactional foundations**
+- All core tables from [§6](#6-data-model--the-spine) in one Alembic baseline migration.
+- RLS policies on every tenant-scoped table; app role created without `BYPASSRLS`.
+- Session dependency issuing `SET LOCAL app.tenant_id`. Separate admin session factory.
+- `audit_events` with `UPDATE`/`DELETE` revoked; `audit_event()` helper.
+- `idempotency_keys` table and dependency; `outbox` table and relay task.
+- **Publish `openapi.json` with stub endpoints** so the client teams can start.
+
+**Day 3 — Cognito and Twilio wiring**
+- JWKS fetch and cache; token verification for both pools; pool-to-surface enforcement.
+- Candidate phone OTP through the custom auth flow, **Twilio Verify against test credentials**
+  ([§5.8](#58-otp-delivery-via-twilio-decided)) — a real integration, not a stub.
+- Redis outer throttle on OTP start, keyed by phone and by IP.
+- Google federation; email flow.
+- `cognito_sub` linkage, user resolve-or-create on first sign-in.
+
+> Confirm on Day 1, not Day 3: who deploys the Lambda triggers, and that they will hold the Twilio
+> credentials. This is the sprint's most likely cross-team stall.
+
+**Day 4 — Authorisation and the anonymous flow**
+- Business pool: password + software-token MFA enrolment, verification, recovery.
+- `memberships`, the 9 roles from SRS §1.2, `require_role` / `require_tenant` dependencies,
+  Redis-cached membership lookup.
+- **Anonymous subject creation, token issue, and the claim transaction** ([§5.7](#57-cognito-integration-decided)).
+  This is the day with the most design risk in Week 1 — it touches identity, resume, and scoring
+  ownership at once. Do not rush it.
+
+**Day 5 — Prove the spine, then gate**
+- Cross-tenant test suite: every tenant-scoped endpoint, tenant A asking for tenant B's ID → 404.
+- Role × endpoint permission matrix test across all 9 roles.
+- Audit-table permission test; membership revocation propagation test (≤ 60 s).
+- Anonymous → claim → data-preserved integration test.
+
+> **Week 1 gate.** Cross-tenant suite green. Permission matrix green. Audit rejects UPDATE and
+> DELETE as the app role. Anonymous claim preserves resume and score. **Do not start Week 2 until
+> all four hold** — every later day assumes them.
+
+---
+
+### Week 2 — Candidate pipeline and employer core · Days 6–10
+
+**Day 6 — Resume intake**
+- Presigned-URL upload, type sniffed from content, size cap, private bucket, no public URLs.
+- Security-scan hook before processing. A failed upload must not create a partial resume record —
+  enforce with a transaction boundary, not cleanup logic.
+- Paste-text and manual structured-form paths (PRD §4.2).
+- `ResumeParser` interface + Textract implementation; `parse_resume` Celery task.
+
+**Day 7 — Versions, review, confirm**
+- `resume_versions` with `supersedes_id`; edits create versions, never update.
+- Review and edit endpoints; **mandatory confirm gate** — an unconfirmed version can never reach
+  scoring (SRS §1.4.4).
+- `202` + status polling across the intake flow.
+
+**Day 8 — Scoring** *(high-judgment day — protect it)*
+- `ScoringEngine` interface: `score(structured_resume, version) -> ScoreResult`.
+- `v0-placeholder` implementation with documented, obviously-provisional weights.
+- `scores` table, `scoring.persist()` as the sole write path, INSERT-only grants.
+- **Display floor at the serialization boundary only.** Write this test first.
+- Explanation endpoint; recalculation on resume change; `replay(score_id)` + golden corpus.
+- Shareable card: band by default, exact number on explicit opt-in, opaque revocable token.
+- **Invariants 1, 2, 3 green.**
+
+**Day 9 — Integrity and employer tenancy**
+- Config-driven rule engine reading `config_values`, plus two illustrative rules
+  (duplicate-content hash, timeline inconsistency). Rules are versioned; changes ship as config.
+- Severity classification; **high severity suppresses from discovery pre-review** (PRD §7.2) as a
+  filter inside the discovery query, not a separate code path.
+- Employer tenant creation, team members, the three employer roles.
+
+**Day 10 — KYB and jobs**
+- KYB state machine `DRAFT → SUBMITTED → UNDER_REVIEW → APPROVED | REJECTED | MORE_INFO_REQUIRED`
+  (SRS §1.20.7), document upload, admin review actions with mandatory rejection reason.
+- Job composer, validation, lifecycle `DRAFT → PUBLISHED → PAUSED → PUBLISHED → CLOSED`.
+- Salary range `NOT NULL`; minimum-score threshold field.
+- **Threshold preview returns a count only** — rate-limited and coarse enough that binary-searching
+  the threshold cannot fingerprint an individual. This endpoint is a genuine leak vector.
+- **Publish gate at service *and* database level. Invariant 8 green.**
+
+> **Week 2 gate.** Invariants 1, 2, 3, 8 green. Upload → parse → review → confirm → score works
+> end to end on a corpus of 20 real resumes. An unverified employer cannot publish through the
+> API, the service, or a direct repository call.
+
+---
+
+### Week 3 — Marketplace and money · Days 11–15
+
+**Day 11 — Discovery and application**
+- Candidate job search over published jobs, filters, cursor pagination.
+- Eligibility against the **server's authoritative score**, never a client-supplied value.
+- Apply: idempotent, duplicate-prevented by the partial unique index. Withdraw.
+
+**Day 12 — Pipeline**
+- Stage machine in `domain.py`, fixed set (PRD §9): `SUBMITTED → VIEWED → SHORTLISTED →
+  INTERVIEW → DECISION → HIRED | REJECTED`, terminal `WITHDRAWN` / `EXPIRED`.
+- `application_events` on every transition — the candidate's Application Board renders from this.
+- External meeting-link attachment; two-sided hire confirmation, idempotent.
+- Expiry sweep via EventBridge Scheduler.
+
+**Day 13 — Masked search**
+- `MaskedCandidate` schema — structurally incapable of holding name, phone, email, or raw score.
+- Filters: score band, location, skills, add-on badges only — never raw add-on content.
+- `pg_trgm` + `tsvector` indexes. Index deliberately; this is the query that gets slow first.
+
+**Day 14 — Unlock** *(high-judgment day — protect it)*
+- Quote price and remaining balance **before** confirmation (SRS §2.25.2).
+- One transaction: debit `wallet_ledger`, insert `unlocks`, write `audit_events`.
+- Idempotent by key *and* by the `(tenant_id, candidate_id)` unique constraint.
+- Failure path reveals nothing and charges nothing.
+- Post-unlock read: different endpoint, different schema, different repository method.
+- **Concurrency test with real parallel transactions, not mocks.** Invariant 7 green.
+
+**Day 15 — Payments**
+- Pending transaction, provider redirect, **verified server-to-server signed callback**.
+- Entitlement granted only after signature verification — never from a client callback (PRD §8).
+- Raw callback payload stored for dispute forensics. Replay protection. Fast 200, async processing.
+- `PaymentProvider` interface with a stub that can simulate success, failure, and replay.
+
+> **Week 3 gate.** Invariant 7 green under schemathesis fuzzing. Concurrent duplicate unlocks bill
+> exactly once. A forged payment callback grants nothing. Every unlock has exactly one audit row.
+
+---
+
+### Week 4 — Add-ons, colleges, admin, handover · Days 16–20
+
+The densest week. If anything slips, it slips here — see [§8.0](#80-what-four-weeks-buys--and-what-it-does-not).
+
+**Day 16 — Questionnaire and interview** *(scope reduced by the Q1/Q3 answers)*
+- Questionnaire: save-progress, submit, supplementary report. **No import from `scoring`.**
+- Device check **before payment** (SRS §1.10.1): microphone, audio output, network, storage, quiet
+  environment. **No camera check, no lighting check** — audio-only, decided.
+- Session creation gated on a passed device check and a valid entitlement.
+- **Per-question presigned upload**, Opus/AAC mono 16 kHz. Progressive, never one large file at the
+  end (PRD §4.4).
+- Interrupted-session recovery from the answer manifest (SRS §1.10.5).
+
+**Day 17 — Evaluation and college onboarding**
+- `TranscriptionProvider` and `EvaluationProvider` interfaces with stubs; rubric report assembly.
+- College tenant and staff roles.
+- Bulk roster import: async, with a **preview identifying malformed and duplicate rows before
+  commit** (SRS §2.25.3), idempotent.
+- Invitation dispatch and tracking.
+
+**Day 18 — Consent and analytics** *(high-judgment day — protect it)*
+- **Two distinct consent scopes** — `ROSTER` (counted in aggregates) and `INDIVIDUAL` (visible as
+  a person). Separate grants; roster consent never implies individual visibility (PRD §3.8).
+- Cohort analytics: queries **inner join consent**, plus a minimum-cohort-size floor so a small
+  cohort cannot be de-anonymised by subtraction.
+- Individual view gated on `INDIVIDUAL` consent, audited on every access.
+- Revocation effective immediately. Placement tracking labelled **platform-sourced**.
+- **Invariant 9 green.**
+
+**Day 19 — Admin console and notifications**
+- KYB queue (approve / reject / request-more-info); integrity queue (clear / confirm).
+- Candidate, employer, and college drill-downs — role-restricted, **audited on every access**.
+- Dispute queue across all three external groups, cross-linked to integrity and user records.
+- Audit log search by actor, action, target, time; server-paginated.
+- Notification fan-out off the outbox; externalised templates; per-user locale and preferences.
+- `SmsProvider` → **Twilio Messaging** implementation for notification SMS (separate from the OTP
+  path, which lives in the Cognito Lambdas). Live sends stay DLT-gated; test credentials cover the
+  sprint.
+
+**Day 20 — Privacy and handover**
+- `dsr_requests` with tracked due dates; async export to an encrypted archive behind a short-lived
+  presigned URL; deletion cascade across S3 and Postgres.
+- Rate limits: per user, per tenant, per IP. Tightest on OTP and threshold-preview.
+- Index review — every endpoint's query plan checked for a sequential scan on a growing table.
+- **Full invariant suite pass, all nine.**
+- Final OpenAPI export, Postman collection, integration notes for the four client teams, README.
+
+> **Week 4 gate.** All nine invariants green. OpenAPI published and complete. Every stub interface
+> documented with what a real implementation must satisfy. A new developer can run the stack from
+> the README in under ten minutes.
+
+---
+
+### If the schedule slips
+
+Cut in this order. The first three lose no invariant coverage:
+
+1. **Interview evaluation quality** — ship transcription + a basic rubric; refine post-sprint.
+2. **Admin drill-down breadth** — queues and audit search are essential; rich cross-linking is not.
+3. **Notification channel breadth** — in-app + email only; SMS and push are DLT-blocked anyway.
+4. **Analytics depth** — distribution and median only; defer richer cohort metrics.
+
+**Never cut:** anything in Week 1, any invariant test, the audit trail, or the unlock transaction.
+Those are the parts a client security review will find, and the parts that cannot be retrofitted.
+
+---
+
+## 9. Testing strategy
+
+Under compression, test *depth* is where the temptation to cut lives. The resolution: the
+invariants layer is non-negotiable and written first; breadth elsewhere can be thinner and
+backfilled in Week 5.
+
+**`tests/invariants/`** — one file per rule in [§1](#1-the-nine-invariants). Written *before* the
+feature they guard, on the day that feature lands. These are the tests you show the client; they
+are documentation as much as verification. Never delete one to make a build pass.
+
+**`tests/unit/`** — pure `domain.py` logic, no I/O. State machines, score bands, display floor,
+consent evaluation, transition validity. Use `hypothesis` for state machines: generate every
+from-state/to-state pair and assert only the legal ones succeed. This is the cheapest coverage
+per hour available and AI generates it well — lean on it.
+
+**`tests/integration/`** — real Postgres via `testcontainers`. Never SQLite: RLS, JSONB, partial
+indexes, and `SET LOCAL` all behave differently, and those are exactly what you are testing. Each
+test runs in a transaction that rolls back.
+
+**`tests/contract/`** — `schemathesis` against the generated OpenAPI schema. This is where masking
+leaks get caught: fuzz discovery endpoints and assert no response ever contains a key matching
+`name|phone|email|raw_score`.
+
+**Concurrency tests deserve explicit mention.** Unlock billing, application creation, and payment
+callbacks all have races that only appear under real concurrent transactions. Test with actual
+parallel sessions against real Postgres, not mocks. Day 14 budgets for this specifically.
+
+**Fixtures:** `polyfactory`, plus a scenario builder — "employer with approved KYB, published job,
+three applicants at different stages" — which pays for itself by Day 12.
+
+---
+
+## 10. Security and privacy checklist
+
+Review at each week gate, not once at the end.
+
+- [ ] Tenant ID derived from server-side membership. Never from path, query, body, or header.
+- [ ] Every new table: does it need `tenant_id` and an RLS policy?
+- [ ] Every new endpoint: role dependency present and tested for all 9 roles?
+- [ ] Every reveal of private data: audit event in the same transaction?
+- [ ] Every new S3 object: private bucket, SSE-KMS, presigned access only?
+- [ ] Every retriable mutation: idempotency key required?
+- [ ] Foreign resource IDs return 404, never 403.
+- [ ] No PII in logs — `structlog` redaction covers phone, email, name, resume text.
+- [ ] No secrets in code, environment dumps, or error responses.
+- [ ] `cognito_sub` never appears in an API response.
+- [ ] Token verification checks `iss`, `token_use`, `client_id`, expiry, and correct pool.
+- [ ] Membership revocation takes effect within the cache TTL — tested.
+- [ ] OTP: Twilio Verify owns single-use and expiry; our Redis outer throttle covers phone and IP.
+- [ ] No OTP value is ever persisted or written to a log — verified by the redaction filter test.
+- [ ] File uploads: type sniffed from content, size capped, scanned.
+- [ ] Payment callbacks: signature verified, replay-protected, idempotent.
+- [ ] DPDP Act 2023 alignment — consent records, purpose limitation, data-principal rights.
+- [ ] Data residency: everything in `ap-south-1` unless the client says otherwise in writing.
+
+---
+
+## 11. Performance budget
+
+PRD §8 requires the core scoring flow to feel near-instant and the candidate app to work on
+low-end Android over slow networks. That is a **backend payload and latency** requirement, not
+only a mobile one.
+
+Targets are designed for on Day 13 and Day 20 (index review); *verified under load* in Week 5.
+
+| Path | Target (p95) | Notes |
+|---|---|---|
+| Auth token verify | < 50 ms | JWKS cached; membership from Redis. |
+| Score read | < 150 ms | Cache aggressively; changes only on rescore. |
+| Job search | < 400 ms | With filters, at 100k jobs. |
+| Candidate discovery | < 600 ms | The hardest one — masked search over the full pool. |
+| Application list | < 300 ms | Cursor-paginated. |
+| Resume parse (async) | < 30 s | User sees a processing state throughout. |
+| Score compute (async) | < 5 s | From confirmed resume. |
+| Interview answer upload | < 3 s per answer | ~20 KB at 16 kHz mono — sized for 2G. |
+
+**Payload discipline:** list responses stay under 50 KB. On a 2G connection, payload size dominates
+server latency — a 300 KB JSON response is a worse bug than a 300 ms query.
+
+---
+
+## 12. External dependencies
+
+You are writing application code against infrastructure someone else provisions. Several of these
+have lead times longer than the entire sprint, which is why the four weeks deliver a
+stub-integrated system.
+
+**From whoever owns infrastructure — needed by Day 1 unless noted**
+
+| Need | Why it blocks | Day |
+|---|---|---|
+| Postgres endpoint + two roles (app without `BYPASSRLS`, admin-bypass) | RLS design | 2 |
+| **Cognito: two user pools + app clients** | All authentication | 3 |
+| **Cognito custom-auth Lambda triggers** (Define / Create / Verify) | Candidate phone OTP | 3 |
+| **Twilio credentials in Secrets Manager, readable by those Lambdas** (Account SID, Auth Token, Verify Service SID) | The Lambdas call Twilio Verify — credentials sit outside our codebase | 3 |
+| **Google IdP configured on the candidate pool** | Google Sign-In | 3 |
+| Redis endpoint | Membership cache, rate limits, locks | 1 |
+| S3 buckets: resumes, interview audio, exports, audit archive | Separate lifecycle per bucket | 2 |
+| SQS queues + IAM for Celery | Broker | 1 |
+| Secrets Manager paths and read policy | Config at boot | 1 |
+| EventBridge Scheduler → trigger endpoint | Expiry, DSR sweeps | 12 |
+| CI/CD pipeline and image registry | Deploys | 1 |
+| Log aggregation and trace collector endpoints | Observability | 1 |
+
+> **Any of these arriving late costs a day of a twenty-day sprint.** There is no slack. Confirm
+> all of them are ready before Day 1 starts.
+
+**From the client (contract or NDA-gated, PRD §10)**
+
+| Need | Blocks | Lead time |
+|---|---|---|
+| **Twilio account** (Verify service + Messaging sender) | Live OTP and notification delivery | Days. Test credentials available immediately — development is not blocked. |
+| **TRAI DLT registration, linked to Twilio** | Live delivery to Indian numbers | **2–4 weeks — start today.** Longer than the sprint. **Twilio does not remove this** — DLT binds the sender, not the gateway. Register the Principal Entity, sender ID, and templates, then link the entity and template IDs to Twilio. Ask Twilio whether Verify's India templates sit under their entity or the client's; the answer moves the lead time. |
+| **Scoring algorithm, weights, category definitions** | Replaces `v0-placeholder` | Immediate ask |
+| **Integrity-detection rules** | Replaces the two illustrative rules | Immediate ask |
+| **Production API contracts and data schemas** | Reconciliation against [§6](#6-data-model--the-spine) | Immediate ask |
+| **Payment gateway** account + credentials | Real payments | KYC, 1–2 weeks |
+| **KYB/GSTIN verification provider** | KYB automation | 1–2 weeks |
+| **Speech-to-text + evaluation vendor** | Interview evaluation | 1–2 weeks |
+| Localised copy, 6–8 languages | Notification templates | Rolling |
+| Legal sign-off on the deletion/retention boundary | Day 20 deletion logic | Ask by Day 8 |
+
+**On stubs:** every external provider sits behind an interface with a logging stub from the day it
+is first needed, so development never blocks on a vendor. But a stub that never gets replaced is a
+launch blocker in disguise. Track a swap-in date for each — that work is Week 5+, and it belongs
+in the client conversation now, not later.
+
+**Twilio is the one vendor that does not follow that pattern.** Its test credentials exercise the
+real API, so Day 3 ships a real integration and only the switch to live delivery is DLT-gated.
+That is worth stating to the client explicitly: authentication — the highest-risk surface in the
+system — will not be carrying stub risk at the end of the sprint.
+
+---
+
+## 13. Decisions and open questions
+
+### Resolved
+
+**Q1 — In-app recording, not a real phone call.** *(Client, 2026-08-24)*
+The mock interview records answers in the app and uploads them per question. No PSTN telephony, no
+call orchestration, no carrier integration, no voice DLT. This removes the largest single unknown
+from the estimate and is a substantial part of why four weeks is arguable at all. SRS §1.10.4's
+"live spoken answers over the phone" should be read as "spoken into the phone," consistent with
+§1.10.5's local storage and retry queue. **Applied:** Day 16; `interview_sessions` /
+`interview_answers` in [§6](#6-data-model--the-spine).
+
+**Q3 — Audio only. No video.** *(Client, 2026-08-24)*
+Confirms SRS §2.7 over PRD §4.4's "audio/video." Consequences: no camera permission, **the device
+check drops camera and lighting** (SRS §1.10.2's "Lighting" row is dead — flag it to whoever
+maintains the SRS), storage and bandwidth drop by roughly an order of magnitude, and the S3 bill
+and evaluation pipeline shrink accordingly. Opus/AAC mono at 16 kHz puts a 30-second answer at
+~20 KB, which is what makes progressive upload viable on 2G. **Applied:** Day 16; [§3](#3-stack),
+[§6](#6-data-model--the-spine), [§11](#11-performance-budget).
+
+**D1 — Twilio for OTP and SMS delivery.** *(Client, 2026-08-24)*
+Twilio **Verify** for candidate login OTP, called from the Cognito custom-auth Lambdas; Twilio
+**Messaging** for notification SMS from our own `SmsProvider`. Cognito's SNS-backed SMS is not
+used. Consequences: the `otp_challenges` table is gone (Twilio generates and checks the code, so
+no OTP value is ever persisted or logged), rate limiting and expiry come from Verify with a coarse
+Redis throttle of ours in front, and **Day 3 builds a real integration against test credentials
+rather than a stub.** Two things to carry into the client conversation: the OTP credentials live
+in a Lambda outside our scope, and **DLT registration is still required** — Twilio does not remove
+it. Full design in [§5.8](#58-otp-delivery-via-twilio-decided). **Applied:** Days 3 and 19.
+
+**Q4 — Cognito, two user pools.** *(Client, 2026-08-24)*
+Candidates in one pool (custom-auth phone OTP, Google federation, email); business and admin users
+in another (password + software-token MFA). We store no password hashes and no TOTP secrets.
+**The one design constraint that follows:** role and tenant authorisation is read from our
+`memberships` table per request, not from Cognito groups or token claims, because claims go stale
+and a membership revocation that does not take effect is precisely the tenant-isolation failure
+SRS §2.24.7 forbids. Full design in [§5.7](#57-cognito-integration-decided). **Applied:** Days 3–4.
+
+### Still open
+
+Send these to the client. Do not resolve them by choosing.
+
+**Q2 — Which score does an unlocking employer see? · BLOCKER · needed by Day 8**
+PRD §3.1 floors displayed scores at 680. PRD §3.6 says unlock reveals "the exact score." So a
+paying employer may see 540 for a candidate who has only ever been shown 680. Either the employer
+sees the floored value (and "exact" means "unmasked band"), or candidates can learn their real
+score through an employer. Has both a privacy and a customer-trust dimension.
+*Day 8 will implement the floor at the serialization boundary either way — but the employer
+response schema is decided that day.*
+
+**Q5 — Wallet balance or per-unlock charge? · BLOCKER · needed by Day 14**
+SRS §2.25.2 says unlock shows "price and remaining balance/quota," implying prepaid credit. PRD
+§5.2 says "cost and remaining quota/balance." Prepaid wallet, post-paid invoicing, and a
+subscription quota are three different billing systems. Also unspecified: does re-unlocking the
+same candidate charge again? (The schema assumes no — unique per tenant and candidate.)
+*This is on the Week 3 critical path.*
+
+**Q6 — What survives a deletion request? · DECISION NEEDED · needed by Day 20**
+PRD §8 requires deletion. PRD §3.9 requires an immutable audit trail, and financial records carry
+statutory retention. These conflict. Needs a written policy: which fields are hard-deleted, which
+are anonymised, what retention applies to audit and ledger rows. **Ask legal by Day 8** —
+this one has a review cycle attached.
+
+**Q7 — Anonymous session lifetime and unclaimed-data retention? · NOTED · needed by Day 4**
+PRD §4.1 requires a score before account creation. How long does an anonymous subject live, and
+what happens to an unclaimed resume and score? Currently assuming a 24-hour token and a purge
+sweep. Affects the Day 4 claim flow and the retention policy.
+
+**Q8 — Which 6–8 vernacular languages, and who supplies translations? · NOTED · needed by Day 19**
+Affects template and locale structure, and font and layout work on the clients.
+
+---
+
+## 14. Progress tracker
+
+### Days
+
+| Day | Focus | Status |
+|---|---|---|
+| 1 | Scaffold, CI, module skeletons, invariants 5 & 6 | ☐ |
+| 2 | Schema, RLS, audit, idempotency, outbox, OpenAPI stub publish | ☐ |
+| 3 | Cognito: pools, JWKS, phone OTP, Google, email | ☐ |
+| 4 | MFA, memberships, role/tenant deps, **anonymous claim flow** | ☐ |
+| 5 | Cross-tenant suite, permission matrix — **Week 1 gate** | ☐ |
+| 6 | Resume upload, scan, parse task | ☐ |
+| 7 | Versions, review, confirm gate, status polling | ☐ |
+| 8 | **Scoring engine, floor, replay — invariants 1, 2, 3** | ☐ |
+| 9 | Integrity engine, suppression, employer tenancy | ☐ |
+| 10 | KYB, jobs, publish gate — **invariant 8, Week 2 gate** | ☐ |
+| 11 | Job search, eligibility, apply, withdraw | ☐ |
+| 12 | Stage machine, events, hire confirm, expiry | ☐ |
+| 13 | Masked discovery, filters, search indexes | ☐ |
+| 14 | **Unlock transaction, ledger, concurrency — invariant 7** | ☐ |
+| 15 | Payments, signed callbacks, entitlements — **Week 3 gate** | ☐ |
+| 16 | Questionnaire, device check, audio session, chunk upload | ☐ |
+| 17 | Evaluation stubs, college tenant, roster import | ☐ |
+| 18 | **Consent scopes, cohort analytics — invariant 9** | ☐ |
+| 19 | Admin queues, drill-downs, disputes, notifications | ☐ |
+| 20 | Privacy, rate limits, index review, handover — **Week 4 gate** | ☐ |
+
+### Invariant coverage
+
+| # | Invariant | Lands | Status |
+|---|---|---|---|
+| 5 | No age-gating | Day 1 | ☐ |
+| 6 | No financial framing | Day 1 | ☐ |
+| 1 | Score reproducible | Day 8 | ☐ |
+| 2 | Display floor 680 | Day 8 | ☐ |
+| 3 | Score not human-editable | Day 8 | ☐ |
+| 8 | No publish before KYB | Day 10 | ☐ |
+| 7 | Masked pre-unlock | Day 14 | ☐ |
+| 4 | Add-ons never change score | Day 16 | ☐ |
+| 9 | Consent and audit | Day 18 | ☐ |
+
+### Questions
+
+| Q | Subject | Severity | Needed by | Status |
+|---|---|---|---|---|
+| Q1 | In-app recording, not phone call | — | — | ☑ **Resolved 2026-08-24** |
+| Q3 | Audio only, no video | — | — | ☑ **Resolved 2026-08-24** |
+| Q4 | Cognito, two user pools | — | — | ☑ **Resolved 2026-08-24** |
+| D1 | Twilio Verify for OTP, Twilio Messaging for SMS | — | — | ☑ **Resolved 2026-08-24** |
+| Q2 | Which score an employer sees | Blocker | Day 8 | ☐ Open |
+| Q5 | Wallet vs. per-unlock billing | Blocker | Day 14 | ☐ Open |
+| Q6 | Deletion vs. audit retention | Decision | Day 20 | ☐ Open |
+| Q7 | Anonymous claim window | Noted | Day 4 | ☐ Open |
+| Q8 | Language list and translations | Noted | Day 19 | ☐ Open |
+
+### Infrastructure readiness — confirm before Day 1
+
+| Item | Status |
+|---|---|
+| Postgres + two roles | ☐ |
+| Cognito pools + app clients | ☐ |
+| Cognito custom-auth Lambda triggers | ☐ |
+| **Twilio account + Verify service created** | ☐ |
+| **Twilio test credentials in hand (unblocks Day 3)** | ☐ |
+| **Twilio live credentials in Secrets Manager, readable by the Lambdas** | ☐ |
+| Google IdP on candidate pool | ☐ |
+| Redis | ☐ |
+| S3 buckets (4) | ☐ |
+| SQS + IAM | ☐ |
+| Secrets Manager | ☐ |
+| CI/CD + registry | ☐ |
+
+---
+
+## Where to start tomorrow
+
+1. **Send the client Q2, Q5, and Q6 today.** Q5 is on the Week 3 critical path and Q6 has a legal
+   review cycle attached. Both need answers by Day 8.
+2. **Start TRAI DLT registration today, and open the Twilio account alongside it.** DLT is 2–4
+   weeks, longer than the entire sprint, and **neither Cognito nor Twilio removes it** — it binds
+   the sender, not the gateway. Ask Twilio in the same thread whether Verify's India templates sit
+   under their Principal Entity or the client's; that answer moves the lead time. Grab the test
+   credentials immediately — they unblock Day 3 regardless of where DLT stands.
+3. **Confirm every row of the infrastructure readiness table before Day 1.** A twenty-day sprint
+   has no slack for waiting on a Cognito pool.
+4. Then Day 1: scaffold, CI, all 17 module skeletons, and the two invariant tests that cost an
+   hour and run forever.
+
+*Derived from `Docs/Product Requirements Document.pdf` and
+`Docs/BharatPath_SRS_User_Flows_Interface_Specifications_v3_Phone_Interview.docx.pdf`.
+Companion to `BharatPath_Build_Brief.docx`. Client decisions of 2026-08-24 incorporated.*

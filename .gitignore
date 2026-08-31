@@ -1,0 +1,28 @@
+# Repository-wide ignores. Language-specific rules live in backend/.gitignore
+# and (when it lands) frontend/.gitignore, so each stack owns its own noise.
+
+# secrets — never commit a real .env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# node (for the frontend arriving in this repo)
+node_modules/
+.next/
+dist/
+build/
+coverage/

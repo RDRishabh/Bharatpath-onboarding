@@ -1,0 +1,408 @@
+BHARATPATH — OPEN QUESTIONS FOR THE CLIENT
+
+This file contains ONLY what is still outstanding. Nine items, A to I.
+The full record of every question asked and answered so far is in answers-log.md.
+
+If you only read one thing, read A. If you only do one thing, answer I1 — it is
+the one with a lead time we cannot control.
+
+  A       Needs a decision from you                    the database-access risk
+  B, C    Our answers to two things you asked us       forms, college seats
+  D–G     Still open from previous rounds              score, duplicates, legal
+  H       Two sentences to confirm decisions you       unlock, referral code
+          have already made
+  I       Three things we should have asked earlier    course, prices, languages
+
+
+================================================================================
+1. THE ONE THING WE NEED YOU TO READ PROPERLY
+================================================================================
+
+A. ONE MONTH'S PAYMENT NOW BUYS YOUR ENTIRE CANDIDATE DATABASE.
+   [we need a written "yes, we understand" before we build this]
+
+  This is not us objecting to your design. We will build exactly what you asked
+  for. But two of your decisions combine into something we do not think anyone
+  has looked at together yet, and we are not willing to build it quietly.
+
+  Decision one (your answer on KYB):
+    An employer signs up and is approved automatically. Nobody checks that the
+    business is real. There is no verification step.
+
+  Decision two (your answer on employer payment):
+    An employer pays once, and for that period they can view every student in
+    the whole database. Names, phone numbers, email addresses. All of them.
+
+  Put together:
+    Anyone with a payment card can pay for one month and obtain the complete
+    contact details of every candidate on your platform. Nobody will have checked
+    who they are. And those candidates paid you to be there.
+
+  Why this is worse than it sounds:
+    - Your candidates are paying customers. Their contact details being sold on
+      is the kind of thing that ends a consumer platform's reputation.
+    - Under the DPDP Act, you are responsible for what happens to that data. A
+      competitor, a recruitment agency, or a spammer paying one month's fee to
+      extract your whole database is a foreseeable outcome, not bad luck.
+    - It only has to happen once, and it cannot be undone.
+
+  What we are building to reduce it:
+    - Daily and hourly caps on how many candidates one employer can view
+    - Rate limits on search and profile pages
+    - Alerts to your admin team when an employer's viewing looks like scraping
+    - No bulk download, no CSV export, no easy way to page through everyone
+
+  What we want to be honest about:
+    These are speed bumps. They make extraction slow and noisy. They do not make
+    it impossible. The actual fix is checking that employers are real businesses
+    before giving them the database, and that is the step you have turned off.
+
+  WHAT WE NEED:
+    Either
+      (a) "Yes, we understand, proceed" — in writing, and we build it as asked
+          with the controls above; or
+      (b) Turn business verification back on for employers. The switch is already
+          built. This changes nothing else about your pricing or your model.
+
+    We would gently suggest (b), because it costs you very little — you already
+    asked us to build the approval mechanism — and it removes most of this. But
+    it is your platform and your decision, and either answer is fine as long as
+    it is a decision rather than an oversight.
+
+
+================================================================================
+2. OUR ANSWERS TO THE TWO THINGS YOU ASKED US
+================================================================================
+
+B. YOU ASKED: WHAT IS STUCK BECAUSE THE ONBOARDING FORM FIELDS ARE NOT READY?
+
+  Short answer: nothing is stuck. You have time. Here are the real dates.
+
+  Nothing is blocked right now because we can build the forms to be
+  configuration-driven — the fields are data, not code. That means adding your
+  actual fields later is filling in a list, not rebuilding a screen.
+
+  One thing helped here: because you have decided there are no employer pricing
+  tiers, the employer type and industry fields no longer affect what anyone pays.
+  That was the part that would have been expensive to change late. It is gone.
+
+  The real timeline:
+
+    Arriving in the next 2 weeks       No rework at all. Ideal.
+    Arriving 2 to 4 weeks from now     Minor rework. We will have guessed at some
+                                       field types and a few guesses will be wrong.
+    Arriving after 4 weeks             Real rework. The employer and college
+                                       screens will have been built and tested
+                                       against placeholder fields, and the admin
+                                       filters and search will need revisiting.
+    Not arriving before launch         Blocking. You cannot launch an employer
+                                       portal with placeholder onboarding fields.
+
+  What we need, whenever it is ready — three separate lists:
+    1. Employer onboarding form fields (and which are mandatory)
+    2. KYB form fields — you confirmed this form stays, so we need its contents
+    3. College onboarding form fields
+
+  Plus the two enumerated lists we asked for earlier, which are part of the same
+  package: employer types (is it just MNC and non-MNC, or more?) and the industry
+  list.
+
+  You do not need to send these all at once. The employer one is needed first.
+
+
+C. YOU ASKED: SHOULD COLLEGE SEATS BE TIERED, OR A ONE-TIME PAYMENT FOR X STUDENTS?
+
+  Our recommendation: one payment per period, covering up to a set number of
+  students. Not tiers.
+
+  Why:
+    - It matches what you just chose for employers. You said no tiers there, for
+      good reasons. Colleges having a different billing shape means building and
+      maintaining two systems instead of one.
+    - Tiers create edge cases that cost real time: what happens mid-period when a
+      college outgrows its tier, do they get a refund on downgrade, is the
+      upgrade prorated. A seat allowance has one rule instead.
+    - You can still price differently per college. "500 seats, annual" and "2000
+      seats, annual" are two entries in a price list, not two systems. You keep
+      all the commercial flexibility without the engineering cost.
+
+  Which leaves one question we still need answered:
+
+    When a college with 500 seats tries to add the 501st student, what should
+    happen?
+
+      (a) Block it. They must buy more seats first.       ← our suggestion
+      (b) Allow it, and bill them for the overage later.
+      (c) Allow it, but only show analytics for 500.
+
+    We suggest (a) because it is the only one of the three that cannot produce a
+    surprise invoice, and surprise invoices to institutional customers become
+    long email threads.
+
+  On the referral codes — your answer was clear and we have designed it in. Two
+  decisions we made on your behalf, which we want you to know about rather than
+  discuss at length:
+
+    1. When a student types in the college code, we treat that as their consent
+       to be linked. It is a deliberate action they took, so it is actually
+       better consent than clicking a link in a text message.
+
+    2. Entering the code links them to the college roster and lets the college
+       count them in statistics. It does NOT let the college see that student's
+       individual data — that stays a separate, explicit permission the student
+       gives afterwards. Your own requirements ask for those two to be separate,
+       and a single code should not quietly grant both.
+
+    Tell us if either is wrong. Otherwise we proceed as described.
+
+
+================================================================================
+3. STILL OPEN
+================================================================================
+
+D. THE SCORE-EXPLANATION CONFIRMATION — WE ASKED, IT WAS MISSED
+
+  You gave us three of the four written confirmations. This was the fourth:
+
+    Your requirements promise the candidate a category-by-category breakdown of
+    their score plus suggestions for improving it. You have told us the score is
+    never explained. We need the old requirement formally withdrawn.
+
+    And the knock-on: your requirements also say that when a candidate views a
+    job they do not qualify for, the app tells them "what would need to improve".
+    That is an explanation too. We are building a generic message instead —
+    "your score does not meet this employer's requirement", with no reason given.
+
+  WHAT WE NEED: confirm both, in a sentence.
+
+
+E. DUPLICATE CV DETECTION — YOU MARKED THIS FOR RE-CONFIRMATION
+
+  You said you would confirm once more that the duplicate CV feature is dropped.
+  We are treating it as dropped, but not deleting the underlying capability, so
+  reversing costs little. Just let us know when you have confirmed it.
+
+
+F. DATA DELETION POLICY — WE NEED A DATE, NOT JUST AN ANSWER
+
+  You said you will discuss and come back. That is fine, but this one has a
+  lawyer in the loop, and lawyers take weeks rather than days.
+
+  We need it by roughly week four of the build. Working backwards, that means
+  the conversation needs to start within the next week or so.
+
+  Could you tell us when you expect to have it? A date is more useful to us than
+  the answer arriving early.
+
+  As a reminder, the question is: when a candidate asks you to delete their data,
+  which parts are erased permanently, which are kept but anonymised, and how long
+  do payment records and audit records survive? These pull against each other and
+  it is a legal call, not an engineering one.
+
+
+G. STILL WITH YOU FROM THE PREVIOUS ROUND — THE SCORING ITEMS
+
+  You have approved the scoring approach document - thank you, that closes the
+  first of these three. Two remain, and both are needed before we build it:
+
+    1. DONE - scoring-approach.md approved 30 August.
+    2. Tell us whether candidate CV data may be processed outside India. This
+       needs your lawyer. Details in the previous version of this file.
+    3. Send us 50 to 100 real CVs with a rough sense of what each should score,
+       so the scoring can be calibrated against reality rather than guessed.
+
+  Item 3 is the one that needs a diary entry. It is a working session, not an
+  email.
+
+
+H. TWO TIDY-UPS ON PAPERWORK — SHOULD TAKE YOU FIVE MINUTES
+
+  These are not new decisions. You have already decided both. We just do not
+  have the decision written down against the documents they change, and both
+  documents are what the build gets marked against at the end.
+
+  H1. THE UNLOCK CHANGE. This is our omission, not yours.
+
+    When you told us employers pay once and see the whole database, we were so
+    pleased with the simplification that we got on with building it. What we did
+    not do is what we did for every smaller change: ask you to confirm in
+    writing that the old requirement is withdrawn.
+
+    It matters more here than anywhere else, because your own specification
+    describes the old way in a lot of places, including five items on the
+    acceptance checklist your specification says the build will be tested
+    against. Three of those five are simply impossible now:
+
+      - "Unlock displays price and remaining balance before confirmation"
+      - "Successful unlock reveals only authorised data"
+      - "Unlock creates an audit event"
+
+    There is no unlock, so there is no price to display and no balance to show.
+
+    We want to be clear that we are not asking you to change your mind. Your
+    decision was a good one and we have built it. We are asking you to confirm
+    that the old unlock requirement is withdrawn, so that nobody opens the
+    specification in three months and reports the missing feature as a defect.
+
+    One useful note for whoever reviews this: the third item above — every
+    reveal being logged — IS still true. We kept it. Because you now see the
+    whole database, there is no single unlock moment to log, so instead we
+    write a log entry every single time an employer opens a candidate's
+    profile. You end up with more of an audit trail than the original design
+    would have given you, not less.
+
+    WHAT WE NEED: "The unlock requirement is withdrawn; employers get
+    period-based access to the full database instead." One sentence.
+
+  H2. THE COLLEGE REFERRAL CODE.
+
+    Your specification says a student consents to their college seeing them
+    "via an invite-and-accept flow" — the college invites, the student accepts.
+
+    Your referral code is a second way of doing it: the college generates a
+    code, the student types it into the app. We think that is genuinely better
+    consent than clicking a link in a text message, because the student has to
+    go and do something deliberate. We have built it that way.
+
+    But "the student typed our code" is not the same words as "invite and
+    accept", and this is a consent mechanism under the data protection law, so
+    it is worth having your yes on paper rather than ours.
+
+    To be clear about what the code does and does not do — entering it links the
+    student to the college roster and lets the college count them in statistics.
+    It does NOT let the college see that student's individual data. That stays a
+    separate permission the student gives afterwards, exactly as your
+    specification requires.
+
+    WHAT WE NEED: "The referral code is an accepted consent mechanism alongside
+    invite-and-accept." One sentence.
+
+
+I. THREE THINGS WE SHOULD HAVE ASKED YOU EARLIER
+
+  These have been sitting in our internal notes rather than in front of you.
+  That is on us. The first one is the important one.
+
+  I1. WHO IS MAKING THE COURSE?  [this is the big one]
+
+    Your platform sells one course. Buying and completing it adds 30 points to a
+    student's score. It is a third of everything a student can do to improve
+    their number, and it is a thing they pay for.
+
+    Nobody has said who makes it.
+
+    We are building the machine that sells it, tracks it, and moves the score
+    when it is finished. We are not making the course, and making it is not in
+    any price we have quoted you. Producing course video is its own project with
+    its own budget, its own timeline and usually its own people.
+
+    We need four answers, and the fourth one is the one that touches our code:
+
+      1. Who produces it? You, us as a separate piece of work, or a third party?
+      2. Roughly how long is it, and what format — video, text, a mix?
+      3. When would it realistically exist?
+      4. WHAT COUNTS AS COMPLETING IT?
+
+    Question 4 is not a content question, it is a rule we have to write down.
+    "Watched every video to the end"? "Scored above X on a quiz at the end"?
+    "Clicked the button that says I have finished"? Whatever you choose becomes
+    the moment a student's score goes up by 30, so it needs to be something we
+    can actually detect, and something a student cannot trivially fake.
+
+    One thing worth knowing before you answer: your students are on cheap
+    Android phones on slow connections — you told us that yourself, and it is
+    one of the firmest requirements in your documents. Video is by far the
+    heaviest thing on this platform. Delivering it well to that audience is
+    real work that nobody has costed. A course that is mostly text and images
+    would be dramatically cheaper to build, cheaper to run, and would actually
+    work for the students you are targeting. That is a suggestion, not a
+    requirement — but if video is fixed in your mind, tell us now rather than
+    in week three.
+
+  I2. YOUR PRICES.
+
+    We need the actual numbers to put in the system:
+
+      - The four student subscription prices (monthly, quarterly, semester,
+        annual)
+      - The employer access prices (monthly, quarterly, semi-annual, annual)
+      - College seat pricing
+      - The price of the course
+      - The price of one mock interview session
+
+    Nothing is blocked. We will build all of it with placeholder numbers and
+    swap yours in — it is a price list, not code. But placeholder prices cannot
+    go live, so we need them before launch, and having them earlier means we can
+    sanity-check the numbers against what each student actually costs you to
+    serve. We have that cost figure and it is worth looking at together.
+
+  I3. WHICH LANGUAGES.
+
+    Your documents say English, Hindi, and six to eight Indian languages at
+    launch. We need to know which ones, and who is paying for the translation.
+
+    We build the plumbing — every piece of text in all four applications comes
+    out of a file rather than being baked in, so adding a language later is
+    dropping in a file, not rebuilding screens. But somebody has to write the
+    words, and translation of this volume is normally a paid service.
+
+    Not urgent. Needed before launch, and the answer affects the SMS templates
+    you are registering with the telecom regulator, so it is worth deciding
+    before that registration is finalised rather than after.
+
+
+================================================================================
+NOW CLOSED — NO REPLY NEEDED
+================================================================================
+
+Everything below is answered and built into the plan.
+
+  - Pay first, for students, employers and colleges alike. Sign up creates an
+    account; everything else needs payment.
+
+  - Employers pay once per period and see the whole database. No tiers, no
+    per-candidate unlocking. This deleted a large and genuinely difficult piece
+    of the system — it was one of the four hardest days in the schedule and most
+    of it is now gone. Thank you, that was a good simplification.
+
+  - KYB form stays, approval is automatic, and we build the approval mechanism
+    with a switch to turn it on. Exactly as you described, and exactly what we
+    had already built provisionally.
+
+  - Employers get the portal on signup but can do nothing until they pay. Two
+    separate gates in the system, so you can change one without the other.
+
+  - Colleges link existing students with an auto-generated referral code the
+    student enters. Designed in, alongside the existing invite flow for students
+    who do not have an account yet.
+
+  - Subscriptions: the user chooses manual renewal or UPI AutoPay. Both are in
+    scope. One note below.
+
+  - Paid add-ons increase the score. Confirmed.
+
+  - Sign up then payment before anything. Confirmed.
+
+  - The score arithmetic works out exactly: 700 base + up to 200 for the CV + 30
+    for the course + 60 for interviews = 990 precisely.
+
+  - The score is never explained to the candidate.
+
+
+ONE NOTE ON UPI AUTOPAY, SINCE YOU ASKED IF THERE WERE ISSUES
+--------------------------------------------------------------
+No blocking issues. Two things worth knowing:
+
+  It is two systems, not one. Manual renewal and automatic renewal are separate
+  payment flows and both need building, testing and supporting. Offering the
+  choice is a real feature, not a checkbox.
+
+  Automatic UPI renewal has rules that surprise people. Each customer has to set
+  up a mandate individually. There is a maximum amount fixed when they set it up.
+  You have to notify the customer before every single charge. And they can cancel
+  the mandate inside their own UPI app without telling you — so your system finds
+  out only when a payment fails.
+
+  We are handling all of that. Our suggestion is to build manual renewal first
+  and add the mandate second, so that if the mandate work runs long it does not
+  delay your launch. No decision needed from you — just telling you the order.

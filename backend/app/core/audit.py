@@ -1,0 +1,122 @@
+"""The audit trail. `audit_event()` is the ONLY way to write an audit row.
+
+PRD rule 9 and SRS 2.24.5. Three properties, each enforced somewhere other than
+developer memory:
+
+  * **Append-only.** The application DB role is granted INSERT and SELECT on
+    `audit_events` and has UPDATE and DELETE revoked. See the Alembic baseline.
+  * **In-transaction.** The audit write happens inside the same transaction as
+    the reveal it records. If the audit write fails, the reveal rolls back.
+    That is the entire point - do not make this async, do not move it to the
+    outbox, do not "optimise" it later.
+  * **Archived.** Nightly to S3 with Object Lock in compliance mode. (Do not
+    reach for QLDB - AWS deprecated it.)
+
+**Invariant 7-prime, new in v6.** Blanket employer access (R14) destroyed the
+natural one-row-per-unlock trail, but PRD rule 9 did not stop applying. So the
+audit moved to the read: every candidate profile an employer opens writes a row
+here. `candidate_view_events` is partitioned by month because it will be the
+fastest-growing table in the schema.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+class AuditAction(StrEnum):
+    """Every action that reveals private data or exercises privilege.
+
+    Add to this enum rather than passing a free string, so the admin audit
+    search (SRS 2.25.4: searchable by actor, action, target, time) has a
+    closed set to filter on.
+    """
+
+    # Candidate PII reveals - invariant 7'
+    CANDIDATE_PROFILE_VIEWED = "candidate_profile_viewed"
+    CANDIDATE_CONTACT_REVEALED = "candidate_contact_revealed"
+    CANDIDATE_SEARCH_PERFORMED = "candidate_search_performed"
+
+    # Admin privilege - SRS 2.24.5, every drill-down
+    ADMIN_CANDIDATE_DRILLDOWN = "admin_candidate_drilldown"
+    ADMIN_EMPLOYER_DRILLDOWN = "admin_employer_drilldown"
+    ADMIN_COLLEGE_DRILLDOWN = "admin_college_drilldown"
+    ADMIN_BYPASS_SESSION_OPENED = "admin_bypass_session_opened"
+
+    # Score-moving writes - invariant 3's blast radius.
+    # Now that add-ons move the score (R1), writing a completion row moves a
+    # score, so these are audited like a reveal.
+    COURSE_COMPLETION_RECORDED = "course_completion_recorded"
+    INTERVIEW_COMPLETION_RECORDED = "interview_completion_recorded"
+    SCORE_RECOMPUTED = "score_recomputed"
+
+    # Trust and verification
+    KYB_DECISION_RECORDED = "kyb_decision_recorded"
+    INTEGRITY_FLAG_RESOLVED = "integrity_flag_resolved"
+    TENANT_SUSPENDED = "tenant_suspended"
+    TENANT_REINSTATED = "tenant_reinstated"
+
+    # Consent - PRD rule 8
+    CONSENT_GRANTED = "consent_granted"
+    CONSENT_REVOKED = "consent_revoked"
+    COLLEGE_STUDENT_VIEWED = "college_student_viewed"
+
+    # Privacy
+    DSR_EXPORT_REQUESTED = "dsr_export_requested"
+    DSR_DELETION_REQUESTED = "dsr_deletion_requested"
+    DSR_COMPLETED = "dsr_completed"
+
+
+async def audit_event(
+    session: AsyncSession,
+    *,
+    action: AuditAction,
+    actor_id: UUID | None,
+    actor_role: str,
+    target_type: str,
+    target_id: UUID | str | None = None,
+    tenant_id: UUID | None = None,
+    request_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Write one audit row on the caller's session and transaction.
+
+    Takes the *caller's* session on purpose. Opening a new session here would
+    put the audit write in its own transaction, which would let a reveal commit
+    while its audit row rolled back - exactly the failure this table exists to
+    make impossible.
+
+    `metadata` must not carry PII. Store identifiers and let the drill-down
+    resolve them; a `metadata` blob full of phone numbers is an audit table
+    that is itself a privacy problem.
+    """
+    from app.core.models import AuditEvent  # local import: avoids a cycle
+
+    await session.execute(
+        insert(AuditEvent).values(
+            action=action.value,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            target_type=target_type,
+            target_id=str(target_id) if target_id is not None else None,
+            tenant_id=tenant_id,
+            request_id=request_id,
+            event_metadata=metadata or {},
+        )
+    )
+    logger.info(
+        "audit_event",
+        action=action.value,
+        actor_role=actor_role,
+        target_type=target_type,
+        tenant_id=str(tenant_id) if tenant_id else None,
+    )
