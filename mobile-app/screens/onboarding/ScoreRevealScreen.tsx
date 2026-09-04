@@ -3,38 +3,46 @@ import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import Svg, { Circle as SvgCircle, Defs, LinearGradient, Stop } from 'react-native-svg';
-import { ShareNetwork, ArrowRight } from 'phosphor-react-native';
+import { ShareNetwork, ArrowRight, TrendUp } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
 
 interface ScoreRevealScreenProps {
   score?: number;
+  mode?: 'initial' | 'recalculated';
   onSave?: () => void;
   onRaiseScore?: () => void;
   onAllCategories?: () => void;
+  onNextFix?: () => void;
 }
 
 export function ScoreRevealScreen({
-  score = 680,
+  score,
+  mode = 'initial',
   onSave,
   onRaiseScore,
   onAllCategories,
+  onNextFix,
 }: ScoreRevealScreenProps) {
-  const [scoreNow, setScoreNow] = useState(540);
+  const isRecalculated = mode === 'recalculated';
+  const targetScore = score ?? (isRecalculated ? 706 : 680);
+  const initialScore = isRecalculated ? 680 : 540;
+  
+  const [scoreNow, setScoreNow] = useState(initialScore);
 
-  // Count-up animation from 540 to target score
+  // Count-up animation
   useEffect(() => {
-    let current = 540;
+    let current = initialScore;
     const interval = setInterval(() => {
-      current += Math.max(2, Math.round((score - current) / 5));
-      if (current >= score) {
-        current = score;
+      current += Math.max(1, Math.round((targetScore - current) / 5));
+      if (current >= targetScore) {
+        current = targetScore;
         clearInterval(interval);
       }
       setScoreNow(current);
     }, 32);
 
     return () => clearInterval(interval);
-  }, [score]);
+  }, [targetScore, initialScore]);
 
   return (
     <View style={styles.root}>
@@ -49,8 +57,14 @@ export function ScoreRevealScreen({
             {/* Header Row */}
             <View style={styles.headerRow}>
               <View style={styles.headerTitleCol}>
-                <Text style={styles.title}>Your resume score</Text>
-                <Text style={styles.subtitle}>Every fix moves you up.</Text>
+                <Text style={styles.title}>
+                  {isRecalculated ? 'Your score went up' : 'Your resume score'}
+                </Text>
+                <Text style={styles.subtitle}>
+                  {isRecalculated
+                    ? '3 skills added. Recalculated instantly.'
+                    : 'Every fix moves you up.'}
+                </Text>
               </View>
               <Pressable
                 style={({ pressed }) => [
@@ -102,7 +116,14 @@ export function ScoreRevealScreen({
 
               <View style={styles.gaugeCenterContent}>
                 <Text style={styles.scoreNumberText}>{scoreNow}</Text>
-                <Text style={styles.outOfText}>OUT OF 999</Text>
+                {isRecalculated ? (
+                  <View style={styles.pointsBadge}>
+                    <TrendUp size={12} color="#F4D685" weight="bold" />
+                    <Text style={styles.pointsBadgeText}>+26 POINTS</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.outOfText}>OUT OF 999</Text>
+                )}
               </View>
             </View>
 
@@ -125,7 +146,9 @@ export function ScoreRevealScreen({
 
               <View style={styles.bandMetaRow}>
                 <Text style={styles.bandMetaLeft}>Employers filter by band</Text>
-                <Text style={styles.bandMetaRight}>54 to Building</Text>
+                <Text style={styles.bandMetaRight}>
+                  {isRecalculated ? '28 to Building' : '54 to Building'}
+                </Text>
               </View>
             </View>
           </View>
@@ -133,106 +156,175 @@ export function ScoreRevealScreen({
           {/* Bottom Overlapping White Card Sheet */}
           <View style={styles.whiteSheet}>
             <View style={styles.sheetHeaderRow}>
-              <Text style={styles.sheetEyebrow}>WHERE YOUR POINTS COME FROM</Text>
-              <Text style={styles.sheetCountText}>3 OF 5</Text>
+              <Text style={styles.sheetEyebrow}>
+                {isRecalculated ? 'WHAT THIS FIX CHANGED' : 'WHERE YOUR POINTS COME FROM'}
+              </Text>
+              <Text style={styles.sheetCountText}>
+                {isRecalculated ? 'FIX 1 OF 3' : '3 OF 5'}
+              </Text>
             </View>
 
-            {/* Score Breakdown Card */}
-            <View style={styles.breakdownCard}>
-              {/* Item 1: Education */}
-              <View style={styles.breakdownItem}>
-                <View style={styles.itemHeaderRow}>
-                  <View style={styles.itemLabelRow}>
-                    <Text style={styles.itemCategoryTitle}>Education</Text>
-                    <View style={[styles.statusBadge, styles.badgeStrong]}>
-                      <Text style={[styles.statusBadgeText, styles.badgeTextStrong]}>
-                        STRONG
-                      </Text>
+            {isRecalculated ? (
+              <View style={styles.recalculatedCard}>
+                <View style={styles.recalcTopSection}>
+                  <View style={styles.itemHeaderRow}>
+                    <View style={styles.itemLabelRow}>
+                      <Text style={styles.itemCategoryTitle}>Skills</Text>
+                      <View style={[styles.statusBadge, styles.badgeStrong]}>
+                        <Text style={[styles.statusBadgeText, styles.badgeTextStrong]}>
+                          +26
+                        </Text>
+                      </View>
                     </View>
+                    <Text style={styles.itemScoreText}>
+                      74 <Text style={styles.itemScoreMax}>/ 100</Text>
+                    </Text>
                   </View>
-                  <Text style={styles.itemScoreText}>
-                    72 <Text style={styles.itemScoreMax}>/ 100</Text>
-                  </Text>
+                  <View style={styles.itemProgressTrack}>
+                    <View style={[styles.itemProgressFill, styles.fillAmber, { width: '48%', position: 'absolute', left: 0 }]} />
+                    <View style={[styles.itemProgressFill, styles.fillGreen, { width: '26%', position: 'absolute', left: '48%' }]} />
+                  </View>
                 </View>
-                <View style={styles.itemProgressTrack}>
-                  <View style={[styles.itemProgressFill, styles.fillGreen, { width: '72%' }]} />
-                </View>
-              </View>
 
-              {/* Item 2: Skills */}
-              <View style={[styles.breakdownItem, styles.itemBorderTop]}>
-                <View style={styles.itemHeaderRow}>
-                  <View style={styles.itemLabelRow}>
-                    <Text style={styles.itemCategoryTitle}>Skills</Text>
-                    <View style={[styles.statusBadge, styles.badgeNeedsWork]}>
-                      <Text style={[styles.statusBadgeText, styles.badgeTextNeedsWork]}>
-                        NEEDS WORK
-                      </Text>
+                <View style={styles.recalcMiddleSection}>
+                  <Text style={styles.recalcMiddleText}>4 more jobs now open to you</Text>
+                  <Text style={styles.recalcMiddleSubText}>Pune</Text>
+                </View>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.recalcBottomSection,
+                    pressed && styles.buttonPressed,
+                  ]}
+                  onPress={onRaiseScore}
+                >
+                  <Text style={styles.recalcBottomText}>Two fixes left, worth +32</Text>
+                  <ArrowRight size={15} color="#5F6B80" weight="bold" />
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.breakdownCard}>
+                {/* Item 1: Education */}
+                <View style={styles.breakdownItem}>
+                  <View style={styles.itemHeaderRow}>
+                    <View style={styles.itemLabelRow}>
+                      <Text style={styles.itemCategoryTitle}>Education</Text>
+                      <View style={[styles.statusBadge, styles.badgeStrong]}>
+                        <Text style={[styles.statusBadgeText, styles.badgeTextStrong]}>
+                          STRONG
+                        </Text>
+                      </View>
                     </View>
+                    <Text style={styles.itemScoreText}>
+                      72 <Text style={styles.itemScoreMax}>/ 100</Text>
+                    </Text>
                   </View>
-                  <Text style={styles.itemScoreText}>
-                    48 <Text style={styles.itemScoreMax}>/ 100</Text>
-                  </Text>
+                  <View style={styles.itemProgressTrack}>
+                    <View style={[styles.itemProgressFill, styles.fillGreen, { width: '72%' }]} />
+                  </View>
                 </View>
-                <View style={styles.itemProgressTrack}>
-                  <View style={[styles.itemProgressFill, styles.fillAmber, { width: '48%' }]} />
-                </View>
-              </View>
 
-              {/* Item 3: Experience */}
-              <View style={[styles.breakdownItem, styles.itemBorderTop]}>
-                <View style={styles.itemHeaderRow}>
-                  <View style={styles.itemLabelRow}>
-                    <Text style={styles.itemCategoryTitle}>Experience</Text>
-                    <View style={[styles.statusBadge, styles.badgeWeak]}>
-                      <Text style={[styles.statusBadgeText, styles.badgeTextWeak]}>
-                        WEAK
-                      </Text>
+                {/* Item 2: Skills */}
+                <View style={[styles.breakdownItem, styles.itemBorderTop]}>
+                  <View style={styles.itemHeaderRow}>
+                    <View style={styles.itemLabelRow}>
+                      <Text style={styles.itemCategoryTitle}>Skills</Text>
+                      <View style={[styles.statusBadge, styles.badgeNeedsWork]}>
+                        <Text style={[styles.statusBadgeText, styles.badgeTextNeedsWork]}>
+                          NEEDS WORK
+                        </Text>
+                      </View>
                     </View>
+                    <Text style={styles.itemScoreText}>
+                      48 <Text style={styles.itemScoreMax}>/ 100</Text>
+                    </Text>
                   </View>
-                  <Text style={styles.itemScoreText}>
-                    15 <Text style={styles.itemScoreMax}>/ 100</Text>
-                  </Text>
+                  <View style={styles.itemProgressTrack}>
+                    <View style={[styles.itemProgressFill, styles.fillAmber, { width: '48%' }]} />
+                  </View>
                 </View>
-                <View style={styles.itemProgressTrack}>
-                  <View style={[styles.itemProgressFill, styles.fillRed, { width: '15%' }]} />
-                </View>
-              </View>
 
-              {/* Footer Button: All five categories */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.allCategoriesButton,
-                  pressed && styles.buttonPressed,
-                ]}
-                onPress={onAllCategories}
-              >
-                <Text style={styles.allCategoriesText}>All five categories</Text>
-                <ArrowRight size={15} color="#5F6B80" weight="bold" />
-              </Pressable>
-            </View>
+                {/* Item 3: Experience */}
+                <View style={[styles.breakdownItem, styles.itemBorderTop]}>
+                  <View style={styles.itemHeaderRow}>
+                    <View style={styles.itemLabelRow}>
+                      <Text style={styles.itemCategoryTitle}>Experience</Text>
+                      <View style={[styles.statusBadge, styles.badgeWeak]}>
+                        <Text style={[styles.statusBadgeText, styles.badgeTextWeak]}>
+                          WEAK
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.itemScoreText}>
+                      15 <Text style={styles.itemScoreMax}>/ 100</Text>
+                    </Text>
+                  </View>
+                  <View style={styles.itemProgressTrack}>
+                    <View style={[styles.itemProgressFill, styles.fillRed, { width: '15%' }]} />
+                  </View>
+                </View>
+
+                {/* Footer Button: All five categories */}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.allCategoriesButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                  onPress={onAllCategories}
+                >
+                  <Text style={styles.allCategoriesText}>All five categories</Text>
+                  <ArrowRight size={15} color="#5F6B80" weight="bold" />
+                </Pressable>
+              </View>
+            )}
 
             {/* Bottom Actions Row */}
             <View style={styles.actionsRow}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.saveButton,
-                  pressed && styles.buttonPressed,
-                ]}
-                onPress={onSave}
-              >
-                <Text style={styles.saveButtonText}>Save</Text>
-              </Pressable>
+              {isRecalculated ? (
+                <>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.saveButton,
+                      pressed && styles.buttonPressed,
+                    ]}
+                    onPress={onNextFix}
+                  >
+                    <Text style={styles.saveButtonText}>Next fix</Text>
+                  </Pressable>
 
-              <Pressable
-                style={({ pressed }) => [
-                  styles.raiseScoreButton,
-                  pressed && styles.raisePressed,
-                ]}
-                onPress={onRaiseScore}
-              >
-                <Text style={styles.raiseScoreButtonText}>Raise my score</Text>
-              </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.raiseScoreButton,
+                      pressed && styles.raisePressed,
+                    ]}
+                    onPress={onSave}
+                  >
+                    <Text style={styles.raiseScoreButtonText}>Save my score</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.saveButton,
+                      pressed && styles.buttonPressed,
+                    ]}
+                    onPress={onSave}
+                  >
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.raiseScoreButton,
+                      pressed && styles.raisePressed,
+                    ]}
+                    onPress={onRaiseScore}
+                  >
+                    <Text style={styles.raiseScoreButtonText}>Raise my score</Text>
+                  </Pressable>
+                </>
+              )}
             </View>
           </View>
         </ScrollView>
@@ -581,6 +673,67 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.offWhite,
+    fontWeight: '600',
+  },
+  pointsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pointsBadgeText: {
+    fontFamily: 'SpaceMono-Bold',
+    fontSize: 11,
+    lineHeight: 12,
+    letterSpacing: 0.8,
+    color: '#F4D685',
+    fontWeight: '700',
+  },
+  recalculatedCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
+    borderRadius: Radii.cardLg, // 20px
+    overflow: 'hidden',
+  },
+  recalcTopSection: {
+    padding: Spacing.base,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EBDF',
+  },
+  recalcMiddleSection: {
+    padding: Spacing.base,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  recalcMiddleText: {
+    fontFamily: 'GeneralSans-Medium',
+    fontSize: 14,
+    lineHeight: 18,
+    color: Colors.navy,
+  },
+  recalcMiddleSubText: {
+    fontFamily: 'SpaceMono-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#5F6B80',
+  },
+  recalcBottomSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.base,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0EBDF',
+  },
+  recalcBottomText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 14,
+    lineHeight: 18,
+    color: Colors.navy,
     fontWeight: '600',
   },
 });

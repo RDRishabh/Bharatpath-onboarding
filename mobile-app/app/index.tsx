@@ -35,11 +35,16 @@ import { ScoringScreen } from '@/screens/onboarding/ScoringScreen';
 import { ScoreRevealScreen } from '@/screens/onboarding/ScoreRevealScreen';
 import { ScoreBreakdownScreen } from '@/screens/onboarding/ScoreBreakdownScreen';
 import { SuggestionsScreen } from '@/screens/onboarding/SuggestionsScreen';
+import { CreateAccountScreen } from '@/screens/onboarding/CreateAccountScreen';
+import { OtpVerificationScreen } from '@/screens/onboarding/OtpVerificationScreen';
+import { NotificationPermissionScreen } from '@/screens/onboarding/NotificationPermissionScreen';
+import { ShareResultScreen } from '@/screens/onboarding/ShareResultScreen';
 
 export default function FoundationPreview() {
   const router = useRouter();
-  const [step, setStep] = useState<'splash' | 'intro' | 'language' | 'howItWorks' | 'intake' | 'parsing' | 'review' | 'scoring' | 'score' | 'breakdown' | 'suggestions' | 'preview'>('splash');
+  const [step, setStep] = useState<'splash' | 'intro' | 'language' | 'howItWorks' | 'intake' | 'parsing' | 'review' | 'scoring' | 'score' | 'breakdown' | 'suggestions' | 'recalculated' | 'signup' | 'otp' | 'notifications' | 'share' | 'preview'>('splash');
   const [fileMeta, setFileMeta] = useState<UploadedFileMeta | undefined>();
+  const [userPhone, setUserPhone] = useState<string>('98765 43242');
   const [activeTab, setActiveTab] = useState<'preview' | 'home' | 'jobs' | 'board' | 'you'>('preview');
 
   const handleTabPress = useCallback((tab: string, href: string) => {
@@ -121,7 +126,8 @@ export default function FoundationPreview() {
   if (step === 'score') {
     return (
       <ScoreRevealScreen
-        onSave={() => setStep('preview')}
+        mode="initial"
+        onSave={() => setStep('signup')}
         onRaiseScore={() => setStep('suggestions')}
         onAllCategories={() => setStep('breakdown')}
       />
@@ -141,9 +147,74 @@ export default function FoundationPreview() {
     return (
       <SuggestionsScreen
         onBack={() => setStep('score')}
-        onAddSkills={() => setStep('preview')}
-        onEditProject={() => setStep('review')}
-        onFixSpellings={() => setStep('review')}
+        onAddSkills={() => setStep('recalculated')}
+        onEditProject={() => setStep('recalculated')}
+        onFixSpellings={() => setStep('recalculated')}
+      />
+    );
+  }
+
+  if (step === 'recalculated') {
+    return (
+      <ScoreRevealScreen
+        mode="recalculated"
+        score={706}
+        onNextFix={() => setStep('suggestions')}
+        onSave={() => setStep('signup')}
+        onRaiseScore={() => setStep('suggestions')}
+        onAllCategories={() => setStep('breakdown')}
+      />
+    );
+  }
+
+  if (step === 'signup') {
+    return (
+      <CreateAccountScreen
+        score={706}
+        onBack={() => setStep('recalculated')}
+        onSendCode={(phone) => {
+          if (phone) setUserPhone(phone);
+          setStep('otp');
+        }}
+        onGoogleAuth={() => setStep('notifications')}
+        onEmailAuth={() => setStep('notifications')}
+      />
+    );
+  }
+
+  if (step === 'otp') {
+    return (
+      <OtpVerificationScreen
+        phoneNumber={userPhone}
+        onBack={() => setStep('signup')}
+        onChangePhone={() => setStep('signup')}
+        onVerify={() => setStep('notifications')}
+      />
+    );
+  }
+
+  if (step === 'notifications') {
+    return (
+      <NotificationPermissionScreen
+        onAllow={() => setStep('share')}
+        onNotNow={() => setStep('share')}
+      />
+    );
+  }
+
+  if (step === 'share') {
+    return (
+      <ShareResultScreen
+        score={706}
+        maxScore={999}
+        bandName="Emerging"
+        candidateName="Priya D."
+        candidateField="B.Sc Microbiology"
+        candidateCity="Pune"
+        scoreDate="AUG 2026"
+        onBack={() => setStep('notifications')}
+        onSave={() => setStep('preview')}
+        onShare={() => setStep('preview')}
       />
     );
   }
