@@ -96,11 +96,11 @@ export function FixSkillModal({
           <View style={styles.suggestionsSection}>
             <Text style={styles.eyebrowText}>DID YOU MEAN</Text>
             <View style={styles.chipsWrapRow}>
-              {suggestions.map((suggestion) => {
+              {Array.from(new Set(suggestions)).map((suggestion, index) => {
                 const isSelected = skillText.trim().toLowerCase() === suggestion.toLowerCase();
                 return (
                   <Pressable
-                    key={suggestion}
+                    key={`${suggestion}-${index}`}
                     style={({ pressed }) => [
                       styles.suggestionChip,
                       isSelected ? styles.chipSelected : styles.chipNormal,
@@ -333,3 +333,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export default FixSkillModal;
+

@@ -24,17 +24,17 @@ import { CTAStickyBand } from '@/components/CTAStickyBand';
 import { Colors, Typography, Spacing, Radii } from '@/theme/tokens';
 import { mockCareerScore, mockProgressSteps, mockNote, mockJobs, mockSkills, mockCTA } from '@/mocks/mockData';
 
-import { SplashScreen } from '@/components/splash/SplashScreen';
-import { IntroScreen } from '@/components/onboarding/IntroScreen';
-import { LanguageSelectScreen } from '@/components/onboarding/LanguageSelectScreen';
-import { HowItWorksScreen } from '@/components/onboarding/HowItWorksScreen';
-import { ResumeIntakeScreen, UploadedFileMeta } from '@/components/onboarding/ResumeIntakeScreen';
-import { ParsingScreen } from '@/components/onboarding/ParsingScreen';
-import { ReviewDetailsScreen } from '@/components/onboarding/ReviewDetailsScreen';
-import { ScoringScreen } from '@/components/onboarding/ScoringScreen';
-import { ScoreRevealScreen } from '@/components/onboarding/ScoreRevealScreen';
-import { ScoreBreakdownScreen } from '@/components/onboarding/ScoreBreakdownScreen';
-import { SuggestionsScreen } from '@/components/onboarding/SuggestionsScreen';
+import { SplashScreen } from '@/screens/splash/SplashScreen';
+import { IntroScreen } from '@/screens/onboarding/IntroScreen';
+import { LanguageSelectScreen } from '@/screens/onboarding/LanguageSelectScreen';
+import { HowItWorksScreen } from '@/screens/onboarding/HowItWorksScreen';
+import { ResumeIntakeScreen, UploadedFileMeta } from '@/screens/onboarding/ResumeIntakeScreen';
+import { ParsingScreen } from '@/screens/onboarding/ParsingScreen';
+import { ReviewDetailsScreen } from '@/screens/onboarding/ReviewDetailsScreen';
+import { ScoringScreen } from '@/screens/onboarding/ScoringScreen';
+import { ScoreRevealScreen } from '@/screens/onboarding/ScoreRevealScreen';
+import { ScoreBreakdownScreen } from '@/screens/onboarding/ScoreBreakdownScreen';
+import { SuggestionsScreen } from '@/screens/onboarding/SuggestionsScreen';
 
 export default function FoundationPreview() {
   const router = useRouter();

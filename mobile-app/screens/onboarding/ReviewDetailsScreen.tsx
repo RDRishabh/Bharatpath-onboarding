@@ -11,7 +11,6 @@ import {
   WarningCircle,
   PencilLine,
   Plus,
-  Check,
 } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
 import { FixSkillModal } from './FixSkillModal';
@@ -287,11 +286,13 @@ export function ReviewDetailsScreen({ onConfirm, onFixField }: ReviewDetailsScre
                 : activeFixSkill.name
             }
             suggestions={
-              activeFixSkill.suggestions || [
-                activeFixSkill.name,
-                'MS Excel',
-                'Office 365',
-              ]
+              Array.from(new Set(
+                activeFixSkill.suggestions || [
+                  activeFixSkill.name,
+                  'MS Excel',
+                  'Office 365',
+                ]
+              ))
             }
             onSave={handleSaveSkill}
             onRemove={handleRemoveSkill}
