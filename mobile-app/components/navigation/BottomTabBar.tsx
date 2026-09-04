@@ -1,32 +1,28 @@
 /**
- * BottomTabBar — Floating navigation with translucent/blurred surface.
- * ~22px radius, system shadow, active = indigo tint + filled icon + stronger label.
- * Inactive = muted text + bold icon.
- *
- * Tabs: Home, Jobs, Board, You
- * Uses bold icons for navigation, fill icons for active state.
+ * BottomTabBar — Floating navigation matching BharatPath Design Specification.
+ * Features 4 core product tabs: Home, Jobs, Board, You.
+ * Active tab has full rounded highlight container (#F1EAF7) with filled icon.
  */
 import { Pressable, View, Text, StyleSheet, Platform, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { House, Briefcase, ClipboardText, UserCircle, Sparkle } from 'phosphor-react-native';
-import { Colors, Typography, Radii, Spacing, Layout, Shadows } from '@/theme/tokens';
+import { House, Briefcase, ListChecks, User } from 'phosphor-react-native';
+import { Colors, Radii, Spacing, Layout, Shadows } from '@/theme/tokens';
 import type { IconWeight } from 'phosphor-react-native';
 
-export type TabName = 'preview' | 'home' | 'jobs' | 'board' | 'you';
+export type TabName = 'home' | 'jobs' | 'board' | 'you' | 'preview';
 
 interface TabConfig {
-  name: TabName;
+  name: 'home' | 'jobs' | 'board' | 'you';
   label: string;
   icon: typeof House;
   href: string;
 }
 
 const tabs: TabConfig[] = [
-  { name: 'preview', label: 'Preview', icon: Sparkle, href: '/' },
   { name: 'home', label: 'Home', icon: House, href: '/home' },
   { name: 'jobs', label: 'Jobs', icon: Briefcase, href: '/jobs' },
-  { name: 'board', label: 'Board', icon: ClipboardText, href: '/board' },
-  { name: 'you', label: 'You', icon: UserCircle, href: '/you' },
+  { name: 'board', label: 'Board', icon: ListChecks, href: '/board' },
+  { name: 'you', label: 'You', icon: User, href: '/you' },
 ];
 
 interface BottomTabBarProps {
@@ -42,13 +38,23 @@ export function BottomTabBar({ activeTab, onTabPress, style }: BottomTabBarProps
         {Platform.OS === 'web' ? (
           <View style={styles.bar}>
             {tabs.map((tab) => (
-              <TabItem key={tab.name} tab={tab} isActive={activeTab === tab.name} onPress={onTabPress} />
+              <TabItem
+                key={tab.name}
+                tab={tab}
+                isActive={activeTab === tab.name || (activeTab === 'preview' && tab.name === 'home')}
+                onPress={onTabPress}
+              />
             ))}
           </View>
         ) : (
-          <BlurView intensity={60} tint="light" style={styles.blurBar}>
+          <BlurView intensity={70} tint="light" style={styles.blurBar}>
             {tabs.map((tab) => (
-              <TabItem key={tab.name} tab={tab} isActive={activeTab === tab.name} onPress={onTabPress} />
+              <TabItem
+                key={tab.name}
+                tab={tab}
+                isActive={activeTab === tab.name || (activeTab === 'preview' && tab.name === 'home')}
+                onPress={onTabPress}
+              />
             ))}
           </BlurView>
         )}
@@ -65,7 +71,7 @@ interface TabItemProps {
 
 function TabItem({ tab, isActive, onPress }: TabItemProps) {
   const Icon = tab.icon;
-  const iconColor = isActive ? Colors.nav.activeFg : Colors.nav.inactiveFg;
+  const iconColor = isActive ? Colors.navy : Colors.text.muted;
   const weight: IconWeight = isActive ? 'fill' : 'bold';
 
   return (
@@ -74,12 +80,16 @@ function TabItem({ tab, isActive, onPress }: TabItemProps) {
       accessibilityRole="tab"
       accessibilityLabel={tab.label}
       accessibilityState={{ selected: isActive }}
-      style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
+      style={({ pressed }) => [
+        styles.tab,
+        isActive && styles.tabActive,
+        pressed && styles.tabPressed,
+      ]}
     >
-      <View style={[styles.iconWrap, isActive && styles.iconWrapActive]}>
-        <Icon size={22} color={iconColor} weight={weight} />
-      </View>
-      <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
+      <Icon size={20} color={iconColor} weight={weight} />
+      <Text style={[styles.label, isActive && styles.labelActive]}>
+        {tab.label}
+      </Text>
     </Pressable>
   );
 }
@@ -87,62 +97,64 @@ function TabItem({ tab, isActive, onPress }: TabItemProps) {
 const styles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    bottom: Layout.bottomNavMarginBottom,
+    bottom: 12,
     left: 0,
     right: 0,
     alignItems: 'center',
-    paddingHorizontal: Layout.bottomNavMarginHorizontal,
+    paddingHorizontal: 16,
+    zIndex: 99,
   },
   barContainer: {
     width: '100%',
-    maxWidth: Layout.maxContentWidth - Layout.bottomNavMarginHorizontal * 2,
+    maxWidth: Layout.maxContentWidth - 32,
     ...Shadows.bottomNav,
-    borderRadius: Radii.card,
+    borderRadius: 22,
     overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
   },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: 'rgba(255, 252, 247, 0.85)',
-    paddingVertical: Spacing.sm,
-    borderRadius: Radii.card,
+    padding: 6,
+    gap: 4,
   },
   blurBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingVertical: Spacing.sm,
-    borderRadius: Radii.card,
-    overflow: 'hidden',
+    padding: 6,
+    gap: 4,
   },
   tab: {
     flex: 1,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.xs,
-    minHeight: Layout.minTouchTarget,
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    gap: 4,
+    backgroundColor: 'transparent',
+  },
+  tabActive: {
+    backgroundColor: '#F1EAF7', // Active lavender container from UI
   },
   tabPressed: {
-    opacity: 0.7,
-  },
-  iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  iconWrapActive: {
-    backgroundColor: Colors.nav.activeBg,
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
   },
   label: {
-    ...Typography.tabLabel,
-    color: Colors.nav.inactiveFg,
+    fontFamily: 'GeneralSans-Medium',
+    fontSize: 10,
+    lineHeight: 12,
+    letterSpacing: 0.1,
+    color: '#5F6B80',
+    fontWeight: '500',
   },
   labelActive: {
-    color: Colors.nav.activeFg,
-    fontWeight: '600',
+    fontFamily: 'GeneralSans-Bold',
+    color: Colors.navy, // #0A1931
+    fontWeight: '700',
   },
 });
