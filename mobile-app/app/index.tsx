@@ -226,6 +226,8 @@ export default function FoundationPreview() {
       onExploreJobs={() => router.push('/jobs')}
       onAllJobsPress={() => router.push('/jobs')}
       onScorePress={() => setStep('score')}
+      onAttributeCheckPress={() => router.push('/attribute-check' as any)}
+      onMockInterviewPress={() => router.push('/mock-interview' as any)}
     />
   );
 }

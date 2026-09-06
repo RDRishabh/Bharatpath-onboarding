@@ -38,6 +38,8 @@ export default function HomeRoute() {
       onExploreJobs={() => router.push('/jobs')}
       onAllJobsPress={() => router.push('/jobs')}
       onScorePress={() => router.push('/' as any)}
+      onAttributeCheckPress={() => router.push('/attribute-check' as any)}
+      onMockInterviewPress={() => router.push('/mock-interview' as any)}
     />
   );
 }

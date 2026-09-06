@@ -23,6 +23,12 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="home" />
+          <Stack.Screen name="attribute-check" />
+          <Stack.Screen name="attribute-quiz" />
+          <Stack.Screen name="attribute-report" />
+          <Stack.Screen name="mock-interview" />
+          <Stack.Screen name="device-check" />
+          <Stack.Screen name="payment-confirmation" />
           <Stack.Screen name="jobs" />
           <Stack.Screen name="board" />
           <Stack.Screen name="you" />
