@@ -24,7 +24,6 @@ import {
   VideoCamera,
   CheckCircle,
   CircleDashed,
-  CircleIcon as Circle,
   ArrowUUpLeft,
 } from 'phosphor-react-native';
 import { Colors, Spacing } from '@/theme/tokens';
@@ -185,7 +184,7 @@ export function ApplicationDetailScreen({
               {/* Step 5: Decision (Pending) */}
               <View style={styles.timelineStepLast}>
                 <View style={styles.stepNodeColLast}>
-                  <Circle size={20} color="#DDD6C7" weight="bold" />
+                  <View style={styles.circleNode} />
                 </View>
                 <View style={styles.stepContentLast}>
                   <Text style={styles.stepTitleMuted}>Decision</Text>
@@ -443,6 +442,13 @@ const styles = StyleSheet.create({
   stepNodeColLast: {
     alignItems: 'center',
     flexBasis: 20,
+  },
+  circleNode: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#DDD6C7',
   },
   stepContentLast: {
     flex: 1,

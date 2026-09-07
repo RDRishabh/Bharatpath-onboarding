@@ -33,6 +33,9 @@ export default function RootLayout() {
           <Stack.Screen name="interview-session" />
           <Stack.Screen name="interview-report" />
           <Stack.Screen name="jobs" />
+          <Stack.Screen name="job-detail" />
+          <Stack.Screen name="job-short" />
+          <Stack.Screen name="application-sent" />
           <Stack.Screen name="board" />
           <Stack.Screen name="application-detail" />
           <Stack.Screen name="you" />
