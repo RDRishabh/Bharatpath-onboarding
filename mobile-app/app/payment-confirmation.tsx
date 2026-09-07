@@ -11,7 +11,7 @@ export default function PaymentConfirmationRoute() {
   return (
     <PaymentConfirmationScreen
       onStartInterview={() => {
-        router.replace('/home');
+        router.push('/interview-briefing' as any);
       }}
       onGoHome={() => {
         router.replace('/home');

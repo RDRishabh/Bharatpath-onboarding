@@ -1,104 +1,67 @@
 /**
- * BharatPath — You / Profile Placeholder Route
- * Demonstrates navigation shell and Hub layout.
+ * BharatPath — You / Profile Route
+ * Fully implemented Candidate Profile Screen matching Screen 40 in Handoff & Screenshot 1.
  */
-import { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { UserCircle, Sparkle } from 'phosphor-react-native';
-import { HubScreen } from '@/components/layouts/HubScreen';
-import { TopBar } from '@/components/navigation/TopBar';
-import { BottomTabBar } from '@/components/navigation/BottomTabBar';
-import { Card } from '@/components/cards/Card';
-import { EyebrowRow } from '@/components/cards/EyebrowRow';
-import { ScoreDisplay } from '@/components/ScoreDisplay';
-import { StatusChip } from '@/components/StatusChip';
-import { SkillChip } from '@/components/chips/SkillChip';
-import { mockSkills, mockCareerScore } from '@/mocks/mockData';
-import { Colors, Typography, Spacing } from '@/theme/tokens';
+import { Alert } from 'react-native';
+import { ProfileScreen } from '@/screens/profile/ProfileScreen';
+import { TabName } from '@/components/navigation/BottomTabBar';
 
-export default function YouScreen() {
+export default function YouRoute() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'preview' | 'home' | 'jobs' | 'board' | 'you'>('you');
+  const [activeTab, setActiveTab] = useState<TabName>('you');
 
-  const handleTabPress = (tab: string, href: string) => {
-    setActiveTab(tab as typeof activeTab);
-    router.push(href as any);
+  const handleTabPress = (tab: TabName, href: string) => {
+    setActiveTab(tab);
+    if (tab !== 'you') {
+      router.push(href as any);
+    }
   };
 
   return (
-    <View style={styles.root}>
-      <HubScreen>
-        <View style={styles.content}>
-          <TopBar title="Your Profile" />
-
-          <View style={styles.section}>
-            <EyebrowRow label="Candidate Profile" icon={<UserCircle size={14} color={Colors.indigo} weight="bold" />} />
-            <Text style={styles.title}>Candidate Hub</Text>
-            <Text style={styles.subtitle}>
-              Profile placeholder route. Demonstrates readiness score, skills taxonomy, and readiness band.
-            </Text>
-          </View>
-
-          <Card style={styles.card}>
-            <EyebrowRow label="Readiness Score" color={Colors.text.muted} />
-            <ScoreDisplay
-              current={mockCareerScore.current}
-              max={mockCareerScore.max}
-              delta={mockCareerScore.delta}
-            />
-            <View style={styles.chipRow}>
-              <StatusChip type="BAND" bandCurrent={1} bandTotal={4} />
-              <StatusChip type="PAID" />
-            </View>
-          </Card>
-
-          <Card style={styles.card}>
-            <EyebrowRow label="Verified Skills" color={Colors.text.muted} />
-            <View style={styles.skillsRow}>
-              {mockSkills.slice(0, 6).map((skill) => (
-                <SkillChip key={skill} label={skill} />
-              ))}
-            </View>
-          </Card>
-        </View>
-      </HubScreen>
-      <BottomTabBar activeTab={activeTab} onTabPress={handleTabPress} />
-    </View>
+    <ProfileScreen
+      name="Priya Deshmukh"
+      initials="PD"
+      phoneAndCity="+91 98••• ••42 · Pune"
+      score={706}
+      appliedCount={6}
+      addonsCount={2}
+      activeTab={activeTab}
+      onTabPress={handleTabPress}
+      onScorePress={() => router.push('/' as any)}
+      onAppliedPress={() => router.push('/board' as any)}
+      onAddonsPress={() => router.push('/attribute-report' as any)}
+      onResumeDetailsPress={() => {
+        Alert.alert(
+          'Resume Details',
+          'Candidate resume parsed and verified: Priya Deshmukh, Pune. 3 verified skill badges.',
+          [{ text: 'OK' }]
+        );
+      }}
+      onAttributeReportPress={() => router.push('/attribute-report' as any)}
+      onInterviewReportPress={() => router.push('/interview-report' as any)}
+      onLanguagePress={() => {
+        Alert.alert('Language Settings', 'Currently active: English. Hindi and regional languages available soon.', [
+          { text: 'OK' },
+        ]);
+      }}
+      onWhoHasSeenMePress={() => router.push('/who-has-seen-me' as any)}
+      onDownloadDataPress={() => {
+        Alert.alert('Download Data', 'Your data archive is being prepared. It will be ready by 15 Aug.', [
+          { text: 'Got it' },
+        ]);
+      }}
+      onDeleteAccountPress={() => {
+        Alert.alert(
+          'Delete Account',
+          'Are you sure you want to permanently delete your BharatPath profile and test results?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: () => router.replace('/' as any) },
+          ]
+        );
+      }}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: Colors.offWhite,
-  },
-  content: {
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.lg,
-  },
-  section: {
-    gap: Spacing.xs,
-  },
-  title: {
-    ...Typography.screenTitle,
-    color: Colors.navy,
-  },
-  subtitle: {
-    ...Typography.body,
-    color: Colors.text.muted,
-  },
-  card: {
-    gap: Spacing.md,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.xs,
-  },
-  skillsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-});

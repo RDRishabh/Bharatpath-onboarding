@@ -29,9 +29,15 @@ export default function RootLayout() {
           <Stack.Screen name="mock-interview" />
           <Stack.Screen name="device-check" />
           <Stack.Screen name="payment-confirmation" />
+          <Stack.Screen name="interview-briefing" />
+          <Stack.Screen name="interview-session" />
+          <Stack.Screen name="interview-report" />
           <Stack.Screen name="jobs" />
           <Stack.Screen name="board" />
+          <Stack.Screen name="application-detail" />
           <Stack.Screen name="you" />
+          <Stack.Screen name="who-has-seen-me" />
+          <Stack.Screen name="notifications" />
           <Stack.Screen name="+not-found" />
         </Stack>
         <StatusBar style="dark" />

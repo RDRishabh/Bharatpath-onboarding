@@ -40,6 +40,8 @@ export default function HomeRoute() {
       onScorePress={() => router.push('/' as any)}
       onAttributeCheckPress={() => router.push('/attribute-check' as any)}
       onMockInterviewPress={() => router.push('/mock-interview' as any)}
+      onNotificationsPress={() => router.push('/notifications' as any)}
+      onProfilePress={() => router.push('/you' as any)}
     />
   );
 }
