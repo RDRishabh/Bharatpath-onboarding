@@ -206,7 +206,6 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     letterSpacing: -0.75,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -255,7 +254,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 0.9,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   uploadCardContent: {
     gap: 4,
@@ -266,7 +264,6 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     letterSpacing: -0.4,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   uploadCardSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -319,7 +316,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   secondaryCardSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -350,7 +346,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   privacyNoteRow: {
     flexDirection: 'row',

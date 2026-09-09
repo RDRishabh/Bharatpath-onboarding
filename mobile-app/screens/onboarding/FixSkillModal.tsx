@@ -199,7 +199,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     letterSpacing: -0.4,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   sheetSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -237,7 +236,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: Colors.navy, // #0A1931
     padding: 0,
-    fontWeight: '600',
   },
   suggestionsSection: {
     gap: Spacing.sm, // 8px
@@ -248,7 +246,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 1.1,
     color: '#5F6B80',
-    fontWeight: '700',
   },
   chipsWrapRow: {
     flexDirection: 'row',
@@ -281,12 +278,10 @@ const styles = StyleSheet.create({
   chipTextNormal: {
     fontFamily: 'GeneralSans-Medium',
     color: Colors.navy, // #0A1931
-    fontWeight: '500',
   },
   chipTextSelected: {
     fontFamily: 'GeneralSans-Semibold',
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   actionsRow: {
     flexDirection: 'row',
@@ -311,7 +306,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   saveButton: {
     flex: 1,
@@ -330,7 +324,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.offWhite,
-    fontWeight: '600',
   },
 });
 

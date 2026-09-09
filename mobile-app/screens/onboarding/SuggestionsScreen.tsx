@@ -204,7 +204,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   headlineSection: {
     gap: 4,
@@ -215,7 +214,6 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     letterSpacing: -0.7,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -226,7 +224,6 @@ const styles = StyleSheet.create({
   highlightGain: {
     fontFamily: 'GeneralSans-Bold',
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   cardsList: {
     gap: Spacing.base, // 16px
@@ -259,7 +256,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 1.1,
     color: '#5F6B80',
-    fontWeight: '700',
   },
   scoreBadge: {
     paddingHorizontal: 12,
@@ -274,7 +270,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   cardContentSection: {
     gap: 8,
@@ -285,7 +280,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     letterSpacing: -0.4,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   cardDescription: {
     fontFamily: 'GeneralSans-Regular',
@@ -312,7 +306,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: Colors.navy, // #0A1931
-    fontWeight: '500',
   },
   primaryCtaButton: {
     width: '100%',
@@ -332,7 +325,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.offWhite,
-    fontWeight: '600',
   },
   outlineCtaButton: {
     width: '100%',
@@ -350,6 +342,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
 });

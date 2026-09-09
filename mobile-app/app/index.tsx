@@ -28,6 +28,7 @@ export default function FoundationPreview() {
   const [step, setStep] = useState<'splash' | 'intro' | 'language' | 'howItWorks' | 'intake' | 'parsing' | 'review' | 'scoring' | 'score' | 'breakdown' | 'suggestions' | 'recalculated' | 'signup' | 'otp' | 'notifications' | 'share' | 'preview'>('splash');
   const [fileMeta, setFileMeta] = useState<UploadedFileMeta | undefined>();
   const [userPhone, setUserPhone] = useState<string>('98765 43242');
+  const [signupSource, setSignupSource] = useState<'intro' | 'score'>('score');
   const [activeTab, setActiveTab] = useState<'preview' | 'home' | 'jobs' | 'board' | 'you'>('home');
 
   const handleTabPress = (tab: string, href: string) => {
@@ -45,7 +46,10 @@ export default function FoundationPreview() {
     return (
       <IntroScreen
         onGetStarted={() => setStep('language')}
-        onAlreadyHaveAccount={() => setStep('language')}
+        onAlreadyHaveAccount={() => {
+          setSignupSource('intro');
+          setStep('signup');
+        }}
       />
     );
   }
@@ -154,13 +158,20 @@ export default function FoundationPreview() {
     return (
       <CreateAccountScreen
         score={706}
-        onBack={() => setStep('recalculated')}
+        title={signupSource === 'intro' ? 'Sign in' : 'Create account'}
+        onBack={() => {
+          if (signupSource === 'intro') {
+            setStep('intro');
+          } else {
+            setStep('recalculated');
+          }
+        }}
         onSendCode={(phone) => {
           if (phone) setUserPhone(phone);
           setStep('otp');
         }}
-        onGoogleAuth={() => setStep('notifications')}
-        onEmailAuth={() => setStep('notifications')}
+        onGoogleAuth={() => setStep(signupSource === 'intro' ? 'preview' : 'notifications')}
+        onEmailAuth={() => setStep(signupSource === 'intro' ? 'preview' : 'notifications')}
       />
     );
   }
@@ -171,7 +182,13 @@ export default function FoundationPreview() {
         phoneNumber={userPhone}
         onBack={() => setStep('signup')}
         onChangePhone={() => setStep('signup')}
-        onVerify={() => setStep('notifications')}
+        onVerify={() => {
+          if (signupSource === 'intro') {
+            setStep('preview');
+          } else {
+            setStep('notifications');
+          }
+        }}
       />
     );
   }

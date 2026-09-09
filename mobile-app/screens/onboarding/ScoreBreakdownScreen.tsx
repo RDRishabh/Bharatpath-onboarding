@@ -238,7 +238,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   headlineSection: {
     gap: 4,
@@ -249,7 +248,6 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     letterSpacing: -0.7,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -280,14 +278,12 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     letterSpacing: -0.3,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   scoreText: {
     fontFamily: 'SpaceMono-Bold',
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   textIndigo: {
     color: Colors.indigo, // #5E4DB2
@@ -345,14 +341,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   actionGainText: {
     fontFamily: 'SpaceMono-Bold',
     fontSize: 12,
     lineHeight: 16,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   footerNoteText: {
     fontFamily: 'GeneralSans-Regular',

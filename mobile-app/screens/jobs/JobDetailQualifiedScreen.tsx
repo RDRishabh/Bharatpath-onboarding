@@ -304,7 +304,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 20,
     color: '#F4D685',
-    fontWeight: '700',
   },
   roleInfo: {
     flex: 1,
@@ -316,7 +315,6 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.6,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   companySubRow: {
     flexDirection: 'row',
@@ -354,7 +352,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   clearanceDeltaPill: {
     paddingHorizontal: 8,
@@ -473,14 +470,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: Colors.navy,
-    fontWeight: '700',
   },
   metricValueSans: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 14,
     lineHeight: 18,
     color: Colors.navy,
-    fontWeight: '700',
   },
   sectionBlock: {
     gap: 6,
@@ -531,7 +526,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#1F6B45',
-    fontWeight: '600',
   },
   skillChipMissing: {
     flexDirection: 'row',
@@ -550,7 +544,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#5F6B80',
-    fontWeight: '600',
   },
   privacyNoticeBox: {
     flexDirection: 'row',
@@ -586,7 +579,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   applySubtext: {
     textAlign: 'center',

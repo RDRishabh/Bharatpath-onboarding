@@ -178,7 +178,6 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     letterSpacing: -0.75,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -223,7 +222,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 11,
     color: Colors.gold, // #D4AF37 / #F4D685
-    fontWeight: '700',
   },
   stepTitleLabel: {
     fontFamily: 'SpaceMono-Bold',
@@ -238,7 +236,6 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     letterSpacing: -0.4,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   cardBody: {
     fontFamily: 'GeneralSans-Regular',
@@ -274,7 +271,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   gotItButton: {
     flex: 2,
@@ -293,6 +289,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.offWhite,
-    fontWeight: '600',
   },
 });

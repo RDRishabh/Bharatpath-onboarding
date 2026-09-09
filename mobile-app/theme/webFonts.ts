@@ -1,58 +1,58 @@
 /**
  * Web font CSS injection.
- * On web, expo-google-fonts loads fonts via @font-face. This helper ensures
- * the font-family names used in tokens resolve correctly on the web platform.
- * For native, expo-font handles the mapping automatically.
+ * Loads clean Inter font family and Space Mono / Noto Sans for web.
  */
 import { Platform } from 'react-native';
 
 const webFontCSS = `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
+
 @font-face {
   font-family: 'GeneralSans-Regular';
-  src: local('Inter'), local('Inter Regular'), local('SF Pro Text'), local('Segoe UI'), local('Roboto');
-  font-weight: 400;
+  src: local('Inter Regular'), local('Inter'), sans-serif;
+  font-weight: 100 900;
   font-style: normal;
 }
 @font-face {
   font-family: 'GeneralSans-Medium';
-  src: local('Inter Medium'), local('Inter Medium'), local('SF Pro Text Medium'), local('Segoe UI Semibold'), local('Roboto Medium');
-  font-weight: 500;
+  src: local('Inter Medium'), local('Inter-Medium'), sans-serif;
+  font-weight: 100 900;
   font-style: normal;
 }
 @font-face {
   font-family: 'GeneralSans-Semibold';
-  src: local('Inter SemiBold'), local('Inter Semibold'), local('SF Pro Text Semibold'), local('Segoe UI Semibold'), local('Roboto');
-  font-weight: 600;
+  src: local('Inter SemiBold'), local('Inter-SemiBold'), sans-serif;
+  font-weight: 100 900;
   font-style: normal;
 }
 @font-face {
   font-family: 'GeneralSans-Bold';
-  src: local('Inter Bold'), local('Inter Bold'), local('SF Pro Text Bold'), local('Segoe UI Bold'), local('Roboto Bold');
-  font-weight: 700;
+  src: local('Inter Bold'), local('Inter-Bold'), sans-serif;
+  font-weight: 100 900;
   font-style: normal;
 }
 @font-face {
   font-family: 'SpaceMono-Regular';
-  src: local('Space Mono'), local('Space Mono Regular'), local('Courier New'), local('monospace');
-  font-weight: 400;
+  src: local('Space Mono'), local('SpaceMono-Regular'), monospace;
+  font-weight: 100 900;
   font-style: normal;
 }
 @font-face {
   font-family: 'SpaceMono-Bold';
-  src: local('Space Mono Bold'), local('Courier New Bold'), local('monospace');
-  font-weight: 700;
+  src: local('Space Mono Bold'), local('SpaceMono-Bold'), monospace;
+  font-weight: 100 900;
   font-style: normal;
 }
 @font-face {
   font-family: 'NotoSansDevanagari-Regular';
-  src: local('Noto Sans Devanagari'), local('Noto Sans Devanagari Regular');
-  font-weight: 400;
+  src: local('Noto Sans Devanagari'), local('NotoSansDevanagari-Regular'), sans-serif;
+  font-weight: 100 900;
   font-style: normal;
 }
 @font-face {
   font-family: 'NotoSansDevanagari-Medium';
-  src: local('Noto Sans Devanagari Medium');
-  font-weight: 500;
+  src: local('Noto Sans Devanagari Medium'), local('NotoSansDevanagari-Medium'), sans-serif;
+  font-weight: 100 900;
   font-style: normal;
 }
 `;

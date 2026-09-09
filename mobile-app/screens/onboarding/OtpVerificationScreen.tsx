@@ -263,7 +263,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
     flex: 1,
   },
   headingSection: {
@@ -275,7 +274,6 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     letterSpacing: -0.7,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -286,7 +284,6 @@ const styles = StyleSheet.create({
   changeLink: {
     fontFamily: 'GeneralSans-Semibold',
     color: Colors.navy,
-    fontWeight: '600',
   },
   otpGrid: {
     flexDirection: 'row',
@@ -315,7 +312,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 24,
     color: Colors.navy,
-    fontWeight: '700',
   },
   hiddenInput: {
     position: 'absolute',
@@ -349,7 +345,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: Colors.navy,
-    fontWeight: '600',
   },
   callMeRow: {
     flexDirection: 'row',
@@ -361,7 +356,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: Colors.navy,
-    fontWeight: '600',
   },
   verifyButton: {
     width: '100%',
@@ -377,6 +371,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
 });

@@ -368,7 +368,6 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     letterSpacing: -0.8,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -416,7 +415,6 @@ const styles = StyleSheet.create({
     lineHeight: 56,
     letterSpacing: -2,
     color: '#FFFFFF',
-    fontWeight: '800',
   },
   outOfText: {
     fontFamily: 'SpaceMono-Bold',
@@ -441,7 +439,6 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.7,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   bandBadge: {
     paddingHorizontal: 10,
@@ -455,7 +452,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 1.0,
     color: '#F4D685',
-    fontWeight: '700',
   },
   bandSegmentsRow: {
     flexDirection: 'row',
@@ -490,7 +486,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#F4D685',
-    fontWeight: '500',
   },
   whiteSheet: {
     flex: 1,
@@ -513,7 +508,6 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     letterSpacing: 1.3,
     color: '#5F6B80',
-    fontWeight: '700',
   },
   sheetCountText: {
     fontFamily: 'SpaceMono-Regular',
@@ -551,7 +545,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: Colors.navy, // #0A1931
-    fontWeight: '500',
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -581,21 +574,18 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 11,
     letterSpacing: 1.0,
-    fontWeight: '700',
   },
   itemScoreText: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 14,
     lineHeight: 18,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   itemScoreMax: {
     fontFamily: 'SpaceMono-Regular',
     fontSize: 13,
     lineHeight: 18,
     color: '#5F6B80',
-    fontWeight: '400',
   },
   itemProgressTrack: {
     height: 4,
@@ -629,7 +619,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   actionsRow: {
     flexDirection: 'row',
@@ -654,7 +643,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   raiseScoreButton: {
     flex: 1.5,
@@ -673,7 +661,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.offWhite,
-    fontWeight: '600',
   },
   pointsBadge: {
     flexDirection: 'row',
@@ -686,7 +673,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 0.8,
     color: '#F4D685',
-    fontWeight: '700',
   },
   recalculatedCard: {
     backgroundColor: '#FFFFFF',
@@ -734,6 +720,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: Colors.navy,
-    fontWeight: '600',
   },
 });

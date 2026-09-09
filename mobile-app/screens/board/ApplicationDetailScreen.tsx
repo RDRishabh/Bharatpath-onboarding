@@ -247,7 +247,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   companyHeader: {
     flexDirection: 'row',
@@ -267,7 +266,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: '#D4AF37', // Brand gold
-    fontWeight: '700',
   },
   companyInfo: {
     flex: 1,
@@ -279,7 +277,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     letterSpacing: -0.4,
     color: Colors.navy,
-    fontWeight: '700',
   },
   companySub: {
     fontFamily: 'GeneralSans-Regular',
@@ -300,7 +297,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 12,
     color: Colors.navy,
-    fontWeight: '700',
   },
   interviewCard: {
     backgroundColor: '#FFFFFF',
@@ -321,7 +317,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 1.2,
     color: '#5E4DB2', // Indigo/purple
-    fontWeight: '700',
   },
   interviewTitleText: {
     fontFamily: 'GeneralSans-Bold',
@@ -329,7 +324,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     letterSpacing: -0.4,
     color: Colors.navy,
-    fontWeight: '700',
   },
   interviewDescText: {
     fontFamily: 'GeneralSans-Regular',
@@ -355,7 +349,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   rescheduleButton: {
     flex: 1,
@@ -372,7 +365,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   timelineCard: {
     backgroundColor: '#FFFFFF',
@@ -387,7 +379,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   timelineList: {
     gap: 0,
@@ -421,7 +412,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   stepSub: {
     fontFamily: 'GeneralSans-Regular',
@@ -459,7 +449,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#566073',
-    fontWeight: '600',
   },
   withdrawButton: {
     width: '100%',
@@ -478,7 +467,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: '#3A4761',
-    fontWeight: '600',
   },
   buttonPressed: {
     transform: [{ scale: 0.98 }],

@@ -334,7 +334,6 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     letterSpacing: -0.7,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   toFixBadge: {
     flexDirection: 'row',
@@ -352,7 +351,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#7A5C0E',
-    fontWeight: '700',
   },
   allFixedBadge: {
     flexDirection: 'row',
@@ -368,7 +366,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#1F6B45',
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -401,7 +398,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 1.1,
     color: '#5F6B80',
-    fontWeight: '700',
   },
   pencilRight: {
     marginLeft: 'auto',
@@ -425,7 +421,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   eduList: {
     gap: Spacing.md, // 12px
@@ -438,7 +433,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   eduSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -466,7 +460,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 12,
     color: '#7A5C0E',
-    fontWeight: '700',
   },
   chipsWrapRow: {
     flexDirection: 'row',
@@ -484,7 +477,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: Colors.navy, // #0A1931
-    fontWeight: '500',
   },
   dashedChip: {
     flexDirection: 'row',
@@ -503,7 +495,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#7A5C0E',
-    fontWeight: '500',
   },
   chipPressed: {
     opacity: 0.75,
@@ -519,7 +510,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   expSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -554,7 +544,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   bottomSection: {
     gap: Spacing.md, // 12px
@@ -579,7 +568,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.offWhite,
-    fontWeight: '600',
   },
   bottomSubtext: {
     fontFamily: 'GeneralSans-Regular',

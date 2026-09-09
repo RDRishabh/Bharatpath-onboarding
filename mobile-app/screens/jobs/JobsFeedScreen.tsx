@@ -363,7 +363,6 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.5,
     color: Colors.navy,
-    fontWeight: '700',
   },
   locationRow: {
     flexDirection: 'row',
@@ -416,7 +415,6 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     letterSpacing: -0.8,
     color: '#FFFFFF',
-    fontWeight: '800',
   },
   matchesCountLabel: {
     fontFamily: Platform.select({ ios: 'SpaceMono-Regular', android: 'SpaceMono-Regular', default: 'monospace' }),
@@ -485,7 +483,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: Colors.navy,
-    fontWeight: '600',
   },
   chipTextActive: {
     color: '#FFFFFF',
@@ -503,7 +500,6 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     letterSpacing: 1.2,
     color: '#5F6B80',
-    fontWeight: '700',
   },
   sortDropdown: {
     flexDirection: 'row',
@@ -515,7 +511,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: Colors.navy,
-    fontWeight: '600',
   },
   jobList: {
     paddingHorizontal: 20,
@@ -547,7 +542,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 16,
     color: '#F4D685',
-    fontWeight: '700',
   },
   badgePurple: {
     width: 44,
@@ -562,7 +556,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 16,
     color: '#4A3E8F',
-    fontWeight: '700',
   },
   badgeYellow: {
     width: 44,
@@ -577,7 +570,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 16,
     color: '#7A5C0E',
-    fontWeight: '700',
   },
   jobInfo: {
     flex: 1,
@@ -590,7 +582,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     letterSpacing: -0.3,
     color: Colors.navy,
-    fontWeight: '700',
   },
   companyRow: {
     flexDirection: 'row',
@@ -680,7 +671,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#7A5C0E',
-    fontWeight: '500',
   },
   cardPressed: {
     transform: [{ scale: 0.99 }],

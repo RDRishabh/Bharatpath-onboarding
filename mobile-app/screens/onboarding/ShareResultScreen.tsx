@@ -195,7 +195,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
     flex: 1,
   },
   shareCard: {
@@ -227,7 +226,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     letterSpacing: -0.2,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   cardContent: {
     gap: 12,
@@ -238,7 +236,6 @@ const styles = StyleSheet.create({
     lineHeight: 56,
     letterSpacing: -1.5,
     color: '#FFFFFF',
-    fontWeight: '800',
   },
   exactScoreContainer: {
     gap: 4,
@@ -254,7 +251,6 @@ const styles = StyleSheet.create({
     lineHeight: 74,
     letterSpacing: -2.5,
     color: '#FFFFFF',
-    fontWeight: '800',
   },
   maxScoreText: {
     fontFamily: 'SpaceMono-Regular',
@@ -269,7 +265,6 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     letterSpacing: -0.5,
     color: 'rgba(255, 255, 255, 0.95)',
-    fontWeight: '700',
   },
   metaContainer: {
     borderTopWidth: 1,
@@ -283,7 +278,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: 'rgba(255, 255, 255, 0.9)',
-    fontWeight: '500',
   },
   dateMeta: {
     fontFamily: 'SpaceMono-Regular',
@@ -312,7 +306,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   toggleSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -344,7 +337,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   shareButton: {
     flex: 1.5,
@@ -361,6 +353,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
 });

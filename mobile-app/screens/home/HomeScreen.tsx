@@ -371,7 +371,6 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.6,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   headerActionsRow: {
     flexDirection: 'row',
@@ -413,7 +412,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 16,
     color: '#D4AF37', // Gold monogram
-    fontWeight: '700',
   },
   buttonPressed: {
     opacity: 0.85,
@@ -445,7 +443,6 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     letterSpacing: -0.6,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   heroSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -469,7 +466,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   heroRightCol: {
     width: 142,
@@ -501,7 +497,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 1.4,
     color: Colors.text.mutedOnNavy, // #9DA9BE
-    fontWeight: '700',
   },
   scoreNumberRow: {
     flexDirection: 'row',
@@ -514,7 +509,6 @@ const styles = StyleSheet.create({
     lineHeight: 42,
     letterSpacing: -1.8,
     color: '#FFFFFF',
-    fontWeight: '800',
   },
   maxScoreText: {
     fontFamily: 'SpaceMono-Regular',
@@ -533,7 +527,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 14,
     color: '#F4D685',
-    fontWeight: '700',
   },
   bandStatusCol: {
     alignItems: 'flex-end',
@@ -545,7 +538,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     letterSpacing: -0.4,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   bandBadge: {
     paddingHorizontal: 8,
@@ -559,7 +551,6 @@ const styles = StyleSheet.create({
     lineHeight: 11,
     letterSpacing: 1.0,
     color: '#F4D685',
-    fontWeight: '700',
   },
   segmentsRow: {
     flexDirection: 'row',
@@ -599,7 +590,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#F4D685',
-    fontWeight: '500',
   },
   sectionContainer: {
     gap: 12,
@@ -615,7 +605,6 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     letterSpacing: 1.4,
     color: '#5F6B80',
-    fontWeight: '700',
   },
   featureGrid: {
     flexDirection: 'row',
@@ -664,7 +653,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 0.6,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   priceBadge: {
     position: 'absolute',
@@ -681,7 +669,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 0.6,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   featureInfo: {
     paddingTop: 10,
@@ -694,7 +681,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     letterSpacing: -0.3,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   featureMeta: {
     fontFamily: 'GeneralSans-Regular',
@@ -717,7 +703,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: Colors.navy,
-    fontWeight: '600',
   },
   jobCard: {
     backgroundColor: '#FFFFFF',
@@ -742,7 +727,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 16,
     color: '#D4AF37', // Gold
-    fontWeight: '700',
   },
   jobInfoCol: {
     flex: 1,
@@ -754,7 +738,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   jobCompanyText: {
     fontFamily: 'GeneralSans-Regular',
@@ -768,7 +751,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: Colors.navy,
     marginTop: 2,
-    fontWeight: '700',
   },
   matchBadge: {
     flexDirection: 'row',
@@ -785,7 +767,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 0.6,
     color: '#1F6B45',
-    fontWeight: '700',
   },
   shortBadge: {
     paddingHorizontal: 10,
@@ -799,6 +780,5 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 0.6,
     color: '#7A5C0E',
-    fontWeight: '700',
   },
 });

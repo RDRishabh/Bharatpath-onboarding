@@ -152,7 +152,6 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     letterSpacing: -0.7,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -186,7 +185,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 1.5,
     color: '#E0DBF4',
-    fontWeight: '700',
   },
   statusTextWrapper: {
     height: 28,
@@ -198,7 +196,6 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     letterSpacing: -0.4,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   progressSection: {
     gap: Spacing.sm, // 8px
@@ -220,7 +217,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     letterSpacing: 0.7,
     color: '#DED9F3',
-    fontWeight: '600',
   },
   categoriesCard: {
     backgroundColor: '#FFFFFF',
@@ -264,7 +260,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '500',
   },
   categoryMeta: {
     fontFamily: 'SpaceMono-Regular',
@@ -295,7 +290,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.offWhite,
-    fontWeight: '600',
   },
   privacyNoteRow: {
     flexDirection: 'row',

@@ -127,7 +127,6 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     letterSpacing: -0.75, // -.025em
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -162,7 +161,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 24,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   devanagariLabel: {
     fontFamily: 'NotoSansDevanagari-Medium',

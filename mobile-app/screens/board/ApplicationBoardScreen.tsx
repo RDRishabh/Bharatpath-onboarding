@@ -346,7 +346,6 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.5,
     color: Colors.navy,
-    fontWeight: '700',
   },
   filterRow: {
     flexDirection: 'row',
@@ -369,7 +368,6 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 13,
     lineHeight: 16,
-    fontWeight: '600',
   },
   filterPillTextActive: {
     color: '#FFFFFF',
@@ -407,7 +405,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#F4D685', // Brand gold accent
-    fontWeight: '700',
   },
   badgePurple: {
     width: 40,
@@ -422,7 +419,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#4A3E8F',
-    fontWeight: '700',
   },
   badgeYellow: {
     width: 40,
@@ -437,7 +433,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#7A5C0E',
-    fontWeight: '700',
   },
   badgeGray: {
     width: 40,
@@ -458,7 +453,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     letterSpacing: -0.3,
     color: Colors.navy,
-    fontWeight: '700',
   },
   roleSub: {
     fontFamily: 'GeneralSans-Regular',
@@ -561,7 +555,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     color: '#3A4761',
-    fontWeight: '500',
   },
   interviewActionBanner: {
     flexDirection: 'row',
@@ -578,7 +571,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#0A1931',
-    fontWeight: '500',
   },
   joinButton: {
     paddingVertical: 6,
@@ -591,7 +583,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   cardFooterNotice: {
     flexDirection: 'row',
@@ -614,7 +605,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#7A5C0E',
-    fontWeight: '500',
   },
   closedContainer: {
     paddingHorizontal: 20,

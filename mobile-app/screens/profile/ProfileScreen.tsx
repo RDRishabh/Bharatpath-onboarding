@@ -310,7 +310,6 @@ const styles = StyleSheet.create({
     fontSize: 19,
     lineHeight: 24,
     color: '#D4AF37', // Brand gold
-    fontWeight: '700',
   },
   userInfo: {
     flex: 1,
@@ -322,7 +321,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     letterSpacing: -0.5,
     color: Colors.navy,
-    fontWeight: '700',
   },
   userSub: {
     fontFamily: 'GeneralSans-Regular',
@@ -372,7 +370,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 24,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   statLabelLight: {
     fontFamily: 'GeneralSans-Regular',
@@ -385,7 +382,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 24,
     color: Colors.navy,
-    fontWeight: '700',
   },
   sectionContainer: {
     paddingHorizontal: 20,
@@ -422,7 +418,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   menuItemSubText: {
     fontFamily: 'GeneralSans-Regular',
@@ -453,7 +448,6 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 16,
-    fontWeight: '700',
     color: Colors.navy,
   },
   cardPressed: {

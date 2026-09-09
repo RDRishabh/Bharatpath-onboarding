@@ -217,7 +217,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   headingSection: {
     gap: 2,
@@ -228,7 +227,6 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     letterSpacing: -0.5,
     color: Colors.navy,
-    fontWeight: '700',
   },
   mainSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -262,7 +260,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#D4AF37', // Brand gold
-    fontWeight: '700',
   },
   employerInfo: {
     flex: 1,
@@ -273,7 +270,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   activityTime: {
     fontFamily: 'GeneralSans-Regular',
@@ -300,7 +296,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   toggleSub: {
     fontFamily: 'GeneralSans-Regular',

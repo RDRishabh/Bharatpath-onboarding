@@ -120,7 +120,6 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     letterSpacing: -0.7,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -149,7 +148,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '500',
   },
   illustrationContainer: {
     alignItems: 'center',
@@ -184,7 +182,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   notNowButton: {
     width: '100%',
@@ -198,6 +195,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.text.primary, // #3A4761
-    fontWeight: '500',
   },
 });

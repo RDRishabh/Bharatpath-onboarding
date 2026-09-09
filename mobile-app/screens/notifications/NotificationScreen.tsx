@@ -246,7 +246,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   headingSection: {
     gap: 2,
@@ -257,7 +256,6 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     letterSpacing: -0.7,
     color: Colors.navy,
-    fontWeight: '700',
   },
   mainSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -285,7 +283,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '500',
   },
   illustrationContainer: {
     alignItems: 'center',
@@ -316,7 +313,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   notNowButton: {
     width: '100%',
@@ -329,7 +325,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#3A4761',
-    fontWeight: '500',
   },
   enabledBox: {
     marginTop: 'auto',
@@ -351,7 +346,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: '#15803D',
-    fontWeight: '600',
   },
   channelToggles: {
     gap: 12,

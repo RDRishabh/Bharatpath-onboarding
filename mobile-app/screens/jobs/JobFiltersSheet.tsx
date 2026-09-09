@@ -311,14 +311,12 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     letterSpacing: -0.4,
     color: Colors.navy,
-    fontWeight: '700',
   },
   resetButtonText: {
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 14,
     lineHeight: 20,
     color: '#5F6B80',
-    fontWeight: '600',
   },
   filterSection: {
     gap: 10,
@@ -375,7 +373,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#5F6B80',
-    fontWeight: '600',
   },
   toggleTextActive: {
     color: '#4A3E8F',
@@ -436,7 +433,6 @@ const styles = StyleSheet.create({
   },
   kmPillTextActive: {
     color: '#4A3E8F',
-    fontWeight: '600',
   },
   pillsRow: {
     flexDirection: 'row',
@@ -454,7 +450,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#3A4761',
-    fontWeight: '600',
   },
   workTypePill: {
     flexDirection: 'row',
@@ -470,7 +465,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     color: '#3A4761',
-    fontWeight: '600',
   },
   pillActive: {
     backgroundColor: '#F1EAF7',
@@ -494,7 +488,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   buttonPressed: {
     transform: [{ scale: 0.98 }],

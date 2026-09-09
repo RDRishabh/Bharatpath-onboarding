@@ -95,12 +95,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: 'GeneralSans-Bold',
-    fontSize: 30,
-    lineHeight: 36,
-    letterSpacing: -0.8,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -0.5,
     color: Colors.navy, // #0A1931
-    fontWeight: '800',
     textAlign: 'center',
+    maxWidth: 290,
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     width: '100%',
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: Colors.indigo, // #5E4DB2 as in Image 1
     paddingVertical: 18,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
@@ -132,8 +132,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 16,
     lineHeight: 20,
-    color: Colors.offWhite,
-    fontWeight: '600',
+    color: '#FFFFFF',
   },
   secondaryButton: {
     width: '100%',
@@ -150,6 +149,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.text.primary, // #3A4761
-    fontWeight: '500',
   },
 });

@@ -243,7 +243,6 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.5,
     color: '#FFFFFF',
-    fontWeight: '800',
   },
   goldRule: {
     height: 2,

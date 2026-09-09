@@ -150,11 +150,9 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 0.1,
     color: '#5F6B80',
-    fontWeight: '500',
   },
   labelActive: {
     fontFamily: 'GeneralSans-Bold',
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
 });

@@ -153,7 +153,6 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     letterSpacing: -0.8,
     color: Colors.navy,
-    fontWeight: '700',
   },
   mainSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -188,7 +187,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   divider: {
     height: 1,
@@ -211,7 +209,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   secondaryBtn: {
     width: '100%',
@@ -224,7 +221,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#5F6B80',
-    fontWeight: '600',
   },
   buttonPressed: {
     transform: [{ scale: 0.98 }],

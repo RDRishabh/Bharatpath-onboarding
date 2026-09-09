@@ -141,7 +141,6 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     letterSpacing: -0.7,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -180,7 +179,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
   fileSizeText: {
     fontFamily: 'GeneralSans-Regular',
@@ -193,7 +191,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   progressTrack: {
     height: 3,
@@ -242,7 +239,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '500',
   },
   itemMeta: {
     fontFamily: 'SpaceMono-Regular',
@@ -287,6 +283,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.offWhite,
-    fontWeight: '600',
   },
 });

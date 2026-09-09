@@ -21,6 +21,7 @@ export interface CreateAccountScreenProps {
   bandNumber?: number;
   bandTotal?: number;
   initialPhone?: string;
+  title?: string;
   onBack?: () => void;
   onSendCode?: (phoneNumber: string) => void;
   onGoogleAuth?: () => void;
@@ -33,6 +34,7 @@ export function CreateAccountScreen({
   bandNumber = 1,
   bandTotal = 4,
   initialPhone = '',
+  title = 'Create account',
   onBack,
   onSendCode,
   onGoogleAuth,
@@ -97,7 +99,7 @@ export function CreateAccountScreen({
               >
                 <ArrowLeft size={16} color={Colors.navy} weight="bold" />
               </Pressable>
-              <Text style={styles.navTitle}>Create account</Text>
+              <Text style={styles.navTitle}>{title}</Text>
             </View>
 
             {/* Score & Band Header Card - Clean solid deep navy */}
@@ -269,7 +271,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
     flex: 1,
   },
   scoreCard: {
@@ -292,7 +293,6 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     letterSpacing: -1.2,
     color: '#FFFFFF',
-    fontWeight: '800',
   },
   outOfText: {
     fontFamily: 'SpaceMono-Regular',
@@ -322,7 +322,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   bandBadge: {
     paddingHorizontal: 8,
@@ -336,7 +335,6 @@ const styles = StyleSheet.create({
     lineHeight: 11,
     letterSpacing: 1.0,
     color: '#F4D685',
-    fontWeight: '700',
   },
   bandSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -353,7 +351,6 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     letterSpacing: -0.7,
     color: Colors.navy, // #0A1931
-    fontWeight: '700',
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -386,7 +383,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 24,
     color: Colors.text.primary, // #3A4761
-    fontWeight: '600',
   },
   inputSeparator: {
     width: 1,
@@ -399,7 +395,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 24,
     color: Colors.navy,
-    fontWeight: '600',
     letterSpacing: 0.4,
     paddingVertical: 4,
     minHeight: 40,
@@ -423,7 +418,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   orRow: {
     flexDirection: 'row',
@@ -465,6 +459,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy, // #0A1931
-    fontWeight: '600',
   },
 });

@@ -291,7 +291,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 20,
     color: '#F4D685',
-    fontWeight: '700',
   },
   roleInfo: {
     flex: 1,
@@ -303,7 +302,6 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.6,
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   companySubRow: {
     flexDirection: 'row',
@@ -341,7 +339,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   gapDeltaPill: {
     paddingHorizontal: 8,
@@ -471,7 +468,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#7A5C0E',
-    fontWeight: '700',
   },
   fixTitleText: {
     flex: 1,
@@ -479,7 +475,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '500',
   },
   workOnScoreBtn: {
     width: '100%',
@@ -496,7 +491,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: Colors.navy,
-    fontWeight: '600',
   },
   metricsRow: {
     flexDirection: 'row',
@@ -523,14 +517,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: Colors.navy,
-    fontWeight: '700',
   },
   metricValueSans: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 14,
     lineHeight: 18,
     color: Colors.navy,
-    fontWeight: '700',
   },
   bodyDescription: {
     fontFamily: 'GeneralSans-Regular',
@@ -557,7 +549,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
   },
   applySubtext: {
     textAlign: 'center',

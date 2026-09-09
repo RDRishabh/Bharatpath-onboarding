@@ -7,13 +7,13 @@ import { AuthProvider } from '@/context/AuthContext';
 import { AppProvider } from '@/context/AppContext';
 
 export default function RootLayout() {
-  const { fontsLoaded } = useBharatPathFonts();
+  const { fontsLoaded, fontError } = useBharatPathFonts();
 
   useEffect(() => {
     injectWebFonts();
   }, []);
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded && !fontError) {
     return null;
   }
 
