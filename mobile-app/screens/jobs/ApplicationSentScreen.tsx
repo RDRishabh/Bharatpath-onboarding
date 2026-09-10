@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     width: '100%',
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     borderRadius: 999,
     paddingVertical: 18,
     alignItems: 'center',

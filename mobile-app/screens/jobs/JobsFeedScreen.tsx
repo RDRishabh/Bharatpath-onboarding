@@ -29,6 +29,7 @@ import {
   ArrowRight,
   MagnifyingGlass,
   CheckCircle,
+  Check,
   CaretDown,
   SealCheck,
   Clock,
@@ -139,7 +140,9 @@ export function JobsFeedScreen({
                 ]}
                 onPress={() => setSelectedChip('qualify')}
               >
-                <CheckCircle size={13} color="#F4D685" weight="fill" />
+                <View style={styles.chipCheckIcon}>
+                  <Check size={9} color="#F1EAF7" weight="bold" />
+                </View>
                 <Text
                   style={[
                     styles.chipText,
@@ -196,8 +199,8 @@ export function JobsFeedScreen({
               accessibilityRole="button"
             >
               <View style={styles.jobCardTop}>
-                <View style={styles.badgeNavy}>
-                  <Text style={styles.badgeNavyText}>SD</Text>
+                <View style={styles.badgePurple}>
+                  <Text style={styles.badgePurpleText}>SD</Text>
                 </View>
                 <View style={styles.jobInfo}>
                   <Text style={styles.jobTitle}>Lab Analyst Trainee</Text>
@@ -398,7 +401,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFFCF7',
   },
   scoreBanner: {
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     borderRadius: 20,
     paddingVertical: 16,
     paddingHorizontal: 18,
@@ -421,7 +424,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 11,
     letterSpacing: 1.4,
-    color: '#9DA9BE',
+    color: '#DCD6F4',
   },
   bannerDivider: {
     width: 1,
@@ -433,11 +436,11 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
     lineHeight: 16,
-    color: '#9DA9BE',
+    color: '#DCD6F4',
   },
   bannerScoreHighlight: {
     color: '#F4D685',
-    fontWeight: '600',
+    fontFamily: 'GeneralSans-Bold',
   },
   searchBar: {
     flexDirection: 'row',
@@ -470,8 +473,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 999,
   },
+  chipCheckIcon: {
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: '#4A3E8F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   chipPillActive: {
-    backgroundColor: Colors.navy,
+    backgroundColor: '#F1EAF7',
+    borderWidth: 1,
+    borderColor: '#C9BEEB',
   },
   chipPillInactive: {
     backgroundColor: '#FFFFFF',
@@ -485,7 +498,7 @@ const styles = StyleSheet.create({
     color: Colors.navy,
   },
   chipTextActive: {
-    color: '#FFFFFF',
+    color: '#4A3E8F',
   },
   sectionHeaderRow: {
     paddingHorizontal: 20,

@@ -107,7 +107,7 @@ export function ProfileScreen({
             >
               <View style={styles.statCardHeader}>
                 <Text style={styles.statLabelDark}>Score</Text>
-                <CaretRight size={11} color="rgba(255,252,247,0.6)" weight="bold" />
+                <CaretRight size={11} color="#F1EAF7" weight="bold" />
               </View>
               <Text style={styles.statValueDark}>{score}</Text>
             </Pressable>
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#F1EAF7',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 19,
     lineHeight: 24,
-    color: '#D4AF37', // Brand gold
+    color: '#4A3E8F',
   },
   userInfo: {
     flex: 1,
@@ -335,9 +335,9 @@ const styles = StyleSheet.create({
   },
   statCardDark: {
     flex: 1,
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     borderWidth: 1,
-    borderColor: Colors.navy,
+    borderColor: '#5F4DB2',
     borderRadius: 16,
     padding: 12,
     gap: 4,
@@ -360,10 +360,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   statLabelDark: {
-    fontFamily: 'GeneralSans-Regular',
+    fontFamily: 'GeneralSans-Semibold',
     fontSize: 11,
     lineHeight: 16,
-    color: 'rgba(255,252,247,0.6)',
+    color: '#F1EAF7',
   },
   statValueDark: {
     fontFamily: 'GeneralSans-Bold',
@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D4AF37', // Brand gold border
+    borderColor: '#DDD6C7',
   },
   badgePillText: {
     fontFamily: 'GeneralSans-Bold',

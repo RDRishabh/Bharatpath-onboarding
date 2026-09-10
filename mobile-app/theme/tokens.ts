@@ -8,10 +8,15 @@
 export const Colors = {
   // Primary surfaces
   offWhite: '#FFFCF7', // 60% — primary application background
-  navy: '#0A1931', // 25% — primary trust / headline / action
-  indigo: '#5E4DB2', // 10% — controlled energy / progress / highlight
-  gold: '#F4D685', // 5% — earned / reward accent (on navy)
-  goldDeep: '#A87C17', // gold variant for use on cream backgrounds
+  navy: '#0A1931', // 25% — primary trust / headline / text
+  brandAccent: '#5F4DB2', // primary brand action / progress / interactive accent
+  purple: '#5F4DB2', // primary brand accent purple
+  indigo: '#5E4DB2', // rich purple hero surface
+  accentPurple: '#5F4DB2', // vibrant purple interactive accent
+  heroPurple: '#5E4DB2', // hero card background
+  gold: '#B9891A', // refined gold accent on cream
+  goldWarm: '#F4D685', // warm gold on navy/purple
+  goldDeep: '#8A6A12', // deep gold text/badge variant
 
   // Text
   text: {
@@ -26,6 +31,7 @@ export const Colors = {
     card: '#FFFFFF', // card background
     tint: '#F7F4EC', // subtle warm tint for sections
     border: '#E7E0D4', // card border
+    borderSecondary: '#DDD6C7', // secondary action / pill border
     hairline: '#F0EBDF', // thin dividers
     overlay: 'rgba(10, 25, 49, 0.22)', // shadow color
   },
@@ -63,9 +69,11 @@ export const Colors = {
 
   // Buttons
   button: {
-    primaryBg: '#0A1931',
-    primaryText: '#FFFCF7',
-    secondaryBg: '#FFFCF7',
+    primaryBg: '#5F4DB2', // Vibrant brand accent CTA
+    primaryText: '#FFFFFF',
+    primaryNavyBg: '#0A1931',
+    primaryNavyText: '#FFFCF7',
+    secondaryBg: '#FFFFFF',
     secondaryBorder: '#DDD6C7',
     secondaryText: '#0A1931',
   },

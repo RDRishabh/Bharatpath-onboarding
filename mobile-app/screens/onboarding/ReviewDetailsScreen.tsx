@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
   },
   hairlineDivider: {
     height: 1,
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
   },
   unclearBadge: {
     flexDirection: 'row',
@@ -464,26 +464,26 @@ const styles = StyleSheet.create({
   chipsWrapRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.sm, // 8px
+    gap: 8,
   },
   solidChip: {
-    paddingHorizontal: Spacing.md, // 12px
-    paddingVertical: Spacing.sm, // 8px
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: Radii.pill, // 999
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
   },
   solidChipText: {
     fontFamily: 'GeneralSans-Medium',
     fontSize: 13,
     lineHeight: 16,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   dashedChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: Spacing.md, // 12px
-    paddingVertical: Spacing.sm, // 8px
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: Radii.pill, // 999
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   expList: {
-    gap: Spacing.md, // 12px
+    gap: 12,
   },
   expItem: {
     gap: 4,
@@ -509,7 +509,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 15,
     lineHeight: 20,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   expSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: Spacing.md, // 12px
+    gap: 12,
   },
   missingLabelText: {
     flex: 1,
@@ -537,7 +537,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: Radii.pill, // 999
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
   },
   addButtonText: {
     fontFamily: 'GeneralSans-Semibold',
@@ -546,14 +546,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   bottomSection: {
-    gap: Spacing.md, // 12px
-    paddingBottom: Spacing.xl, // 24px
-    paddingTop: Spacing.sm, // 8px
-    backgroundColor: Colors.offWhite,
+    gap: 12,
+    paddingBottom: 24,
+    paddingTop: 8,
+    backgroundColor: '#FFFCF7',
   },
   confirmButton: {
     width: '100%',
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
     paddingVertical: 18,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
@@ -567,7 +567,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 16,
     lineHeight: 20,
-    color: Colors.offWhite,
+    color: '#FFFFFF',
   },
   bottomSubtext: {
     fontFamily: 'GeneralSans-Regular',

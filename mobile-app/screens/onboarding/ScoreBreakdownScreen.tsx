@@ -306,24 +306,24 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
   },
   fillNavy: {
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
   },
   fillIndigo: {
-    backgroundColor: Colors.indigo, // #5E4DB2
+    backgroundColor: '#5E4DB2',
   },
   explanationText: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.text.primary, // #3A4761
+    color: '#0A1931',
   },
   actionPillButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: Spacing.sm, // 8px
+    gap: 8,
     borderWidth: 1,
-    borderColor: Colors.navy, // #0A1931
+    borderColor: '#0A1931',
     backgroundColor: '#FFFFFF',
     borderRadius: Radii.pill, // 999
     paddingVertical: 12,
@@ -333,20 +333,20 @@ const styles = StyleSheet.create({
   actionLeftRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm, // 8px
+    gap: 8,
     flex: 1,
   },
   actionLabelText: {
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 14,
     lineHeight: 18,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   actionGainText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   footerNoteText: {
     fontFamily: 'GeneralSans-Regular',

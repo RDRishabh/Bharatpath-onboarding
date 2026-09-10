@@ -55,7 +55,7 @@ export function SuggestionsScreen({
             <View style={styles.fixCard}>
               <View style={styles.cardHeaderRow}>
                 <View style={styles.iconSquare}>
-                  <Wrench size={16} color="#D4AF37" weight="bold" />
+                  <Wrench size={16} color="#FFFCF7" weight="bold" />
                 </View>
                 <Text style={styles.eyebrowText}>FIX 01 · SKILLS</Text>
                 <View style={styles.scoreBadge}>
@@ -103,7 +103,7 @@ export function SuggestionsScreen({
             <View style={styles.fixCard}>
               <View style={styles.cardHeaderRow}>
                 <View style={styles.iconSquare}>
-                  <Flask size={16} color="#D4AF37" weight="bold" />
+                  <Flask size={16} color="#FFFCF7" weight="bold" />
                 </View>
                 <Text style={styles.eyebrowText}>FIX 02 · PROJECTS</Text>
                 <View style={styles.scoreBadge}>
@@ -134,7 +134,7 @@ export function SuggestionsScreen({
             <View style={styles.fixCard}>
               <View style={styles.cardHeaderRow}>
                 <View style={styles.iconSquare}>
-                  <TextAa size={16} color="#D4AF37" weight="bold" />
+                  <TextAa size={16} color="#FFFCF7" weight="bold" />
                 </View>
                 <Text style={styles.eyebrowText}>FIX 03 · PRESENTATION</Text>
                 <View style={styles.scoreBadge}>
@@ -245,13 +245,13 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
     alignItems: 'center',
     justifyContent: 'center',
   },
   eyebrowText: {
     flex: 1,
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 12,
     letterSpacing: 1.1,
@@ -263,13 +263,13 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill, // 999
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D4AF37',
+    borderColor: '#DDD6C7',
   },
   scoreBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   cardContentSection: {
     gap: 8,
@@ -279,18 +279,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 24,
     letterSpacing: -0.4,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   cardDescription: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 14,
     lineHeight: 20,
-    color: Colors.text.primary, // #3A4761
+    color: '#3A4761',
   },
   chipsWrapRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.sm, // 8px
+    gap: 8,
   },
   toolChip: {
     flexDirection: 'row',
@@ -299,17 +299,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: Radii.pill, // 999
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
   },
   toolChipText: {
     fontFamily: 'GeneralSans-Medium',
     fontSize: 13,
     lineHeight: 16,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   primaryCtaButton: {
     width: '100%',
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
     paddingVertical: 16,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
@@ -324,13 +324,13 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 15,
     lineHeight: 20,
-    color: Colors.offWhite,
+    color: '#FFFFFF',
   },
   outlineCtaButton: {
     width: '100%',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: Colors.navy, // #0A1931
+    borderColor: '#0A1931',
     paddingVertical: 16,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
@@ -341,6 +341,6 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 15,
     lineHeight: 20,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
 });

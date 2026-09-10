@@ -57,7 +57,7 @@ export function WhoHasSeenMeScreen({
 
   const switchBgColor = switchAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#DDD6C7', '#0A1931'],
+    outputRange: ['#DDD6C7', '#5F4DB2'],
   });
 
   return (
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 13,
-    backgroundColor: Colors.navy,
+    backgroundColor: '#F1EAF7',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 13,
     lineHeight: 16,
-    color: '#D4AF37', // Brand gold
+    color: '#4A3E8F',
   },
   employerInfo: {
     flex: 1,
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
   },
   privacyBanner: {
     marginTop: 'auto',
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
     borderRadius: 16,
     padding: 16,
     flexDirection: 'row',

@@ -82,30 +82,32 @@ export function LanguageSelectScreen({ onSelectLanguage }: LanguageSelectScreenP
   );
 }
 
+const ACCENT_PURPLE = '#5F4DB2';
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.offWhite, // #FFFCF7
+    backgroundColor: '#FFFCF7',
   },
   scrollContent: {
-    paddingHorizontal: Spacing.lg, // 20px
-    paddingTop: Spacing.xl, // 24px
-    paddingBottom: Spacing.xxl, // 40px
-    gap: Spacing.xl, // 24px
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 40,
+    gap: 24,
   },
   headerProgressSection: {
-    gap: Spacing.sm, // 8px
+    gap: 8,
   },
   stepEyebrow: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 12,
-    letterSpacing: 1.3, // .12em
+    letterSpacing: 1.32, // .12em
     color: '#5F6B80',
   },
   progressSegmentsRow: {
     flexDirection: 'row',
-    gap: Spacing.opt6, // 6px
+    gap: 6,
   },
   progressSegment: {
     flex: 1,
@@ -113,29 +115,32 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill, // 999
   },
   segmentActive: {
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: ACCENT_PURPLE, // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
   },
   segmentInactive: {
     backgroundColor: '#E7E0D4',
   },
   titleSection: {
-    gap: 2,
+    gap: 0,
+    marginTop: 8,
   },
   title: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 30,
     lineHeight: 34,
     letterSpacing: -0.75, // -.025em
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
+    margin: 0,
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.text.primary, // #3A4761
+    color: '#3A4761',
+    marginTop: 4,
   },
   languagesList: {
-    gap: Spacing.sm, // 8px
+    gap: 8,
   },
   languageCard: {
     flexDirection: 'row',

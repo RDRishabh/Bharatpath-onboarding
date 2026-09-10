@@ -119,8 +119,8 @@ export function ApplicationBoardScreen({
               >
                 {/* Header info */}
                 <View style={styles.cardHeader}>
-                  <View style={styles.badgeNavy}>
-                    <Text style={styles.badgeNavyText}>AT</Text>
+                  <View style={styles.badgePurple}>
+                    <Text style={styles.badgePurpleText}>AT</Text>
                   </View>
                   <View style={styles.roleInfo}>
                     <Text style={styles.roleTitle}>Quality Trainee</Text>
@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   filterPillActive: {
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
   },
   filterPillInactive: {
     backgroundColor: '#FFFFFF',
@@ -478,14 +478,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: '#F7F4EC',
+    backgroundColor: '#F7EFD6',
   },
   tagSentText: {
     fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
     fontSize: 10,
     lineHeight: 12,
     letterSpacing: 0.8,
-    color: '#5F6B80',
+    color: '#7A5C0E',
     fontWeight: '700',
   },
   tagExpiring: {
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 999,
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
   },
   joinButtonText: {
     fontFamily: 'GeneralSans-Semibold',

@@ -246,7 +246,7 @@ export function AttributeCheckScreen({
                     }}
                   >
                     {isSelected ? (
-                      <CheckCircle size={20} color="#D4AF37" weight="fill" />
+                      <CheckCircle size={22} color="#FFFFFF" weight="fill" />
                     ) : (
                       <View style={styles.radioCircle} />
                     )}
@@ -280,7 +280,7 @@ export function AttributeCheckScreen({
   return (
     <View style={styles.reportRoot}>
       <StatusBar style="light" />
-      {/* Dark Navy Header Section */}
+      {/* Purple Header Section */}
       <View style={styles.reportHero}>
         <SafeAreaView edges={['top']} style={styles.reportHeroSafe}>
           <View style={styles.reportHeroHeader}>
@@ -301,7 +301,7 @@ export function AttributeCheckScreen({
 
           <View style={styles.reportTypeContainer}>
             <View style={styles.reportTypeEyebrow}>
-              <Compass size={14} color="#F4D685" weight="duotone" />
+              <Compass size={14} color="#FFFCF7" weight="duotone" />
               <Text style={styles.reportTypeEyebrowText}>YOUR TYPE</Text>
             </View>
             <Text style={styles.reportTypeTitle}>Steady builder</Text>
@@ -461,10 +461,10 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D4AF37',
+    borderColor: '#DDD6C7',
   },
   freeBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 0.8,
     color: '#0A1931',
@@ -525,7 +525,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   eyebrowText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1.3,
     color: '#5F6B80',
@@ -567,16 +567,11 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     width: '100%',
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: Radii.pill,
     paddingVertical: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#0A1931',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
   },
   primaryButtonText: {
     fontFamily: 'GeneralSans-Semibold',
@@ -603,11 +598,11 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: 999,
   },
   progressCounterText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 12,
     color: '#3A4761',
   },
@@ -621,12 +616,12 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D4AF37',
+    borderColor: '#DDD6C7',
     marginTop: 8,
     marginBottom: 14,
   },
   categoryBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 0.8,
     color: '#0A1931',
@@ -654,8 +649,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   optionCardSelected: {
-    backgroundColor: '#0A1931',
-    borderColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
+    borderColor: '#5F4DB2',
   },
   radioCircle: {
     width: 20,
@@ -678,7 +673,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
     borderRadius: 16,
     padding: 16,
     marginTop: 8,
@@ -694,10 +689,10 @@ const styles = StyleSheet.create({
   // ─── REPORT SPECIFIC STYLES ────────────────────────────────────────────────
   reportRoot: {
     flex: 1,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
   },
   reportHero: {
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     paddingBottom: 26,
   },
   reportHeroSafe: {
@@ -728,7 +723,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   reportDateText: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 11,
     letterSpacing: 0.8,
     color: '#9DA9BE',
@@ -742,7 +737,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   reportTypeEyebrowText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1.4,
     color: '#9DA9BE',
@@ -773,7 +768,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   reportSectionLabel: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1.2,
     color: '#5F6B80',
@@ -800,22 +795,22 @@ const styles = StyleSheet.create({
     color: '#0A1931',
   },
   scoreValueHigh: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1,
     color: '#5E4DB2',
   },
   scoreValueMedium: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1,
     color: '#5F6B80',
   },
   scoreValueLow: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1,
-    color: '#7E6FBF',
+    color: '#5F6B80',
   },
   scoreMeterTrack: {
     height: 5,
@@ -880,7 +875,7 @@ const styles = StyleSheet.create({
   },
   reportTryMockButton: {
     flex: 1.4,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: Radii.pill,
     paddingVertical: 16,
     alignItems: 'center',

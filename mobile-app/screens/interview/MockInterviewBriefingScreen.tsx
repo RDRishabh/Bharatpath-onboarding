@@ -87,7 +87,7 @@ export function MockInterviewBriefingScreen({
             {/* Card 1: 30s to think */}
             <View style={styles.ruleCard}>
               <View style={styles.iconBox}>
-                <Timer size={16} color="#D4AF37" weight="bold" />
+                <Timer size={16} color="#FFFCF7" weight="bold" />
               </View>
               <View style={styles.ruleTextContainer}>
                 <Text style={styles.ruleTitle}>30 seconds to think</Text>
@@ -100,7 +100,7 @@ export function MockInterviewBriefingScreen({
             {/* Card 2: One retake */}
             <View style={styles.ruleCard}>
               <View style={styles.iconBox}>
-                <ArrowCounterClockwise size={16} color="#D4AF37" weight="bold" />
+                <ArrowCounterClockwise size={16} color="#FFFCF7" weight="bold" />
               </View>
               <View style={styles.ruleTextContainer}>
                 <Text style={styles.ruleTitle}>One retake per question</Text>
@@ -113,7 +113,7 @@ export function MockInterviewBriefingScreen({
             {/* Card 3: Auto-save */}
             <View style={styles.ruleCard}>
               <View style={styles.iconBox}>
-                <CloudArrowUp size={16} color="#D4AF37" weight="bold" />
+                <CloudArrowUp size={16} color="#FFFCF7" weight="bold" />
               </View>
               <View style={styles.ruleTextContainer}>
                 <Text style={styles.ruleTitle}>Each answer saves as you finish it</Text>
@@ -126,7 +126,7 @@ export function MockInterviewBriefingScreen({
             {/* Card 4: Privacy */}
             <View style={styles.ruleCard}>
               <View style={styles.iconBox}>
-                <EyeSlash size={16} color="#D4AF37" weight="bold" />
+                <EyeSlash size={16} color="#FFFCF7" weight="bold" />
               </View>
               <View style={styles.ruleTextContainer}>
                 <Text style={styles.ruleTitle}>Nobody else watches this</Text>
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -273,16 +273,11 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     width: '100%',
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: Radii.pill,
     paddingVertical: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#0A1931',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
   },
   primaryButtonText: {
     fontFamily: 'GeneralSans-Semibold',

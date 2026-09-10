@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: '#F7F4EC',
+    backgroundColor: '#F7EFD6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 13,
     lineHeight: 16,
-    color: '#5F6B80',
+    color: '#0A1931',
   },
   toggleTextActive: {
     color: '#4A3E8F',
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
     height: 4,
     width: '100%',
     borderRadius: 999,
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
   },
   sliderFill: {
     position: 'absolute',
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 999,
-    backgroundColor: '#F7F4EC',
+    backgroundColor: '#F7EFD6',
   },
   kmPillActive: {
     backgroundColor: '#F1EAF7',
@@ -443,7 +443,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 999,
-    backgroundColor: '#F7F4EC',
+    backgroundColor: '#F7EFD6',
   },
   salaryPillText: {
     fontFamily: Platform.select({ ios: 'SpaceMono-Regular', android: 'SpaceMono-Regular', default: 'monospace' }),
@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 999,
-    backgroundColor: '#F7F4EC',
+    backgroundColor: '#F7EFD6',
   },
   workTypePillText: {
     fontFamily: 'GeneralSans-Semibold',
@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
   },
   applyButton: {
     width: '100%',
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     borderRadius: 999,
     paddingVertical: 18,
     alignItems: 'center',

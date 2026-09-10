@@ -85,7 +85,7 @@ export function UpiPaymentSheet({
                   onPress={() => setSelectedMethod('id')}
                 >
                   <View style={styles.iconBox}>
-                    <At size={18} color="#D4AF37" weight="bold" />
+                    <At size={18} color="#FFFCF7" weight="bold" />
                   </View>
                   <View style={styles.methodInfo}>
                     <Text style={styles.methodTitle}>Your UPI ID</Text>
@@ -108,7 +108,7 @@ export function UpiPaymentSheet({
                   onPress={() => setSelectedMethod('qr')}
                 >
                   <View style={styles.iconBox}>
-                    <QrCode size={18} color="#D4AF37" weight="bold" />
+                    <QrCode size={18} color="#FFFCF7" weight="bold" />
                   </View>
                   <View style={styles.methodInfo}>
                     <Text style={styles.methodTitle}>Scan a QR code</Text>
@@ -126,7 +126,7 @@ export function UpiPaymentSheet({
                   onPress={() => setSelectedMethod('app')}
                 >
                   <View style={styles.iconBox}>
-                    <ArrowSquareOut size={18} color="#D4AF37" weight="bold" />
+                    <ArrowSquareOut size={18} color="#FFFCF7" weight="bold" />
                   </View>
                   <View style={styles.methodInfo}>
                     <Text style={styles.methodTitle}>Open a UPI app</Text>
@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
     marginVertical: 2,
   },
   eyebrowRow: {
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   eyebrowText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1.2,
     color: '#5F6B80',
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
     color: '#0A1931',
   },
   methodMeta: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
     color: '#5F6B80',
   },
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
     borderRadius: 16,
     padding: 15,
   },
@@ -308,17 +308,12 @@ const styles = StyleSheet.create({
   },
   payButton: {
     width: '100%',
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: Radii.pill,
     paddingVertical: 17,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
-    shadowColor: '#0A1931',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 3,
   },
   buttonPressed: {
     opacity: 0.9,

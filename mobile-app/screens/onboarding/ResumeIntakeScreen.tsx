@@ -76,10 +76,12 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
                 pressed && styles.cardPressed,
               ]}
               onPress={handleUploadPress}
+              accessibilityRole="button"
+              accessibilityLabel="Upload a file"
             >
               <View style={styles.uploadCardTopRow}>
                 <View style={styles.uploadIconCircle}>
-                  <UploadSimple size={21} color="#D4AF37" weight="bold" />
+                  <UploadSimple size={21} color="#FFFCF7" weight="bold" />
                 </View>
                 <View style={styles.fastestBadge}>
                   <Text style={styles.fastestBadgeText}>FASTEST</Text>
@@ -95,7 +97,7 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
 
               <View style={styles.uploadCardFooter}>
                 <Text style={styles.uploadCardMeta}>PDF · DOCX · UP TO 5 MB</Text>
-                <ArrowRight size={18} color="#D4AF37" weight="bold" />
+                <ArrowRight size={16} color="#FFFCF7" weight="bold" />
               </View>
             </Pressable>
 
@@ -108,9 +110,11 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
                   pressed && styles.cardPressed,
                 ]}
                 onPress={() => onSelectOption && onSelectOption('paste')}
+                accessibilityRole="button"
+                accessibilityLabel="Paste text"
               >
                 <View style={styles.secondaryIconSquare}>
-                  <ClipboardText size={18} color="#D4AF37" weight="bold" />
+                  <ClipboardText size={18} color="#FFFCF7" weight="bold" />
                 </View>
                 <View style={styles.secondaryCardContent}>
                   <Text style={styles.secondaryCardTitle}>Paste text</Text>
@@ -125,9 +129,11 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
                   pressed && styles.cardPressed,
                 ]}
                 onPress={() => onSelectOption && onSelectOption('form')}
+                accessibilityRole="button"
+                accessibilityLabel="Fill a form"
               >
                 <View style={styles.secondaryIconSquare}>
-                  <NotePencil size={18} color="#D4AF37" weight="bold" />
+                  <NotePencil size={18} color="#FFFCF7" weight="bold" />
                 </View>
                 <View style={styles.secondaryCardContent}>
                   <Text style={styles.secondaryCardTitle}>Fill a form</Text>
@@ -146,12 +152,14 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
               pressed && styles.buttonPressed,
             ]}
             onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
           >
             <Text style={styles.backButtonText}>Back</Text>
           </Pressable>
 
           <View style={styles.privacyNoteRow}>
-            <LockSimple size={13} color="#5F6B80" weight="bold" />
+            <LockSimple size={13} color="#5F6B80" weight="regular" />
             <Text style={styles.privacyNoteText}>Only used to build your profile</Text>
           </View>
         </View>
@@ -160,34 +168,38 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
   );
 }
 
+const ACCENT_PURPLE = '#5F4DB2';
+const HERO_PURPLE = '#5E4DB2';
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.offWhite, // #FFFCF7
+    backgroundColor: '#FFFCF7',
   },
   container: {
     flex: 1,
-    paddingHorizontal: Spacing.lg, // 20px
+    backgroundColor: '#FFFCF7',
+    paddingHorizontal: 20,
     justifyContent: 'space-between',
   },
   scrollContent: {
-    paddingTop: Spacing.xl, // 24px
-    paddingBottom: Spacing.xl, // 24px
-    gap: Spacing.xl, // 24px
+    paddingTop: 24,
+    paddingBottom: 20,
+    gap: 20,
   },
   headerProgressSection: {
-    gap: Spacing.sm, // 8px
+    gap: 8,
   },
   stepEyebrow: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 12,
-    letterSpacing: 1.3,
+    letterSpacing: 1.32, // 0.12em tracking
     color: '#5F6B80',
   },
   progressSegmentsRow: {
     flexDirection: 'row',
-    gap: Spacing.opt6, // 6px
+    gap: 6,
   },
   progressSegment: {
     flex: 1,
@@ -195,40 +207,44 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill, // 999
   },
   segmentActive: {
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: ACCENT_PURPLE, // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
   },
   titleSection: {
-    gap: 4,
+    gap: 0,
+    marginTop: 8,
   },
   title: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 30,
     lineHeight: 34,
-    letterSpacing: -0.75,
-    color: Colors.navy, // #0A1931
+    letterSpacing: -0.75, // -0.025em tracking
+    color: '#0A1931',
+    margin: 0,
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.text.primary, // #3A4761
+    color: '#3A4761',
+    marginTop: 4,
   },
   optionsSection: {
-    gap: Spacing.md, // 12px
+    gap: 16,
   },
   primaryUploadCard: {
-    backgroundColor: Colors.indigo, // #5E4DB2
-    borderRadius: Radii.cardLg, // 20px
-    padding: Spacing.lg, // 20px
-    gap: Spacing.base, // 16px
+    backgroundColor: HERO_PURPLE, // #5E4DB2
+    borderRadius: 20,
+    padding: 20,
+    gap: 16,
+    borderWidth: 0,
   },
   cardPressed: {
-    opacity: 0.92,
+    opacity: 0.95,
     transform: [{ scale: 0.99 }],
   },
   uploadCardTopRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     width: '100%',
   },
@@ -236,24 +252,24 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: ACCENT_PURPLE, // #5F4DB2
     alignItems: 'center',
     justifyContent: 'center',
   },
   fastestBadge: {
-    paddingHorizontal: Spacing.md, // 12px
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: Radii.pill, // 999
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D4AF37',
+    borderColor: '#DDD6C7',
   },
   fastestBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 12,
-    letterSpacing: 0.9,
-    color: Colors.navy, // #0A1931
+    letterSpacing: 0.88, // 0.08em tracking
+    color: '#0A1931',
   },
   uploadCardContent: {
     gap: 4,
@@ -262,7 +278,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 22,
     lineHeight: 26,
-    letterSpacing: -0.4,
+    letterSpacing: -0.44, // -0.02em tracking
     color: '#FFFFFF',
   },
   uploadCardSubtitle: {
@@ -276,35 +292,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(212, 175, 55, 0.4)',
+    borderTopColor: 'rgba(255, 252, 247, 0.28)',
     paddingTop: 14,
-    marginTop: 4,
   },
   uploadCardMeta: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 14,
-    letterSpacing: 1.1,
+    letterSpacing: 1.1, // 0.1em tracking
     color: '#E0DBF4',
   },
   secondaryRow: {
     flexDirection: 'row',
-    gap: Spacing.md, // 12px
+    gap: 16,
+    marginTop: -4,
   },
   secondaryCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E7E0D4',
-    borderRadius: Radii.cardLg, // 20px
-    padding: Spacing.base, // 16px
-    gap: Spacing.base, // 16px
+    borderRadius: 20,
+    padding: 16,
+    gap: 16,
   },
   secondaryIconSquare: {
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: ACCENT_PURPLE, // #5F4DB2
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -315,7 +331,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 16,
     lineHeight: 20,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   secondaryCardSubtitle: {
     fontFamily: 'GeneralSans-Regular',
@@ -324,9 +340,10 @@ const styles = StyleSheet.create({
     color: '#5F6B80',
   },
   bottomSection: {
-    gap: Spacing.md, // 12px
-    paddingBottom: Spacing.base, // 16px
-    paddingTop: Spacing.sm, // 8px
+    gap: 12,
+    paddingBottom: 20,
+    paddingTop: 8,
+    backgroundColor: '#FFFCF7',
   },
   backButton: {
     width: '100%',
@@ -345,7 +362,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 16,
     lineHeight: 20,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   privacyNoteRow: {
     flexDirection: 'row',

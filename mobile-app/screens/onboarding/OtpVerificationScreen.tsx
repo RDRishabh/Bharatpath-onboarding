@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E7E0D4',
+    borderColor: '#DDD6C7',
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
-    borderColor: '#E7E0D4',
+    borderColor: '#DDD6C7',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
   },
   verifyButton: {
     width: '100%',
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2',
     paddingVertical: 18,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',

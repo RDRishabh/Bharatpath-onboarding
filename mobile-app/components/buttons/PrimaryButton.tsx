@@ -13,6 +13,7 @@ interface PrimaryButtonProps {
   loading?: boolean;
   leftIcon?: ReactNode;
   rightIcon?: ReactNode;
+  variant?: 'accent' | 'navy';
   style?: ViewStyle;
   accessibilityLabel?: string;
 }
@@ -24,9 +25,11 @@ export function PrimaryButton({
   loading = false,
   leftIcon,
   rightIcon,
+  variant = 'accent',
   style,
   accessibilityLabel,
 }: PrimaryButtonProps) {
+  const isNavy = variant === 'navy';
   return (
     <Pressable
       onPress={onPress}
@@ -36,17 +39,18 @@ export function PrimaryButton({
       accessibilityState={{ disabled: disabled || loading }}
       style={({ pressed }) => [
         styles.button,
+        isNavy && styles.buttonNavy,
         disabled && styles.disabled,
         pressed && !disabled && !loading && styles.pressed,
         style,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={Colors.button.primaryText} size="small" />
+        <ActivityIndicator color={isNavy ? Colors.button.primaryNavyText : Colors.button.primaryText} size="small" />
       ) : (
         <>
           {leftIcon}
-          <Text style={styles.label}>{label}</Text>
+          <Text style={[styles.label, isNavy && styles.labelNavy]}>{label}</Text>
           {rightIcon}
         </>
       )}
@@ -60,15 +64,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
-    backgroundColor: Colors.button.primaryBg,
-    paddingVertical: Spacing.opt14,
+    backgroundColor: Colors.button.primaryBg, // #5F4DB2
+    paddingVertical: 18,
     paddingHorizontal: Spacing.xl,
     borderRadius: Radii.pill,
     minHeight: Layout.minTouchTarget,
   },
+  buttonNavy: {
+    backgroundColor: Colors.button.primaryNavyBg, // #0A1931
+  },
   label: {
-    ...Typography.button,
-    color: Colors.button.primaryText,
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 16,
+    lineHeight: 20,
+    color: Colors.button.primaryText, // #FFFFFF
+  },
+  labelNavy: {
+    color: Colors.button.primaryNavyText, // #FFFCF7
   },
   disabled: {
     opacity: 0.4,

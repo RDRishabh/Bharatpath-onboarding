@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm, // 8px
   },
   eyebrowText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 12,
     letterSpacing: 1.1,
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   chipsWrapRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.sm, // 8px
+    gap: 8,
   },
   suggestionChip: {
     flexDirection: 'row',
@@ -261,12 +261,12 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill, // 999
   },
   chipNormal: {
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
   },
   chipSelected: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D4AF37',
+    borderColor: '#DDD6C7',
   },
   chipPressed: {
     opacity: 0.8,
@@ -277,15 +277,15 @@ const styles = StyleSheet.create({
   },
   chipTextNormal: {
     fontFamily: 'GeneralSans-Medium',
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   chipTextSelected: {
     fontFamily: 'GeneralSans-Semibold',
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: Spacing.md, // 12px
+    gap: 12,
     paddingTop: 4,
   },
   removeButton: {
@@ -305,11 +305,11 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 15,
     lineHeight: 20,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   saveButton: {
     flex: 1,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
     paddingVertical: 16,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 15,
     lineHeight: 20,
-    color: Colors.offWhite,
+    color: '#FFFFFF',
   },
 });
 

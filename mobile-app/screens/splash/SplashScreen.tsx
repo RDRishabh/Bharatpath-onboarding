@@ -9,13 +9,12 @@ interface SplashScreenProps {
 }
 
 export function SplashScreen({ onFinish, autoPlay = true }: SplashScreenProps) {
-  // Animated values
+  // Animated values matching BharatPath R_26Aug2026.dc.html phase sequence
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(0.82)).current;
 
   const wordmarkOpacity = useRef(new Animated.Value(0)).current;
-  const wordmarkWidth = useRef(new Animated.Value(0)).current;
-  const wordmarkMargin = useRef(new Animated.Value(0)).current;
+  const wordmarkTranslateY = useRef(new Animated.Value(10)).current;
 
   const ruleOpacity = useRef(new Animated.Value(0)).current;
   const ruleWidth = useRef(new Animated.Value(0)).current;
@@ -37,61 +36,56 @@ export function SplashScreen({ onFinish, autoPlay = true }: SplashScreenProps) {
   useEffect(() => {
     const easeOutCubic = Easing.bezier(0.16, 0.6, 0.15, 1);
 
-    // Multi-phase sequence matching HTML handoff timings:
-    // Phase 1 (80ms): Logo mark scale & fade in
-    // Phase 2 (800ms): Wordmark expands out next to logo
-    // Phase 3 (2000ms): Gold line expands
-    // Phase 4 (2480ms): Tagline slides up & fades in
+    // Exact timing sequence from BharatPath R_26Aug2026.dc.html:
+    // Phase 1 (t = 80ms): Logo fades in and scales from 0.82 to 1
+    // Phase 2 (t = 800ms): Wordmark slides up and fades in
+    // Phase 3 (t = 2000ms): Gold rule expands to 44px
+    // Phase 4 (t = 2480ms): Tagline slides up and fades in
+    // Phase 5 (t = 3900ms): Transition to Intro screen
 
     const animSequence = Animated.sequence([
-      // Delay initial 80ms
+      // Delay to Phase 1 (80ms)
       Animated.delay(80),
 
-      // Phase 1: Logo
+      // Phase 1: Logo fade + scale
       Animated.parallel([
         Animated.timing(logoOpacity, {
           toValue: 1,
           duration: 720,
           easing: Easing.ease,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
         Animated.timing(logoScale, {
           toValue: 1,
           duration: 720,
           easing: easeOutCubic,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
       ]),
 
-      // Delay to 800ms mark
+      // Delay to Phase 2 (800ms mark)
       Animated.delay(100),
 
-      // Phase 2: Wordmark
+      // Phase 2: Wordmark fade + slide up
       Animated.parallel([
         Animated.timing(wordmarkOpacity, {
           toValue: 1,
           duration: 1000,
           easing: Easing.ease,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
-        Animated.timing(wordmarkWidth, {
-          toValue: 160,
+        Animated.timing(wordmarkTranslateY, {
+          toValue: 0,
           duration: 1100,
           easing: easeOutCubic,
-          useNativeDriver: false,
-        }),
-        Animated.timing(wordmarkMargin, {
-          toValue: 12,
-          duration: 1100,
-          easing: easeOutCubic,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
       ]),
 
-      // Delay to 2000ms mark
+      // Delay to Phase 3 (2000ms mark)
       Animated.delay(200),
 
-      // Phase 3: Gold Rule
+      // Phase 3: Gold Rule expansion
       Animated.parallel([
         Animated.timing(ruleOpacity, {
           toValue: 1,
@@ -101,33 +95,33 @@ export function SplashScreen({ onFinish, autoPlay = true }: SplashScreenProps) {
         }),
         Animated.timing(ruleWidth, {
           toValue: 44,
-          duration: 500,
+          duration: 550,
           easing: easeOutCubic,
           useNativeDriver: false,
         }),
       ]),
 
-      // Delay to 2480ms mark
+      // Delay to Phase 4 (2480ms mark)
       Animated.delay(130),
 
-      // Phase 4: Tagline
+      // Phase 4: Tagline fade + slide up
       Animated.parallel([
         Animated.timing(taglineOpacity, {
           toValue: 1,
           duration: 900,
           easing: Easing.ease,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
         Animated.timing(taglineTranslateY, {
           toValue: 0,
           duration: 900,
           easing: Easing.ease,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
       ]),
 
-      // Hold after tagline before triggering finish
-      Animated.delay(900),
+      // Hold until t = 3900ms
+      Animated.delay(520),
     ]);
 
     animSequence.start(({ finished }) => {
@@ -147,10 +141,11 @@ export function SplashScreen({ onFinish, autoPlay = true }: SplashScreenProps) {
 
   return (
     <Pressable style={styles.container} onPress={handleSkip}>
-      <StatusBar style="light" animated />
+      <StatusBar style="dark" animated />
       <View style={styles.centerContent}>
-        {/* Brand Row: Logo Mark + Wordmark */}
-        <View style={styles.brandRow}>
+        {/* Brand Group: Logo Mark + Wordmark in Vertical Stack */}
+        <View style={styles.brandStack}>
+          {/* Logo Mark */}
           <Animated.View
             style={[
               styles.logoContainer,
@@ -167,23 +162,24 @@ export function SplashScreen({ onFinish, autoPlay = true }: SplashScreenProps) {
             />
           </Animated.View>
 
+          {/* Two-tone Wordmark: Bharat (#05255C) + Path (#B9891A) */}
           <Animated.View
             style={[
-              styles.wordmarkContainer,
+              styles.wordmarkWrapper,
               {
                 opacity: wordmarkOpacity,
-                maxWidth: wordmarkWidth,
-                marginLeft: wordmarkMargin,
+                transform: [{ translateY: wordmarkTranslateY }],
               },
             ]}
           >
             <Text style={styles.wordmarkText} numberOfLines={1}>
-              BharatPath
+              <Text style={styles.wordmarkBharat}>Bharat</Text>
+              <Text style={styles.wordmarkPath}>Path</Text>
             </Text>
           </Animated.View>
         </View>
 
-        {/* Horizontal Gold Rule */}
+        {/* Horizontal Gold Rule (#B9891A) */}
         <Animated.View
           style={[
             styles.goldRule,
@@ -194,7 +190,7 @@ export function SplashScreen({ onFinish, autoPlay = true }: SplashScreenProps) {
           ]}
         />
 
-        {/* Tagline */}
+        {/* Tagline (#3A4761) */}
         <Animated.View
           style={{
             opacity: taglineOpacity,
@@ -211,7 +207,7 @@ export function SplashScreen({ onFinish, autoPlay = true }: SplashScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: Colors.offWhite, // #FFFCF7 (Warm cream background matching R_26Aug2026 design)
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -219,43 +215,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  brandRow: {
-    flexDirection: 'row',
+  brandStack: {
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
   },
   logoContainer: {
-    width: 44,
-    height: 38,
+    width: 84,
+    height: 73,
     justifyContent: 'center',
     alignItems: 'center',
   },
   logoImage: {
-    width: 44,
-    height: 38,
+    width: 84,
+    height: 73,
   },
-  wordmarkContainer: {
+  wordmarkWrapper: {
     overflow: 'hidden',
+    marginTop: 16,
   },
   wordmarkText: {
     fontFamily: 'GeneralSans-Bold',
-    fontSize: 26,
-    lineHeight: 28,
-    letterSpacing: -0.5,
-    color: '#FFFFFF',
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -0.6, // -0.02em tracking
+    textAlign: 'center',
+  },
+  wordmarkBharat: {
+    color: '#05255C', // Deep Navy Blue
+  },
+  wordmarkPath: {
+    color: '#B9891A', // Warm Gold
   },
   goldRule: {
     height: 2,
     borderRadius: 2,
-    backgroundColor: '#D4AF37', // Gold accent
-    marginTop: 20,
+    backgroundColor: '#B9891A', // Warm Gold Rule
+    marginTop: 22,
   },
   taglineText: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 16,
     lineHeight: 22,
-    letterSpacing: 0.64,
-    color: '#D4AF37',
+    letterSpacing: 0.64, // 0.04em tracking
+    color: '#3A4761', // Charcoal Slate
     marginTop: 14,
     textAlign: 'center',
   },

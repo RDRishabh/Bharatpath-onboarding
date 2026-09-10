@@ -116,7 +116,7 @@ export function JobDetailShortScreen({
                 <Text style={styles.roleTitleText}>QC Assistant</Text>
                 <View style={styles.companySubRow}>
                   <Text style={styles.companyNameText}>Nivara Foods</Text>
-                  <SealCheck size={14} color="#F4D685" weight="fill" />
+                  <SealCheck size={14} color="#FFFCF7" weight="fill" />
                   <Text style={styles.verifiedLabelText}>Verified</Text>
                 </View>
               </View>
@@ -125,7 +125,7 @@ export function JobDetailShortScreen({
             {/* Score Gap Card */}
             <View style={styles.scoreGapCard}>
               <View style={styles.gapHeaderRow}>
-                <Target size={18} color="#F4D685" weight="fill" />
+                <Target size={18} color="#FFFCF7" weight="fill" />
                 <Text style={styles.gapTitleText}>You are 14 points short</Text>
                 <View style={styles.gapDeltaPill}>
                   <Text style={styles.gapDeltaText}>−14</Text>
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   navyHero: {
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     paddingBottom: 28,
   },
   heroSafeArea: {
@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 17,
     lineHeight: 20,
-    color: '#F4D685',
+    color: '#FFFCF7',
   },
   roleInfo: {
     flex: 1,
@@ -344,14 +344,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: 'rgba(244, 214, 133, 0.18)',
+    backgroundColor: '#F4D685',
   },
   gapDeltaText: {
     fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
     fontSize: 10,
     lineHeight: 12,
     letterSpacing: 0.8,
-    color: '#F4D685',
+    color: '#0A1931',
     fontWeight: '700',
   },
   benchmarkSliderBox: {
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: '53%',
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 252, 247, 0.5)',
+    backgroundColor: 'rgba(255, 252, 247, 0.62)',
   },
   barMarker: {
     position: 'absolute',
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     bottom: -4,
     width: 2,
     borderRadius: 2,
-    backgroundColor: '#F4D685',
+    backgroundColor: '#FFFCF7',
   },
   sliderLabelsRow: {
     flexDirection: 'row',
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 12,
     letterSpacing: 0.6,
-    color: '#F4D685',
+    color: '#FFFCF7',
   },
   detailsBody: {
     flex: 1,
@@ -536,7 +536,7 @@ const styles = StyleSheet.create({
   },
   notifyBtn: {
     width: '100%',
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     borderRadius: 999,
     paddingVertical: 18,
     flexDirection: 'row',

@@ -227,11 +227,11 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: 999,
   },
   counterText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 12,
     color: '#3A4761',
     minWidth: 38,
@@ -256,11 +256,11 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D4AF37',
+    borderColor: '#DDD6C7',
     marginBottom: 16,
   },
   categoryBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 0.8,
     color: '#0A1931',
@@ -288,8 +288,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   optionCardSelected: {
-    backgroundColor: '#0A1931',
-    borderColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
+    borderColor: '#5F4DB2',
   },
   radioOutline: {
     width: 20,
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
     borderRadius: 18,
     padding: 16,
   },

@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 15,
-    backgroundColor: Colors.navy,
+    backgroundColor: '#F1EAF7',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 15,
     lineHeight: 20,
-    color: '#D4AF37', // Brand gold
+    color: '#4A3E8F',
   },
   companyInfo: {
     flex: 1,
@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D4AF37', // Brand gold
+    borderColor: '#DDD6C7',
   },
   interviewBadgeText: {
     fontFamily: 'GeneralSans-Bold',
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
   },
   joinButton: {
     flex: 1,
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     borderRadius: 999,
     paddingVertical: 12,
     alignItems: 'center',

@@ -45,8 +45,8 @@ export function ScoreRevealScreen({
   }, [targetScore, initialScore]);
 
   return (
-    <View style={styles.root}>
-      <StatusBar style="light" animated />
+    <View style={[styles.root, isRecalculated && styles.rootRecalculated]}>
+      <StatusBar style={isRecalculated ? 'dark' : 'light'} animated />
       <SafeAreaView style={styles.safeArea}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -57,10 +57,10 @@ export function ScoreRevealScreen({
             {/* Header Row */}
             <View style={styles.headerRow}>
               <View style={styles.headerTitleCol}>
-                <Text style={styles.title}>
+                <Text style={[styles.title, isRecalculated && styles.titleRecalculated]}>
                   {isRecalculated ? 'Your score went up' : 'Your resume score'}
                 </Text>
-                <Text style={styles.subtitle}>
+                <Text style={[styles.subtitle, isRecalculated && styles.subtitleRecalculated]}>
                   {isRecalculated
                     ? '3 skills added. Recalculated instantly.'
                     : 'Every fix moves you up.'}
@@ -69,10 +69,11 @@ export function ScoreRevealScreen({
               <Pressable
                 style={({ pressed }) => [
                   styles.shareButton,
+                  isRecalculated && styles.shareButtonRecalc,
                   pressed && styles.buttonPressed,
                 ]}
               >
-                <ShareNetwork size={16} color="#FFFFFF" weight="bold" />
+                <ShareNetwork size={16} color={isRecalculated ? '#0A1931' : '#FFFFFF'} weight="bold" />
               </Pressable>
             </View>
 
@@ -333,10 +334,15 @@ export function ScoreRevealScreen({
   );
 }
 
+const ACCENT_PURPLE = '#5F4DB2';
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
+  },
+  rootRecalculated: {
+    backgroundColor: '#FFFCF7',
   },
   safeArea: {
     flex: 1,
@@ -345,18 +351,18 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   topSection: {
-    paddingHorizontal: Spacing.lg, // 20px
-    paddingTop: Spacing.xl, // 24px
-    paddingBottom: Spacing.xl, // 24px
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 24,
     alignItems: 'center',
-    gap: Spacing.lg, // 20px
+    gap: 20,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     width: '100%',
-    gap: Spacing.md,
+    gap: 12,
   },
   headerTitleCol: {
     flex: 1,
@@ -369,11 +375,17 @@ const styles = StyleSheet.create({
     letterSpacing: -0.8,
     color: '#FFFFFF',
   },
+  titleRecalculated: {
+    color: '#0A1931',
+  },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 14,
     lineHeight: 20,
-    color: Colors.text.mutedOnNavy, // #9DA9BE
+    color: '#DCD6F4',
+  },
+  subtitleRecalculated: {
+    color: '#5F6B80',
   },
   shareButton: {
     width: 40,
@@ -385,13 +397,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  shareButtonRecalc: {
+    borderColor: '#DDD6C7',
+    backgroundColor: '#FFFFFF',
+  },
   gaugeContainer: {
     width: 190,
     height: 190,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-    marginVertical: Spacing.xs,
+    marginVertical: 4,
   },
   radialGlow: {
     position: 'absolute',
@@ -410,18 +426,21 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   scoreNumberText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 56,
     lineHeight: 56,
     letterSpacing: -2,
     color: '#FFFFFF',
   },
+  scoreNumberTextRecalc: {
+    color: '#0A1931',
+  },
   outOfText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 10,
     lineHeight: 12,
     letterSpacing: 1.6,
-    color: Colors.text.mutedOnNavy, // #9DA9BE
+    color: '#DCD6F4',
   },
   bandStatusSection: {
     width: '100%',
@@ -447,7 +466,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(244, 214, 133, 0.16)',
   },
   bandBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 10,
     lineHeight: 12,
     letterSpacing: 1.0,
@@ -479,23 +498,23 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.text.mutedOnNavy, // #9DA9BE
+    color: '#DCD6F4',
   },
   bandMetaRight: {
     fontFamily: 'GeneralSans-Medium',
     fontSize: 12,
     lineHeight: 16,
-    color: '#F4D685',
+    color: '#FFFCF7',
   },
   whiteSheet: {
     flex: 1,
-    backgroundColor: Colors.offWhite, // #FFFCF7
+    backgroundColor: '#FFFCF7',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    paddingHorizontal: Spacing.lg, // 20px
-    paddingTop: Spacing.lg, // 20px
-    paddingBottom: Spacing.xxl, // 40px
-    gap: Spacing.md, // 12px
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+    gap: 12,
   },
   sheetHeaderRow: {
     flexDirection: 'row',
@@ -503,14 +522,14 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   sheetEyebrow: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 14,
-    letterSpacing: 1.3,
+    letterSpacing: 1.32,
     color: '#5F6B80',
   },
   sheetCountText: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 11,
     lineHeight: 14,
     color: '#5F6B80',
@@ -519,8 +538,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E7E0D4',
-    borderRadius: Radii.cardLg, // 20px
-    paddingHorizontal: Spacing.base, // 16px
+    borderRadius: 20,
+    paddingHorizontal: 16,
   },
   breakdownItem: {
     paddingVertical: 12,
@@ -538,13 +557,13 @@ const styles = StyleSheet.create({
   itemLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm, // 8px
+    gap: 8,
   },
   itemCategoryTitle: {
     fontFamily: 'GeneralSans-Medium',
     fontSize: 14,
     lineHeight: 18,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -570,7 +589,7 @@ const styles = StyleSheet.create({
     color: '#993A22',
   },
   statusBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 9,
     lineHeight: 11,
     letterSpacing: 1.0,
@@ -579,10 +598,10 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 14,
     lineHeight: 18,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   itemScoreMax: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 13,
     lineHeight: 18,
     color: '#5F6B80',
@@ -618,12 +637,12 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 14,
     lineHeight: 18,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: Spacing.sm, // 8px
-    paddingTop: 12,
+    gap: 8,
+    paddingTop: 20,
   },
   saveButton: {
     flex: 1,
@@ -642,11 +661,11 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 16,
     lineHeight: 20,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   raiseScoreButton: {
     flex: 1.5,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: ACCENT_PURPLE, // #5F4DB2
     paddingVertical: 18,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
@@ -660,7 +679,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 16,
     lineHeight: 20,
-    color: Colors.offWhite,
+    color: '#FFFFFF',
   },
   pointsBadge: {
     flexDirection: 'row',
@@ -668,27 +687,27 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   pointsBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 12,
     letterSpacing: 0.8,
-    color: '#F4D685',
+    color: '#0A1931',
   },
   recalculatedCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E7E0D4',
-    borderRadius: Radii.cardLg, // 20px
+    borderRadius: 20,
     overflow: 'hidden',
   },
   recalcTopSection: {
-    padding: Spacing.base,
+    padding: 16,
     gap: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F0EBDF',
   },
   recalcMiddleSection: {
-    padding: Spacing.base,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -697,10 +716,10 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Medium',
     fontSize: 14,
     lineHeight: 18,
-    color: Colors.navy,
+    color: '#0A1931',
   },
   recalcMiddleSubText: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 13,
     lineHeight: 18,
     color: '#5F6B80',
@@ -709,7 +728,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: Spacing.base,
+    padding: 16,
     paddingTop: 12,
     paddingBottom: 12,
     borderTopWidth: 1,
@@ -719,6 +738,6 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 14,
     lineHeight: 18,
-    color: Colors.navy,
+    color: '#0A1931',
   },
 });

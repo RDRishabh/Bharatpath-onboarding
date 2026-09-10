@@ -117,7 +117,7 @@ export function ShareResultScreen({
             <Switch
               value={showExact}
               onValueChange={setShowExact}
-              trackColor={{ false: '#E2DDEB', true: Colors.navy }}
+              trackColor={{ false: '#E2DDEB', true: '#5F4DB2' }}
               thumbColor="#FFFFFF"
               ios_backgroundColor="#E2DDEB"
             />
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E7E0D4',
+    borderColor: '#DDD6C7',
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -198,16 +198,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   shareCard: {
-    backgroundColor: '#2A1E70', // Deep rich purple/indigo matching screenshot
+    backgroundColor: '#5F4DB2', // Updated to match HTML
     borderRadius: 26,
     padding: 24,
     aspectRatio: 4 / 5,
     minHeight: 380,
     justifyContent: 'space-between',
-    shadowColor: '#1A0E45',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.28,
-    shadowRadius: 30,
+    shadowColor: 'rgba(10, 25, 49, 0.4)',
+    shadowOffset: { width: 0, height: 26 },
+    shadowOpacity: 1,
+    shadowRadius: 54,
     elevation: 8,
     overflow: 'hidden',
   },
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E7E0D4',
+    borderColor: '#DDD6C7',
     borderRadius: 16,
     padding: 16,
     gap: 16,
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2',
     paddingVertical: 18,
     borderRadius: Radii.pill, // 999
   },

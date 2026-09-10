@@ -117,50 +117,55 @@ export function ParsingScreen({ fileMeta, onReviewFound }: ParsingScreenProps) {
   );
 }
 
+const ACCENT_PURPLE = '#5F4DB2';
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.offWhite, // #FFFCF7
+    backgroundColor: '#FFFCF7',
   },
   container: {
     flex: 1,
-    paddingHorizontal: Spacing.lg, // 20px
+    backgroundColor: '#FFFCF7',
+    paddingHorizontal: 20,
     justifyContent: 'space-between',
   },
   scrollContent: {
-    paddingTop: Spacing.xl, // 24px
-    paddingBottom: Spacing.xl, // 24px
-    gap: Spacing.xl, // 24px
+    paddingTop: 24,
+    paddingBottom: 20,
+    gap: 20,
   },
   titleSection: {
-    gap: 4,
+    gap: 2,
   },
   title: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 28,
     lineHeight: 32,
     letterSpacing: -0.7,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
+    margin: 0,
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.text.primary, // #3A4761
+    color: '#3A4761',
+    margin: 0,
   },
   parsingCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E7E0D4',
-    borderRadius: Radii.cardLg, // 20px
+    borderRadius: 20,
     overflow: 'hidden',
   },
   fileHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: Spacing.base, // 16px
-    gap: Spacing.md, // 12px
+    paddingHorizontal: 16,
+    gap: 12,
   },
   pdfIconContainer: {
     width: 36,
@@ -173,12 +178,13 @@ const styles = StyleSheet.create({
   fileMetaColumn: {
     flex: 1,
     gap: 2,
+    minWidth: 0,
   },
   fileNameText: {
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 14,
     lineHeight: 20,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   fileSizeText: {
     fontFamily: 'GeneralSans-Regular',
@@ -187,10 +193,10 @@ const styles = StyleSheet.create({
     color: '#5F6B80',
   },
   stepCounterText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   progressTrack: {
     height: 3,
@@ -199,7 +205,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: ACCENT_PURPLE, // #5F4DB2
   },
   itemsList: {
     flexDirection: 'column',
@@ -208,17 +214,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: Spacing.base, // 16px
-    gap: Spacing.md, // 12px
+    paddingHorizontal: 16,
+    gap: 12,
   },
   itemBorderTop: {
     borderTopWidth: 1,
-    borderTopColor: '#F4EFE4',
+    borderTopColor: '#F7EFD6',
   },
   itemActiveReading: {
     borderTopWidth: 1,
     borderTopColor: '#E7E0D4',
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
   },
   itemDimmed: {
     opacity: 0.55,
@@ -238,16 +244,16 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Medium',
     fontSize: 15,
     lineHeight: 20,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   itemMeta: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
     lineHeight: 16,
     color: '#5F6B80',
   },
   itemMetaReading: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
     lineHeight: 16,
     color: '#5F6B80',
@@ -255,20 +261,20 @@ const styles = StyleSheet.create({
   illustrationWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.sm,
+    paddingVertical: 8,
   },
   illustrationImage: {
     width: 280,
     height: 186,
   },
   bottomSection: {
-    paddingBottom: Spacing.xl, // 24px
-    paddingTop: Spacing.sm, // 8px
-    backgroundColor: Colors.offWhite,
+    paddingBottom: 20,
+    paddingTop: 12,
+    backgroundColor: '#FFFCF7',
   },
   reviewButton: {
     width: '100%',
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: ACCENT_PURPLE, // #5F4DB2
     paddingVertical: 18,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
@@ -282,6 +288,6 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 16,
     lineHeight: 20,
-    color: Colors.offWhite,
+    color: '#FFFFFF',
   },
 });

@@ -274,10 +274,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scoreCard: {
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
     borderRadius: 20,
-    paddingVertical: 18,
-    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
@@ -290,16 +290,16 @@ const styles = StyleSheet.create({
   scoreText: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 34,
-    lineHeight: 34,
+    lineHeight: 32,
     letterSpacing: -1.2,
     color: '#FFFFFF',
   },
   outOfText: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Semibold',
     fontSize: 9,
     lineHeight: 11,
     letterSpacing: 1.4,
-    color: Colors.text.mutedOnNavy, // #9DA9BE
+    color: '#F1EAF7',
   },
   scoreDivider: {
     width: 1,
@@ -314,49 +314,52 @@ const styles = StyleSheet.create({
   bandBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     flexWrap: 'wrap',
   },
   bandTitle: {
     fontFamily: 'GeneralSans-Bold',
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 16,
     color: '#FFFFFF',
   },
   bandBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: Radii.pill,
-    backgroundColor: 'rgba(244, 214, 133, 0.16)',
+    backgroundColor: '#F4D685',
   },
   bandBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 9,
     lineHeight: 11,
-    letterSpacing: 1.0,
-    color: '#F4D685',
+    letterSpacing: 0.8,
+    color: '#0A1931',
   },
   bandSubtitle: {
-    fontFamily: 'GeneralSans-Regular',
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.text.mutedOnNavy, // #9DA9BE
+    fontFamily: 'GeneralSans-Medium',
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#F1EAF7',
   },
   headingSection: {
-    gap: 4,
+    gap: 0,
+    marginTop: 4,
   },
   title: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 28,
     lineHeight: 32,
     letterSpacing: -0.7,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
+    margin: 0,
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.text.primary, // #3A4761
+    color: '#3A4761',
+    margin: 0,
   },
   inputCard: {
     flexDirection: 'row',
@@ -371,18 +374,13 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
   inputCardFocused: {
-    borderColor: Colors.navy,
-    shadowColor: Colors.navy,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
+    borderColor: '#5F4DB2',
   },
   countryCode: {
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 17,
     lineHeight: 24,
-    color: Colors.text.primary, // #3A4761
+    color: '#3A4761',
   },
   inputSeparator: {
     width: 1,
@@ -394,20 +392,20 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 17,
     lineHeight: 24,
-    color: Colors.navy,
+    color: '#0A1931',
     letterSpacing: 0.4,
     paddingVertical: 4,
     minHeight: 40,
   },
   counterText: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
     lineHeight: 16,
     color: '#5F6B80',
   },
   sendCodeButton: {
     width: '100%',
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
     paddingVertical: 18,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',

@@ -81,7 +81,7 @@ export function InterviewReportScreen({
 
           <View style={styles.scoreSummary}>
             <View style={styles.eyebrowRow}>
-              <MicrophoneStage size={14} color="#F4D685" weight="duotone" />
+              <MicrophoneStage size={14} color="#FFFCF7" weight="bold" />
               <Text style={styles.eyebrowText}>OVERALL, OUT OF 10</Text>
             </View>
 
@@ -137,7 +137,7 @@ export function InterviewReportScreen({
               <View style={styles.meterTrack}>
                 <View
                   style={[
-                    styles.meterFill,
+                    styles.meterFillMedium,
                     { width: `${data.dimensions.structure.percentage}%` as any },
                   ]}
                 />
@@ -157,7 +157,7 @@ export function InterviewReportScreen({
               <View style={styles.meterTrack}>
                 <View
                   style={[
-                    styles.meterFill,
+                    styles.meterFillMedium,
                     { width: `${data.dimensions.roleKnowledge.percentage}%` as any },
                   ]}
                 />
@@ -188,7 +188,7 @@ export function InterviewReportScreen({
           {/* One thing to change Card */}
           <View style={styles.adviceCard}>
             <View style={styles.adviceHeader}>
-              <Target size={15} color="#D4AF37" weight="fill" />
+              <Target size={15} color="#5F4DB2" weight="fill" />
               <Text style={styles.adviceEyebrow}>ONE THING TO CHANGE</Text>
             </View>
             <Text style={styles.adviceText}>{data.oneThingToChange}</Text>
@@ -245,10 +245,10 @@ export function InterviewReportScreen({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
   },
   heroSection: {
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     paddingBottom: 24,
   },
   heroSafe: {
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 14,
     lineHeight: 20,
-    color: '#F4D685',
+    color: '#FFFCF7',
     marginBottom: 6,
   },
   scoreDesc: {
@@ -393,6 +393,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#5E4DB2',
     borderRadius: 999,
   },
+  meterFillMedium: {
+    height: '100%',
+    backgroundColor: '#7E6FBF',
+    borderRadius: 999,
+  },
   adviceCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -463,7 +468,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#DDD6C7',
     borderRadius: Radii.pill,
-    paddingVertical: 16,
+    paddingVertical: 18,
   },
   pdfButtonText: {
     fontFamily: 'GeneralSans-Semibold',
@@ -472,9 +477,9 @@ const styles = StyleSheet.create({
   },
   findJobsButton: {
     flex: 1.5,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: Radii.pill,
-    paddingVertical: 16,
+    paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },

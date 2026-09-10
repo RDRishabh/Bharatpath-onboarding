@@ -212,34 +212,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFCF7',
   },
   categoryCountText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 12,
     lineHeight: 16,
-    letterSpacing: 0.7,
+    letterSpacing: 0.72,
     color: '#DED9F3',
   },
   categoriesCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E7E0D4',
-    borderRadius: Radii.cardLg, // 20px
+    borderRadius: 20,
     overflow: 'hidden',
   },
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: Spacing.base, // 16px
-    gap: Spacing.md, // 12px
+    paddingHorizontal: 16,
+    gap: 12,
   },
   rowBorderTop: {
     borderTopWidth: 1,
-    borderTopColor: '#F4EFE4',
+    borderTopColor: '#F7EFD6',
   },
   activeRow: {
     borderTopWidth: 1,
     borderTopColor: '#E7E0D4',
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
   },
   dimmedRow: {
     opacity: 0.55,
@@ -259,23 +259,23 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Medium',
     fontSize: 15,
     lineHeight: 20,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   categoryMeta: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
     lineHeight: 16,
     color: '#5F6B80',
   },
   bottomSection: {
-    gap: Spacing.md, // 12px
-    paddingBottom: Spacing.xl, // 24px
-    paddingTop: Spacing.sm, // 8px
-    backgroundColor: Colors.offWhite,
+    gap: 12,
+    paddingBottom: 20,
+    paddingTop: 8,
+    backgroundColor: '#FFFCF7',
   },
   showScoreButton: {
     width: '100%',
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
     paddingVertical: 18,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 16,
     lineHeight: 20,
-    color: Colors.offWhite,
+    color: '#FFFFFF',
   },
   privacyNoteRow: {
     flexDirection: 'row',

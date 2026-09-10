@@ -157,25 +157,19 @@ export function HomeScreen({
           >
             {/* Score Top Row */}
             <View style={styles.scoreTopRow}>
-              <View style={styles.scoreCol}>
-                <Text style={styles.scoreEyebrow}>YOUR SCORE</Text>
-                <View style={styles.scoreNumberRow}>
-                  <Text style={styles.bigScoreText}>{score}</Text>
-                  <Text style={styles.maxScoreText}>/ {maxScore}</Text>
-                  <View style={styles.trendBadge}>
-                    <TrendUp size={12} color="#F4D685" weight="bold" />
-                    <Text style={styles.trendText}>+{scoreGain}</Text>
-                  </View>
-                </View>
+              <Text style={styles.scoreEyebrow}>RESUME SCORE</Text>
+              <View style={styles.bandBadge}>
+                <Text style={styles.bandBadgeText}>{bandName}</Text>
               </View>
+            </View>
 
-              <View style={styles.bandStatusCol}>
-                <Text style={styles.bandTitle}>{bandName}</Text>
-                <View style={styles.bandBadge}>
-                  <Text style={styles.bandBadgeText}>
-                    BAND {bandNumber} OF {bandTotal}
-                  </Text>
-                </View>
+            {/* Score Number Row */}
+            <View style={styles.scoreNumberRow}>
+              <Text style={styles.bigScoreText}>{score}</Text>
+              <Text style={styles.maxScoreText}>/ {maxScore}</Text>
+              <View style={styles.trendBadge}>
+                <TrendUp size={11} color="#FFFFFF" weight="bold" />
+                <Text style={styles.trendText}>+{scoreGain}</Text>
               </View>
             </View>
 
@@ -189,15 +183,10 @@ export function HomeScreen({
 
             {/* Score Footer Meta Row */}
             <View style={styles.scoreFooterRow}>
-              <Text style={styles.fixesLeftText}>
-                {fixesLeft} fixes left · worth about +{fixesWorth}
+              <Text style={styles.nextBandText}>
+                {pointsToNextBand} more to next band!
               </Text>
-              <View style={styles.nextBandRow}>
-                <Text style={styles.nextBandText}>
-                  {pointsToNextBand} to {nextBandName}
-                </Text>
-                <ArrowRight size={14} color="#FFFFFF" weight="bold" />
-              </View>
+              <ArrowRight size={15} color="#FFFFFF" weight="bold" />
             </View>
           </Pressable>
 
@@ -403,7 +392,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -411,7 +400,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 14,
     lineHeight: 16,
-    color: '#D4AF37', // Gold monogram
+    color: '#FFFCF7',
   },
   buttonPressed: {
     opacity: 0.85,
@@ -455,7 +444,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: Radii.pill, // 999
@@ -477,26 +466,23 @@ const styles = StyleSheet.create({
     height: 164,
   },
   scoreCard: {
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2',
     borderRadius: 24,
-    padding: 20,
-    gap: 14,
+    padding: 18,
+    gap: 12,
   },
   scoreTopRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
   },
-  scoreCol: {
-    gap: 6,
-  },
   scoreEyebrow: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
-    lineHeight: 12,
-    letterSpacing: 1.4,
-    color: Colors.text.mutedOnNavy, // #9DA9BE
+    lineHeight: 13,
+    letterSpacing: 1.5,
+    color: '#F1EAF7',
   },
   scoreNumberRow: {
     flexDirection: 'row',
@@ -506,51 +492,42 @@ const styles = StyleSheet.create({
   bigScoreText: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 44,
-    lineHeight: 42,
+    lineHeight: 40,
     letterSpacing: -1.8,
     color: '#FFFFFF',
   },
   maxScoreText: {
-    fontFamily: 'SpaceMono-Regular',
-    fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 0.8,
-    color: Colors.text.mutedOnNavy, // #9DA9BE
+    fontFamily: 'GeneralSans-Medium',
+    fontSize: 13,
+    lineHeight: 16,
+    color: '#F1EAF7',
   },
   trendBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radii.pill,
+    backgroundColor: 'rgba(255, 252, 247, 0.16)',
   },
   trendText: {
-    fontFamily: 'SpaceMono-Bold',
-    fontSize: 12,
-    lineHeight: 14,
-    color: '#F4D685',
-  },
-  bandStatusCol: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  bandTitle: {
     fontFamily: 'GeneralSans-Bold',
-    fontSize: 17,
-    lineHeight: 20,
-    letterSpacing: -0.4,
+    fontSize: 11,
+    lineHeight: 14,
     color: '#FFFFFF',
   },
   bandBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: Radii.pill,
-    backgroundColor: 'rgba(244, 214, 133, 0.16)',
+    backgroundColor: '#F4D685',
   },
   bandBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
-    fontSize: 9,
-    lineHeight: 11,
-    letterSpacing: 1.0,
-    color: '#F4D685',
+    fontFamily: 'GeneralSans-Bold',
+    fontSize: 12,
+    lineHeight: 15,
+    color: '#0A1931',
   },
   segmentsRow: {
     flexDirection: 'row',
@@ -566,7 +543,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F4D685',
   },
   segmentInactive: {
-    backgroundColor: 'rgba(255, 252, 247, 0.16)',
+    backgroundColor: 'rgba(255, 252, 247, 0.18)',
   },
   scoreFooterRow: {
     flexDirection: 'row',
@@ -574,22 +551,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
   },
-  fixesLeftText: {
-    fontFamily: 'GeneralSans-Regular',
-    fontSize: 12,
-    lineHeight: 16,
-    color: Colors.text.mutedOnNavy, // #9DA9BE
-  },
-  nextBandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
   nextBandText: {
-    fontFamily: 'GeneralSans-Medium',
-    fontSize: 12,
-    lineHeight: 16,
-    color: '#F4D685',
+    flex: 1,
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 13,
+    lineHeight: 17,
+    color: '#FFFFFF',
   },
   sectionContainer: {
     gap: 12,
@@ -600,10 +567,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   sectionEyebrowText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 1.4,
+    lineHeight: 12,
+    letterSpacing: 1.5,
     color: '#5F6B80',
   },
   featureGrid: {
@@ -645,10 +612,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: Radii.pill,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2',
   },
   freeBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 10,
     lineHeight: 12,
     letterSpacing: 0.6,
@@ -661,10 +628,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: Radii.pill,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2',
   },
   priceBadgeText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 10,
     lineHeight: 12,
     letterSpacing: 0.6,
@@ -718,7 +685,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#F1EAF7',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -726,7 +693,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 14,
     lineHeight: 16,
-    color: '#D4AF37', // Gold
+    color: '#4A3E8F',
   },
   jobInfoCol: {
     flex: 1,

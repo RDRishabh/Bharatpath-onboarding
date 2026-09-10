@@ -52,7 +52,7 @@ export function HeroScreen({ heroContent, children, style, scrollable = true }: 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.navy,
+    backgroundColor: Colors.purple,
   },
   scroll: {
     flex: 1,

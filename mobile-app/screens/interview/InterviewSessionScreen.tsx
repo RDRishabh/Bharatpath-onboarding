@@ -166,9 +166,9 @@ export function InterviewSessionScreen({
   // ─── PROCESSING PHASE (Matches Screen 30 in HTML) ──────────────────────────
   if (phase === 'processing') {
     return (
-      <SafeAreaView style={styles.processingSafe} edges={['top', 'left', 'right', 'bottom']}>
+      <SafeAreaView style={styles.lightSafe} edges={['top', 'left', 'right', 'bottom']}>
         <StatusBar style="dark" />
-        <View style={styles.processingContainer}>
+        <View style={styles.lightContainer}>
           <View style={styles.processingHeader}>
             <Text style={styles.processingStep}>STEP 3 OF 4 · MARKING</Text>
             <Text style={styles.processingTitle}>Marking your answers</Text>
@@ -217,7 +217,7 @@ export function InterviewSessionScreen({
 
           <Pressable
             style={({ pressed }) => [
-              styles.primaryButtonNavy,
+              styles.primaryButtonPurple,
               pressed && styles.buttonPressed,
             ]}
             onPress={() => {
@@ -226,24 +226,24 @@ export function InterviewSessionScreen({
               }
             }}
           >
-            <Text style={styles.primaryButtonNavyText}>See my report</Text>
+            <Text style={styles.primaryButtonPurpleText}>See my report</Text>
           </Pressable>
         </View>
       </SafeAreaView>
     );
   }
 
-  // ─── QUEUE / OFFLINE RESILIENCE PHASE (Screenshot 5) ────────────────────────
+  // ─── QUEUE / OFFLINE RESILIENCE PHASE (HTML Screen 29) ──────────────────────
   if (phase === 'queue') {
     const nextQNum = currentQuestionIndex + 2;
 
     return (
-      <SafeAreaView style={styles.darkSafe} edges={['top', 'left', 'right', 'bottom']}>
-        <StatusBar style="light" />
-        <View style={styles.darkContainer}>
+      <SafeAreaView style={styles.lightSafe} edges={['top', 'left', 'right', 'bottom']}>
+        <StatusBar style="dark" />
+        <View style={styles.lightContainer}>
           {/* Top Amber Warning Banner */}
           <View style={styles.connectionBanner}>
-            <WifiSlash size={18} color="#D4AF37" weight="bold" />
+            <WifiSlash size={18} color="#0A1931" weight="bold" />
             <Text style={styles.connectionBannerText}>
               Connection dropped. Nothing is lost.
             </Text>
@@ -251,8 +251,8 @@ export function InterviewSessionScreen({
 
           {/* Titles */}
           <View style={styles.queueTitleSection}>
-            <Text style={styles.darkMainTitle}>Sending your answers</Text>
-            <Text style={styles.darkSubtitle}>
+            <Text style={styles.screenTitle}>Sending your answers</Text>
+            <Text style={styles.screenSubtitle}>
               Answer {currentQuestionIndex + 1} is queued and will finish on its own. You can carry on with question {nextQNum}.
             </Text>
           </View>
@@ -261,7 +261,7 @@ export function InterviewSessionScreen({
           <View style={styles.queueCardList}>
             {/* Answer 1: Sent */}
             <View style={styles.queueRow}>
-              <CheckCircle size={20} color="#E7E3F6" weight="fill" />
+              <CheckCircle size={20} color="#0A1931" weight="fill" />
               <Text style={styles.queueRowTitle}>Answer 1</Text>
               <Text style={styles.queueRowStatus}>1.2 MB sent</Text>
             </View>
@@ -269,7 +269,7 @@ export function InterviewSessionScreen({
             {/* Answer 2: Retrying */}
             <View style={styles.queueRetryCard}>
               <View style={styles.queueRetryHeader}>
-                <CircleNotch size={20} color="#D4AF37" weight="bold" />
+                <CircleNotch size={20} color="#0A1931" weight="bold" />
                 <Text style={styles.queueRowTitle}>Answer 2</Text>
                 <Text style={styles.queueRowStatus}>retry 3 of 5</Text>
               </View>
@@ -279,9 +279,9 @@ export function InterviewSessionScreen({
             </View>
 
             {/* Answers 3-6: Pending */}
-            <View style={[styles.queueRow, { opacity: 0.6 }]}>
-              <View style={styles.emptyCircleWhite} />
-              <Text style={styles.queueRowTitle}>Answers 3–6</Text>
+            <View style={[styles.queueRowPending]}>
+              <View style={styles.emptyCircle} />
+              <Text style={styles.queueRowTitlePending}>Answers 3–6</Text>
               <Text style={styles.queueRowStatus}>not recorded</Text>
             </View>
           </View>
@@ -292,17 +292,17 @@ export function InterviewSessionScreen({
           <View style={styles.bottomSection}>
             <Pressable
               style={({ pressed }) => [
-                styles.primaryButtonWhite,
+                styles.primaryButtonPurple,
                 pressed && styles.buttonPressed,
               ]}
               onPress={handleQueueContinue}
             >
-              <Text style={styles.primaryButtonWhiteText}>
+              <Text style={styles.primaryButtonPurpleText}>
                 Continue to question {nextQNum}
               </Text>
             </Pressable>
 
-            <Text style={styles.darkDisclaimerText}>
+            <Text style={styles.disclaimerText}>
               You can close the app — the session waits for you
             </Text>
           </View>
@@ -311,22 +311,22 @@ export function InterviewSessionScreen({
     );
   }
 
-  // ─── REVIEW / KEEP OR RETAKE PHASE (Screenshot 4) ──────────────────────────
+  // ─── REVIEW / KEEP OR RETAKE PHASE (HTML Screen 28) ─────────────────────────
   if (phase === 'review') {
     const qNumber = currentQuestionIndex + 1;
     const remainingRetakes = retakesLeft[currentQuestionIndex] ?? 1;
 
     return (
-      <SafeAreaView style={styles.darkSafe} edges={['top', 'left', 'right', 'bottom']}>
-        <StatusBar style="light" />
-        <View style={styles.darkContainer}>
+      <SafeAreaView style={styles.lightSafe} edges={['top', 'left', 'right', 'bottom']}>
+        <StatusBar style="dark" />
+        <View style={styles.lightContainer}>
           {/* Eyebrow */}
-          <Text style={styles.goldEyebrow}>ANSWER {qNumber} RECORDED</Text>
+          <Text style={styles.stepEyebrow}>ANSWER {qNumber} RECORDED</Text>
 
           {/* Title Section */}
-          <View style={styles.titleSectionDark}>
-            <Text style={styles.darkMainTitle}>Keep this answer?</Text>
-            <Text style={styles.darkSubtitle}>
+          <View style={styles.titleSection}>
+            <Text style={styles.screenTitle}>Keep this answer?</Text>
+            <Text style={styles.screenSubtitle}>
               You have {remainingRetakes === 1 ? 'one retake' : `${remainingRetakes} retakes`} left for this question.
             </Text>
           </View>
@@ -339,9 +339,9 @@ export function InterviewSessionScreen({
                 onPress={() => setIsPlayingAudio(!isPlayingAudio)}
               >
                 {isPlayingAudio ? (
-                  <Pause size={18} color="#D4AF37" weight="fill" />
+                  <Pause size={18} color="#FFFCF7" weight="fill" />
                 ) : (
-                  <Play size={18} color="#D4AF37" weight="fill" />
+                  <Play size={18} color="#FFFCF7" weight="fill" />
                 )}
               </Pressable>
 
@@ -362,10 +362,10 @@ export function InterviewSessionScreen({
               </View>
             </View>
 
-            <View style={styles.darkDivider} />
+            <View style={styles.divider} />
 
             <View style={styles.playbackFooter}>
-              <Waveform size={18} color="#E7E3F6" weight="bold" />
+              <Waveform size={18} color="#0A1931" weight="bold" />
               <Text style={styles.playbackFooterText}>
                 Audio came through clearly
               </Text>
@@ -378,12 +378,12 @@ export function InterviewSessionScreen({
           <View style={styles.bottomSection}>
             <Pressable
               style={({ pressed }) => [
-                styles.primaryButtonWhite,
+                styles.primaryButtonPurple,
                 pressed && styles.buttonPressed,
               ]}
               onPress={handleKeepAnswer}
             >
-              <Text style={styles.primaryButtonWhiteText}>
+              <Text style={styles.primaryButtonPurpleText}>
                 Keep it — next question
               </Text>
             </Pressable>
@@ -391,13 +391,13 @@ export function InterviewSessionScreen({
             {remainingRetakes > 0 && (
               <Pressable
                 style={({ pressed }) => [
-                  styles.secondaryOutlineButton,
+                  styles.secondaryOutlineButtonLight,
                   pressed && styles.buttonPressed,
                 ]}
                 onPress={handleRetakeAnswer}
               >
-                <ArrowCounterClockwise size={16} color="#FFFFFF" weight="bold" />
-                <Text style={styles.secondaryOutlineButtonText}>
+                <ArrowCounterClockwise size={16} color="#0A1931" weight="bold" />
+                <Text style={styles.secondaryOutlineButtonLightText}>
                   Record again ({remainingRetakes} left)
                 </Text>
               </Pressable>
@@ -408,7 +408,7 @@ export function InterviewSessionScreen({
     );
   }
 
-  // ─── LIVE RECORDING PHASE (Screenshot 3) ───────────────────────────────────
+  // ─── LIVE RECORDING PHASE (HTML Screen 27) ──────────────────────────────────
   if (phase === 'recording') {
     const minutes = Math.floor(recordingElapsed / 60);
     const seconds = recordingElapsed % 60;
@@ -416,12 +416,12 @@ export function InterviewSessionScreen({
     const percentOfTarget = Math.min(100, Math.round((recordingElapsed / 90) * 100));
 
     return (
-      <SafeAreaView style={styles.darkSafe} edges={['top', 'left', 'right', 'bottom']}>
+      <SafeAreaView style={styles.recordingSafe} edges={['top', 'left', 'right', 'bottom']}>
         <StatusBar style="light" />
-        <View style={styles.darkContainer}>
+        <View style={styles.recordingContainer}>
           {/* Top Bar: Question Counter & Pulsing Red Recording Badge */}
-          <View style={styles.darkHeaderBar}>
-            <Text style={styles.goldEyebrow}>
+          <View style={styles.recordingHeaderBar}>
+            <Text style={styles.recordingEyebrow}>
               QUESTION {currentQuestionIndex + 1} OF {totalQuestions}
             </Text>
 
@@ -461,7 +461,7 @@ export function InterviewSessionScreen({
 
           {/* Save Status Strip */}
           <View style={styles.saveStatusStrip}>
-            <CheckCircle size={18} color="#E7E3F6" weight="fill" />
+            <CheckCircle size={18} color="#FFFCF7" weight="fill" />
             <Text style={styles.saveStatusText}>
               {currentQuestionIndex === 0
                 ? 'Each answer uploads as you finish it.'
@@ -485,21 +485,21 @@ export function InterviewSessionScreen({
     );
   }
 
-  // ─── PREP COUNTDOWN PHASE (Screenshot 2) ───────────────────────────────────
+  // ─── PREP COUNTDOWN PHASE (HTML Screen 26) ──────────────────────────────────
   const secondsFormatted = `0:${prepCountdown < 10 ? '0' : ''}${prepCountdown}`;
 
   return (
-    <SafeAreaView style={styles.darkSafe} edges={['top', 'left', 'right', 'bottom']}>
-      <StatusBar style="light" />
-      <View style={styles.darkContainer}>
+    <SafeAreaView style={styles.lightSafe} edges={['top', 'left', 'right', 'bottom']}>
+      <StatusBar style="dark" />
+      <View style={styles.lightContainer}>
         {/* Header Bar */}
-        <View style={styles.darkHeaderBar}>
-          <Text style={styles.goldEyebrow}>
+        <View style={styles.headerBar}>
+          <Text style={styles.stepEyebrow}>
             QUESTION {currentQuestionIndex + 1} OF {totalQuestions}
           </Text>
 
           <View style={styles.prepTimerBadge}>
-            <Timer size={14} color="#FFFFFF" weight="bold" />
+            <Timer size={14} color="#0A1931" weight="bold" />
             <Text style={styles.prepTimerText}>{secondsFormatted}</Text>
           </View>
         </View>
@@ -533,7 +533,7 @@ export function InterviewSessionScreen({
           {/* HOW TO ANSWER Guidance Card */}
           <View style={styles.guidanceCard}>
             <View style={styles.guidanceHeader}>
-              <Lightbulb size={16} color="#E7E3F6" weight="bold" />
+              <Lightbulb size={16} color="#0A1931" weight="bold" />
               <Text style={styles.guidanceHeaderText}>HOW TO ANSWER</Text>
             </View>
 
@@ -548,7 +548,7 @@ export function InterviewSessionScreen({
 
           {/* Aim Duration Tip Card */}
           <View style={styles.durationCard}>
-            <Microphone size={18} color="#E7E3F6" weight="bold" />
+            <Microphone size={18} color="#0A1931" weight="bold" />
             <Text style={styles.durationCardText}>
               Aim for 60–90 seconds. Recording starts when you tap.
             </Text>
@@ -559,13 +559,13 @@ export function InterviewSessionScreen({
         <View style={styles.bottomSection}>
           <Pressable
             style={({ pressed }) => [
-              styles.primaryButtonWhite,
+              styles.primaryButtonPurple,
               pressed && styles.buttonPressed,
             ]}
             onPress={handleStartRecording}
           >
-            <Record size={18} color="#B23A1E" weight="fill" />
-            <Text style={styles.primaryButtonWhiteText}>Start recording</Text>
+            <Record size={18} color="#FFFFFF" weight="fill" />
+            <Text style={styles.primaryButtonPurpleText}>Start recording</Text>
           </Pressable>
         </View>
       </View>
@@ -574,30 +574,30 @@ export function InterviewSessionScreen({
 }
 
 const styles = StyleSheet.create({
-  // ─── DARK COMMON LAYOUT (Navy #0A1931) ─────────────────────────────────────
-  darkSafe: {
+  // ─── LIGHT COMMON LAYOUT (#FFFCF7) ──────────────────────────────────────────
+  lightSafe: {
     flex: 1,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#FFFCF7',
   },
-  darkContainer: {
+  lightContainer: {
     flex: 1,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#FFFCF7',
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 24,
     justifyContent: 'space-between',
   },
-  darkHeaderBar: {
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-  goldEyebrow: {
-    fontFamily: 'SpaceMono-Bold',
+  stepEyebrow: {
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1.2,
-    color: '#D4AF37',
+    color: '#0A1931',
   },
   prepTimerBadge: {
     flexDirection: 'row',
@@ -606,12 +606,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: Radii.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: '#F0EBDF',
   },
   prepTimerText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 12,
-    color: '#FFFFFF',
+    color: '#0A1931',
   },
   segmentsRow: {
     flexDirection: 'row',
@@ -624,10 +624,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   segmentActive: {
-    backgroundColor: '#FFFCF7',
+    backgroundColor: '#5F4DB2',
   },
   segmentInactive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: '#EFE9DC',
   },
   prepScroll: {
     flex: 1,
@@ -641,10 +641,12 @@ const styles = StyleSheet.create({
     fontSize: 26,
     lineHeight: 34,
     letterSpacing: -0.3,
-    color: '#FFFFFF',
+    color: '#0A1931',
   },
   guidanceCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
     borderRadius: 20,
     padding: 16,
     gap: 12,
@@ -655,10 +657,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   guidanceHeaderText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1.2,
-    color: '#E7E3F6',
+    color: '#0A1931',
   },
   tipsList: {
     gap: 8,
@@ -667,13 +669,13 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Regular',
     fontSize: 14,
     lineHeight: 20,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: '#3A4761',
   },
   durationCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: 'rgba(214, 237, 220, 0.14)',
+    backgroundColor: '#F2EFFB',
     borderRadius: 16,
     padding: 16,
   },
@@ -682,10 +684,34 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Regular',
     fontSize: 13,
     lineHeight: 18,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: '#3A4761',
   },
 
-  // ─── RECORDING STATE STYLES ────────────────────────────────────────────────
+  // ─── RECORDING STATE STYLES (#5F4DB2) ──────────────────────────────────────
+  recordingSafe: {
+    flex: 1,
+    backgroundColor: '#5F4DB2',
+  },
+  recordingContainer: {
+    flex: 1,
+    backgroundColor: '#5F4DB2',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 24,
+    justifyContent: 'space-between',
+  },
+  recordingHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  recordingEyebrow: {
+    fontFamily: 'GeneralSans-Bold',
+    fontSize: 11,
+    letterSpacing: 1.2,
+    color: '#FFFCF7',
+  },
   recordingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -693,16 +719,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: Radii.pill,
-    backgroundColor: 'rgba(178, 58, 30, 0.25)',
+    backgroundColor: '#B23A1E',
   },
   recordingPulseDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#E2603F',
+    backgroundColor: '#FFFFFF',
   },
   recordingTimerText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 12,
     color: '#FFFFFF',
   },
@@ -737,10 +763,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   suggestedEyebrow: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1.2,
-    color: '#D4AF37',
+    color: '#FFFCF7',
   },
   suggestedTrack: {
     width: 180,
@@ -758,7 +784,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
     lineHeight: 16,
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: 'rgba(255, 255, 255, 0.82)',
   },
   saveStatusStrip: {
     flexDirection: 'row',
@@ -774,30 +800,32 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Medium',
     fontSize: 13,
     lineHeight: 18,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.92)',
   },
 
   // ─── REVIEW STATE STYLES ───────────────────────────────────────────────────
-  titleSectionDark: {
+  titleSection: {
     marginTop: 6,
     marginBottom: 20,
     gap: 6,
   },
-  darkMainTitle: {
+  screenTitle: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 28,
     lineHeight: 33,
     letterSpacing: -0.4,
-    color: '#FFFFFF',
+    color: '#0A1931',
   },
-  darkSubtitle: {
+  screenSubtitle: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 15,
     lineHeight: 22,
-    color: 'rgba(255, 255, 255, 0.68)',
+    color: '#3A4761',
   },
   playbackCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
     borderRadius: 20,
     padding: 16,
     gap: 16,
@@ -811,7 +839,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -827,17 +855,17 @@ const styles = StyleSheet.create({
   },
   staticWaveBar: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#C9C1F0',
     borderRadius: 2,
   },
   waveformMeta: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: '#5F6B80',
   },
-  darkDivider: {
+  divider: {
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: '#F0EBDF',
   },
   playbackFooter: {
     flexDirection: 'row',
@@ -847,25 +875,25 @@ const styles = StyleSheet.create({
   playbackFooterText: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: '#3A4761',
   },
-  secondaryOutlineButton: {
+  secondaryOutlineButtonLight: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.24)',
+    borderColor: '#DDD6C7',
     backgroundColor: 'transparent',
     borderRadius: Radii.pill,
     paddingVertical: 16,
   },
-  secondaryOutlineButtonText: {
+  secondaryOutlineButtonLightText: {
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 15,
     lineHeight: 20,
-    color: '#FFFFFF',
+    color: '#0A1931',
   },
 
   // ─── QUEUE STATE STYLES ────────────────────────────────────────────────────
@@ -875,7 +903,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: 'rgba(212, 175, 55, 0.16)',
+    backgroundColor: '#FCF3DE',
     borderRadius: 16,
     marginBottom: 8,
   },
@@ -884,7 +912,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Medium',
     fontSize: 13,
     lineHeight: 18,
-    color: '#E6C79A',
+    color: '#8A6A12',
   },
   queueTitleSection: {
     marginBottom: 20,
@@ -897,7 +925,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
     borderRadius: 16,
     padding: 16,
   },
@@ -905,15 +935,17 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 14,
-    color: '#FFFFFF',
+    color: '#0A1931',
   },
   queueRowStatus: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: '#5F6B80',
   },
   queueRetryCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
     borderRadius: 16,
     padding: 16,
     gap: 12,
@@ -926,26 +958,42 @@ const styles = StyleSheet.create({
   retryProgressTrack: {
     height: 4,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    backgroundColor: '#EFE9DC',
     overflow: 'hidden',
   },
   retryProgressFill: {
     height: '100%',
-    backgroundColor: '#D4AF37',
+    backgroundColor: '#5F4DB2',
     borderRadius: 999,
   },
-  emptyCircleWhite: {
+  queueRowPending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FBF7EF',
+    borderWidth: 1,
+    borderColor: '#F0EBDF',
+    borderRadius: 16,
+    padding: 16,
+  },
+  queueRowTitlePending: {
+    flex: 1,
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 14,
+    color: '#3A4761',
+  },
+  emptyCircle: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.6)',
+    borderColor: '#DDD6C7',
   },
-  darkDisclaimerText: {
+  disclaimerText: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
     lineHeight: 16,
-    color: 'rgba(255, 255, 255, 0.55)',
+    color: '#5F6B80',
     textAlign: 'center',
   },
 
@@ -953,6 +1001,22 @@ const styles = StyleSheet.create({
   bottomSection: {
     gap: 10,
     marginTop: 12,
+  },
+  primaryButtonPurple: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#5F4DB2',
+    borderRadius: Radii.pill,
+    paddingVertical: 18,
+  },
+  primaryButtonPurpleText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 16,
+    lineHeight: 20,
+    color: '#FFFFFF',
   },
   primaryButtonWhite: {
     width: '100%',
@@ -962,17 +1026,12 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: '#FFFFFF',
     borderRadius: Radii.pill,
-    paddingVertical: 17,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
+    paddingVertical: 18,
   },
   primaryButtonWhiteText: {
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 16,
-    lineHeight: 21,
+    lineHeight: 20,
     color: '#0A1931',
   },
   buttonPressed: {
@@ -985,23 +1044,12 @@ const styles = StyleSheet.create({
   },
 
   // ─── PROCESSING STYLES ─────────────────────────────────────────────────────
-  processingSafe: {
-    flex: 1,
-    backgroundColor: '#FFFCF7',
-  },
-  processingContainer: {
-    flex: 1,
-    backgroundColor: '#FFFCF7',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 28,
-  },
   processingHeader: {
     marginBottom: 24,
     gap: 6,
   },
   processingStep: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1.2,
     color: '#5F6B80',
@@ -1059,12 +1107,12 @@ const styles = StyleSheet.create({
     color: '#0A1931',
   },
   processingDoneBadge: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 11,
     color: '#5F6B80',
   },
   processingNowBadge: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     color: '#0A1931',
   },
@@ -1078,18 +1126,11 @@ const styles = StyleSheet.create({
   processingMeterFill: {
     height: '100%',
     width: '45%',
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: 999,
   },
-  emptyCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#DDD6C7',
-  },
   processingNotice: {
-    backgroundColor: '#F4EFE4',
+    backgroundColor: '#F7EFD6',
     borderRadius: 16,
     padding: 16,
   },
@@ -1098,24 +1139,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: '#3A4761',
-  },
-  primaryButtonNavy: {
-    width: '100%',
-    backgroundColor: '#0A1931',
-    borderRadius: Radii.pill,
-    paddingVertical: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0A1931',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  primaryButtonNavyText: {
-    fontFamily: 'GeneralSans-Semibold',
-    fontSize: 16,
-    lineHeight: 21,
-    color: '#FFFFFF',
   },
 });

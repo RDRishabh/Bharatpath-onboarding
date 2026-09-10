@@ -72,7 +72,7 @@ export function AttributeReportScreen({
 
           <View style={styles.typeSection}>
             <View style={styles.typeEyebrowRow}>
-              <Compass size={14} color="#F4D685" weight="duotone" />
+              <Compass size={14} color="#FFFCF7" weight="duotone" />
               <Text style={styles.typeEyebrowText}>YOUR TYPE</Text>
             </View>
             <Text style={styles.typeTitle}>{result.typeTitle}</Text>
@@ -253,10 +253,10 @@ export function AttributeReportScreen({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
   },
   heroSection: {
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     paddingBottom: 24,
   },
   heroSafe: {
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   dateText: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 11,
     letterSpacing: 0.8,
     color: '#9DA9BE',
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   typeEyebrowText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1.4,
     color: '#9DA9BE',
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   sectionLabel: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1.2,
     color: '#5F6B80',
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
     color: '#0A1931',
   },
   scoreLevel: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     letterSpacing: 1,
   },
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
     color: '#5F6B80',
   },
   levelLow: {
-    color: '#7E6FBF',
+    color: '#5F6B80',
   },
   meterTrack: {
     height: 5,
@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
   },
   retakeButton: {
     flex: 1.4,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: Radii.pill,
     paddingVertical: 16,
     alignItems: 'center',

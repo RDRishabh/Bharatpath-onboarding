@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   counterText: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 12,
     color: '#3A4761',
   },
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   checkStatusMono: {
-    fontFamily: 'SpaceMono-Regular',
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 13,
     color: '#5F6B80',
     marginRight: 6,
@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
   },
   waveBar: {
     width: 3,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: 2,
   },
 
@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: '#FFFCF7',
     borderWidth: 1,
-    borderColor: '#D4AF37',
+    borderColor: '#DDD6C7',
     borderRadius: 16,
     padding: 16,
   },
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: Radii.pill,
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     minWidth: 90,
     alignItems: 'center',
     justifyContent: 'center',
@@ -456,16 +456,11 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     width: '100%',
-    backgroundColor: '#0A1931',
+    backgroundColor: '#5F4DB2',
     borderRadius: Radii.pill,
     paddingVertical: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#0A1931',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
   },
   primaryButtonText: {
     fontFamily: 'GeneralSans-Semibold',

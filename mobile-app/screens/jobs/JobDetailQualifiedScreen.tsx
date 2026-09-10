@@ -117,7 +117,7 @@ export function JobDetailQualifiedScreen({
                 <Text style={styles.roleTitleText}>Lab Analyst Trainee</Text>
                 <View style={styles.companySubRow}>
                   <Text style={styles.companyNameText}>Sterling Diagnostics</Text>
-                  <SealCheck size={14} color="#F4D685" weight="fill" />
+                  <SealCheck size={14} color="#FFFCF7" weight="fill" />
                   <Text style={styles.verifiedLabelText}>Verified</Text>
                 </View>
               </View>
@@ -126,7 +126,9 @@ export function JobDetailQualifiedScreen({
             {/* Score Clearance Card */}
             <View style={styles.scoreClearanceCard}>
               <View style={styles.clearanceHeaderRow}>
-                <CheckCircle size={18} color="#F4D685" weight="fill" />
+                <View style={styles.clearanceCheckCircle}>
+                  <Check size={8} color="#5F4DB2" weight="bold" />
+                </View>
                 <Text style={styles.clearanceTitleText}>
                   You clear the bar for this job
                 </Text>
@@ -256,7 +258,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   navyHero: {
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     paddingBottom: 28,
   },
   heroSafeArea: {
@@ -303,7 +305,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 17,
     lineHeight: 20,
-    color: '#F4D685',
+    color: '#FFFCF7',
   },
   roleInfo: {
     flex: 1,
@@ -346,6 +348,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  clearanceCheckCircle: {
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: '#FFFCF7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   clearanceTitleText: {
     flex: 1,
     fontFamily: 'GeneralSans-Semibold',
@@ -357,14 +367,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: 'rgba(244, 214, 133, 0.18)',
+    backgroundColor: '#F4D685',
   },
   clearanceDeltaText: {
     fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
     fontSize: 10,
     lineHeight: 12,
     letterSpacing: 0.8,
-    color: '#F4D685',
+    color: '#0A1931',
     fontWeight: '700',
   },
   benchmarkSliderBox: {
@@ -379,7 +389,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#F4D685',
+    backgroundColor: '#FFFCF7',
   },
   userScorePillText: {
     fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
@@ -403,7 +413,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: '66%',
     borderRadius: 999,
-    backgroundColor: '#F4D685',
+    backgroundColor: '#FFFCF7',
   },
   barMarker: {
     position: 'absolute',
@@ -534,22 +544,19 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 999,
-    backgroundColor: '#F7F4EC',
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#DDD6C7',
+    backgroundColor: '#F7EFD6',
   },
   skillChipMissingText: {
-    fontFamily: 'GeneralSans-Semibold',
+    fontFamily: 'GeneralSans-Medium',
     fontSize: 13,
     lineHeight: 16,
-    color: '#5F6B80',
+    color: '#0A1931',
   },
   privacyNoticeBox: {
     flexDirection: 'row',
     gap: 10,
     alignItems: 'flex-start',
-    backgroundColor: '#F7F4EC',
+    backgroundColor: '#F7EFD6',
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -568,7 +575,7 @@ const styles = StyleSheet.create({
   },
   applyBtn: {
     width: '100%',
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     borderRadius: 999,
     paddingVertical: 18,
     alignItems: 'center',

@@ -52,11 +52,13 @@ export function HowItWorksScreen({ onGotIt, onBack }: HowItWorksScreenProps) {
                   A file, pasted text, or fill a short form if you don't have one yet.
                 </Text>
               </View>
-              <Image
-                source={require('../../assets/icons/how-1.png')}
-                style={styles.cardImage}
-                resizeMode="contain"
-              />
+              <View style={styles.imageContainer92}>
+                <Image
+                  source={require('../../assets/icons/how-1.png')}
+                  style={[styles.cardImage, { transform: [{ scale: 2.05 }] }]}
+                  resizeMode="contain"
+                />
+              </View>
             </View>
 
             {/* Card 2 */}
@@ -73,11 +75,13 @@ export function HowItWorksScreen({ onGotIt, onBack }: HowItWorksScreenProps) {
                   You correct anything wrong before it counts. Nothing is scored behind your back.
                 </Text>
               </View>
-              <Image
-                source={require('../../assets/icons/how-2.png')}
-                style={styles.cardImage}
-                resizeMode="contain"
-              />
+              <View style={styles.imageContainer92}>
+                <Image
+                  source={require('../../assets/icons/how-2.png')}
+                  style={[styles.cardImage, { transform: [{ scale: 1.78 }] }]}
+                  resizeMode="contain"
+                />
+              </View>
             </View>
 
             {/* Card 3 */}
@@ -94,11 +98,13 @@ export function HowItWorksScreen({ onGotIt, onBack }: HowItWorksScreenProps) {
                   Five categories, each explained, with the fixes worth the most points.
                 </Text>
               </View>
-              <Image
-                source={require('../../assets/icons/how-3.png')}
-                style={styles.cardImage}
-                resizeMode="contain"
-              />
+              <View style={styles.imageContainer84}>
+                <Image
+                  source={require('../../assets/icons/how-3.png')}
+                  style={[styles.cardImage, { transform: [{ scale: 1.34 }] }]}
+                  resizeMode="contain"
+                />
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -111,6 +117,8 @@ export function HowItWorksScreen({ onGotIt, onBack }: HowItWorksScreenProps) {
               pressed && styles.buttonPressed,
             ]}
             onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
           >
             <Text style={styles.backButtonText}>Back</Text>
           </Pressable>
@@ -121,6 +129,8 @@ export function HowItWorksScreen({ onGotIt, onBack }: HowItWorksScreenProps) {
               pressed && styles.gotItPressed,
             ]}
             onPress={onGotIt}
+            accessibilityRole="button"
+            accessibilityLabel="Got it"
           >
             <Text style={styles.gotItButtonText}>Got it</Text>
           </Pressable>
@@ -130,33 +140,36 @@ export function HowItWorksScreen({ onGotIt, onBack }: HowItWorksScreenProps) {
   );
 }
 
+const ACCENT_PURPLE = '#5F4DB2';
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.offWhite, // #FFFCF7
+    backgroundColor: '#FFFCF7',
   },
   container: {
     flex: 1,
-    paddingHorizontal: Spacing.lg, // 20px
+    backgroundColor: '#FFFCF7',
+    paddingHorizontal: 20,
   },
   scrollContent: {
-    paddingTop: Spacing.xl, // 24px
-    paddingBottom: Spacing.xl, // 24px
-    gap: Spacing.xl, // 24px
+    paddingTop: 24,
+    paddingBottom: 20,
+    gap: 24,
   },
   headerProgressSection: {
-    gap: Spacing.sm, // 8px
+    gap: 8,
   },
   stepEyebrow: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 12,
-    letterSpacing: 1.3,
+    letterSpacing: 1.32, // 0.12em tracking
     color: '#5F6B80',
   },
   progressSegmentsRow: {
     flexDirection: 'row',
-    gap: Spacing.opt6, // 6px
+    gap: 6,
   },
   progressSegment: {
     flex: 1,
@@ -164,29 +177,32 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill, // 999
   },
   segmentActive: {
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: ACCENT_PURPLE, // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
   },
   segmentInactive: {
     backgroundColor: '#E7E0D4',
   },
   titleSection: {
-    gap: 4,
+    gap: 0,
+    marginTop: 8,
   },
   title: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 30,
     lineHeight: 34,
-    letterSpacing: -0.75,
-    color: Colors.navy, // #0A1931
+    letterSpacing: -0.75, // -0.025em tracking
+    color: '#0A1931',
+    margin: 0,
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.text.primary, // #3A4761
+    color: '#3A4761',
+    marginTop: 4,
   },
   cardsList: {
-    gap: Spacing.md, // 12px
+    gap: 12,
   },
   stepCard: {
     flexDirection: 'row',
@@ -195,63 +211,84 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E7E0D4',
-    borderRadius: Radii.cardLg, // 20px
-    paddingVertical: 18,
-    paddingHorizontal: 20,
+    borderRadius: 20,
+    paddingTop: 18,
+    paddingBottom: 18,
+    paddingLeft: 20,
+    paddingRight: 18,
     gap: 14,
   },
   cardInfo: {
     flex: 1,
     gap: 6,
+    minWidth: 0,
   },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm, // 8px
+    gap: 8,
   },
   numberBadge: {
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: ACCENT_PURPLE, // #5F4DB2 circle badge matching R_26Aug2026 design
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
-    fontFamily: 'SpaceMono-Bold',
-    fontSize: 11,
-    lineHeight: 11,
-    color: Colors.gold, // #D4AF37 / #F4D685
-  },
-  stepTitleLabel: {
-    fontFamily: 'SpaceMono-Bold',
+    fontFamily: 'GeneralSans-Bold',
     fontSize: 11,
     lineHeight: 12,
-    letterSpacing: 1.3,
+    color: '#FFFCF7', // Cream white number inside badge
+    textAlign: 'center',
+  },
+  stepTitleLabel: {
+    fontFamily: 'GeneralSans-Bold',
+    fontSize: 11,
+    lineHeight: 12,
+    letterSpacing: 1.32, // 0.12em tracking
     color: '#566073',
   },
   cardTitle: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 18,
     lineHeight: 23,
-    letterSpacing: -0.4,
-    color: Colors.navy, // #0A1931
+    letterSpacing: -0.36, // -0.02em tracking
+    color: '#0A1931',
   },
   cardBody: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 13,
     lineHeight: 19,
-    color: Colors.text.primary, // #3A4761
+    color: '#3A4761',
+  },
+  imageContainer92: {
+    width: 92,
+    height: 92,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  imageContainer84: {
+    width: 84,
+    height: 84,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    flexShrink: 0,
   },
   cardImage: {
-    width: 76,
-    height: 76,
+    width: 84,
+    height: 84,
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: Spacing.sm, // 8px
-    paddingVertical: Spacing.base, // 16px
-    backgroundColor: Colors.offWhite,
+    gap: 8,
+    paddingTop: 12,
+    paddingBottom: 20,
+    backgroundColor: '#FFFCF7',
   },
   backButton: {
     flex: 1,
@@ -270,11 +307,11 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 16,
     lineHeight: 20,
-    color: Colors.navy, // #0A1931
+    color: '#0A1931',
   },
   gotItButton: {
     flex: 2,
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: ACCENT_PURPLE, // #5F4DB2 vibrant accent button matching R_26Aug2026 design
     paddingVertical: 18,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
@@ -288,6 +325,6 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 16,
     lineHeight: 20,
-    color: Colors.offWhite,
+    color: '#FFFFFF',
   },
 });

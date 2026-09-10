@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   },
   allowButton: {
     width: '100%',
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
     borderRadius: 999,
     paddingVertical: 18,
     flexDirection: 'row',
@@ -373,7 +373,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   toggleMiniActive: {
-    backgroundColor: Colors.navy,
+    backgroundColor: '#5F4DB2',
   },
   toggleThumb: {
     width: 20,

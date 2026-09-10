@@ -34,7 +34,7 @@ export function NotificationPermissionScreen({
           <View style={styles.cardsContainer}>
             {/* Card 1: Employer opened profile */}
             <View style={styles.card}>
-              <Eye size={20} color={Colors.indigo} weight="duotone" />
+              <Eye size={20} color="#5F4DB2" weight="duotone" />
               <Text style={styles.cardText}>
                 An employer opened your profile
               </Text>
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   },
   allowButton: {
     width: '100%',
-    backgroundColor: Colors.navy, // #0A1931
+    backgroundColor: '#5F4DB2',
     paddingVertical: 18,
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
