@@ -21,6 +21,13 @@ dependencies = [
     "celery[sqs]>=5.4",
     # aws
     "boto3>=1.35",
+    # resume text extraction -- local, not Textract (see CLAUDE.md).
+    # Both are pure Python with no native dependencies, so the Docker image
+    # needs no system packages. Licences matter here: pypdf is BSD-3 and
+    # python-docx is MIT. PyMuPDF is deliberately NOT used -- it is AGPL-3.0,
+    # which would reach the whole product.
+    "pypdf>=5.1",
+    "python-docx>=1.1",
     # auth
     "pyjwt[crypto]>=2.10",
     "httpx>=0.28",

@@ -20,6 +20,19 @@ states. Newest entries first.
 | **Days done** | 1, 2 complete · 3, 4, 5 partial |
 | **Next** | Day 6 — resume upload, scan, parse task |
 
+### Deferred by decision — revisit before launch
+
+| Item | Decided | Why deferred | What it takes to land |
+|---|---|---|---|
+| **Textract for resume parsing** | 2026-09-11 | Costs real money per page (~$1.50/1000 for forms/tables), has no free tier, and would send CV text to a service while **N2 (can CV text leave India?) is still open**. Local libraries cost nothing and keep the text in-process. | `ResumeParser` is an interface with a `parser` + `parser_version` recorded on every extraction. Add `TextractResumeParser`, switch the factory, re-run the golden corpus. **Scores extracted by different parsers are not comparable** — see below. |
+| **Legacy `.doc` (OLE2) parsing** | 2026-09-11 | No maintained pure-Python reader; the alternatives are native binaries that would go in the Docker image. | Either drop `application/msword` from the accepted types, or add a converter. Currently accepted at upload and will fail at parse — **decide before launch**. |
+
+> ⚠️ **Switching parser is not a drop-in.** Invariant 1 requires a score to be
+> reproducible from the stored extraction chain. A different parser yields
+> different text, so it yields a different score. `parser` and `parser_version`
+> are stored per extraction precisely so a replay can tell which engine produced
+> a score, and so a change is a **re-score**, not a silent drift.
+
 ### Blocked, and not on us
 
 | Blocker | Blocks | Lead time |

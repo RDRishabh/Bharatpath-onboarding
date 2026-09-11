@@ -75,6 +75,19 @@ pytest --cov=app
   **CI needs it set** — with no Cognito pool configured, `Settings` otherwise
   refuses to construct and even Alembic fails.
 
+## Resume parsing — local libraries, not Textract
+
+Decided 2026-09-11. `pypdf` and `python-docx` extract text in-process: no
+per-page cost, and CV text does not leave the process while **N2 (data
+residency) is open**. Textract lands later behind the same `ResumeParser`
+interface.
+
+Every extraction records `parser` and `parser_version`. This is not
+bookkeeping: invariant 1 requires a score to be replayable from the stored
+extraction chain, and a different parser produces different text and therefore
+a different score. Changing parser is a **re-score**, not an upgrade. See
+`docs/progress.md` → *Deferred by decision*.
+
 ## Environment
 
 - `backend/.env` — local development (gitignored)
