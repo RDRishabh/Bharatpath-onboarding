@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from celery import Celery
 
+from app.core.metadata import load_all_models
 from app.settings import get_settings
 
 
@@ -36,3 +37,18 @@ def create_celery() -> Celery:
 
 
 celery_app = create_celery()
+
+# Populate `Base.metadata` for this process.
+#
+# **Not optional, and not what the API does.** The API happens to end up with
+# complete metadata because `create_app()` mounts every module's router, and
+# each router reaches its own models through service -> repository. A worker
+# mounts no routers: it imports `app.tasks` and nothing else, so a task that
+# touches a table with a foreign key into another module's table fails with
+# `NoReferencedTableError` -- SQLAlchemy cannot resolve a target it has never
+# imported.
+#
+# Concretely: `resume_files.user_id` references `users`, which `identity` owns.
+# Parsing a CV in a worker that had only loaded `resume.models` raised exactly
+# that, and only under Celery -- the same code path is fine in the API.
+load_all_models()

@@ -25,6 +25,7 @@ from app.core.cache import dispose_redis
 from app.core.db import dispose_engines
 from app.core.errors import AppError, app_error_handler, unhandled_error_handler
 from app.core.logging import configure_logging, get_logger
+from app.core.metadata import load_all_models
 from app.settings import Settings, get_settings
 
 logger = get_logger(__name__)
@@ -44,6 +45,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+
+    # Populate `Base.metadata` explicitly rather than relying on the routers
+    # below to drag every models module in behind them. They do, today -- each
+    # router reaches its models through service -> repository -- but that is a
+    # side effect of unrelated imports, not a guarantee, and the first module
+    # whose router does not touch its own models would break foreign-key
+    # resolution somewhere else entirely. `app/worker.py` does the same for
+    # the same reason; see the note there for how this failed under Celery.
+    load_all_models()
 
     app = FastAPI(
         title=settings.project_name,

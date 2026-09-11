@@ -113,6 +113,13 @@ class Settings(BaseSettings):
     # a malicious upload can make us pull into memory.
     resume_sniff_bytes: int = 8192
 
+    # -- malware scanning --------------------------------------------------
+    # Off, because no scanner is implemented yet -- see
+    # app/modules/resume/scanner.py. Turning it on raises at startup rather
+    # than silently passing every file, so this cannot be enabled by accident
+    # and left doing nothing.
+    resume_scan_enabled: bool = False
+
     # -- textract fallback -------------------------------------------------
     # Local libraries first, Textract only when they come back empty or fail.
     # The case that matters is a scanned CV -- a phone photo saved as PDF has

@@ -138,6 +138,28 @@ async def read_head_bytes(*, bucket: str, key: str, count: int) -> bytes:
         await asyncio.to_thread(body.close)
 
 
+async def read_whole_object(*, bucket: str, key: str) -> bytes:
+    """The complete object. Used by the parser, which needs all of it.
+
+    Separate from `read_head_bytes` so the size of the read is always an
+    explicit choice at the call site: identifying a file must stay cheap even
+    though parsing one cannot be. The upload cap bounds what this can pull
+    into memory.
+    """
+    client = get_s3_client()
+    try:
+        response = await asyncio.to_thread(client.get_object, Bucket=bucket, Key=key)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+            return b""
+        raise
+    body = response["Body"]
+    try:
+        return bytes(await asyncio.to_thread(body.read))
+    finally:
+        await asyncio.to_thread(body.close)
+
+
 async def delete_object(*, bucket: str, key: str) -> None:
     """Remove an object. Used to clean up an upload that failed validation, so
     a rejected file does not sit in a bucket accruing storage and obligations
