@@ -47,6 +47,25 @@ data "aws_iam_policy_document" "app" {
     resources = [aws_sqs_queue.tasks.arn, aws_sqs_queue.dlq.arn]
   }
 
+  # OCR fallback for scanned CVs. Textract reads the object from S3 itself,
+  # which is why the S3 grant above is what makes this work -- there is no
+  # separate "let Textract read the bucket" permission for the async API when
+  # the caller and the bucket share an account.
+  #
+  # Detection only. AnalyzeDocument (forms and tables) costs roughly ten times
+  # as much per page and is not used: a CV is prose, not a form.
+  statement {
+    sid    = "DocumentOcr"
+    effect = "Allow"
+    actions = [
+      "textract:StartDocumentTextDetection",
+      "textract:GetDocumentTextDetection",
+      "textract:DetectDocumentText",
+    ]
+    # Textract exposes no resource ARNs for these operations.
+    resources = ["*"]
+  }
+
   statement {
     sid       = "ReadSecrets"
     effect    = "Allow"

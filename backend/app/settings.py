@@ -113,6 +113,27 @@ class Settings(BaseSettings):
     # a malicious upload can make us pull into memory.
     resume_sniff_bytes: int = 8192
 
+    # -- textract fallback -------------------------------------------------
+    # Local libraries first, Textract only when they come back empty or fail.
+    # The case that matters is a scanned CV -- a phone photo saved as PDF has
+    # no text layer, so pypdf extracts nothing and reports success. Without
+    # OCR that candidate scores as having no experience at all, which is a
+    # silent wrong answer rather than an error.
+    #
+    # Billing is per page and there is no free tier, so this is deliberately a
+    # fallback and not the default path. Turn it off to cap spend; uploads
+    # that need OCR then fail loudly instead of being scored as empty.
+    resume_textract_fallback_enabled: bool = True
+
+    # Textract reads multi-page PDFs asynchronously from S3 and is polled.
+    # A CV that has not finished in two minutes is not going to.
+    resume_textract_timeout_seconds: int = 120
+    resume_textract_poll_seconds: float = 2.0
+
+    # Refuse to OCR a document longer than this. Textract bills per page, so
+    # an unbounded page count is an unbounded bill.
+    resume_textract_max_pages: int = 20
+
     # Paste-text path (PRD 4.2). Large enough for a long CV, small enough that
     # it cannot be used as free object storage.
     resume_max_text_chars: int = 60_000

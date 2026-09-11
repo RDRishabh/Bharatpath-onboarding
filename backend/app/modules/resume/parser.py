@@ -25,6 +25,7 @@ from fastapi import status
 from app.core.errors import AppError
 from app.core.logging import get_logger
 from app.modules.resume.domain import DOCX
+from app.settings import Settings, get_settings
 
 logger = get_logger(__name__)
 
@@ -94,7 +95,21 @@ class ResumeParser(Protocol):
     @property
     def version(self) -> str: ...
 
-    def extract(self, *, content: bytes, mime: str) -> ExtractedDocument: ...
+    def extract(
+        self,
+        *,
+        content: bytes,
+        mime: str,
+        bucket: str | None = None,
+        key: str | None = None,
+    ) -> ExtractedDocument:
+        """`bucket`/`key` locate the same document in S3.
+
+        Textract reads multi-page PDFs from S3 rather than from an inline
+        byte array -- the synchronous, bytes-in API handles single-page images
+        only. The local parser ignores them.
+        """
+        ...
 
 
 class LocalResumeParser:
@@ -109,7 +124,14 @@ class LocalResumeParser:
         after are distinguishable rather than silently mixed."""
         return f"{EXTRACTOR_REVISION}+pypdf{pypdf.__version__}+docx{docx.__version__}"
 
-    def extract(self, *, content: bytes, mime: str) -> ExtractedDocument:
+    def extract(
+        self,
+        *,
+        content: bytes,
+        mime: str,
+        bucket: str | None = None,
+        key: str | None = None,
+    ) -> ExtractedDocument:
         if mime == "application/pdf":
             text, pages = self._pdf(content)
         elif mime == DOCX:
@@ -173,6 +195,75 @@ class LocalResumeParser:
         return "\n".join(parts), 0
 
 
-def get_resume_parser() -> ResumeParser:
-    """The single place a parser is chosen. Textract switches here."""
-    return LocalResumeParser()
+#: Below this, extracted text is treated as nothing at all. A CV with fewer
+#: characters than this is not a CV -- it is a scan whose text layer holds a
+#: stray header, which is exactly the case OCR exists to rescue.
+MIN_USEFUL_CHARS: Final = 120
+
+
+class FallbackResumeParser:
+    """Local libraries first; OCR only when they cannot read the document.
+
+    The interesting trigger is not an exception -- it is **success with no
+    text**. A phone photo saved as a PDF parses cleanly and yields an empty
+    string, so a parser that only fell back on errors would score that
+    candidate as having no experience and never notice. Short output is
+    therefore treated the same as failure.
+
+    Cost follows from that ordering: a normal CV never reaches Textract, so
+    the per-page bill is paid only for documents that genuinely need OCR.
+    """
+
+    name = "local+textract"
+
+    def __init__(self, primary: ResumeParser, fallback: ResumeParser | None) -> None:
+        self._primary = primary
+        self._fallback = fallback
+
+    @property
+    def version(self) -> str:
+        fallback = self._fallback.version if self._fallback else "off"
+        return f"{self._primary.version}|{fallback}"
+
+    def extract(
+        self,
+        *,
+        content: bytes,
+        mime: str,
+        bucket: str | None = None,
+        key: str | None = None,
+    ) -> ExtractedDocument:
+        reason: str
+        try:
+            result = self._primary.extract(content=content, mime=mime, bucket=bucket, key=key)
+        except AppError as exc:
+            if self._fallback is None:
+                raise
+            reason = exc.code
+        else:
+            if len(result.text) >= MIN_USEFUL_CHARS or self._fallback is None:
+                # The common path: a normal CV, read for nothing.
+                return result
+            reason = "empty_extraction"
+
+        if not bucket or not key:
+            # Nothing to OCR from. Re-run the primary so the caller gets the
+            # real reason rather than a confusing "no location" error.
+            logger.warning("ocr_skipped_no_s3_location", mime=mime, reason=reason)
+            return self._primary.extract(content=content, mime=mime)
+
+        logger.info("ocr_fallback", mime=mime, reason=reason)
+        return self._fallback.extract(content=content, mime=mime, bucket=bucket, key=key)
+
+
+def get_resume_parser(settings: Settings | None = None) -> ResumeParser:
+    """The single place a parser is chosen."""
+    settings = settings or get_settings()
+    if not settings.resume_textract_fallback_enabled:
+        # Deliberate: with OCR off, a scanned CV fails loudly rather than
+        # being scored as an empty resume.
+        return LocalResumeParser()
+
+    from app.modules.resume.textract import TextractResumeParser
+
+    return FallbackResumeParser(LocalResumeParser(), TextractResumeParser(settings))

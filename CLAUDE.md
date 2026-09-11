@@ -75,12 +75,19 @@ pytest --cov=app
   **CI needs it set** — with no Cognito pool configured, `Settings` otherwise
   refuses to construct and even Alembic fails.
 
-## Resume parsing — local libraries, not Textract
+## Resume parsing — local first, Textract as fallback
 
-Decided 2026-09-11. `pypdf` and `python-docx` extract text in-process: no
-per-page cost, and CV text does not leave the process while **N2 (data
-residency) is open**. Textract lands later behind the same `ResumeParser`
-interface.
+`pypdf` and `python-docx` read a normal CV for nothing. **Textract is called
+only when they fail or return almost no text**, which is what a scanned CV — a
+phone photo saved as a PDF — looks like: pypdf reports *success* and returns an
+empty string, so without OCR that candidate is scored as having no experience
+and nothing errors. The trigger is therefore a length floor
+(`MIN_USEFUL_CHARS`), not an exception.
+
+Textract bills per page with no free tier, so *not* calling it on the common
+path is a requirement, not an optimisation. `resume_textract_fallback_enabled`
+turns it off; scanned CVs then fail loudly rather than scoring as empty.
+Textract runs in `ap-south-1`, so text stays in India while **N2** is open.
 
 Every extraction records `parser` and `parser_version`. This is not
 bookkeeping: invariant 1 requires a score to be replayable from the stored

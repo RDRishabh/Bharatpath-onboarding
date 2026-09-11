@@ -24,7 +24,6 @@ states. Newest entries first.
 
 | Item | Decided | Why deferred | What it takes to land |
 |---|---|---|---|
-| **Textract for resume parsing** | 2026-09-11 | Costs real money per page (~$1.50/1000 for forms/tables), has no free tier, and would send CV text to a service while **N2 (can CV text leave India?) is still open**. Local libraries cost nothing and keep the text in-process. | `ResumeParser` is an interface with a `parser` + `parser_version` recorded on every extraction. Add `TextractResumeParser`, switch the factory, re-run the golden corpus. **Scores extracted by different parsers are not comparable** — see below. |
 | **Legacy `.doc` (OLE2) parsing** | 2026-09-11 | No maintained pure-Python reader; the alternatives are native binaries that would go in the Docker image. | Either drop `application/msword` from the accepted types, or add a converter. Currently accepted at upload and will fail at parse — **decide before launch**. |
 
 > ⚠️ **Switching parser is not a drop-in.** Invariant 1 requires a score to be
@@ -36,7 +35,10 @@ states. Newest entries first.
 ### Blocked, and not on us
 
 | Blocker | Blocks | Lead time |
-|---|---|---|
+|
+| **Textract account activation** | OCR fallback for scanned CVs | `SubscriptionRequiredException` on a brand-new AWS account, with `AdministratorAccess` — so it is account activation, not IAM. Usually clears within hours. **Code is written and wired; run `backend/scripts/verify_ocr_fallback.py` once it clears.** |
+
+---|---|---|
 | **TRAI DLT registration** | All SMS to Indian numbers | **2–4 weeks — longer than the sprint.** Binds the sender, not the gateway; neither Cognito nor Twilio removes it. **Start it.** |
 | **Twilio account** | Phone OTP, the 3 Cognito custom-auth Lambdas | Days |
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
