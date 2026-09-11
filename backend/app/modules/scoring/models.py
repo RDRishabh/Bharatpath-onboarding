@@ -44,6 +44,7 @@ from sqlalchemy import (
     Integer,
     String,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -79,7 +80,7 @@ class Score(Base, UUIDPrimaryKey):
     # replay recomputes a base score and disagrees with the stored total the
     # first time anyone buys a course.
     contributing_events: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSONB, default=list, nullable=False
+        JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
     )
     contribution_version: Mapped[str] = mapped_column(String(32), nullable=False)
 
@@ -96,7 +97,9 @@ class Score(Base, UUIDPrimaryKey):
 
     # Stored for admin drill-down and disputes. NEVER serialized to a
     # candidate - the client confirmed the score is never explained.
-    breakdown: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    breakdown: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
+    )
 
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

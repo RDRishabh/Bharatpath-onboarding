@@ -32,6 +32,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -57,7 +58,9 @@ class IntegritySignal(Base, UUIDPrimaryKey):
     rule_id: Mapped[str] = mapped_column(String(64), nullable=False)
     rule_version: Mapped[str] = mapped_column(String(32), nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
-    evidence: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    evidence: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
+    )
     state: Mapped[str] = mapped_column(String(16), default="OPEN", nullable=False)
     resolved_by: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")

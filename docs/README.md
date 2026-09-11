@@ -6,9 +6,12 @@ Everything written about this build, and the client's own source documents.
 
 | Document | What it is |
 |---|---|
+| **[final-client-brief.md](final-client-brief.md)** | **The single document to send.** Everything outstanding as of 3 September 2026: the open questions, the assumptions we have taken on the client's behalf, and the resources with lead times longer than the build. Folds together `questions.txt`, `resources-needed.md` §1, and the assumptions from `plan.md` §8.0 and §13. |
 | **[plan.md](plan.md)** | **The working document.** The 20-day backend build plan: the ten invariants and how code enforces each, the architecture, the data model, and a day-by-day schedule with weekly gates. Version 6.1. |
 | [questions.txt](questions.txt) | **The ask.** Only what is still outstanding, in plain language, ready to send to the client. Nine items, A–I. |
 | [answers-log.md](answers-log.md) | **The archive.** Every question ever put to the client, their answer verbatim, the date, and what we did about it. Nothing summarised away — where an answer was later contradicted, both versions are here. |
+| [voice-interview-architecture.md](voice-interview-architecture.md) | **Sent to the client, 7 September 2026.** The mock-interview backend: pipeline, the model at each stage, and the platform answer — AWS Bedrock, on the client's own IAM, no API key to supply. The evaluation model is chosen by benchmarking on Bedrock rather than named upfront. |
+| [voice-interview-costs-and-asr.md](voice-interview-costs-and-asr.md) | **Sent to the client, 7 September 2026.** Per-session costs for the mock interview, speech-to-text vendor comparison (Transcribe vs Sarvam vs others), which evaluation model industry practice points to, and Bedrock vs direct API key on price. Carries the correction that Claude on Bedrock in Mumbai routes inference globally, so the residency answer now selects the model. |
 | [scoring-approach.md](scoring-approach.md) | How an AI-driven score is made reproducible. **Awaiting client approval — this blocks Day 8.** |
 | [resources-needed.md](resources-needed.md) | Everything the build depends on but cannot produce itself: AWS, vendors, registrations, legal sign-offs, content. With owners and lead times. |
 | [deployment-and-local-dev.md](deployment-and-local-dev.md) | **Read this before your first commit.** How the app runs locally and in AWS, what a container actually is, where configuration comes from in each environment, and how connections are made. Written as an Azure-to-AWS translation. |

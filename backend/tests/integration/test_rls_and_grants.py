@@ -21,14 +21,18 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.db import set_transaction_tenant
+
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 APP_URL = os.getenv("DATABASE_URL_APP") or os.getenv("DATABASE_URL", "")
-# Writes go through the BYPASSRLS admin role, NOT the migrator. FORCE ROW
-# LEVEL SECURITY applies to the table owner too, so the migrator cannot insert
-# tenant-scoped rows without a tenant context - and a fixture seeding two
-# different tenants cannot have one. Only BYPASSRLS gets past FORCE.
-SEED_URL = os.getenv("DATABASE_ADMIN_URL") or os.getenv("DATABASE_URL_MIGRATOR") or APP_URL
+# Writes go through the migrator: it is the only role with BOTH write access
+# and BYPASSRLS. Tenant-scoped tables carry FORCE ROW LEVEL SECURITY so the
+# policy applies to the owner too, and a fixture seeding two different tenants
+# has no single app.tenant_id it could set. The admin role bypasses RLS but is
+# SELECT-only by design; the app role has neither power.
+SEED_URL = os.getenv("DATABASE_URL_MIGRATOR") or os.getenv("DATABASE_ADMIN_URL") or APP_URL
+ADMIN_URL = os.getenv("DATABASE_ADMIN_URL", "")
 IN_CI = os.getenv("CI") == "true"
 
 
@@ -90,7 +94,7 @@ async def test_tenant_a_cannot_see_tenant_b(seeded_tenants) -> None:
     tenant_a, tenant_b = seeded_tenants
 
     async with _sessions(APP_URL)() as session, session.begin():
-        await session.execute(text("SET LOCAL app.tenant_id = :t"), {"t": str(tenant_a)})
+        await set_transaction_tenant(session, tenant_a)
         visible = (await session.execute(text("SELECT tenant_id FROM jobs"))).scalars().all()
 
     assert all(str(t) == str(tenant_a) for t in visible)
@@ -98,17 +102,17 @@ async def test_tenant_a_cannot_see_tenant_b(seeded_tenants) -> None:
 
 
 async def test_set_local_does_not_leak_across_transactions(seeded_tenants) -> None:
-    """`SET LOCAL` dies with its transaction.
+    """The transaction-local setting dies with its transaction.
 
-    This is why the session dependency uses SET LOCAL rather than SET: a
-    pooled connection must not carry one request's tenancy into the next
-    request that happens to reuse it.
+    This is why the session dependency sets `app.tenant_id` locally rather
+    than for the session: a pooled connection must not carry one request's
+    tenancy into the next request that happens to reuse it.
     """
     tenant_a, _ = seeded_tenants
     factory = _sessions(APP_URL)
 
     async with factory() as session, session.begin():
-        await session.execute(text("SET LOCAL app.tenant_id = :t"), {"t": str(tenant_a)})
+        await set_transaction_tenant(session, tenant_a)
 
     async with factory() as session, session.begin():
         setting = (
@@ -298,3 +302,100 @@ async def test_duplicate_active_application_is_refused(seeded_tenants) -> None:
 
         with pytest.raises((DBAPIError, ProgrammingError)):
             await session.execute(insert_application, params)
+
+
+# ---------------------------------------------------------------------------
+# Role capabilities - the properties migrations and admin drill-downs depend on
+# ---------------------------------------------------------------------------
+
+
+async def test_migrator_can_write_to_a_tenant_scoped_table() -> None:
+    """Data migrations depend on this, and it is easy to break.
+
+    Tenant-scoped tables carry FORCE ROW LEVEL SECURITY, so the policy applies
+    to the table OWNER too. The migrator owns every table, so without
+    BYPASSRLS it could not write a single row to a tenant-scoped one - and
+    `app.tenant_id` is unset during a migration, with no single value a
+    backfill across several tenants could use anyway.
+
+    This broke first as "permission denied" in the fixtures. The fixtures were
+    the messenger; the real casualty would have been the first migration that
+    backfilled a tenant-scoped column.
+    """
+    import uuid as _uuid
+
+    tenant_id = _uuid.uuid4()
+    async with _sessions(SEED_URL)() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO tenants (id, type, name, status) "
+                "VALUES (:i, 'EMPLOYER', 'Migrator write check', 'ACTIVE')"
+            ),
+            {"i": str(tenant_id)},
+        )
+        # employers is tenant-scoped and FORCE RLS - this is the real assertion.
+        await session.execute(
+            text(
+                "INSERT INTO employers (tenant_id, legal_name, kyb_status) "
+                "VALUES (:i, 'Check', 'DRAFT')"
+            ),
+            {"i": str(tenant_id)},
+        )
+        await session.execute(text("DELETE FROM tenants WHERE id = :i"), {"i": str(tenant_id)})
+
+
+@pytest.mark.skipif(not ADMIN_URL, reason="DATABASE_ADMIN_URL not configured")
+async def test_admin_role_reads_across_tenants_but_cannot_write(
+    seeded_tenants,
+) -> None:
+    """The admin bypass role has exactly one of the two dangerous powers.
+
+    It must see across tenants, because admin drill-downs are cross-tenant by
+    definition (SRS 1.17.4-1.17.6). It must NOT be able to write, because a
+    credential that can cross every tenant boundary *and* mutate data is the
+    most dangerous one in the system. Admin actions that genuinely write go
+    through the app role with an explicit tenant context, so they stay inside
+    RLS and inside the audit path.
+    """
+    tenant_a, tenant_b = seeded_tenants
+
+    async with _sessions(ADMIN_URL)() as session, session.begin():
+        visible = (await session.execute(text("SELECT tenant_id FROM jobs"))).scalars().all()
+        seen = {str(t) for t in visible}
+        assert {str(tenant_a), str(tenant_b)} <= seen, (
+            "admin role cannot see across tenants - drill-downs would be blind"
+        )
+
+    async with _sessions(ADMIN_URL)() as session, session.begin():
+        with pytest.raises((ProgrammingError, DBAPIError)) as exc:
+            await session.execute(
+                text("UPDATE jobs SET title = 'tampered'"),
+            )
+        assert "permission denied" in str(exc.value).lower()
+
+
+async def test_app_role_is_not_a_table_owner() -> None:
+    """The property the whole three-role split exists to guarantee.
+
+    RLS does not apply to a table's owner. If the application role ever ended
+    up owning a table, every policy on it would become decorative - visible in
+    the catalog, enforcing nothing, with no error anywhere.
+    """
+    async with _sessions(SEED_URL)() as session, session.begin():
+        owned = (
+            (
+                await session.execute(
+                    text(
+                        "SELECT tablename FROM pg_tables "
+                        "WHERE schemaname = 'public' AND tableowner = :role"
+                    ),
+                    {"role": "bharatpath_app"},
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert not owned, (
+        f"bharatpath_app owns {list(owned)} - RLS does not apply to owners, so "
+        "tenant isolation is disabled on those tables"
+    )

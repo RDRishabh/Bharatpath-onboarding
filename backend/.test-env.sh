@@ -1,0 +1,6 @@
+export DATABASE_URL="postgresql+asyncpg://bharatpath_app:bharatpath_app@localhost:5432/bharatpath"
+export DATABASE_URL_MIGRATOR="postgresql+asyncpg://bharatpath_migrator:bharatpath_migrator@localhost:5432/bharatpath"
+export DATABASE_ADMIN_URL="postgresql+asyncpg://bharatpath_admin:bharatpath_admin@localhost:5432/bharatpath"
+export REDIS_URL="redis://localhost:6379/0"
+export ENVIRONMENT=local
+export AUTH_ALLOW_LOCAL_TOKENS=true

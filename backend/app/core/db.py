@@ -89,6 +89,30 @@ def get_admin_session_factory() -> async_sessionmaker[AsyncSession]:
     return _admin_session_factory
 
 
+async def set_transaction_tenant(session: AsyncSession, tenant_id: UUID) -> None:
+    """Bind `app.tenant_id` for the current transaction only.
+
+    `set_config(key, value, is_local => true)` is exactly `SET LOCAL`, and the
+    indirection is not stylistic: **`SET LOCAL app.tenant_id = :tid` does not
+    work.** Postgres parses SET as a utility statement, not a query, so it
+    accepts no bind parameters -- asyncpg sends `SET LOCAL app.tenant_id = $1`
+    and the server answers `syntax error at or near "$1"`. Every tenant-scoped
+    request would have failed.
+
+    Interpolating the value into the SQL string would "fix" it and open an
+    injection hole in the one place isolation depends on. `set_config` is an
+    ordinary function call, so the value stays a bind parameter.
+
+    `is_local => true` is what makes this safe under connection pooling: the
+    setting dies with the transaction, so a pooled connection cannot carry one
+    request's tenancy into the next.
+    """
+    await session.execute(
+        text("SELECT set_config('app.tenant_id', :tid, true)"),
+        {"tid": str(tenant_id)},
+    )
+
+
 @asynccontextmanager
 async def tenant_session(tenant_id: UUID | None) -> AsyncIterator[AsyncSession]:
     """Open a session scoped to one tenant for the life of one transaction.
@@ -100,10 +124,7 @@ async def tenant_session(tenant_id: UUID | None) -> AsyncIterator[AsyncSession]:
     factory = get_session_factory()
     async with factory() as session, session.begin():
         if tenant_id is not None:
-            await session.execute(
-                text("SET LOCAL app.tenant_id = :tid"),
-                {"tid": str(tenant_id)},
-            )
+            await set_transaction_tenant(session, tenant_id)
         yield session
 
 
@@ -125,11 +146,22 @@ async def check_database_liveness() -> dict[str, Any]:
 
 
 async def dispose_engines() -> None:
-    """Close pools on shutdown."""
-    global _engine, _admin_engine
+    """Close pools on shutdown.
+
+    The session factories are reset alongside the engines they wrap. A factory
+    outliving its engine is a live object bound to a closed pool: the next
+    `get_session_factory()` finds the memoised factory still set, returns it,
+    and every session it opens fails on a disposed engine. Shutdown hides this
+    -- the process is leaving anyway -- but any caller that disposes and keeps
+    running, a test between cases most of all, gets a factory that can no
+    longer produce a working session.
+    """
+    global _engine, _admin_engine, _session_factory, _admin_session_factory
     if _engine is not None:
         await _engine.dispose()
         _engine = None
     if _admin_engine is not None:
         await _admin_engine.dispose()
         _admin_engine = None
+    _session_factory = None
+    _admin_session_factory = None

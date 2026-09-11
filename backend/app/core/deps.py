@@ -22,6 +22,9 @@ from typing import Annotated
 from fastapi import Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import membership as membership_lookup
+from app.core.auth.provider import get_identity_provider
+from app.core.auth.users import resolve_or_create_user
 from app.core.db import get_db
 from app.core.errors import (
     AccessWindowExpiredError,
@@ -63,21 +66,71 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 async def current_user(
-    request: Request,
+    session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> TenantContext:
-    """Verify the JWT and resolve role and tenant from OUR database.
+    """Verify the bearer token, then resolve role and tenant from OUR database.
 
-    Deliberately does not read role or tenant from token claims. See
-    `app.core.tenant` for why.
+    Three steps, and the order matters:
 
-    TODO(Day 3): wire `app.core.cognito.verify_token`, then resolve membership
-    through the Redis-cached lookup. Until then this raises, which is the safe
-    default - a stub that returns a user would silently disable every gate.
+      1. Verify the token. Signature, issuer, audience, `token_use`, expiry.
+         Whoever issued it -- Cognito in a deployed environment, the local
+         provider on a laptop -- answers only "who is this".
+      2. Resolve the user row from `cognito_sub`. A verified token for a
+         subject we have never seen is a first sign-in, and creates the row.
+      3. Read the membership from `memberships`, Redis-cached for 60 seconds.
+         **Not from a token claim**, because a claim goes stale and a
+         revocation that does not take effect is the tenant-isolation failure
+         SRS 2.24.7 forbids.
+
+    The pool is checked against the role in step 3. A candidate-pool token can
+    never carry a business role, whatever any row says, because the two pools
+    are different authentication models with different assurance -- the
+    business pool requires software-token MFA and the candidate pool does not.
     """
     if not authorization or not authorization.lower().startswith("bearer "):
         raise UnauthenticatedError()
-    raise UnauthenticatedError(code="auth_not_yet_wired")
+
+    raw_token = authorization[7:].strip()
+    if not raw_token:
+        raise UnauthenticatedError()
+
+    provider = get_identity_provider()
+    token = await provider.verify(raw_token)  # raises InvalidTokenError
+
+    user = await resolve_or_create_user(
+        session, provider=provider, raw_token=raw_token, token=token
+    )
+    if user.status != "ACTIVE":
+        # Suspended and deleted users hold tokens that are still
+        # cryptographically valid. The account state is ours to enforce.
+        raise UnauthenticatedError(code="account_inactive")
+
+    membership = await membership_lookup.resolve(session, user.id)
+
+    if token.pool == "CANDIDATE":
+        # Candidates belong to no tenant. A membership row against a
+        # candidate-pool identity means someone has been granted staff access
+        # to an account that never passed MFA, so it is refused rather than
+        # honoured.
+        if membership is not None:
+            raise PermissionDeniedError(code="pool_role_mismatch")
+        return TenantContext(user_id=user.id, tenant_id=None, role=CANDIDATE, pool=token.pool)
+
+    if membership is None:
+        # A verified business identity with no active membership: invited but
+        # not yet added, or just revoked. Authenticated, authorised for
+        # nothing.
+        raise PermissionDeniedError(code="no_active_membership")
+    if membership.role == CANDIDATE:
+        raise PermissionDeniedError(code="pool_role_mismatch")
+
+    return TenantContext(
+        user_id=user.id,
+        tenant_id=membership.tenant_id,
+        role=membership.role,
+        pool=token.pool,
+    )
 
 
 CurrentUser = Annotated[TenantContext, Depends(current_user)]
