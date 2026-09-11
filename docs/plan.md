@@ -1791,8 +1791,8 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 |---|---|---|
 | 1 | Scaffold, CI, module skeletons, invariants 5 & 6 | ☑ **done 2026-08-30** |
 | 2 | Schema, RLS, audit, idempotency, outbox, OpenAPI stub publish | ☑ **done 2026-08-30** |
-| 3 | Cognito: pools, JWKS, phone OTP, Google, email | ◐ **partial 2026-09-11** — JWKS verification, local provider and the identity surface are in and CI-green (PR #2). Pools are written as Terraform (`infra/terraform`) but **not applied**. Phone OTP and Google are blocked — see below. |
-| 4 | MFA, memberships, role/tenant deps (anonymous flow removed in v4) | ◐ **partial 2026-09-11** — memberships and role/tenant deps done, cached 60s in Redis. Business-pool MFA is declared in Terraform, unverified until applied. |
+| 3 | Cognito: pools, JWKS, phone OTP, Google, email | ◐ **partial 2026-09-11** — JWKS verification, local provider and the identity surface are in and CI-green (PR #2). Pools are **applied and verified** (`infra/terraform`). Phone OTP and Google are blocked — see below. |
+| 4 | MFA, memberships, role/tenant deps (anonymous flow removed in v4) | ◐ **partial 2026-09-11** — memberships and role/tenant deps done, cached 60s in Redis. Business-pool MFA is applied (software-token, required). |
 | 5 | Cross-tenant suite, permission matrix — **Week 1 gate** | ☐ |
 | 6 | Resume upload, scan, parse task | ☐ |
 | 7 | Versions, review, confirm gate, status polling | ☐ |
@@ -1891,7 +1891,7 @@ Resolved by the client's comments and note. Full detail in [§13](#13-decisions-
 | Item | Status |
 |---|---|
 | Postgres + two roles | ☑ local (docker-compose, 40 tables / 12 RLS policies) and CI. Not provisioned in AWS — deliberate, see `infra/README.md`. |
-| Cognito pools + app clients | ◐ Terraform written and validated; **awaiting AWS credentials to apply**. |
+| Cognito pools + app clients | ☑ **applied 2026-09-11** — account 592033927084, ap-south-1. Both pools live; JWKS fetched through `app/core/auth/cognito.py` itself, and an `alg=none` forgery correctly rejected. |
 | Cognito custom-auth Lambda triggers | ☐ Blocked on Twilio — the triggers call Verify. |
 | **Twilio account + Verify service created** | ☐ |
 | **Payment gateway that supports recurring billing** (subscriptions, R5) | ☐ |
@@ -1899,9 +1899,9 @@ Resolved by the client's comments and note. Full detail in [§13](#13-decisions-
 | **Twilio live credentials in Secrets Manager, readable by the Lambdas** | ☐ |
 | Google IdP on candidate pool | ☐ |
 | Redis | ☑ local (docker-compose) and CI. ElastiCache deferred to Day 20. |
-| S3 buckets (4) | ◐ Six defined in Terraform; **awaiting credentials to apply**. |
-| SQS + IAM | ◐ Queue, dead-letter queue and least-privilege policy written; **awaiting credentials**. |
-| Secrets Manager | ◐ Containers written (values set out of band); **awaiting credentials**. |
+| S3 buckets (4) | ☑ **applied 2026-09-11** — six buckets, all private, AES256-encrypted and versioned (versioning is what makes invariant 1 replayable). |
+| SQS + IAM | ☑ **applied 2026-09-11** — queue + dead-letter queue. Least-privilege policy verified both ways: object and queue access work, bucket creation and IAM listing are denied. |
+| Secrets Manager | ◐ Containers created; **values not set** — the Twilio secret stays empty until an account exists. |
 | CI/CD + registry | ☑ backend-ci green on all five jobs (2026-09-11). Registry push not yet configured. |
 
 ---
