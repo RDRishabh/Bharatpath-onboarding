@@ -1791,8 +1791,8 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 |---|---|---|
 | 1 | Scaffold, CI, module skeletons, invariants 5 & 6 | ☑ **done 2026-08-30** |
 | 2 | Schema, RLS, audit, idempotency, outbox, OpenAPI stub publish | ☑ **done 2026-08-30** |
-| 3 | Cognito: pools, JWKS, phone OTP, Google, email | ☐ |
-| 4 | MFA, memberships, role/tenant deps (anonymous flow removed in v4) | ☐ |
+| 3 | Cognito: pools, JWKS, phone OTP, Google, email | ◐ **partial 2026-09-11** — JWKS verification, local provider and the identity surface are in and CI-green (PR #2). Pools are written as Terraform (`infra/terraform`) but **not applied**. Phone OTP and Google are blocked — see below. |
+| 4 | MFA, memberships, role/tenant deps (anonymous flow removed in v4) | ◐ **partial 2026-09-11** — memberships and role/tenant deps done, cached 60s in Redis. Business-pool MFA is declared in Terraform, unverified until applied. |
 | 5 | Cross-tenant suite, permission matrix — **Week 1 gate** | ☐ |
 | 6 | Resume upload, scan, parse task | ☐ |
 | 7 | Versions, review, confirm gate, status polling | ☐ |
@@ -1890,19 +1890,19 @@ Resolved by the client's comments and note. Full detail in [§13](#13-decisions-
 
 | Item | Status |
 |---|---|
-| Postgres + two roles | ☐ |
-| Cognito pools + app clients | ☐ |
-| Cognito custom-auth Lambda triggers | ☐ |
+| Postgres + two roles | ☑ local (docker-compose, 40 tables / 12 RLS policies) and CI. Not provisioned in AWS — deliberate, see `infra/README.md`. |
+| Cognito pools + app clients | ◐ Terraform written and validated; **awaiting AWS credentials to apply**. |
+| Cognito custom-auth Lambda triggers | ☐ Blocked on Twilio — the triggers call Verify. |
 | **Twilio account + Verify service created** | ☐ |
 | **Payment gateway that supports recurring billing** (subscriptions, R5) | ☐ |
 | **Twilio test credentials in hand (unblocks Day 3)** | ☐ |
 | **Twilio live credentials in Secrets Manager, readable by the Lambdas** | ☐ |
 | Google IdP on candidate pool | ☐ |
-| Redis | ☐ |
-| S3 buckets (4) | ☐ |
-| SQS + IAM | ☐ |
-| Secrets Manager | ☐ |
-| CI/CD + registry | ☐ |
+| Redis | ☑ local (docker-compose) and CI. ElastiCache deferred to Day 20. |
+| S3 buckets (4) | ◐ Six defined in Terraform; **awaiting credentials to apply**. |
+| SQS + IAM | ◐ Queue, dead-letter queue and least-privilege policy written; **awaiting credentials**. |
+| Secrets Manager | ◐ Containers written (values set out of band); **awaiting credentials**. |
+| CI/CD + registry | ☑ backend-ci green on all five jobs (2026-09-11). Registry push not yet configured. |
 
 ---
 
