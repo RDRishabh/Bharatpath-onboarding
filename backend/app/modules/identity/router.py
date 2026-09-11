@@ -120,7 +120,7 @@ if get_settings().auth_allow_local_tokens:  # pragma: no cover - exercised via i
         settings = get_settings()
         token, subject = provider.issue(
             subject=payload.subject,
-            pool=payload.pool,  # type: ignore[arg-type]  - validated by the schema
+            pool=payload.pool,
             phone=payload.phone,
             email=payload.email,
         )

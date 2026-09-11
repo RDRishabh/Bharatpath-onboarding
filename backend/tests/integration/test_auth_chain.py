@@ -14,6 +14,7 @@ import uuid
 
 import pytest
 from sqlalchemy import text
+
 from tests.conftest import _seed_url, sessions
 
 pytestmark = pytest.mark.integration

@@ -18,6 +18,8 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.auth.tokens import Pool
+
 
 class _Base(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
@@ -88,20 +90,13 @@ class MeResponse(_Base):
 class DevTokenRequest(_Base):
     """Registered only when `auth_allow_local_tokens` is on. See router."""
 
-    pool: str = "CANDIDATE"
+    pool: Pool = "CANDIDATE"
     subject: str | None = Field(
         default=None,
         description="Reuse a subject to sign in as an existing local user.",
     )
     phone: str | None = None
     email: str | None = None
-
-    @field_validator("pool")
-    @classmethod
-    def _known_pool(cls, v: str) -> str:
-        if v not in ("CANDIDATE", "BUSINESS"):
-            raise ValueError("pool must be CANDIDATE or BUSINESS")
-        return v
 
 
 class DevTokenResponse(_Base):
