@@ -15,7 +15,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import PostgresDsn, RedisDsn, field_validator
+from pydantic import PostgresDsn, RedisDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "dev", "staging", "prod"]
@@ -108,6 +108,34 @@ class Settings(BaseSettings):
     cognito_business_client_id: str | None = None
     jwks_cache_ttl_seconds: int = 3600
 
+    # Which `token_use` the API accepts. Access tokens are the right choice for
+    # a machine API -- they are what an OAuth client is meant to present -- but
+    # they carry no contact attributes, so first sign-in resolves phone and
+    # email through a separate provider call rather than trusting a claim.
+    # S105 is silenced because "access" is a token *kind*, not a credential.
+    cognito_token_use: Literal["access", "id"] = "access"  # noqa: S105
+
+    # -- local auth substitute ---------------------------------------------
+    # Cognito cannot be emulated: LocalStack's free tier does not provide it,
+    # and the candidate pool needs three custom-auth Lambda triggers besides.
+    # Rather than stub out authentication -- which would silently disable every
+    # gate behind it -- the token verifier is an interface with two
+    # implementations, and this flag selects the local one.
+    #
+    # The local implementation is a real RS256 verifier against a keypair
+    # generated at boot. Same code path, same claim validation, same failure
+    # modes; only the issuer differs. That is what lets Days 3-8 be built and
+    # tested end to end before the pools exist, without carrying stub risk.
+    #
+    # `_local_auth_is_never_production` below refuses to let this be true in
+    # prod, whatever the environment says.
+    auth_allow_local_tokens: bool = False
+
+    # Minted by `POST /api/v1/auth/dev/token`, which exists only while the
+    # flag above is on. Short, because a long-lived development token has a
+    # way of ending up in a shared script.
+    local_token_ttl_seconds: int = 3600
+
     # -- rate limits -------------------------------------------------------
     # Our coarse outer throttle sits in front of Twilio Verify. Twilio's limits
     # protect Twilio's spend; ours protects against someone walking the phone
@@ -121,6 +149,59 @@ class Settings(BaseSettings):
         # A bypass role that is the same connection as the app role is not a
         # bypass role, it is a mistake that removes RLS everywhere.
         return v
+
+    @model_validator(mode="after")
+    def _local_auth_is_never_production(self) -> Settings:
+        """The local token issuer must be impossible to reach in production.
+
+        A misplaced environment variable is all it would take, and the failure
+        is silent: the service would keep serving, and would accept tokens
+        anyone could mint. So this is a boot-time refusal rather than a
+        runtime check -- the process does not start at all.
+        """
+        if self.auth_allow_local_tokens and self.environment in ("staging", "prod"):
+            raise ValueError(
+                "AUTH_ALLOW_LOCAL_TOKENS must not be set in staging or production: "
+                "it enables a token issuer whose signing key this process generates "
+                "itself, so anyone who can reach the API could mint any identity."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _auth_is_configured_somehow(self) -> Settings:
+        """Refuse to boot with no way to verify a token.
+
+        Without this the service starts happily and rejects every authenticated
+        request with a 401 that looks like a client bug. Failing at boot names
+        the actual problem.
+        """
+        if not self.auth_allow_local_tokens and not (
+            self.cognito_candidate_pool_id or self.cognito_business_pool_id
+        ):
+            raise ValueError(
+                "No authentication configured: set COGNITO_*_POOL_ID for at least one "
+                "pool, or AUTH_ALLOW_LOCAL_TOKENS=true for local development."
+            )
+        return self
+
+    def cognito_pool_id(self, pool: str) -> str | None:
+        return {
+            "CANDIDATE": self.cognito_candidate_pool_id,
+            "BUSINESS": self.cognito_business_pool_id,
+        }.get(pool)
+
+    def cognito_client_id(self, pool: str) -> str | None:
+        return {
+            "CANDIDATE": self.cognito_candidate_client_id,
+            "BUSINESS": self.cognito_business_client_id,
+        }.get(pool)
+
+    def cognito_issuer(self, pool: str) -> str | None:
+        """The `iss` claim a token from this pool must carry."""
+        pool_id = self.cognito_pool_id(pool)
+        if pool_id is None:
+            return None
+        return f"https://cognito-idp.{self.aws_region}.amazonaws.com/{pool_id}"
 
     @property
     def is_production(self) -> bool:

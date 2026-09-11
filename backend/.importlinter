@@ -91,3 +91,26 @@ forbidden_modules =
     httpx
     fastapi
     app.core.db
+
+; ---------------------------------------------------------------------------
+; Core is the foundation, so it must not depend on anything built on top of
+; it. This is what keeps `identity` extractable later: authentication reads
+; `users` and `memberships` with explicit SQL in app/core/auth rather than
+; importing the module that owns them, and this contract is what stops that
+; shortcut being taken back.
+; ---------------------------------------------------------------------------
+[importlinter:contract:core-depends-on-nothing]
+name = app.core never imports app.modules
+type = forbidden
+source_modules =
+    app.core
+forbidden_modules =
+    app.modules
+; The one deliberate exception, and the reason it is safe: this module exists
+; ONLY to populate `Base.metadata` for Alembic and the schema guards. It
+; imports each module's `models.py` for its registration side effect and calls
+; nothing. Alembic cannot generate a migration without it, and every other
+; route to the same result -- an import loop written out three times, a
+; hardcoded table list -- drifts. See app/core/metadata.py.
+ignore_imports =
+    app.core.metadata -> app.modules

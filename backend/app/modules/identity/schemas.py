@@ -5,12 +5,107 @@ Users, sessions, Cognito linkage, memberships.
 Separate Create / Update / Read schemas. ORM models are never exposed
 directly - the schema IS the API contract, and for several modules it is also
 where an invariant is enforced structurally.
+
+**`cognito_sub` appears in no schema in this file, and must not.** It is the
+external identity link; our `users.id` is the identifier clients see. Leaking
+the provider subject hands out a value that is meaningful in someone else's
+system.
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+import uuid
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _Base(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+# ---------------------------------------------------------------------------
+# OTP start - our outer throttle in front of the Cognito custom auth flow
+# ---------------------------------------------------------------------------
+class OtpStartRequest(_Base):
+    """A phone number to send a login code to.
+
+    The code itself never touches this service. Cognito's custom-auth Lambdas
+    call Twilio Verify, which generates, sends, expires and checks it
+    (docs/plan.md 5.8). No OTP value reaches our database or our logs, which
+    removes a whole class of leak rather than mitigating it.
+    """
+
+    phone: str = Field(
+        min_length=8,
+        max_length=20,
+        description="E.164, e.g. +919876543210.",
+    )
+
+    @field_validator("phone")
+    @classmethod
+    def _e164(cls, v: str) -> str:
+        v = v.strip().replace(" ", "")
+        if not v.startswith("+") or not v[1:].isdigit():
+            # Normalising instead of rejecting would guess a country code, and
+            # guessing wrong sends a stranger's phone a login code.
+            raise ValueError("phone must be E.164, starting with + and digits only")
+        return v
+
+
+class OtpStartResponse(_Base):
+    """Deliberately says nothing about whether the number is registered.
+
+    Answering "no such user" here turns the login form into a tool for
+    checking whether a given person has an account, which is a privacy leak
+    with no upside -- the candidate who mistyped their number learns nothing
+    useful from it either.
+    """
+
+    status: str = "CHALLENGE_SENT"
+    retry_after_seconds: int
+
+
+# ---------------------------------------------------------------------------
+# Whoami
+# ---------------------------------------------------------------------------
+class MeResponse(_Base):
+    """The caller's own identity, as resolved server-side.
+
+    Every field here is the *server's* answer, not an echo of the token. The
+    four clients use this to decide which surface to render, so a client that
+    somehow held a stale or forged claim still gets the truth from here.
+    """
+
+    user_id: uuid.UUID
+    role: str
+    pool: str
+    tenant_id: uuid.UUID | None = None
+
+
+# ---------------------------------------------------------------------------
+# Development-only token minting
+# ---------------------------------------------------------------------------
+class DevTokenRequest(_Base):
+    """Registered only when `auth_allow_local_tokens` is on. See router."""
+
+    pool: str = "CANDIDATE"
+    subject: str | None = Field(
+        default=None,
+        description="Reuse a subject to sign in as an existing local user.",
+    )
+    phone: str | None = None
+    email: str | None = None
+
+    @field_validator("pool")
+    @classmethod
+    def _known_pool(cls, v: str) -> str:
+        if v not in ("CANDIDATE", "BUSINESS"):
+            raise ValueError("pool must be CANDIDATE or BUSINESS")
+        return v
+
+
+class DevTokenResponse(_Base):
+    access_token: str
+    token_type: str = "Bearer"  # noqa: S105 - a scheme name, not a credential
+    subject: str
+    expires_in: int

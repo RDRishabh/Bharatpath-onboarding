@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Index, Integer, String, Text
+from sqlalchemy import CheckConstraint, DateTime, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,7 +31,9 @@ class Job(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    skills: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    skills: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
+    )
     location: Mapped[str | None] = mapped_column(String(255))
     work_mode: Mapped[str | None] = mapped_column(String(24))
     experience_min_months: Mapped[int | None] = mapped_column(Integer)

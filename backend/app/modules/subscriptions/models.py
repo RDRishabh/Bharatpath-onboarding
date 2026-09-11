@@ -35,6 +35,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -53,7 +54,9 @@ class Plan(Base, UUIDPrimaryKey, Timestamps):
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     period: Mapped[str] = mapped_column(String(16), nullable=False)
     price_minor: Mapped[int] = mapped_column(Integer, nullable=False)
-    entitlements: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    entitlements: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
+    )
     # Colleges only. One payment per period covering up to N students -
     # mirroring the employer model rather than the tiers the employer side
     # rejected. Behaviour at the limit is still open (we recommend: block).

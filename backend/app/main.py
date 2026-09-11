@@ -20,6 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
+from app.core.auth import dispose_identity_provider
+from app.core.cache import dispose_redis
 from app.core.db import dispose_engines
 from app.core.errors import AppError, app_error_handler, unhandled_error_handler
 from app.core.logging import configure_logging, get_logger
@@ -35,6 +37,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("startup", environment=settings.environment, region=settings.aws_region)
     yield
     await dispose_engines()
+    await dispose_redis()
+    await dispose_identity_provider()
     logger.info("shutdown")
 
 

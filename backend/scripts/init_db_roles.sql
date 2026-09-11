@@ -13,19 +13,49 @@
 -- ---------------------------------------------------------------------------
 -- Roles
 -- ---------------------------------------------------------------------------
+--
+-- Every statement below is idempotent. Re-running this file must be safe:
+-- `scripts/reset_local_db.sh` reapplies it against a container whose roles
+-- already exist, and a bare CREATE ROLE would abort the whole reset on the
+-- first line.
 
 -- Owns every table. Runs migrations. The application NEVER connects as this.
-CREATE ROLE bharatpath_migrator LOGIN PASSWORD 'bharatpath_migrator' NOBYPASSRLS;
+--
+-- BYPASSRLS is required, and the reason is subtle. Tenant-scoped tables carry
+-- FORCE ROW LEVEL SECURITY, which makes the policy apply to the table OWNER
+-- too -- that is the whole point of FORCE. So without BYPASSRLS this role,
+-- despite owning every table, could not write a single row to a tenant-scoped
+-- one, because `app.tenant_id` is unset during a migration and a data
+-- migration backfilling several tenants could not set it to one value anyway.
+--
+-- This does NOT weaken the application's isolation. What protects the app is
+-- that `bharatpath_app` is neither an owner nor holds BYPASSRLS. FORCE stays
+-- because it is what saves us if someone ever makes the app role an owner by
+-- accident -- which is exactly the mistake this three-role split exists to
+-- prevent.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bharatpath_migrator') THEN
+    CREATE ROLE bharatpath_migrator LOGIN PASSWORD 'bharatpath_migrator' BYPASSRLS;
+  END IF;
+END $$;
 
 -- What the API and the workers connect as. Not an owner, no BYPASSRLS, so RLS
 -- genuinely applies to it.
-CREATE ROLE bharatpath_app LOGIN PASSWORD 'bharatpath_app' NOBYPASSRLS;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bharatpath_app') THEN
+    CREATE ROLE bharatpath_app LOGIN PASSWORD 'bharatpath_app' NOBYPASSRLS;
+  END IF;
+END $$;
 
 -- Admin drill-downs that legitimately cross tenants. A separate engine and a
 -- separate session factory -- deliberately not a boolean on the normal
 -- session, so you cannot get cross-tenant reach by passing the wrong flag.
 -- Every session opened on this role is expected to emit an audit event.
-CREATE ROLE bharatpath_admin LOGIN PASSWORD 'bharatpath_admin' BYPASSRLS;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bharatpath_admin') THEN
+    CREATE ROLE bharatpath_admin LOGIN PASSWORD 'bharatpath_admin' BYPASSRLS;
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- Schema ownership and grants
@@ -48,6 +78,16 @@ ALTER DEFAULT PRIVILEGES FOR ROLE bharatpath_migrator IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE bharatpath_migrator IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO bharatpath_app;
 
+-- The admin bypass role is READ-ONLY, deliberately. It exists so admin
+-- drill-downs can see across tenants (SRS 1.17.4-1.17.6), and every session
+-- opened on it is expected to emit an audit event. A role that can both cross
+-- every tenant boundary AND write is the most dangerous credential in the
+-- system, so it gets one of those two powers, not both.
+--
+-- Admin actions that genuinely write -- KYB decisions, integrity resolutions,
+-- tenant suspensions, seat allocation -- go through the ordinary app role with
+-- an explicit tenant context, so they stay inside RLS and inside the audit
+-- path. Revisit on Day 19 if a cross-tenant write turns out to be unavoidable.
 ALTER DEFAULT PRIVILEGES FOR ROLE bharatpath_migrator IN SCHEMA public
   GRANT SELECT ON TABLES TO bharatpath_admin;
 ALTER DEFAULT PRIVILEGES FOR ROLE bharatpath_migrator IN SCHEMA public
