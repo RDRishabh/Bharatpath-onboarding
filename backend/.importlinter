@@ -34,10 +34,17 @@ forbidden_modules =
 ; Layering inside every module: routers -> services -> repositories.
 ; A router that touches a repository has skipped the transaction boundary
 ; and the business rules with it.
+;
+; `allow_indirect_imports` is what makes this contract mean what its name
+; says. Without it the contract also forbids router -> service ->
+; repository, which is the exact layering it exists to enforce -- so it
+; would fail on every correctly built module and pass only on one whose
+; service does no persistence. The rule is about the DIRECT import.
 ; ---------------------------------------------------------------------------
 [importlinter:contract:layers]
 name = Routers never touch repositories
 type = forbidden
+allow_indirect_imports = True
 source_modules =
     app.modules.*.router
 forbidden_modules =
