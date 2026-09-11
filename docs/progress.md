@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day3-auth-identity` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 121 passing (local + CI) |
+| **Tests** | 160 passing (local + CI) |
 | **Coverage** | 70% |
-| **Days done** | 1, 2 complete · 3, 4 partial |
-| **Next** | Day 5 — permission matrix and the Week 1 gate |
+| **Days done** | 1, 2 complete · 3, 4, 5 partial |
+| **Next** | Day 6 — resume upload, scan, parse task |
 
 ### Blocked, and not on us
 
@@ -29,6 +29,44 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | Day 15 scope | Unknown. Never asked. A course moves the score 30 points and nobody has said who produces it or what "completing" it means. |
 | **N2 — can CV text leave India?** | Day 8 scoring design | Open. `ap-south-1` chosen so the answer cannot be wrong. |
+
+---
+
+## 2026-09-11 (later) — Day 5, Week 1 gate
+
+### Built
+
+- `tests/unit/test_permission_matrix.py` — role x guard matrix over all **10**
+  roles (SRS 1.2; note the plan's prose says nine). Calls the dependency
+  callables directly with a constructed `TenantContext`, so 10x10 coverage costs
+  no database round trips. Also asserts `require_role` rejects an unknown role at
+  *import* time, so a typo fails the build rather than silently admitting nobody.
+- `tests/invariants/test_route_authorisation.py` — drives every documented route
+  with no `Authorization` header and asserts 401/403 unless explicitly
+  allowlisted, with the reason recorded beside each exemption.
+
+121 -> 160 tests.
+
+### Two judgement calls worth knowing
+
+**The route guard asks the app, it does not read its dependency tree.** The
+structural version needs FastAPI internals (`_IncludedRouter`,
+`_EffectiveRouteContext`) that changed in this version and will change again —
+and it only proves a guard is *declared*. Driving the route proves the request is
+actually refused. Verified by adding a deliberately unguarded route and
+confirming the test names it.
+
+**Known limit, stated rather than hidden:** routes with
+`include_in_schema=False` are invisible to it. Today that is only `/`, asserted
+separately.
+
+### Day 5 is partial, not done
+
+The gate has four parts. Permission matrix, no-anonymous-access and the
+audit/revocation tests are green. **Cross-tenant is proven at the database layer
+only** (`test_rls_and_grants.py`), because the plan's "every tenant-scoped
+endpoint" cannot be tested against five endpoints — the rest are Week 2. The
+harness is in place; the HTTP-layer suite lands with the endpoints.
 
 ---
 

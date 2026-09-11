@@ -1793,7 +1793,7 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 | 2 | Schema, RLS, audit, idempotency, outbox, OpenAPI stub publish | ☑ **done 2026-08-30** |
 | 3 | Cognito: pools, JWKS, phone OTP, Google, email | ◐ **partial 2026-09-11** — JWKS verification, local provider and the identity surface are in and CI-green (PR #2). Pools are **applied and verified** (`infra/terraform`). Phone OTP and Google are blocked — see below. |
 | 4 | MFA, memberships, role/tenant deps (anonymous flow removed in v4) | ◐ **partial 2026-09-11** — memberships and role/tenant deps done, cached 60s in Redis. Business-pool MFA is applied (software-token, required). |
-| 5 | Cross-tenant suite, permission matrix — **Week 1 gate** | ☐ |
+| 5 | Cross-tenant suite, permission matrix — **Week 1 gate** | ◐ **partial 2026-09-11** — permission matrix green across all 10 roles; no-anonymous-access enforced structurally for every documented route. Cross-tenant is proven at the database layer only — the HTTP-layer suite needs the Week 2 endpoints to exist. |
 | 6 | Resume upload, scan, parse task | ☐ |
 | 7 | Versions, review, confirm gate, status polling | ☐ |
 | 8 | **Scoring: extraction + rubric, caps, replay-from-storage — invariants 1, 2, 3, 4′** | ☐ |
