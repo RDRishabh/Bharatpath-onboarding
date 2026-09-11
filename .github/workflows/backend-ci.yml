@@ -91,6 +91,11 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
       ENVIRONMENT: local
       CI: "true"
+      # Settings refuses to boot with no authentication configured at all.
+      # CI has no Cognito pools, so it takes the other branch -- the same one
+      # local development uses. Settings itself rejects this flag outside
+      # local/CI, so it cannot leak into a deployed environment.
+      AUTH_ALLOW_LOCAL_TOKENS: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -154,6 +159,10 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://u:p@localhost:5432/db
           REDIS_URL: redis://localhost:6379/0
+          # Same reason as the test job: constructing the app constructs
+          # Settings, which now requires an authentication mechanism. Nothing
+          # here connects to either service -- the URLs are placeholders.
+          AUTH_ALLOW_LOCAL_TOKENS: "true"
         run: python scripts/export_openapi.py
       - uses: actions/upload-artifact@v4
         with:
