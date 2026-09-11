@@ -1,0 +1,9 @@
+# State holds every secret this module creates in plaintext -- the app's
+# IAM secret key above all. It never goes to the remote.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+!example.tfvars
+crash.log
