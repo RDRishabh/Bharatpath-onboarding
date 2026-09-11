@@ -1,5 +1,18 @@
 # Blocker register
 
+> ## ✅ Round 7 (2026-09-11) closed ten of these
+> **A1** scoring weights (delegated to us — rubric now in `scoring/domain.py`) ·
+> **B1/N2** CV text may leave India · **B2/Q12** score never explained ·
+> **B3/Q13** full delete, with a financial/audit carve-out flagged ·
+> **B5** dishonest-CV rules (delegated to us) · **B6/N5** pay-monthly-see-everyone
+> confirmed · **B8/N6** typed referral code approved · **B9/Q10** college seat
+> model approved · **D1** TRAI DLT started · **D2** Twilio started ·
+> **D5** Apple Developer declared not needed.
+>
+> **Remaining: A2 (calibration CVs), B4 (employer lists — question returned to
+> client), and the content in category C, which we are now producing as
+> placeholders.** See `answers-log.md` Round 7 for the verbatim answers.
+
 Everything currently blocking BharatPath, in one place. Compiled 2026-09-11 from
 `plan.md` §13, `questions.txt`, `resources-needed.md`, and findings from the
 build itself.

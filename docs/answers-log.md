@@ -14,7 +14,59 @@
 ## Status at a glance
 
 | Round | Source | Asked | Answered | Still open |
-|---|---|---|---|---|
+|---
+
+## Round 7 — client answers, 2026-09-11
+
+The largest single unblocking round of the project. Ten decisions, eight of
+which had been open since August.
+
+| # | Question | Client answer (verbatim) | What we did |
+|---|---|---|---|
+| **7.1** | How is the score calculated — dimensions and weights? | *"choose best from your side how score should be calculated - use your best knowledge - unblocked"* | Delegated to us. Rubric defined in `scoring-approach.md` §4a and implemented in `scoring/domain.py`. **The arithmetic was already fixed and approved (700 + 200 + 30 + 60 = 990); only the 0–200 resume band was open.** |
+| **7.2** | May CV text leave India? | *"can be"* | **N2 closed.** Removes the constraint on model hosting and region. We are keeping processing in `ap-south-1` anyway — it costs nothing and is the answer that stays right if the position changes. |
+| **7.3** | Is the score ever explained to the candidate? | *"confirmed"* — never shown | **Q12 closed.** Breakdown is still computed and stored for admin drill-down and disputes; no candidate-facing schema exposes it. |
+| **7.4** | On account deletion, what is retained? | *"do full delete for them"* | **Q13 answered in principle, with a carve-out we are flagging.** Personal data is hard-deleted. Financial and audit rows cannot be — see the note below. |
+| **7.5** | Employer type and industry lists | *"explain what do you mean"* | Explained, and a proposed list supplied for confirmation. |
+| **7.6** | Rules for detecting dishonest CVs | *"use your best knowledge"* | Delegated to us. |
+| **7.7** | College seat model — one payment covers up to N students? | *"yes"* | **Q10 closed.** Mirrors the employer model. |
+| **7.8** | Is "pay monthly, see everyone" correct, replacing per-candidate unlock? | *"that is correct"* | **N5 closed.** The rescission we had never asked for. Five stale acceptance criteria in SRS §2.25.2 are now formally superseded. |
+| **7.9** | Referral code typed by the student, rather than invite-and-accept? | *"do it"* | **N6 closed.** |
+| **7.10** | Course content, prices, question banks, translations, SMS copy, branding, form fields | *"create best for now according to your knowledge"* | Placeholder content to be produced by us, clearly marked as placeholder and replaceable without code changes. |
+
+**Also reported:** Twilio account started; TRAI DLT started. **Apple Developer
+declared not needed** — recorded as a scope decision, see below.
+
+### 7.4 — the one carve-out on "full delete"
+
+We are implementing full deletion of personal data. Two categories cannot be
+deleted with it, and this is a legal constraint rather than a technical one:
+
+- **Financial records** — subscription and course purchase rows. Indian
+  statutory retention applies to financial records regardless of a deletion
+  request; the right to erasure does not override it.
+- **Audit rows** — PRD §3.9 requires an immutable audit trail, and invariant 7′
+  requires every PII reveal to be audited. Deleting those rows destroys the
+  evidence that a reveal was lawful, which harms the candidate's position as
+  much as ours.
+
+**What we are building:** every field that identifies a person is hard-deleted
+(name, phone, email, CV files, parsed text, scores). Financial and audit rows
+survive with the person replaced by a non-reversible pseudonymous id, so they
+record *that* a transaction happened without recording *who*. From the
+candidate's point of view they are gone.
+
+**This needs a lawyer's sign-off, not ours.** It is the standard
+reconciliation, but retention periods are a legal question.
+
+### Apple Developer — scope consequence
+
+Declared not needed (2026-09-11). Recorded because it is reversible only at a
+cost: the account needs a D-U-N-S number and takes 1–3 weeks. **If iOS is
+wanted later, that is a 1–3 week lead time before a build can ship**, not a
+sprint decision. Android and the web consoles are unaffected.
+
+---|---|---|---|---|
 | 0 | Build brief open questions | 8 | 6 | 2 |
 | 1 | Document comments, 24 Aug | 9 | 9 | 0 |
 | 2 | Client note, 27 Aug | 6 | 6 | 0 |
