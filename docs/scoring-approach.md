@@ -316,6 +316,48 @@ the quality of this score than any amount of engineering.
 
 ---
 
+## 10a. Calibration — what we actually did *(2026-09-11)*
+
+The client declined to supply real CVs and asked us to calibrate from general
+industry practice instead (`answers-log.md` Round 7). We did, and this section
+records exactly what that buys and what it does not.
+
+**What exists:** `backend/tests/fixtures/calibration_corpus.json` — 35 profiles
+spanning nine industries and every seniority level, from a fresher with no
+internship to a twenty-year executive, plus deliberately awkward shapes: a long
+flat career, a career changer, a keyword-stuffed CV, and a strong candidate with
+no formal qualification.
+
+Measured spread is **724–900**, distributed ENTRY 7 · DEVELOPING 13 · SOLID 9 ·
+STRONG 6. It is the golden-replay gate: a one-point change to any band table
+fails CI and names the profiles that moved.
+
+The corpus also asserts behaviour, not just consistency:
+
+| Property | Why |
+|---|---|
+| Quality beats tenure | A ten-year flat career scores **below** a four-year strong one. Otherwise the score measures age, which is what invariant 5 exists to keep out. |
+| Keyword stuffing loses | The most common gaming strategy. Breadth flattens past twelve skills; evidence does not. |
+| No sector bias | Five or more industries reach the upper bands, and STRONG is not IT-only. The marketplace sells to manufacturing, healthcare and retail. |
+| Diploma holders reach SOLID | Education is 25 of 200 deliberately. A degree ceiling would exclude most of this market. |
+| Improving anything never costs points | Monotonicity, checked per dimension per profile. |
+
+**What this does not buy, stated plainly.** The corpus is synthetic. It proves
+the rubric is internally consistent and behaves sensibly. It does **not** prove
+the output matches the client's commercial judgment, because no one at the
+client has yet said *"this CV should score about here."* If their idea of
+"strong" differs from ours, every score is systematically off in the same
+direction — and nothing in CI can detect that, because CI only knows what we
+told it.
+
+**The cheap fix, if it is ever wanted.** Not 50–100 real CVs: **twenty minutes
+reviewing twenty of the synthetic profiles.** Someone with product judgment
+reads the label and the band and says "too high", "too low", or "about right".
+That closes most of the gap for a fraction of the original ask, and the corpus
+is a JSON file precisely so it can be edited without touching code.
+
+---
+
 ## 11. Failure handling
 
 | Situation | Behaviour |

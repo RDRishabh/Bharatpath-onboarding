@@ -1,0 +1,888 @@
+{
+  "version": "synthetic-v1-2026-09-11",
+  "rubric_version": "v1-2026-09-11",
+  "provenance": "SYNTHETIC. Built from general resume-scoring practice, not from real CVs. See docs/scoring-approach.md section 10a.",
+  "bands": {
+    "ENTRY": "700-769",
+    "DEVELOPING": "770-819",
+    "SOLID": "820-864",
+    "STRONG": "865-900"
+  },
+  "profiles": [
+    {
+      "id": "CAL-001",
+      "label": "Fresher, BA, no internship, minimal CV",
+      "industry": "Education",
+      "features": {
+        "total_experience_months": 0,
+        "highest_seniority": "unknown",
+        "role_progression": 0,
+        "skill_count": 2,
+        "skill_evidence": 1,
+        "achievement_specificity": 0,
+        "scope_of_responsibility": 0,
+        "highest_qualification": "bachelor",
+        "certification_count": 0
+      },
+      "expected_band": "ENTRY",
+      "expected_total": 724,
+      "expected_breakdown": {
+        "experience_depth": 0,
+        "role_progression": 0,
+        "skills": 11,
+        "achievements": 0,
+        "education": 13
+      }
+    },
+    {
+      "id": "CAL-002",
+      "label": "Fresher, BTech, no experience",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 0,
+        "highest_seniority": "unknown",
+        "role_progression": 0,
+        "skill_count": 3,
+        "skill_evidence": 1,
+        "achievement_specificity": 0,
+        "scope_of_responsibility": 0,
+        "highest_qualification": "bachelor",
+        "certification_count": 0
+      },
+      "expected_band": "ENTRY",
+      "expected_total": 724,
+      "expected_breakdown": {
+        "experience_depth": 0,
+        "role_progression": 0,
+        "skills": 11,
+        "achievements": 0,
+        "education": 13
+      }
+    },
+    {
+      "id": "CAL-003",
+      "label": "Fresher, ITI diploma, workshop training",
+      "industry": "Manufacturing",
+      "features": {
+        "total_experience_months": 0,
+        "highest_seniority": "unknown",
+        "role_progression": 0,
+        "skill_count": 4,
+        "skill_evidence": 2,
+        "achievement_specificity": 0,
+        "scope_of_responsibility": 0,
+        "highest_qualification": "diploma",
+        "certification_count": 1
+      },
+      "expected_band": "ENTRY",
+      "expected_total": 733,
+      "expected_breakdown": {
+        "experience_depth": 0,
+        "role_progression": 0,
+        "skills": 22,
+        "achievements": 0,
+        "education": 11
+      }
+    },
+    {
+      "id": "CAL-004",
+      "label": "Fresher, BTech, 6m internship + certs",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 6,
+        "highest_seniority": "intern",
+        "role_progression": 1,
+        "skill_count": 6,
+        "skill_evidence": 2,
+        "achievement_specificity": 1,
+        "scope_of_responsibility": 0,
+        "highest_qualification": "bachelor",
+        "certification_count": 2
+      },
+      "expected_band": "ENTRY",
+      "expected_total": 758,
+      "expected_breakdown": {
+        "experience_depth": 8,
+        "role_progression": 7,
+        "skills": 22,
+        "achievements": 5,
+        "education": 16
+      }
+    },
+    {
+      "id": "CAL-005",
+      "label": "Fresher, BSc Nursing, clinical rotations",
+      "industry": "Healthcare",
+      "features": {
+        "total_experience_months": 8,
+        "highest_seniority": "intern",
+        "role_progression": 1,
+        "skill_count": 5,
+        "skill_evidence": 2,
+        "achievement_specificity": 1,
+        "scope_of_responsibility": 0,
+        "highest_qualification": "bachelor",
+        "certification_count": 1
+      },
+      "expected_band": "ENTRY",
+      "expected_total": 758,
+      "expected_breakdown": {
+        "experience_depth": 8,
+        "role_progression": 7,
+        "skills": 22,
+        "achievements": 5,
+        "education": 16
+      }
+    },
+    {
+      "id": "CAL-006",
+      "label": "Fresher, BCom, 3m internship",
+      "industry": "Banking & Finance",
+      "features": {
+        "total_experience_months": 3,
+        "highest_seniority": "intern",
+        "role_progression": 0,
+        "skill_count": 4,
+        "skill_evidence": 1,
+        "achievement_specificity": 0,
+        "scope_of_responsibility": 0,
+        "highest_qualification": "bachelor",
+        "certification_count": 0
+      },
+      "expected_band": "ENTRY",
+      "expected_total": 740,
+      "expected_breakdown": {
+        "experience_depth": 8,
+        "role_progression": 2,
+        "skills": 17,
+        "achievements": 0,
+        "education": 13
+      }
+    },
+    {
+      "id": "CAL-007",
+      "label": "2y junior developer, average CV",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 26,
+        "highest_seniority": "junior",
+        "role_progression": 1,
+        "skill_count": 6,
+        "skill_evidence": 2,
+        "achievement_specificity": 1,
+        "scope_of_responsibility": 1,
+        "highest_qualification": "bachelor",
+        "certification_count": 1
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 777,
+      "expected_breakdown": {
+        "experience_depth": 20,
+        "role_progression": 10,
+        "skills": 22,
+        "achievements": 9,
+        "education": 16
+      }
+    },
+    {
+      "id": "CAL-008",
+      "label": "2y staff nurse, ward duties",
+      "industry": "Healthcare",
+      "features": {
+        "total_experience_months": 24,
+        "highest_seniority": "junior",
+        "role_progression": 1,
+        "skill_count": 5,
+        "skill_evidence": 2,
+        "achievement_specificity": 1,
+        "scope_of_responsibility": 1,
+        "highest_qualification": "bachelor",
+        "certification_count": 1
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 777,
+      "expected_breakdown": {
+        "experience_depth": 20,
+        "role_progression": 10,
+        "skills": 22,
+        "achievements": 9,
+        "education": 16
+      }
+    },
+    {
+      "id": "CAL-009",
+      "label": "18m retail sales associate",
+      "industry": "Retail",
+      "features": {
+        "total_experience_months": 18,
+        "highest_seniority": "junior",
+        "role_progression": 1,
+        "skill_count": 4,
+        "skill_evidence": 2,
+        "achievement_specificity": 1,
+        "scope_of_responsibility": 1,
+        "highest_qualification": "secondary",
+        "certification_count": 0
+      },
+      "expected_band": "ENTRY",
+      "expected_total": 765,
+      "expected_breakdown": {
+        "experience_depth": 20,
+        "role_progression": 10,
+        "skills": 22,
+        "achievements": 9,
+        "education": 4
+      }
+    },
+    {
+      "id": "CAL-010",
+      "label": "3y QA engineer, some automation",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 34,
+        "highest_seniority": "junior",
+        "role_progression": 2,
+        "skill_count": 8,
+        "skill_evidence": 3,
+        "achievement_specificity": 2,
+        "scope_of_responsibility": 1,
+        "highest_qualification": "bachelor",
+        "certification_count": 2
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 797,
+      "expected_breakdown": {
+        "experience_depth": 20,
+        "role_progression": 15,
+        "skills": 32,
+        "achievements": 14,
+        "education": 16
+      }
+    },
+    {
+      "id": "CAL-011",
+      "label": "2y site supervisor trainee",
+      "industry": "Construction",
+      "features": {
+        "total_experience_months": 28,
+        "highest_seniority": "junior",
+        "role_progression": 1,
+        "skill_count": 5,
+        "skill_evidence": 2,
+        "achievement_specificity": 1,
+        "scope_of_responsibility": 2,
+        "highest_qualification": "diploma",
+        "certification_count": 1
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 776,
+      "expected_breakdown": {
+        "experience_depth": 20,
+        "role_progression": 10,
+        "skills": 22,
+        "achievements": 13,
+        "education": 11
+      }
+    },
+    {
+      "id": "CAL-012",
+      "label": "3y accountant, CA inter",
+      "industry": "Banking & Finance",
+      "features": {
+        "total_experience_months": 33,
+        "highest_seniority": "junior",
+        "role_progression": 2,
+        "skill_count": 7,
+        "skill_evidence": 3,
+        "achievement_specificity": 2,
+        "scope_of_responsibility": 1,
+        "highest_qualification": "bachelor",
+        "certification_count": 2
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 792,
+      "expected_breakdown": {
+        "experience_depth": 20,
+        "role_progression": 15,
+        "skills": 27,
+        "achievements": 14,
+        "education": 16
+      }
+    },
+    {
+      "id": "CAL-013",
+      "label": "4y mid developer, quantified work",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 50,
+        "highest_seniority": "mid",
+        "role_progression": 2,
+        "skill_count": 9,
+        "skill_evidence": 3,
+        "achievement_specificity": 2,
+        "scope_of_responsibility": 2,
+        "highest_qualification": "bachelor",
+        "certification_count": 1
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 819,
+      "expected_breakdown": {
+        "experience_depth": 32,
+        "role_progression": 21,
+        "skills": 32,
+        "achievements": 18,
+        "education": 16
+      }
+    },
+    {
+      "id": "CAL-014",
+      "label": "5y production engineer",
+      "industry": "Manufacturing",
+      "features": {
+        "total_experience_months": 62,
+        "highest_seniority": "mid",
+        "role_progression": 2,
+        "skill_count": 8,
+        "skill_evidence": 3,
+        "achievement_specificity": 2,
+        "scope_of_responsibility": 2,
+        "highest_qualification": "bachelor",
+        "certification_count": 1
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 819,
+      "expected_breakdown": {
+        "experience_depth": 32,
+        "role_progression": 21,
+        "skills": 32,
+        "achievements": 18,
+        "education": 16
+      }
+    },
+    {
+      "id": "CAL-015",
+      "label": "5y school teacher, HOD track",
+      "industry": "Education",
+      "features": {
+        "total_experience_months": 60,
+        "highest_seniority": "mid",
+        "role_progression": 2,
+        "skill_count": 6,
+        "skill_evidence": 3,
+        "achievement_specificity": 2,
+        "scope_of_responsibility": 2,
+        "highest_qualification": "master",
+        "certification_count": 1
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 817,
+      "expected_breakdown": {
+        "experience_depth": 32,
+        "role_progression": 21,
+        "skills": 27,
+        "achievements": 18,
+        "education": 19
+      }
+    },
+    {
+      "id": "CAL-016",
+      "label": "4y logistics coordinator",
+      "industry": "Logistics & Transport",
+      "features": {
+        "total_experience_months": 48,
+        "highest_seniority": "mid",
+        "role_progression": 2,
+        "skill_count": 7,
+        "skill_evidence": 2,
+        "achievement_specificity": 2,
+        "scope_of_responsibility": 2,
+        "highest_qualification": "bachelor",
+        "certification_count": 0
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 806,
+      "expected_breakdown": {
+        "experience_depth": 32,
+        "role_progression": 21,
+        "skills": 22,
+        "achievements": 18,
+        "education": 13
+      }
+    },
+    {
+      "id": "CAL-017",
+      "label": "6y hotel operations manager",
+      "industry": "Hospitality",
+      "features": {
+        "total_experience_months": 70,
+        "highest_seniority": "mid",
+        "role_progression": 3,
+        "skill_count": 8,
+        "skill_evidence": 3,
+        "achievement_specificity": 3,
+        "scope_of_responsibility": 3,
+        "highest_qualification": "diploma",
+        "certification_count": 1
+      },
+      "expected_band": "SOLID",
+      "expected_total": 827,
+      "expected_breakdown": {
+        "experience_depth": 32,
+        "role_progression": 26,
+        "skills": 32,
+        "achievements": 26,
+        "education": 11
+      }
+    },
+    {
+      "id": "CAL-018",
+      "label": "5y relationship manager, targets met",
+      "industry": "Banking & Finance",
+      "features": {
+        "total_experience_months": 64,
+        "highest_seniority": "mid",
+        "role_progression": 3,
+        "skill_count": 9,
+        "skill_evidence": 3,
+        "achievement_specificity": 3,
+        "scope_of_responsibility": 2,
+        "highest_qualification": "bachelor",
+        "certification_count": 2
+      },
+      "expected_band": "SOLID",
+      "expected_total": 829,
+      "expected_breakdown": {
+        "experience_depth": 32,
+        "role_progression": 26,
+        "skills": 32,
+        "achievements": 23,
+        "education": 16
+      }
+    },
+    {
+      "id": "CAL-019",
+      "label": "7y senior engineer, strong, quantified",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 88,
+        "highest_seniority": "senior",
+        "role_progression": 3,
+        "skill_count": 12,
+        "skill_evidence": 3,
+        "achievement_specificity": 3,
+        "scope_of_responsibility": 3,
+        "highest_qualification": "bachelor",
+        "certification_count": 2
+      },
+      "expected_band": "SOLID",
+      "expected_total": 847,
+      "expected_breakdown": {
+        "experience_depth": 42,
+        "role_progression": 31,
+        "skills": 32,
+        "achievements": 26,
+        "education": 16
+      }
+    },
+    {
+      "id": "CAL-020",
+      "label": "8y senior nurse, diploma route",
+      "industry": "Healthcare",
+      "features": {
+        "total_experience_months": 100,
+        "highest_seniority": "senior",
+        "role_progression": 2,
+        "skill_count": 5,
+        "skill_evidence": 3,
+        "achievement_specificity": 2,
+        "scope_of_responsibility": 3,
+        "highest_qualification": "diploma",
+        "certification_count": 2
+      },
+      "expected_band": "SOLID",
+      "expected_total": 827,
+      "expected_breakdown": {
+        "experience_depth": 42,
+        "role_progression": 26,
+        "skills": 27,
+        "achievements": 21,
+        "education": 11
+      }
+    },
+    {
+      "id": "CAL-021",
+      "label": "9y plant supervisor, shift lead",
+      "industry": "Manufacturing",
+      "features": {
+        "total_experience_months": 110,
+        "highest_seniority": "senior",
+        "role_progression": 3,
+        "skill_count": 9,
+        "skill_evidence": 3,
+        "achievement_specificity": 3,
+        "scope_of_responsibility": 3,
+        "highest_qualification": "diploma",
+        "certification_count": 2
+      },
+      "expected_band": "SOLID",
+      "expected_total": 842,
+      "expected_breakdown": {
+        "experience_depth": 42,
+        "role_progression": 31,
+        "skills": 32,
+        "achievements": 26,
+        "education": 11
+      }
+    },
+    {
+      "id": "CAL-022",
+      "label": "8y branch manager",
+      "industry": "Banking & Finance",
+      "features": {
+        "total_experience_months": 96,
+        "highest_seniority": "senior",
+        "role_progression": 3,
+        "skill_count": 10,
+        "skill_evidence": 3,
+        "achievement_specificity": 3,
+        "scope_of_responsibility": 4,
+        "highest_qualification": "master",
+        "certification_count": 2
+      },
+      "expected_band": "SOLID",
+      "expected_total": 854,
+      "expected_breakdown": {
+        "experience_depth": 42,
+        "role_progression": 31,
+        "skills": 32,
+        "achievements": 30,
+        "education": 19
+      }
+    },
+    {
+      "id": "CAL-023",
+      "label": "7y senior teacher, curriculum lead",
+      "industry": "Education",
+      "features": {
+        "total_experience_months": 84,
+        "highest_seniority": "senior",
+        "role_progression": 3,
+        "skill_count": 8,
+        "skill_evidence": 3,
+        "achievement_specificity": 3,
+        "scope_of_responsibility": 3,
+        "highest_qualification": "master",
+        "certification_count": 2
+      },
+      "expected_band": "SOLID",
+      "expected_total": 850,
+      "expected_breakdown": {
+        "experience_depth": 42,
+        "role_progression": 31,
+        "skills": 32,
+        "achievements": 26,
+        "education": 19
+      }
+    },
+    {
+      "id": "CAL-024",
+      "label": "12y tech lead, MTech, managed teams",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 150,
+        "highest_seniority": "lead",
+        "role_progression": 3,
+        "skill_count": 14,
+        "skill_evidence": 4,
+        "achievement_specificity": 3,
+        "scope_of_responsibility": 4,
+        "highest_qualification": "master",
+        "certification_count": 3
+      },
+      "expected_band": "STRONG",
+      "expected_total": 878,
+      "expected_breakdown": {
+        "experience_depth": 50,
+        "role_progression": 35,
+        "skills": 40,
+        "achievements": 30,
+        "education": 23
+      }
+    },
+    {
+      "id": "CAL-025",
+      "label": "14y plant manager",
+      "industry": "Manufacturing",
+      "features": {
+        "total_experience_months": 170,
+        "highest_seniority": "lead",
+        "role_progression": 3,
+        "skill_count": 11,
+        "skill_evidence": 4,
+        "achievement_specificity": 3,
+        "scope_of_responsibility": 4,
+        "highest_qualification": "bachelor",
+        "certification_count": 3
+      },
+      "expected_band": "STRONG",
+      "expected_total": 872,
+      "expected_breakdown": {
+        "experience_depth": 50,
+        "role_progression": 35,
+        "skills": 37,
+        "achievements": 30,
+        "education": 20
+      }
+    },
+    {
+      "id": "CAL-026",
+      "label": "11y principal consultant",
+      "industry": "Banking & Finance",
+      "features": {
+        "total_experience_months": 135,
+        "highest_seniority": "principal",
+        "role_progression": 4,
+        "skill_count": 13,
+        "skill_evidence": 4,
+        "achievement_specificity": 4,
+        "scope_of_responsibility": 4,
+        "highest_qualification": "master",
+        "certification_count": 3
+      },
+      "expected_band": "STRONG",
+      "expected_total": 891,
+      "expected_breakdown": {
+        "experience_depth": 50,
+        "role_progression": 43,
+        "skills": 40,
+        "achievements": 35,
+        "education": 23
+      }
+    },
+    {
+      "id": "CAL-027",
+      "label": "16y hospital administrator",
+      "industry": "Healthcare",
+      "features": {
+        "total_experience_months": 195,
+        "highest_seniority": "lead",
+        "role_progression": 3,
+        "skill_count": 10,
+        "skill_evidence": 4,
+        "achievement_specificity": 3,
+        "scope_of_responsibility": 4,
+        "highest_qualification": "master",
+        "certification_count": 4
+      },
+      "expected_band": "STRONG",
+      "expected_total": 875,
+      "expected_breakdown": {
+        "experience_depth": 50,
+        "role_progression": 35,
+        "skills": 37,
+        "achievements": 30,
+        "education": 23
+      }
+    },
+    {
+      "id": "CAL-028",
+      "label": "20y CTO, PhD, exceptional record",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 250,
+        "highest_seniority": "executive",
+        "role_progression": 4,
+        "skill_count": 16,
+        "skill_evidence": 4,
+        "achievement_specificity": 4,
+        "scope_of_responsibility": 4,
+        "highest_qualification": "doctorate",
+        "certification_count": 4
+      },
+      "expected_band": "STRONG",
+      "expected_total": 900,
+      "expected_breakdown": {
+        "experience_depth": 55,
+        "role_progression": 45,
+        "skills": 40,
+        "achievements": 35,
+        "education": 25
+      }
+    },
+    {
+      "id": "CAL-029",
+      "label": "22y VP operations",
+      "industry": "Logistics & Transport",
+      "features": {
+        "total_experience_months": 270,
+        "highest_seniority": "executive",
+        "role_progression": 4,
+        "skill_count": 14,
+        "skill_evidence": 4,
+        "achievement_specificity": 4,
+        "scope_of_responsibility": 4,
+        "highest_qualification": "master",
+        "certification_count": 3
+      },
+      "expected_band": "STRONG",
+      "expected_total": 898,
+      "expected_breakdown": {
+        "experience_depth": 55,
+        "role_progression": 45,
+        "skills": 40,
+        "achievements": 35,
+        "education": 23
+      }
+    },
+    {
+      "id": "CAL-030",
+      "label": "10y but flat career, thin CV",
+      "industry": "Retail",
+      "features": {
+        "total_experience_months": 126,
+        "highest_seniority": "mid",
+        "role_progression": 0,
+        "skill_count": 4,
+        "skill_evidence": 1,
+        "achievement_specificity": 0,
+        "scope_of_responsibility": 1,
+        "highest_qualification": "diploma",
+        "certification_count": 0
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 790,
+      "expected_breakdown": {
+        "experience_depth": 50,
+        "role_progression": 11,
+        "skills": 17,
+        "achievements": 4,
+        "education": 8
+      }
+    },
+    {
+      "id": "CAL-031",
+      "label": "15y same role, no progression",
+      "industry": "Manufacturing",
+      "features": {
+        "total_experience_months": 185,
+        "highest_seniority": "mid",
+        "role_progression": 0,
+        "skill_count": 5,
+        "skill_evidence": 2,
+        "achievement_specificity": 1,
+        "scope_of_responsibility": 1,
+        "highest_qualification": "secondary",
+        "certification_count": 0
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 796,
+      "expected_breakdown": {
+        "experience_depth": 50,
+        "role_progression": 11,
+        "skills": 22,
+        "achievements": 9,
+        "education": 4
+      }
+    },
+    {
+      "id": "CAL-032",
+      "label": "4y strong but no formal qualification",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 52,
+        "highest_seniority": "mid",
+        "role_progression": 3,
+        "skill_count": 11,
+        "skill_evidence": 4,
+        "achievement_specificity": 3,
+        "scope_of_responsibility": 2,
+        "highest_qualification": "none",
+        "certification_count": 2
+      },
+      "expected_band": "SOLID",
+      "expected_total": 821,
+      "expected_breakdown": {
+        "experience_depth": 32,
+        "role_progression": 26,
+        "skills": 37,
+        "achievements": 23,
+        "education": 3
+      }
+    },
+    {
+      "id": "CAL-033",
+      "label": "Career changer: 12y total, 1y in new field",
+      "industry": "Healthcare",
+      "features": {
+        "total_experience_months": 150,
+        "highest_seniority": "junior",
+        "role_progression": 1,
+        "skill_count": 6,
+        "skill_evidence": 2,
+        "achievement_specificity": 2,
+        "scope_of_responsibility": 1,
+        "highest_qualification": "master",
+        "certification_count": 1
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 815,
+      "expected_breakdown": {
+        "experience_depth": 50,
+        "role_progression": 10,
+        "skills": 22,
+        "achievements": 14,
+        "education": 19
+      }
+    },
+    {
+      "id": "CAL-034",
+      "label": "Keyword-stuffed CV, little evidence",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 40,
+        "highest_seniority": "mid",
+        "role_progression": 1,
+        "skill_count": 30,
+        "skill_evidence": 1,
+        "achievement_specificity": 0,
+        "scope_of_responsibility": 1,
+        "highest_qualification": "bachelor",
+        "certification_count": 0
+      },
+      "expected_band": "DEVELOPING",
+      "expected_total": 790,
+      "expected_breakdown": {
+        "experience_depth": 32,
+        "role_progression": 16,
+        "skills": 25,
+        "achievements": 4,
+        "education": 13
+      }
+    },
+    {
+      "id": "CAL-035",
+      "label": "Short tenure, very high impact",
+      "industry": "IT & Software",
+      "features": {
+        "total_experience_months": 30,
+        "highest_seniority": "senior",
+        "role_progression": 3,
+        "skill_count": 10,
+        "skill_evidence": 4,
+        "achievement_specificity": 4,
+        "scope_of_responsibility": 3,
+        "highest_qualification": "master",
+        "certification_count": 2
+      },
+      "expected_band": "SOLID",
+      "expected_total": 838,
+      "expected_breakdown": {
+        "experience_depth": 20,
+        "role_progression": 31,
+        "skills": 37,
+        "achievements": 31,
+        "education": 19
+      }
+    }
+  ]
+}
