@@ -42,6 +42,9 @@ output "env_file" {
   sensitive   = true
   value       = <<-EOT
     AWS_REGION=${var.aws_region}
+    # Explicitly blank: .env sets the LocalStack endpoint, and without this
+    # line that value survives and every S3 call goes to 127.0.0.1:4566.
+    AWS_ENDPOINT_URL=
     AWS_ACCESS_KEY_ID=${aws_iam_access_key.app.id}
     AWS_SECRET_ACCESS_KEY=${aws_iam_access_key.app.secret}
 

@@ -92,6 +92,31 @@ class Settings(BaseSettings):
 
     presigned_url_ttl_seconds: int = 900
 
+    # -- resume intake (plan.md section 8, Day 6) --------------------------
+    # 10 MB. A CV that does not fit is a scanned photo album, and Textract
+    # bills per page. The cap is enforced twice: declared to the client when
+    # the upload is presigned, and re-checked server-side from S3 metadata
+    # before any row is written -- a presigned PUT cannot be trusted to have
+    # honoured it.
+    resume_max_upload_bytes: int = 10 * 1024 * 1024
+
+    # Sniffed from the first bytes of the object, never from the filename or
+    # the client-declared Content-Type. Both are attacker-controlled.
+    resume_allowed_mime_types: list[str] = [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword",
+    ]
+
+    # How much of the object to read back to identify it. Every magic number
+    # we match sits in the first few bytes; 8 KiB is generous and bounds what
+    # a malicious upload can make us pull into memory.
+    resume_sniff_bytes: int = 8192
+
+    # Paste-text path (PRD 4.2). Large enough for a long CV, small enough that
+    # it cannot be used as free object storage.
+    resume_max_text_chars: int = 60_000
+
     # -- celery ------------------------------------------------------------
     celery_broker_url: str = "sqs://"
     celery_result_backend: str | None = None
@@ -142,6 +167,20 @@ class Settings(BaseSettings):
     # number space. Both are needed.
     otp_start_per_phone_per_hour: int = 5
     otp_start_per_ip_per_hour: int = 20
+
+    @field_validator("aws_endpoint_url", mode="before")
+    @classmethod
+    def _blank_endpoint_means_real_aws(cls, v: object) -> object:
+        """`AWS_ENDPOINT_URL=` means "no override", not "an empty endpoint".
+
+        Without this, pointing a local checkout at real AWS by blanking the
+        LocalStack line in .env produces an empty string, and boto3 builds
+        every URL against it -- the symptom is a connection refused to
+        127.0.0.1 while every credential and bucket name is correct.
+        """
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     @field_validator("database_admin_url", mode="after")
     @classmethod
