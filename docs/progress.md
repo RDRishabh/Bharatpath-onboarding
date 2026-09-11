@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day3-auth-identity` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 160 passing (local + CI) |
+| **Tests** | 236 passing (local + CI) |
 | **Coverage** | 70% |
-| **Days done** | 1, 2 complete · 3, 4, 5 partial |
-| **Next** | Day 6 — resume upload, scan, parse task |
+| **Days done** | 1, 2 complete · 3, 4, 5, 6 partial |
+| **Next** | Day 7 — versions, review, confirm gate, status polling |
 
 ### Deferred by decision — revisit before launch
 
@@ -32,6 +32,8 @@ states. Newest entries first.
 > are stored per extraction precisely so a replay can tell which engine produced
 > a score, and so a change is a **re-score**, not a silent drift.
 
+**Full register: [`blockers.md`](blockers.md)** — 40 items by category.
+
 ### Blocked, and not on us
 
 | Blocker | Blocks | Lead time |
@@ -39,10 +41,10 @@ states. Newest entries first.
 | **Textract account activation** | OCR fallback for scanned CVs | `SubscriptionRequiredException` on a brand-new AWS account, with `AdministratorAccess` — so it is account activation, not IAM. Usually clears within hours. **Code is written and wired; run `backend/scripts/verify_ocr_fallback.py` once it clears.** |
 
 ---|---|---|
-| **TRAI DLT registration** | All SMS to Indian numbers | **2–4 weeks — longer than the sprint.** Binds the sender, not the gateway; neither Cognito nor Twilio removes it. **Start it.** |
+| ~~TRAI DLT registration~~ | — | ✅ **Started 2026-09-11.** Still 2–4 weeks to clear; SMS to Indian numbers fails until it does. |
 | **Twilio account** | Phone OTP, the 3 Cognito custom-auth Lambdas | Days |
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
-| **N7 — who makes the course?** | Day 15 scope | Unknown. Never asked. A course moves the score 30 points and nobody has said who produces it or what "completing" it means. |
+| **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | **N2 — can CV text leave India?** | Day 8 scoring design | Open. `ap-south-1` chosen so the answer cannot be wrong. |
 
 ---
