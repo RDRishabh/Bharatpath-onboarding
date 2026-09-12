@@ -98,7 +98,7 @@ the one to read: a placeholder removes the build dependency and nothing else.
 | **C9** | **Production API contracts and data schemas** | — | Reconciliation. NDA-gated (PRD §10). |
 | **C10** | **Eligibility message copy** | `eligibility.below_threshold` in all 8 locales, with a test asserting it contains no digits | Sign-off on the wording. It says the requirement is not met and nothing else — the score is never explained. |
 | **C11** | **R18 duplicate-detection confirmation** | — | Provisional until it lands. |
-| **C12** | **Do seats replace a student's own subscription?** | — | ⚠️ **Never asked, and it is a revenue question.** Both price lists are built as though a college seat and a candidate subscription are separate purchases. If a seat is meant to *cover* the student, the college prices are far too low and the candidate revenue from those students is zero. One sentence closes it; discovering it after the first college deal does not. |
+| ~~**C12**~~ | ~~**Do seats replace a student's own subscription?**~~ | 2026-09-12 | ✅ **CLOSED — "Student does not pay if the college has paid for it."** The seat covers them entirely. College prices rebuilt on that basis (~2.7x; per-seat yield 13% → 37–47% of direct, ex-tax) and a floor test added so it cannot drift back. Entitlement for Day 15/17 is settled: **personal subscription OR active seat**. See `answers-log.md` Round 8 — which also lists three follow-on questions this opens (a student who already paid, non-renewal, and whether a seat covers the paid add-ons). |
 
 ---
 
@@ -162,6 +162,8 @@ Worth stating, because it is most of the build:
 4. **Take the SMS drafts to the DLT portal.** 17 bodies are written
    (`sms_templates()`). Registration is 2–4 weeks and it has not started on the
    template side, only the entity side. Nothing else about it gets faster later.
-5. **C12 — does a college seat cover the student's own subscription?** One
-   sentence, and it is the only open item that changes a revenue number rather
-   than a date.
+5. ~~**C12 — does a college seat cover the student's own subscription?**~~
+   ✅ **Answered 2026-09-12: it does.** The one open item that changed a
+   revenue number rather than a date, and it changed it by 2.7x. Three
+   follow-on questions replace it, none blocking the build — see
+   `answers-log.md` Round 8.

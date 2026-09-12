@@ -15,7 +15,7 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 954 passing (local + CI) |
+| **Tests** | 958 passing (local + CI) |
 | **Coverage** | 78% |
 | **Days done** | 1, 2, 7 complete · 3, 4, 5, 6 partial |
 | **Next** | Day 8 — scoring: extraction, persistence, replay-from-storage |
@@ -50,6 +50,100 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | **N2 — can CV text leave India?** | Day 8 scoring design | Open. `ap-south-1` chosen so the answer cannot be wrong. |
+
+---
+
+## 2026-09-12 (later still) — C12 closed, and the college price list rebuilt
+
+The client answered the one open question that moved a revenue number rather
+than a date: **"No - Student does not pay if the college has paid for it."**
+
+### What was wrong, and why nothing caught it
+
+C12 had never been put to the client. Both price lists were built on the
+unexamined assumption that a seat and a subscription were separate purchases —
+a college deal earning its seat fee *on top of* whatever those students paid
+directly. On that reading, ₹12–17 per seat per month was a placement-cell tool
+sold alongside real candidate revenue, and it looked entirely reasonable.
+
+The answer is the opposite. The seat fee is the **entire** lifetime revenue
+from that student, which put the old ladder at **13–18% of what the same
+student was worth unsigned**. A thousand-seat annual deal would have displaced
+roughly ₹10.2 lakh of candidate revenue to book ₹1.4 lakh — every college
+signed would have made the business smaller.
+
+**Nothing failed, and that is the part worth keeping.** Every price check in
+the suite was structural: totals ascending with seat count, longer periods
+never costing more per month, tax flags correct per audience. All of them
+passed. A number can satisfy every structural invariant while being an order of
+magnitude wrong about *what it is selling*, and the figure that would have
+shown it — revenue per seat — was not computed anywhere in the codebase.
+
+### What replaced it
+
+A seat is now priced as what it is: a **bulk-rate candidate subscription**,
+discounted for volume rather than invented independently. The discount is real
+— one invoice, upfront, students at zero acquisition cost, onboarding carried
+by the college — but it is a discount on a known number.
+
+| Plan | Old | New | Per seat, ex-tax | Yield vs direct |
+|---|---|---|---|---|
+| `COLLEGE_SEMESTER_250` | ₹24,999 | **₹69,999** | ₹279.99 | 17% → **47.3%** |
+| `COLLEGE_SEMESTER_1000` | ₹79,999 | **₹2,19,999** | ₹219.99 | 13% → **37.1%** |
+| `COLLEGE_ANNUAL_250` | ₹44,999 | **₹1,19,999** | ₹479.99 | 18% → **47.2%** |
+| `COLLEGE_ANNUAL_1000` | ₹1,39,999 | **₹3,79,999** | ₹379.99 | 14% → **37.4%** |
+
+~2.7x across the board. That is not a price rise; it is the first list being
+wrong about what it was selling.
+
+- **`PLACEHOLDER_PRICING` is still `True`.** These still need sign-off. They
+  are now wrong in a direction that costs a deal rather than the business.
+- **Ex-tax on both sides.** Candidate prices are inclusive, business prices
+  exclusive, so the raw numbers are not comparable — comparing them directly
+  flatters a seat by 18%. `GST_RATE` is now a constant in the catalogue rather
+  than something applied only at the invoice, because that comparison became a
+  revenue decision rather than a presentational one.
+- **`MIN_SEAT_SHARE_OF_DIRECT = 0.35`** with
+  `test_a_seat_never_undercuts_direct_candidate_revenue`, so this cannot drift
+  back by increments. Verified against all four old prices: every one is
+  caught. A companion test asserts every college period has a candidate plan of
+  the same duration to price against — without it the floor silently skips.
+
+### The engineering consequence, recorded before Day 15 builds it
+
+A seated student pays us nothing and must still get in, so
+**`require_active_subscription` is a check with two limbs**: a personal
+subscription **OR** an active college seat. It is still a stub, which is why
+this answer arriving now rather than on Day 15 is worth something.
+
+`college_seats` is therefore an **entitlement row, not an allowance counter**.
+Withdrawing a seat is an access change, not an administrative one, and
+`seats_used` being off by one is either a student locked out of something
+bought for them or a student we carry free. Both `deps.py` and
+`college/models.py` now say so at the point someone will read them.
+
+It also raises the stakes on an older open question — what happens at the 501st
+student on a 500-seat plan. Over-allocating no longer over-serves a seat; it
+gives away a full subscription.
+
+### Three things the answer opens, none blocking
+
+Consequences, not restatements. All three need answering before the first
+college contract, and none of them stops the build:
+
+1. **A student who already paid, then joins a roster.** Refund, credit, or
+   their subscription simply runs alongside? We are building the third — no
+   money moves without a human — but someone who paid ₹1,199 in June and is
+   seated free in July will ask.
+2. **Non-renewal.** Students lose access in batches of 250 or 1000, on a date
+   known in advance. That wants a deliberate grace period, not a hard cutoff
+   discovered live.
+3. **Do add-ons ride along?** Our assumption: a seat covers the **subscription
+   only**; the course (+30) and interview sessions (+60) stay the student's own
+   purchase. Otherwise a 1000-seat deal silently includes ~₹8.5 lakh of add-on
+   inventory. Flagged rather than assumed.
+
+Full detail: `answers-log.md` Round 8.
 
 ---
 

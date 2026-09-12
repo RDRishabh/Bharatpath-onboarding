@@ -170,7 +170,20 @@ async def require_active_subscription(user: CurrentUser) -> TenantContext:
     subscriber keeps their account and their score history and loses access -
     they never lose data.
 
-    TODO(Day 11/15): read the subscription state.
+    **A candidate is entitled by a personal subscription OR by an active
+    college seat** (client, 2026-09-12, closing C12). A seated student pays us
+    nothing and must still get in, so this is a check with two limbs and a
+    seated student failing it would be a college's entire cohort locked out of
+    something the college has already paid for.
+
+    The seat limb is the one with a lifecycle: a personal subscription lapses
+    on a date this user controls, a seat is withdrawn by someone else - the
+    college not renewing, or an admin reassigning it. Both must be read live.
+    **Do not cache the answer**; `require_active_access_window` below carries
+    the same warning for the same reason.
+
+    TODO(Day 11/15): read the subscription state, then the seat.
+    TODO(Day 17): the seat limb lands with college seats.
     """
     raise SubscriptionRequiredError()
 

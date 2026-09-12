@@ -7,7 +7,7 @@
 > **Still-open questions live in [`questions.txt`](questions.txt)**, written in plain language and
 > ready to send. This file is the archive; that file is the ask.
 >
-> Last updated 30 August 2026 — Round 6 added (raised by us on review, not client answers).
+> Last updated 12 September 2026 — Round 8 added (C12, the college seat model).
 
 ---
 
@@ -15,6 +15,90 @@
 
 | Round | Source | Asked | Answered | Still open |
 |---
+
+## Round 8 — client answer, 2026-09-12
+
+One question, and it was the only open item that moved a revenue number rather
+than a date.
+
+| # | Question | Client answer (verbatim) | What we did |
+|---|---|---|---|
+| **8.1** | When a college buys seats for its students, does the student still pay their own subscription? | *"No - Student does not pay if the college has paid for it."* | **C12 closed.** A seat covers the student entirely. The college price list was rebuilt on that basis (~2.7x), and the entitlement rule for Day 15/17 is now settled: access is a personal subscription **OR** an active college seat. |
+
+### Why this one mattered more than its length
+
+C12 had **never been put to the client**. Both price lists were built on the
+unexamined assumption that a seat and a subscription were separate purchases —
+that a college deal earned the seat fee *on top of* whatever those students
+paid us directly. On that reading, ~₹12–17 per seat per month was a placement
+-cell tool sold alongside real candidate revenue, and it looked reasonable.
+
+The answer is the opposite one. The seat fee is the **entire** lifetime revenue
+from that student, which made the old ladder indefensible:
+
+| Plan | Old total | Old per seat / period, ex-tax | Direct candidate, ex-tax | Old yield |
+|---|---|---|---|---|
+| `COLLEGE_SEMESTER_250` | ₹24,999 | ₹99.99 | ₹592.37 | **17%** |
+| `COLLEGE_SEMESTER_1000` | ₹79,999 | ₹79.99 | ₹592.37 | **13%** |
+| `COLLEGE_ANNUAL_250` | ₹44,999 | ₹179.99 | ₹1,016.10 | **18%** |
+| `COLLEGE_ANNUAL_1000` | ₹1,39,999 | ₹139.99 | ₹1,016.10 | **14%** |
+
+A thousand-seat annual deal would have displaced roughly **₹10.2 lakh** of
+candidate revenue to book **₹1.4 lakh**. Every college signed would have made
+the business smaller, and the figure that reveals it — revenue per seat — was
+not computed anywhere in the codebase.
+
+### What replaced it
+
+A seat is now priced as what it actually is: **a bulk-rate candidate
+subscription**, discounted for volume rather than invented independently. The
+discount is genuine — one invoice, paid upfront, students delivered at zero
+acquisition cost, onboarding carried by the college — but it is a discount on
+a known number.
+
+| Plan | New total | Per seat, ex-tax | Yield vs direct |
+|---|---|---|---|
+| `COLLEGE_SEMESTER_250` | ₹69,999 | ₹279.99 | 47.3% |
+| `COLLEGE_SEMESTER_1000` | ₹2,19,999 | ₹219.99 | 37.1% |
+| `COLLEGE_ANNUAL_250` | ₹1,19,999 | ₹479.99 | 47.2% |
+| `COLLEGE_ANNUAL_1000` | ₹3,79,999 | ₹379.99 | 37.4% |
+
+**Ex-tax on both sides.** Candidate prices are quoted tax-inclusive and
+business prices exclusive, so comparing the raw numbers flatters a seat by 18%
+— the same class of error in miniature, and the reason `GST_RATE` is now a
+constant in the catalogue rather than something applied only at the invoice.
+
+`MIN_SEAT_SHARE_OF_DIRECT = 0.35` and
+`test_a_seat_never_undercuts_direct_candidate_revenue` hold the floor, so this
+cannot drift back by increments. **The old list sat at ~0.13 and nothing
+failed** — every existing price check was structural (totals ascending, periods
+consistent, tax flags correct), and a number can satisfy all of that while
+being an order of magnitude wrong about what it is selling.
+
+**Still placeholder.** `PLACEHOLDER_PRICING` is still `True`. These numbers
+still need sign-off — but they are now wrong in a direction that costs a deal
+rather than one that costs the business.
+
+### Three things this answer opens, which have not been asked
+
+Consequences of 8.1, not restatements of it. None blocks the build; all three
+need an answer before the first college contract.
+
+1. **A student who has already paid, then joins a college roster.** Refund,
+   credit, or does their own subscription simply run alongside the seat? We are
+   building the third — no money moves without a human deciding it — but a
+   student who paid ₹1,199 in June and is seated for free in July will ask.
+2. **What happens when the college does not renew.** The student loses access
+   unless they buy their own. That is a churn cliff arriving in batches of 250
+   or 1000 on a date we know in advance, and it is also a support load. Worth a
+   deliberate grace period rather than a hard cutoff discovered live.
+3. **Whether a seat covers the paid add-ons.** The course (+30) and interview
+   sessions (+60) are one-off purchases, not subscription features. Our
+   assumption is that a seat covers the **subscription only** and add-ons stay
+   the student's own purchase — otherwise a 1000-seat deal silently includes
+   ₹8.5 lakh of add-on inventory. Flagged rather than assumed.
+
+---
 
 ## Round 7 — client answers, 2026-09-11
 

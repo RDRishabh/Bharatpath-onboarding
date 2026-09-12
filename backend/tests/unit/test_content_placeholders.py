@@ -58,6 +58,8 @@ from app.modules.notifications.templates import (
 )
 from app.modules.questionnaire.bank import QUESTIONS, SECTIONS
 from app.modules.subscriptions.catalogue import (
+    CANDIDATE_PLANS,
+    MIN_SEAT_SHARE_OF_DIRECT,
     PERIOD_MONTHS,
     PLACEHOLDER_PRICING,
     PLANS,
@@ -65,6 +67,7 @@ from app.modules.subscriptions.catalogue import (
     format_inr,
     plan_by_code,
     plans_for,
+    seat_share_of_direct,
 )
 
 # ===========================================================================
@@ -125,6 +128,70 @@ def test_more_seats_never_costs_less_in_total() -> None:
         )
         totals = [p.price_minor for p in tier]
         assert totals == sorted(totals)
+
+
+def test_a_seat_never_undercuts_direct_candidate_revenue() -> None:
+    """**The test that would have caught C12, and did not exist to.**
+
+    A college seat covers that student's subscription entirely (client,
+    2026-09-12) -- they pay nothing. So the per-seat price is not a discount
+    alongside candidate revenue, it *is* the candidate revenue, and a seat
+    priced far below the direct subscription makes signing a college strictly
+    worse than not signing one.
+
+    The first price list sat at about 10% of direct. Nothing failed, because
+    every check here was structural -- totals ascending, periods consistent,
+    tax flags right -- and a number can satisfy all of that while being an
+    order of magnitude wrong about what it is selling.
+
+    Ex-tax on both sides. Comparing an inclusive candidate price with an
+    exclusive college one flatters the seat by 18%, which is the same mistake
+    in miniature.
+    """
+    for plan in plans_for("COLLEGE"):
+        share = seat_share_of_direct(plan)
+        if share is None:
+            continue
+        assert share >= MIN_SEAT_SHARE_OF_DIRECT, (
+            f"{plan.code}: a seat earns {share:.1%} of what that student would "
+            f"pay directly ({format_inr(plan.per_seat_minor or 0)} ex-tax). "
+            "Below the floor, every college deal displaces more revenue than "
+            "it books."
+        )
+
+
+def test_a_seat_is_a_discount_and_not_a_markup() -> None:
+    """The other side of the same floor. A seat costing *more* than the direct
+    subscription means the college is paying a premium to buy in bulk, which
+    no placement cell will do twice."""
+    for plan in plans_for("COLLEGE"):
+        share = seat_share_of_direct(plan)
+        if share is not None:
+            assert share < 1.0, f"{plan.code} prices a seat above the direct subscription"
+
+
+def test_every_seat_period_has_a_candidate_plan_to_price_against() -> None:
+    """`seat_share_of_direct` compares against the candidate plan of the same
+    duration. A college period with no candidate twin would make the floor
+    above silently unenforceable -- it returns None and the check skips."""
+    candidate_months = {PERIOD_MONTHS[p.period] for p in CANDIDATE_PLANS}
+    for plan in plans_for("COLLEGE"):
+        if plan.seat_allowance:
+            assert PERIOD_MONTHS[plan.period] in candidate_months, (
+                f"{plan.code} has no candidate plan of the same duration, so its "
+                "per-seat price is not being checked against anything."
+            )
+
+
+def test_removing_gst_is_only_applied_to_inclusive_prices() -> None:
+    """A business price is already ex-tax. Dividing it again would understate
+    every employer and college plan by 18% in exactly the comparison this
+    module now makes decisions from."""
+    for plan in PLANS:
+        if plan.tax_inclusive:
+            assert plan.price_ex_tax_minor < plan.price_minor, plan.code
+        else:
+            assert plan.price_ex_tax_minor == plan.price_minor, plan.code
 
 
 def test_only_colleges_carry_a_seat_allowance() -> None:

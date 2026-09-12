@@ -38,7 +38,16 @@ PLACEHOLDER_PRICING: Final = True
 
 #: Bump when any price changes. Stored nowhere yet -- it exists so the seeder
 #: can refuse to quietly overwrite a price list somebody is already selling on.
-CATALOGUE_VERSION: Final = "placeholder-1-2026-09-11"
+CATALOGUE_VERSION: Final = "placeholder-2-2026-09-12"
+
+#: The GST rate the two tax bases have to be reconciled across.
+#:
+#: Needed because a candidate price is quoted tax-INCLUSIVE and a college price
+#: tax-EXCLUSIVE, so comparing them directly overstates what a seat earns by
+#: 18%. That comparison is now a revenue question rather than a presentational
+#: one -- see `seat_share_of_direct` -- which is why the rate is a constant
+#: here instead of being applied at the invoice and nowhere else.
+GST_RATE: Final = 0.18
 
 Audience = Literal["CANDIDATE", "EMPLOYER", "COLLEGE"]
 Period = Literal["MONTHLY", "QUARTERLY", "SEMESTER", "SEMI_ANNUAL", "ANNUAL"]
@@ -63,6 +72,11 @@ class PlanEntry:
     price_minor: int
     #: Colleges only. One payment per period covering up to N students
     #: (client, 2026-08-27). Two seat counts are two rows here, not two systems.
+    #:
+    #: **A seat covers that student's subscription entirely** (client,
+    #: 2026-09-12). They pay nothing. So this number is not a discount on a
+    #: tool the college buys alongside student revenue -- it is the divisor on
+    #: the ONLY revenue those students will ever produce.
     seat_allowance: int | None = None
     tax_inclusive: bool = False
     active: bool = True
@@ -71,6 +85,35 @@ class PlanEntry:
     def monthly_equivalent_minor(self) -> int:
         """What the buyer is really comparing when they choose a period."""
         return self.price_minor // PERIOD_MONTHS[self.period]
+
+    @property
+    def price_ex_tax_minor(self) -> int:
+        """The price with GST removed, so two audiences can be compared.
+
+        Consumer prices here are inclusive and business prices exclusive, so
+        the raw `price_minor` of a candidate plan and a college plan are not
+        the same kind of number. Comparing them without this overstates a
+        seat's yield by 18%.
+        """
+        if not self.tax_inclusive:
+            return self.price_minor
+        return int(self.price_minor / (1 + GST_RATE))
+
+    @property
+    def per_seat_minor(self) -> int | None:
+        """What one student is worth on this plan, ex-tax. `None` if not a
+        seat plan.
+
+        **This is the number that matters commercially**, and until
+        2026-09-12 nothing computed it. The totals looked like reasonable
+        institutional invoices while the per-seat figure was a tenth of what
+        the same student would have paid directly -- which was defensible only
+        under the assumption that the student was also paying, and they are
+        not.
+        """
+        if not self.seat_allowance:
+            return None
+        return self.price_ex_tax_minor // self.seat_allowance
 
 
 # ---------------------------------------------------------------------------
@@ -120,13 +163,76 @@ EMPLOYER_PLANS: Final[tuple[PlanEntry, ...]] = (
 # Sold per semester as well as per year because a placement cell's budget is
 # released per semester and its intake arrives per year, and asking it to
 # commit annually in month one loses the deal.
+#
+# ---------------------------------------------------------------------------
+# **Repriced 2026-09-12, and the reason is the whole point of these numbers.**
+#
+# C12 asked whether a college seat covers the student's own subscription. It
+# had never been put to the client, and the first price list was built on the
+# assumption that the answer was no -- seat and subscription as separate
+# purchases, so a college deal earned the seat fee ON TOP OF whatever those
+# students paid us directly. On that reading, ~Rs 12-17 per seat per month was
+# a placement-cell tool priced alongside real candidate revenue.
+#
+# The client answered **no, the student does not pay** (2026-09-12). That makes
+# the seat fee the *entire* lifetime revenue from that student, and the old
+# ladder indefensible: at Rs 11.67/seat/month against a direct candidate paying
+# Rs 99.92/month ex-tax, every college deal we signed would have earned about a
+# tenth of what those same students were worth unsigned. A thousand-seat annual
+# deal would have displaced roughly Rs 10.2 lakh of candidate revenue to book
+# Rs 1.4 lakh.
+#
+# So a seat is now priced as what it actually is: **a bulk-rate candidate
+# subscription**, discounted for volume rather than invented independently.
+# The discount is real and defensible -- the college pays upfront in one
+# invoice, brings its students at zero acquisition cost, and carries the
+# onboarding itself -- but it is a discount on a known number, not a different
+# number. Roughly 53% off direct at 250 seats and 63% at 1000, ex-tax both
+# sides; `test_a_seat_never_undercuts_direct_candidate_revenue` holds the floor
+# so this cannot drift back by increments.
+#
+# The totals are ~2.7x the previous ones. That is not a price rise; it is the
+# first list being wrong about what it was selling.
+#
+# **Still placeholder.** PLACEHOLDER_PRICING is still True and this still needs
+# the client's sign-off -- but it is now wrong in a direction that costs them
+# a deal rather than wrong in a direction that costs them the business.
+# ---------------------------------------------------------------------------
 
 COLLEGE_PLANS: Final[tuple[PlanEntry, ...]] = (
-    PlanEntry("COLLEGE_SEMESTER_250", "COLLEGE", "SEMESTER", 2_499_900, seat_allowance=250),
-    PlanEntry("COLLEGE_SEMESTER_1000", "COLLEGE", "SEMESTER", 7_999_900, seat_allowance=1000),
-    PlanEntry("COLLEGE_ANNUAL_250", "COLLEGE", "ANNUAL", 4_499_900, seat_allowance=250),
-    PlanEntry("COLLEGE_ANNUAL_1000", "COLLEGE", "ANNUAL", 13_999_900, seat_allowance=1000),
+    PlanEntry("COLLEGE_SEMESTER_250", "COLLEGE", "SEMESTER", 6_999_900, seat_allowance=250),
+    PlanEntry("COLLEGE_SEMESTER_1000", "COLLEGE", "SEMESTER", 21_999_900, seat_allowance=1000),
+    PlanEntry("COLLEGE_ANNUAL_250", "COLLEGE", "ANNUAL", 11_999_900, seat_allowance=250),
+    PlanEntry("COLLEGE_ANNUAL_1000", "COLLEGE", "ANNUAL", 37_999_900, seat_allowance=1000),
 )
+
+#: The least a seat may be worth, as a share of what that student would have
+#: paid us directly for the same period, ex-tax on both sides.
+#:
+#: A floor rather than a formula, because volume discounting is a commercial
+#: judgement and this is only here to stop the judgement reaching a number that
+#: makes signing a college worse than not signing one. **The old price list sat
+#: at roughly 0.10.**
+MIN_SEAT_SHARE_OF_DIRECT: Final = 0.35
+
+
+def seat_share_of_direct(plan: PlanEntry) -> float | None:
+    """What one seat earns, against that student paying us directly.
+
+    `None` for anything that is not a seat plan. Ex-tax on both sides -- see
+    `price_ex_tax_minor` for why that is not optional.
+    """
+    per_seat = plan.per_seat_minor
+    if per_seat is None:
+        return None
+    direct = next(
+        (p for p in CANDIDATE_PLANS if PERIOD_MONTHS[p.period] == PERIOD_MONTHS[plan.period]),
+        None,
+    )
+    if direct is None:  # pragma: no cover - every college period has a candidate twin
+        return None
+    return per_seat / direct.price_ex_tax_minor
+
 
 PLANS: Final[tuple[PlanEntry, ...]] = CANDIDATE_PLANS + EMPLOYER_PLANS + COLLEGE_PLANS
 
