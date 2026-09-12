@@ -54,6 +54,11 @@ SCAN_SUFFIXES = {".py", ".sql", ".json", ".yaml", ".yml", ".toml", ".md", ".txt"
 
 SKIP_DIRS = {
     ".git",
+    # Local Claude Code session artefacts -- hook logs and transcripts. Already
+    # gitignored, so CI never sees them, but a local run scans them and they
+    # quote this file's own banned-term list back at it. Tooling scratch, not
+    # product source.
+    ".claude",
     ".venv",
     "venv",
     "__pycache__",

@@ -28,11 +28,11 @@ which had been open since August.
 | **7.3** | Is the score ever explained to the candidate? | *"confirmed"* — never shown | **Q12 closed.** Breakdown is still computed and stored for admin drill-down and disputes; no candidate-facing schema exposes it. |
 | **7.4** | On account deletion, what is retained? | *"do full delete for them"* | **Q13 answered in principle, with a carve-out we are flagging.** Personal data is hard-deleted. Financial and audit rows cannot be — see the note below. |
 | **7.5** | Employer type and industry lists | *"explain what do you mean"* | Explained, and a proposed list supplied for confirmation. |
-| **7.6** | Rules for detecting dishonest CVs | *"use your best knowledge"* | Delegated to us. |
+| **7.6** | Rules for detecting dishonest CVs | *"use your best knowledge"* | Delegated to us. **Delivered 2026-09-12** — 8 rules in `integrity/domain.py`, 40 tests. See 7.6 below. |
 | **7.7** | College seat model — one payment covers up to N students? | *"yes"* | **Q10 closed.** Mirrors the employer model. |
 | **7.8** | Is "pay monthly, see everyone" correct, replacing per-candidate unlock? | *"that is correct"* | **N5 closed.** The rescission we had never asked for. Five stale acceptance criteria in SRS §2.25.2 are now formally superseded. |
 | **7.9** | Referral code typed by the student, rather than invite-and-accept? | *"do it"* | **N6 closed.** |
-| **7.10** | Course content, prices, question banks, translations, SMS copy, branding, form fields | *"create best for now according to your knowledge"* | Placeholder content to be produced by us, clearly marked as placeholder and replaceable without code changes. |
+| **7.10** | Course content, prices, question banks, translations, SMS copy, branding, form fields | *"create best for now according to your knowledge"* | Placeholder content to be produced by us, clearly marked as placeholder and replaceable without code changes. **Delivered 2026-09-12.** See 7.10 below. |
 
 **Also reported:** Twilio account started; TRAI DLT started. **Apple Developer
 declared not needed** — recorded as a scope decision, see below.
@@ -65,6 +65,76 @@ Declared not needed (2026-09-11). Recorded because it is reversible only at a
 cost: the account needs a D-U-N-S number and takes 1–3 weeks. **If iOS is
 wanted later, that is a 1–3 week lead time before a build can ship**, not a
 sprint decision. Android and the web consoles are unaffected.
+
+### 7.6 — what we built with "use your best knowledge" *(delivered 2026-09-12)*
+
+Eight rules in `integrity/domain.py`. **The part to review is not the list of
+rules, it is the severity policy**, because severity is what decides whether a
+real person disappears from employer search before anyone has looked at them.
+
+| Severity | Consequence | Rules |
+|---|---|---|
+| **HIGH** | Hidden from employer search until a human clears it (PRD 7.2) | Instructions aimed at an automated reader; text hidden from a human one |
+| **MEDIUM** | Reviewer queue. Candidate stays visible | Future-dated employment; overlapping full-time roles; claimed experience far exceeding the dates; a platform score written into the CV |
+| **LOW** | A note for a reviewer already looking | Senior title with little tenure; a long unevidenced skills list |
+
+Only two rules may ever reach HIGH, and a test enforces that. Both are things
+nobody does by accident — a mistyped year is not in that category, and neither
+is an unusual career.
+
+**Four rules we chose not to write**, each because it would hit honest
+candidates far more often than dishonest ones:
+
+- **Employment gaps.** They fall on women after childbirth, on carers and on
+  people with health conditions.
+- **Work predating a qualification.** Common in India, and it only works as a
+  signal by reasoning about the candidate's age — which invariant 5 forbids.
+- **Duplicate or templated CVs across candidates.** Dropped by the client
+  already (R6). Shared wording is what a CV-writing service produces, and
+  paying for help writing your CV is not dishonesty.
+- **Unverifiable claims generally.** Almost every line of a CV is unverifiable;
+  a rule that fires on all of them is a rule nobody reads.
+
+**Integrity never touches the score** (SRS 1.4.5), now enforced by an
+import-linter contract. A dishonest CV is handled by a person looking at it,
+not by a silent deduction a candidate can neither see nor appeal.
+
+### 7.10 — the placeholder content *(delivered 2026-09-12)*
+
+All of it, marked as ours rather than the client's by a flag that a test
+asserts — so "this is still a placeholder" survives a demo instead of living in
+a comment. Full table in [`blockers.md`](blockers.md) category C; the summary:
+
+| Item | Built | Flag |
+|---|---|---|
+| Prices | 11 plans, 2 one-off products | `PLACEHOLDER_PRICING` |
+| Course | 6 modules, 18 lessons, ~2h20 | `HAS_MEDIA = False` |
+| Questionnaire | 12 questions | `BANK_VERSION` |
+| Interview | 3 × 6 questions, 5-dimension rubric | `BANK_VERSION` |
+| Messages | 21 templates, 17 SMS | `dlt_template_id is None` |
+| Translations | 8 locales × 32 keys | native review owed |
+| Forms | KYB 27 fields, college 20 | `FORM_VERSION` |
+| Design | System, tokens, accessibility | no logo — **C7 stays open** |
+
+**Three things in there are decisions, not drafts, and are worth a reply:**
+
+1. **The score may never be drawn as a red-to-green gauge.** That picture is
+   the visual language of an Indian bureau score. Invariant 6 forbids the
+   *words* because the resemblance is a legal risk; a dial makes the
+   resemblance stronger than any word could.
+2. **We excluded marital status, gender, religion, caste and photograph** from
+   every form and the questionnaire. These are ordinary on Indian application
+   forms and are discrimination vectors. Adding any back is a decision for the
+   client and their counsel, in writing.
+3. **The mock interview never assesses accent, fluency, pace or pitch.** In
+   this market those measure schooling and region, not ability — and this is an
+   audio product used in eight languages.
+
+**One question this work surfaced that has never been asked** — `blockers.md`
+C12: **when a college buys seats, does the student still pay their own
+subscription?** Both price lists assume yes. If the answer is no, the college
+prices are far too low and the candidate revenue from those students is zero.
+It is one sentence now and an argument after the first college deal.
 
 ---|---|---|---|---|
 | 0 | Build brief open questions | 8 | 6 | 2 |

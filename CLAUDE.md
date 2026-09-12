@@ -30,14 +30,19 @@ test to make a change pass — the tests encode client and regulatory commitment
 cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
-source .test-env.sh
-.venv/Scripts/pytest.exe                # 121 tests
+source .test-env.sh                     # NOT optional - see below
+.venv/Scripts/pytest.exe                # 905 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
 **Run tests as CI does — bare `pytest`, not `python -m pytest`.** The latter puts
 the working directory on `sys.path`, which hides import errors that CI will catch.
 That exact divergence produced a green local suite and a red CI for the same commit.
+
+**`source .test-env.sh` first, or four RLS tests fail for a reason that looks
+exactly like a regression.** Without it the app connects as a role that is not
+subject to RLS, so `test_scores_are_insert_only` reports `DID NOT RAISE` instead
+of a permissions error. The tests are right; the connection is wrong.
 
 ### Local CI equivalent
 
@@ -94,6 +99,39 @@ bookkeeping: invariant 1 requires a score to be replayable from the stored
 extraction chain, and a different parser produces different text and therefore
 a different score. Changing parser is a **re-score**, not an upgrade. See
 `docs/progress.md` → *Deferred by decision*.
+
+## Placeholder content — ours, not the client's
+
+Produced 2026-09-12 under Round 7.10. **Every one of these carries a flag that a
+test asserts**, so a placeholder cannot quietly become the product:
+
+| Where | Flag |
+|---|---|
+| `subscriptions/catalogue.py` | `PLACEHOLDER_PRICING` |
+| `courses/catalogue.py` | `HAS_MEDIA`, every `asset_key is None` |
+| `notifications/templates.py` | every `dlt_template_id is None` — **an SMS cannot be sent without one**, and an unregistered body is dropped silently by the operator |
+| `questionnaire/bank.py`, `interview/bank.py` | `BANK_VERSION` |
+| `kyb/forms.py`, `college/forms.py` | `FORM_VERSION` |
+| `app/core/i18n/locales/*.json` | non-English bundles still need a native-speaker pass |
+
+Flipping one of these is a client decision, not a tidy-up.
+
+**The score is never drawn as a red-to-green gauge, dial or speedometer.**
+`docs/design-system.md` §1, and machine-readable in `docs/design-tokens.json`.
+That picture is the visual language of an Indian bureau score — invariant 6
+forbids the words for the same reason, and a dial says it louder than any word.
+
+## Integrity signals never move the score
+
+SRS 1.4.5, enforced by the `integrity-never-imports-scoring` contract.
+`integrity/domain.py` raises signals; a human resolves them.
+
+**Severity is the design, not the rules.** HIGH removes a candidate from
+employer search *before* anyone has looked, so only two rules may reach it —
+injected instructions and hidden text, the two things nobody does by accident.
+Everything that could equally be a typo, an unusual career, or our own extractor
+misreading is MEDIUM or LOW. `test_only_the_two_deliberate_rules_can_ever_reach_high`
+is where a third one would have to be argued for.
 
 ## Environment
 

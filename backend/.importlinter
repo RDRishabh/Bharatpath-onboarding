@@ -31,6 +31,22 @@ forbidden_modules =
     app.modules.scoring
 
 ; ---------------------------------------------------------------------------
+; SRS 1.4.5 — integrity detection never directly modifies the score.
+;
+; A dishonest CV is handled by a human looking at it. The alternative — a
+; quiet deduction the candidate can neither see nor appeal — is the thing this
+; contract exists to make impossible to add by accident. `integrity` raises
+; signals; `discovery` suppresses on them; neither path runs through `scoring`.
+; ---------------------------------------------------------------------------
+[importlinter:contract:integrity-never-imports-scoring]
+name = Integrity detection must not import scoring (SRS 1.4.5)
+type = forbidden
+source_modules =
+    app.modules.integrity
+forbidden_modules =
+    app.modules.scoring
+
+; ---------------------------------------------------------------------------
 ; Layering inside every module: routers -> services -> repositories.
 ; A router that touches a repository has skipped the transaction boundary
 ; and the business rules with it.

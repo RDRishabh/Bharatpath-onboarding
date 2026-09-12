@@ -13,6 +13,22 @@
 > client), and the content in category C, which we are now producing as
 > placeholders.** See `answers-log.md` Round 7 for the verbatim answers.
 
+> ## ✅ 2026-09-12 — the delegated work is delivered
+> **B5** dishonest-CV rules **built** (`integrity/domain.py`, 8 rules, 40 tests) ·
+> **B4** employer and industry lists **confirmed and built** ·
+> **C1–C8 downgraded**: every one now has a placeholder that the build runs
+> against, each carrying a flag a test asserts (`PLACEHOLDER_PRICING`,
+> `HAS_MEDIA`, `dlt_template_id is None`, `FORM_VERSION`).
+>
+> **What that changes, and what it does not.** Nothing in category C blocks code
+> any more. All of it still blocks launch, because a placeholder is ours and the
+> product is the client's. The flags exist so that stays visible: turning one off
+> is a decision somebody has to take deliberately.
+>
+> **C7 (brand) is the honest exception.** A design *system* is delivered —
+> colour, type, spacing, accessibility, and one rule about how the score may be
+> drawn. A brand identity is not, and should not be faked.
+
 Everything currently blocking BharatPath, in one place. Compiled 2026-09-11 from
 `plan.md` §13, `questions.txt`, `resources-needed.md`, and findings from the
 build itself.
@@ -52,8 +68,8 @@ late.
 | **B1** | **N2 — may CV text leave India?** | Client | Day 8 | Open. Bedrock cannot pin inference geography, so this decides which client library Day 8 is built against. Mitigated for now: everything runs in `ap-south-1`. |
 | **B2** | **Q12 — written rescission of the score-explanation criterion** | Client | Day 8 | Outstanding. "The score is never explained" contradicts PRD §4.2. Three of four confirmations received; this is the fourth. |
 | **B3** | **Q13 — deletion vs. audit retention** | Client's counsel | Day 20 — **ask by Day 8** | Open. PRD §8 requires deletion, PRD §3.9 requires immutable audit, financial records carry statutory retention. Has a legal review cycle attached, which is why it must be asked early. |
-| **B4** | **Employer type and industry lists** | Client | Day 9 | ⏳ Deferred by client. Config-seeded enums, so no rework if they arrive within two weeks. |
-| **B5** | **Integrity-detection rules** | Client | Day 9 | Open. One illustrative rule remains; duplicate detection was dropped (R6). |
+| **B4** | ~~Employer type and industry lists~~ | Client | Day 9 | ✅ **Closed 2026-09-11.** Confirmed by the client and built as closed vocabularies — 9 types, 19 industries, `employer/reference.py`. Codes are never renamed; retirement is `active=False`. |
+| **B5** | ~~Integrity-detection rules~~ | Client → us | Day 9 | ✅ **Closed 2026-09-12.** Delegated to us in Round 7.6 and built: 8 rules in `integrity/domain.py`, 40 tests. Duplicate detection stays dropped (R6). **The reviewable decision is the severity policy**, not the rules — only two rules may reach HIGH, because HIGH hides a candidate from search before a human has looked. |
 | **B6** | **N5 — rescission of the unlock criteria** | Client | Day 13 | ⚠️ **Never asked.** The largest reversal in the project: R14 voids a documented flow, a lifecycle, two interface specs and **five acceptance criteria the build is graded against** (SRS §2.25.2 carries three that cannot pass as written). The build is right and the criteria are stale — which is exactly what a written rescission exists to record. |
 | **B7** | **N4 — written acknowledgement of the bulk-extraction risk** | Client | Day 14 | Open. Auto-approved KYB + whole-database access + one monthly payment means anyone who can pay obtains every candidate's contact details, unverified. We are building mitigations; the residual risk needs acknowledging because the real fix is verification and the client turned it off. |
 | **B8** | **N6 — referral-code consent vs. PRD rule 8** | Client | Day 17 | ⚠️ **Never asked.** PRD §3 rule 8 names the mechanism: *"invite-and-accept."* A typed referral code is arguably better consent, but it is not that mechanism, and a DPDP review will ask. One sentence closes it. |
@@ -65,19 +81,24 @@ late.
 
 Nothing here stops a single line being written. All of it stops shipping.
 
-| # | Blocker | Owner | Needed by |
+**C1–C8 and C10 now have placeholders we produced** (Round 7.10, 2026-09-12).
+Each row says what exists and what is still owed. The *"still owed"* column is
+the one to read: a placeholder removes the build dependency and nothing else.
+
+| # | Blocker | Placeholder built | Still owed by the client |
 |---|---|---|---|
-| **C1** | **Course content — videos, materials, structure** | Client | Day 15 to seed, LAUNCH to matter |
-| **C2** | **N8 — subscription plans, prices, course catalogue** | Client | Day 15 |
-| **C3** | **Questionnaire question bank** | Client | Day 16 |
-| **C4** | **Interview question bank + evaluation rubric** | Client | Day 16–17 |
-| **C5** | **N9 — locale strings, 6–8 languages, and who funds translation** | Client | Day 19 plumbing, LAUNCH content |
-| **C6** | **Notification templates** — every SMS body also needs a DLT template | Client | Day 19 |
-| **C7** | **Brand identity, design system, Figma files** | Client | LAUNCH — or an explicit agreement that design is a separate line item |
-| **C8** | **Onboarding form fields** (employer, KYB, college) | Client | Day 9 onward, soft |
-| **C9** | **Production API contracts and data schemas** | Client | Reconciliation. NDA-gated (PRD §10). |
-| **C10** | **Eligibility message copy** — *"your score does not meet this employer's requirement"*, no reasoning | Client | Day 11, in 6–8 languages |
-| **C11** | **R18 duplicate-detection confirmation** | Client | Provisional until it lands |
+| **C1** | **Course content** | Syllabus: 6 modules, 18 lessons, ~2h20, each with a stated outcome (`courses/catalogue.py`) | **The recordings.** Every `asset_key` is `None` and `HAS_MEDIA` is False, so the course cannot be listed or sold. Also still open: what counts as completing it, which is a scoring rule wearing a progress tracker's clothes. |
+| **C2** | **N8 — plans, prices, catalogue** | Full price list, 11 plans + 2 one-off products (`subscriptions/catalogue.py`) | **Real prices.** Ours are benchmarked against the Indian market, not against a margin — the per-candidate cost figure that would set one does not exist (`scoring-approach.md` §12). `PLACEHOLDER_PRICING` is the flag to flip. |
+| **C3** | **Questionnaire bank** | 12 questions, 4 sections, all skippable (`questionnaire/bank.py`) | Review. **Note what we excluded and why**: marital status, gender, religion, caste, photograph. Re-adding any of them is a client decision with counsel, not a field somebody adds. |
+| **C4** | **Interview bank + rubric** | 3 sets × 6 questions, 5-dimension rubric with anchors (`interview/bank.py`) | Review. Accent, fluency, pace and pitch are deliberately not assessed. |
+| **C5** | **N9 — locale strings** | 8 locales × 32 core strings (`app/core/i18n/`) | **A native-speaker pass on all seven non-English bundles**, and the rest of the string set. Ours are good enough to build and demo on; shipping unchecked machine-quality translation to this audience is the thing that makes a product look untrustworthy. |
+| **C6** | **Notification templates** | 21 drafted, 17 SMS (`notifications/templates.py`) | **DLT registration** (D1, 2–4 weeks). Every `dlt_template_id` is `None` and sending is gated on it — an unregistered body is dropped silently by the operator. The drafts exist so registration can start now. |
+| **C7** | **Brand identity and design** | Design *system* only: colour, type, spacing, states, accessibility, and one rule on drawing the score (`docs/design-system.md`) | **A designer.** Logo, wordmark, illustration and photographic direction, iconography, the score screen. Deliberately not faked — a competent-looking placeholder logo gets shipped and then defended. |
+| **C8** | **Onboarding form fields** | KYB 27 fields, college 20 (`kyb/forms.py`, `college/forms.py`) | Review, plus the Indian states reference list the `state` fields point at. |
+| **C9** | **Production API contracts and data schemas** | — | Reconciliation. NDA-gated (PRD §10). |
+| **C10** | **Eligibility message copy** | `eligibility.below_threshold` in all 8 locales, with a test asserting it contains no digits | Sign-off on the wording. It says the requirement is not met and nothing else — the score is never explained. |
+| **C11** | **R18 duplicate-detection confirmation** | — | Provisional until it lands. |
+| **C12** | **Do seats replace a student's own subscription?** | — | ⚠️ **Never asked, and it is a revenue question.** Both price lists are built as though a college seat and a candidate subscription are separate purchases. If a seat is meant to *cover* the student, the college prices are far too low and the candidate revenue from those students is zero. One sentence closes it; discovering it after the first college deal does not. |
 
 ---
 
@@ -110,6 +131,7 @@ Technical, ours to fix, recorded so they are not rediscovered.
 | **E2** | **Textract account activation** | OCR for scanned CVs | `SubscriptionRequiredException` on the new AWS account, including under `AdministratorAccess` — so it is account activation, not IAM. Usually clears within hours. Verify with `backend/scripts/verify_ocr_fallback.py`. |
 | **E3** | **Legacy `.doc` (OLE2) files** | LAUNCH | Accepted at upload, refused at parse — no maintained pure-Python reader exists. Textract covers it once E2 clears. Otherwise: drop `application/msword` from accepted types. |
 | **E4** | **Deployment infrastructure** | Day 20 | RDS, ElastiCache, VPC/NAT, ECS/ALB, ECR, CloudFront, ACM, Route 53 — none provisioned, deliberately. They bill while idle and are not needed until deploy. See `infra/README.md`. |
+| **E5** | **Hidden text is not extracted** | The best integrity rule we have | `ResumeClaims.hidden_text` defaults to empty, so `HIDDEN_TEXT` and half of `INJECTED_INSTRUCTIONS` are **written and inert**. Populating it means a `pypdf` visitor reading font colour, size and position — white-on-white, zero-size, off-page. Until then the most widely documented CV-gaming technique goes undetected, and the rule looks like coverage without being it. |
 
 ---
 
@@ -134,3 +156,12 @@ Worth stating, because it is most of the build:
    from the client and both are gaps in our own process, not theirs.
 3. **A2 — book the calibration session.** One working session, and Day 8 is
    flagged as uncompressible in the plan.
+
+**Two more that are now cheap, because the work either side of them is done:**
+
+4. **Take the SMS drafts to the DLT portal.** 17 bodies are written
+   (`sms_templates()`). Registration is 2–4 weeks and it has not started on the
+   template side, only the entity side. Nothing else about it gets faster later.
+5. **C12 — does a college seat cover the student's own subscription?** One
+   sentence, and it is the only open item that changes a revenue number rather
+   than a date.
