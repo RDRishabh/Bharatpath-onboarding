@@ -99,6 +99,49 @@ forbidden_modules =
     app.modules.identity.models
 
 ; ---------------------------------------------------------------------------
+; SRS 1.4.4 — the confirm gate has exactly one door.
+;
+; An unconfirmed resume version must never reach scoring. That rule lives in
+; `resume.service.get_scorable_version`, which is the only function that
+; filters on `confirmed_at IS NOT NULL`.
+;
+; A rule in a service is only a rule while the service is the only way in.
+; `resume.repository` has `list_versions` and `get_version`, both of which
+; return unconfirmed rows quite correctly — they serve the review screen. A
+; scoring module that imported the repository directly would reach those, and
+; the gate would be bypassed by a caller who never knew it was there.
+;
+; So resume's internals are private to resume, exactly as identity's are, and
+; every other module goes through the service. `resume` itself is absent from
+; the source list because a module importing its own repository is the design.
+; ---------------------------------------------------------------------------
+[importlinter:contract:resume-internals-are-private]
+name = The confirm gate is the only route to a resume version (SRS 1.4.4)
+type = forbidden
+source_modules =
+    app.modules.candidate
+    app.modules.scoring
+    app.modules.integrity
+    app.modules.questionnaire
+    app.modules.interview
+    app.modules.courses
+    app.modules.employer
+    app.modules.kyb
+    app.modules.jobs
+    app.modules.applications
+    app.modules.discovery
+    app.modules.billing
+    app.modules.subscriptions
+    app.modules.college
+    app.modules.analytics
+    app.modules.admin
+    app.modules.notifications
+    app.modules.privacy
+forbidden_modules =
+    app.modules.resume.repository
+    app.modules.resume.models
+
+; ---------------------------------------------------------------------------
 ; domain.py is pure. No I/O, no DB, no HTTP, no clock, no randomness that
 ; isn't passed in. This is what makes the invariant property tests possible.
 ; ---------------------------------------------------------------------------

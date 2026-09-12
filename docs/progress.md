@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 905 passing (local + CI) |
-| **Coverage** | 77% |
-| **Days done** | 1, 2 complete · 3, 4, 5, 6 partial |
-| **Next** | Day 7 — versions, review, confirm gate, status polling |
+| **Tests** | 954 passing (local + CI) |
+| **Coverage** | 78% |
+| **Days done** | 1, 2, 7 complete · 3, 4, 5, 6 partial |
+| **Next** | Day 8 — scoring: extraction, persistence, replay-from-storage |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -50,6 +50,131 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | **N2 — can CV text leave India?** | Day 8 scoring design | Open. `ap-south-1` chosen so the answer cannot be wrong. |
+
+---
+
+## 2026-09-12 (later) — Day 7: versions, review, the confirm gate
+
+**905 -> 954 tests.** Four endpoints, one new import-linter contract, and the
+half of SRS 1.4.4 that had to be built before Day 8 could be trusted.
+
+### The confirm gate is enforced three times, on purpose
+
+SRS 1.4.4 says an unconfirmed version can never reach scoring. Scoring is Day
+8, so a gate written as a service function and nothing else would be a
+convention waiting to be forgotten by the first caller who did not know it
+existed. So it is enforced at three levels, and each catches a different
+mistake:
+
+1. **A SQL predicate.** `latest_confirmed_version` filters
+   `confirmed_at IS NOT NULL` in the query, so the unconfirmed row is never
+   loaded at all. A Python check after the fetch can be skipped by the next
+   caller; a row that was never selected cannot.
+2. **A new import-linter contract**, `resume-internals-are-private`. This was
+   a real gap: `module-privacy` only protected `identity`, so any module could
+   have imported `resume.repository` and reached `list_versions`, which
+   returns unconfirmed rows quite correctly for the review screen. Verified by
+   adding a deliberate import to `scoring/service.py` and confirming it breaks.
+3. **A build tripwire for the Day 8 mistake.**
+   `test_scoring_is_not_wired_to_the_version_created_event`.
+
+### The third one is the one worth reading
+
+`resume.version_created` is the obvious event to recalculate a score from — it
+fires whenever a resume changes, which sounds exactly right. It also fires on
+every **unconfirmed** parse and every **unconfirmed** correction, so
+subscribing to it bypasses the gate completely **while every other test in the
+suite still passes**, because the gate function is intact and simply never
+called.
+
+Confirming therefore emits its own event, `resume.version_confirmed`, and that
+is the one scoring consumes. The tripwire fails the build if anything under
+`app/modules/scoring/` so much as mentions the creation event. Both tripwires
+were verified by breaking them deliberately and watching them fire.
+
+### Decisions taken inside that work
+
+- **The chain cannot fork, and the database is what says so.** A unique index
+  on `supersedes_id` (partial, `WHERE NOT NULL`, so the many chain heads are
+  unaffected) means at most one version supersedes any parent. The service
+  also returns a 409, but two concurrent edits would both read "not yet
+  superseded" and both write — the service check is for the error message,
+  the index is for the guarantee. `IntegrityError` is translated into the same
+  409 so a client sees one behaviour rather than a 409 or a 500 depending on
+  timing.
+- **`confirmed_at` is a latch, not an assignment.** `confirmed_at IS NULL` in
+  the WHERE clause of a conditional UPDATE. Confirming twice is a retry that
+  returns the *original* timestamp: when a candidate took responsibility for
+  scored content is a fact about them, not about how many times their phone
+  lost signal. It is also the one permitted mutation of a version — content
+  stays immutable, and there is still no update path for `parsed`.
+- **An edit never inherits confirmation.** This is the side door the gate
+  exists to close: if a correction carried the confirmation forward, editing
+  would be a way to change scored content with nobody reviewing it. A
+  correction is unconfirmed and goes back through review.
+- **A superseded version is closed to both editing and confirming.** One pure
+  predicate, two callers, so they cannot drift. Confirming a replaced version
+  would make content the candidate has moved on from scorable, because the
+  gate asks whether a version is confirmed, not whether it is current.
+- **The last confirmed version stays scorable while a correction is in
+  progress.** A candidate who starts an edit and abandons it half way still
+  has the resume they approved.
+- **`EDIT` is a version source, not a flag.** "Did a human assert this
+  content?" is the question integrity review and score provenance both ask,
+  and as a source it is one column rather than a walk up `supersedes_id`.
+- **Edit provenance keeps the origin flat.** The obvious implementation nests
+  the previous extractor, so a candidate who tidies their CV thirty times
+  stores thirty levels of JSON and a replay has to recurse to find which
+  engine read the document. Instead `origin` holds the machine extraction the
+  chain started from, copied forward unchanged, and `edit_generation` counts
+  the corrections — so both questions a replay asks stay one lookup deep. A
+  test runs thirty generations.
+- **An edit is a whole replacement, not a patch.** The merge rule for a
+  partial update — what happens to an employment row the candidate deleted, or
+  one the parser invented — is exactly the thing nobody would agree on later.
+  `extractor` is rebuilt rather than accepted, so a client cannot post an edit
+  claiming its text came from the parser.
+
+### Polling: the 202 now leads somewhere
+
+`resume_files` gained `parse_status` and `parse_error_code`. Before this, the
+only observable signal was whether a version existed, which **cannot tell
+*waiting* apart from *never going to work*** — a CV we cannot read left the
+client polling an endpoint that would never change and never say why.
+
+- **There is deliberately no RUNNING state**, and a test says so rather than
+  leaving it to be added. A worker that claims a file and dies leaves RUNNING
+  behind with nothing to sweep it, so the state that exists to reassure the
+  candidate becomes the one that strands them. QUEUED means "not finished" and
+  redelivery fixes it by itself.
+- **BLOCKED and FAILED are different advice.** A file the scanner holds may be
+  perfectly readable; telling the candidate to re-upload it sends them round a
+  loop that ends the same way.
+- **A missing object is a parse failure, not a scan one.** It used to be
+  recorded on `scan_status`, which read later as "the scanner failed" — two
+  different facts in one column, and the wrong one.
+- A CHECK constraint holds `parse_status = FAILED` and `parse_error_code IS
+  NOT NULL` in step, so a FAILED that says nothing and a DONE still carrying
+  the last attempt's error are both impossible.
+- Completing an upload is idempotent, so it now reports the row's real parse
+  state rather than a hardcoded QUEUED — a client retrying after the worker
+  ran was being told to poll for work already finished.
+
+### Found while building
+
+- **A test that fed in an unreadable PDF was calling AWS.** Correct parser
+  behaviour — an unreadable PDF is exactly what the OCR fallback is for — but
+  it made the test depend on credentials, the network and Textract's account
+  state, and it would bill per page if it ever succeeded. It "passed" only
+  because this account still returns `SubscriptionRequiredException`. Pinned
+  to the local parser with a fixture at the `get_resume_parser` seam. **Worth
+  remembering for Day 8:** anything that feeds a deliberately bad document
+  into the parse chain reaches for Textract unless it is pinned.
+- **Every source still requires confirmation, including MANUAL.** The argument
+  for exempting it is real — the candidate typed it themselves, so there is
+  nothing extracted to review. It is not exempted anyway: one gate with no
+  exceptions is testable, and the confirm step is also the moment the
+  candidate accepts that a number will be attached to this.
 
 ---
 

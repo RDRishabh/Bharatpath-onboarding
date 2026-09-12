@@ -9,6 +9,12 @@ the file -- the endpoint returns 202 and this finishes the work.
 will be handed the same upload again. It creates a version only if that file
 has none, because two versions of one upload would give a candidate two
 different scores for a single CV.
+
+**Every exit writes a terminal `parse_status`**, on the same transaction as
+whatever else that exit did. That is what the client polls: without it the
+only observable signal is whether a version exists, which cannot distinguish
+"still working" from "this document will never parse" -- so a candidate whose
+CV we cannot read waits on an endpoint that never changes.
 """
 
 from __future__ import annotations
@@ -62,6 +68,10 @@ async def _parse(resume_file_id: str) -> dict[str, Any]:
         existing = await repository.latest_version_for_file(session, resume_file_id=file_id)
         if existing is not None:
             logger.info("parse_skipped_already_parsed", resume_file_id=resume_file_id)
+            # Re-asserted rather than assumed. If the first delivery created
+            # the version but its transaction lost the status write, the row
+            # would poll QUEUED forever with a version sitting next to it.
+            await repository.set_parse_status(session, resume_file_id=file_id, status="DONE")
             return {"status": "already_parsed", "resume_version_id": str(existing.id)}
 
         # The scan gate. Today no scanner is wired and this passes PENDING
@@ -71,12 +81,26 @@ async def _parse(resume_file_id: str) -> dict[str, Any]:
             logger.warning(
                 "parse_blocked_by_scan", resume_file_id=resume_file_id, scan=row.scan_status
             )
+            # BLOCKED rather than FAILED: the document may be perfectly
+            # readable, and the candidate cannot act on this the way they can
+            # on a file we could not parse. Conflating the two would tell them
+            # to re-upload a CV that would be held again.
+            await repository.set_parse_status(session, resume_file_id=file_id, status="BLOCKED")
             return {"status": "blocked", "scan_status": row.scan_status}
 
         content = await storage.read_whole_object(bucket=settings.s3_bucket_resumes, key=row.s3_key)
         if not content:
             logger.warning("parse_object_missing", key=row.s3_key)
-            await repository.set_scan_status(session, resume_file_id=file_id, status="FAILED")
+            # A missing object is a parse failure, not a scan one. The earlier
+            # version recorded it on `scan_status`, which read as "the scanner
+            # failed" to anyone looking at the row later -- two different
+            # facts in one column, and the wrong one.
+            await repository.set_parse_status(
+                session,
+                resume_file_id=file_id,
+                status="FAILED",
+                error_code="resume_object_missing",
+            )
             return {"status": "object_missing"}
 
         parser = get_resume_parser(settings)
@@ -94,6 +118,11 @@ async def _parse(resume_file_id: str) -> dict[str, Any]:
         except AppError as exc:
             # A file we cannot read is a final answer, not a transient fault.
             logger.warning("parse_failed", resume_file_id=resume_file_id, code=exc.code)
+            # Written on the same transaction as the event, so a candidate can
+            # never poll a QUEUED that the worker has already given up on.
+            await repository.set_parse_status(
+                session, resume_file_id=file_id, status="FAILED", error_code=exc.code
+            )
             await emit(
                 session,
                 event_type=f"{MODULE}.parse_failed",
@@ -131,6 +160,7 @@ async def _parse(resume_file_id: str) -> dict[str, Any]:
                 "parser": extracted.parser,
             },
         )
+        await repository.set_parse_status(session, resume_file_id=file_id, status="DONE")
         logger.info(
             "parse_complete",
             resume_file_id=resume_file_id,

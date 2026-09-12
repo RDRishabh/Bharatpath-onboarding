@@ -138,12 +138,42 @@ async def candidate() -> uuid.UUID:
     return user_id
 
 
+@pytest.fixture
+def local_parser_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin extraction to the in-process parser.
+
+    **Without this a test that feeds in an unreadable PDF calls AWS.** That is
+    the parser behaving correctly -- a document pypdf cannot read is exactly
+    what the OCR fallback exists for -- but it makes the test depend on
+    credentials, on the network, and on Textract's account state, and it bills
+    per page if it ever succeeds. Today it "passes" only because this account
+    returns SubscriptionRequiredException.
+
+    Pinned at `get_resume_parser` rather than by overriding the setting,
+    because the task resolves the parser through that function and the seam is
+    the same one production switches on.
+    """
+    from app.modules.resume import parser as parser_module
+
+    monkeypatch.setattr(
+        parser_module,
+        "get_resume_parser",
+        lambda settings=None: parser_module.LocalResumeParser(),
+    )
+
+
 async def _complete(user_id: uuid.UUID, upload_id: uuid.UUID) -> tuple[uuid.UUID, str]:
+    """Returns `(resume_file_id, scan_status)`. The service also returns the
+    parse status; the tests that care about it read it back through
+    `get_file_status`, which is what a client actually polls."""
     from app.modules.resume import service
 
     factory = sessions(_seed_url())
     async with factory() as session, session.begin():
-        return await service.complete_upload(session, user_id=user_id, upload_id=upload_id)
+        file_id, scan_status, _parse_status = await service.complete_upload(
+            session, user_id=user_id, upload_id=upload_id
+        )
+        return file_id, scan_status
 
 
 # --- the transaction boundary --------------------------------------------
@@ -428,3 +458,209 @@ async def test_an_infected_file_is_never_parsed(candidate: uuid.UUID, fake_s3: F
             {"f": file_id},
         )
     assert versions == 0, "an infected file was parsed"
+
+
+# --- 202 and status polling (Day 7) ---------------------------------------
+async def _status(user_id: uuid.UUID, file_id: uuid.UUID) -> tuple[Any, Any]:
+    from app.modules.resume import service
+
+    factory = sessions(_seed_url())
+    async with factory() as session:
+        return await service.get_file_status(session, user_id=user_id, resume_file_id=file_id)
+
+
+async def test_a_completed_upload_starts_queued(candidate: uuid.UUID, fake_s3: FakeS3) -> None:
+    """The 202 means accepted, not finished. Until the worker has run there is
+    nothing to report but that."""
+    from app.modules.resume import service
+
+    upload_id, _, _ = await service.issue_upload_ticket(user_id=candidate)
+    fake_s3.objects[upload_key(user_id=candidate, upload_id=upload_id)] = PDF
+    file_id, _ = await _complete(candidate, upload_id)
+
+    row, version = await _status(candidate, file_id)
+    assert row.parse_status == "QUEUED"
+    assert row.parse_error_code is None
+    assert version is None
+
+
+async def test_a_successful_parse_polls_done(candidate: uuid.UUID, fake_s3: FakeS3) -> None:
+    from app.modules.resume import service
+    from app.tasks.parse_resume import _parse
+
+    upload_id, _, _ = await service.issue_upload_ticket(user_id=candidate)
+    fake_s3.objects[upload_key(user_id=candidate, upload_id=upload_id)] = PDF
+    file_id, _ = await _complete(candidate, upload_id)
+    await _parse(str(file_id))
+
+    row, version = await _status(candidate, file_id)
+    assert row.parse_status == "DONE"
+    assert row.parse_error_code is None
+    assert version is not None
+
+
+async def test_an_unreadable_document_polls_failed_with_a_reason(
+    candidate: uuid.UUID, fake_s3: FakeS3, local_parser_only: None
+) -> None:
+    """**The gap this column exists to close.** A truncated PDF sniffs as a
+    PDF, is accepted, and then cannot be parsed. Without a terminal state the
+    candidate polls an endpoint that will never produce a version and never
+    say why -- so the app either spins forever or lies about progress.
+
+    The code travels instead of a sentence, because the client renders the
+    message in the candidate's own language.
+    """
+    from app.modules.resume import service
+    from app.tasks.parse_resume import _parse
+
+    upload_id, _, _ = await service.issue_upload_ticket(user_id=candidate)
+    # Sniffs as a PDF on its header and then fails in the reader. Long enough
+    # to clear the size floor, junk enough that no text layer exists.
+    unreadable = b"%PDF-1.4\n" + b"\x00" * 4096
+    fake_s3.objects[upload_key(user_id=candidate, upload_id=upload_id)] = unreadable
+    file_id, _ = await _complete(candidate, upload_id)
+
+    result = await _parse(str(file_id))
+    assert result["status"] == "unparseable"
+
+    row, version = await _status(candidate, file_id)
+    assert row.parse_status == "FAILED"
+    assert row.parse_error_code == "resume_unreadable_document"
+    assert row.parse_error_code == result["code"]
+    assert version is None, "a failed parse produced a version"
+
+
+async def test_an_infected_file_polls_blocked_rather_than_failed(
+    candidate: uuid.UUID, fake_s3: FakeS3
+) -> None:
+    """BLOCKED and FAILED are different advice. A file the scanner holds may
+    be perfectly readable, and telling the candidate to re-upload it would
+    send them round a loop that ends the same way."""
+    from app.modules.resume import service
+    from app.tasks.parse_resume import _parse
+
+    upload_id, _, _ = await service.issue_upload_ticket(user_id=candidate)
+    fake_s3.objects[upload_key(user_id=candidate, upload_id=upload_id)] = PDF
+    file_id, _ = await _complete(candidate, upload_id)
+
+    factory = sessions(_seed_url())
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("UPDATE resume_files SET scan_status = 'INFECTED' WHERE id = :i"),
+            {"i": file_id},
+        )
+
+    await _parse(str(file_id))
+
+    row, _version = await _status(candidate, file_id)
+    assert row.parse_status == "BLOCKED"
+    assert row.parse_error_code is None
+
+
+async def test_a_missing_object_is_a_parse_failure_not_a_scan_failure(
+    candidate: uuid.UUID, fake_s3: FakeS3
+) -> None:
+    """Two different facts, and they used to share one column. Reading
+    `scan_status = FAILED` later would say the scanner failed, which is not
+    what happened and would send an investigation the wrong way."""
+    from app.modules.resume import service
+    from app.tasks.parse_resume import _parse
+
+    upload_id, _, _ = await service.issue_upload_ticket(user_id=candidate)
+    key = upload_key(user_id=candidate, upload_id=upload_id)
+    fake_s3.objects[key] = PDF
+    file_id, scan_before = await _complete(candidate, upload_id)
+
+    # The object disappears between upload and parse -- a lifecycle rule, or a
+    # deletion request that landed first.
+    fake_s3.objects.pop(key)
+    assert (await _parse(str(file_id)))["status"] == "object_missing"
+
+    row, _version = await _status(candidate, file_id)
+    assert row.parse_status == "FAILED"
+    assert row.parse_error_code == "resume_object_missing"
+    assert row.scan_status == scan_before, "a missing object was recorded as a scan failure"
+
+
+async def test_redelivery_of_a_parsed_file_leaves_it_done(
+    candidate: uuid.UUID, fake_s3: FakeS3
+) -> None:
+    """At-least-once delivery hands the same file over again. The second run
+    creates no version, and must not walk the status back to something the
+    client would resume polling."""
+    from app.modules.resume import service
+    from app.tasks.parse_resume import _parse
+
+    upload_id, _, _ = await service.issue_upload_ticket(user_id=candidate)
+    fake_s3.objects[upload_key(user_id=candidate, upload_id=upload_id)] = PDF
+    file_id, _ = await _complete(candidate, upload_id)
+    await _parse(str(file_id))
+    await _parse(str(file_id))
+
+    row, _version = await _status(candidate, file_id)
+    assert row.parse_status == "DONE"
+
+
+async def test_a_parse_status_and_its_error_code_cannot_disagree(
+    candidate: uuid.UUID, fake_s3: FakeS3
+) -> None:
+    """Held by a CHECK constraint, not by the code that writes it. A FAILED
+    with no code tells the candidate nothing, and a code beside DONE is a
+    previous attempt's error surfacing as a current one."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.modules.resume import service
+
+    upload_id, _, _ = await service.issue_upload_ticket(user_id=candidate)
+    fake_s3.objects[upload_key(user_id=candidate, upload_id=upload_id)] = PDF
+    file_id, _ = await _complete(candidate, upload_id)
+
+    factory = sessions(_seed_url())
+    with pytest.raises(IntegrityError):
+        async with factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE resume_files SET parse_status = 'FAILED' WHERE id = :i"),
+                {"i": file_id},
+            )
+
+    with pytest.raises(IntegrityError):
+        async with factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE resume_files SET parse_status = 'DONE', "
+                    "parse_error_code = 'resume_unreadable_document' WHERE id = :i"
+                ),
+                {"i": file_id},
+            )
+
+
+async def test_recompleting_a_parsed_upload_reports_its_real_state(
+    candidate: uuid.UUID, fake_s3: FakeS3
+) -> None:
+    """Completing an upload is idempotent, so a client with a flaky connection
+    can send it again after the worker has already run.
+
+    It must not be told QUEUED then. A client that believed it would start
+    polling for work that is finished -- and on a failed parse it would poll
+    for work that is never going to finish.
+    """
+    from app.modules.resume import service
+    from app.tasks.parse_resume import _parse
+
+    upload_id, _, _ = await service.issue_upload_ticket(user_id=candidate)
+    fake_s3.objects[upload_key(user_id=candidate, upload_id=upload_id)] = PDF
+
+    factory = sessions(_seed_url())
+    async with factory() as session, session.begin():
+        _, _, first_parse_status = await service.complete_upload(
+            session, user_id=candidate, upload_id=upload_id
+        )
+    assert first_parse_status == "QUEUED"
+
+    await _parse(str(upload_id))
+
+    async with factory() as session, session.begin():
+        _, _, retried_parse_status = await service.complete_upload(
+            session, user_id=candidate, upload_id=upload_id
+        )
+    assert retried_parse_status == "DONE"

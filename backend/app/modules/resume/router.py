@@ -19,11 +19,16 @@ from fastapi import APIRouter, Depends, status
 
 from app.core.deps import CANDIDATE, CurrentUser, DbSession, require_role
 from app.modules.resume import service
+from app.modules.resume.domain import PARSE_TERMINAL
 from app.modules.resume.schemas import (
     ManualResumeRequest,
     PasteTextRequest,
+    ResumeConfirmResponse,
+    ResumeEditRequest,
     ResumeFileStatusResponse,
+    ResumeVersionDetailResponse,
     ResumeVersionResponse,
+    ResumeVersionSummary,
     UploadCompleteResponse,
     UploadTicketResponse,
 )
@@ -81,13 +86,13 @@ async def complete_upload(
     and sniffs the type from the stored bytes. A client that lies about any of
     the three changes nothing.
     """
-    resume_file_id, scan_status = await service.complete_upload(
+    resume_file_id, scan_status, parse_status = await service.complete_upload(
         session, user_id=user.user_id, upload_id=upload_id
     )
     return UploadCompleteResponse(
         resume_file_id=resume_file_id,
         scan_status=scan_status,
-        parse_status="QUEUED",
+        parse_status=parse_status,
     )
 
 
@@ -108,6 +113,12 @@ async def file_status(
     return ResumeFileStatusResponse(
         resume_file_id=row.id,
         scan_status=row.scan_status,
+        parse_status=row.parse_status,
+        parse_error_code=row.parse_error_code,
+        # Computed rather than stored: which states are final is a property of
+        # the state machine, and duplicating it in a column would let the two
+        # disagree the first time a state is added.
+        terminal=row.parse_status in PARSE_TERMINAL,
         uploaded_at=row.uploaded_at,
         resume_version_id=version.id if version is not None else None,
     )
@@ -155,4 +166,127 @@ async def manual_entry(
         source="MANUAL",
         confirmed=row.confirmed_at is not None,
         created_at=row.created_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Review, edit, confirm (SRS 1.4.4)
+#
+# Route order matters below: `/versions` must be declared before
+# `/versions/{resume_version_id}`, or the literal path is matched by the
+# parameterised route and answered with a 422 for a malformed UUID.
+# ---------------------------------------------------------------------------
+@router.get(
+    "/versions",
+    response_model=list[ResumeVersionSummary],
+    dependencies=[CandidateOnly],
+    summary="List this candidate's resume versions, newest first",
+)
+async def list_versions(user: CurrentUser, session: DbSession) -> list[ResumeVersionSummary]:
+    """The version chain. No content -- the list screen shows dates and
+    states, and every CV in full is a large response for a small view."""
+    rows = await service.list_versions(session, user_id=user.user_id)
+    return [
+        ResumeVersionSummary(
+            resume_version_id=row.id,
+            source=row.source,
+            confirmed=row.confirmed_at is not None,
+            confirmed_at=row.confirmed_at,
+            supersedes_id=row.supersedes_id,
+            superseded=superseded,
+            created_at=row.created_at,
+        )
+        for row, superseded in rows
+    ]
+
+
+@router.get(
+    "/versions/{resume_version_id}",
+    response_model=ResumeVersionDetailResponse,
+    dependencies=[CandidateOnly],
+    summary="Review one version in full",
+)
+async def review_version(
+    resume_version_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> ResumeVersionDetailResponse:
+    """**The review screen.** The only response that returns `parsed` whole.
+
+    Parsing is not accurate enough to attach a number to without showing the
+    candidate what was read -- which is the entire argument for the confirm
+    gate, and this is the read that makes confirming an informed act rather
+    than a button.
+
+    404 for another candidate's version, never 403.
+    """
+    row, superseded = await service.get_version_for_review(
+        session, user_id=user.user_id, resume_version_id=resume_version_id
+    )
+    return ResumeVersionDetailResponse(
+        resume_version_id=row.id,
+        source=row.source,
+        parsed=row.parsed,
+        confirmed=row.confirmed_at is not None,
+        confirmed_at=row.confirmed_at,
+        supersedes_id=row.supersedes_id,
+        superseded=superseded,
+        created_at=row.created_at,
+    )
+
+
+@router.post(
+    "/versions/{resume_version_id}/edit",
+    response_model=ResumeVersionResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[CandidateOnly],
+    summary="Correct a version, creating a new one",
+)
+async def edit_version(
+    resume_version_id: uuid.UUID,
+    payload: ResumeEditRequest,
+    user: CurrentUser,
+    session: DbSession,
+) -> ResumeVersionResponse:
+    """**201, not 200** -- a correction creates a version, it never updates
+    one. The response id is the new version's, not the one that was edited.
+
+    The new version arrives unconfirmed even if the one it replaces was
+    confirmed, so a correction has to go back through review. 409 if this
+    version has already been superseded.
+    """
+    row = await service.edit_version(
+        session,
+        user_id=user.user_id,
+        resume_version_id=resume_version_id,
+        payload=payload,
+    )
+    return ResumeVersionResponse(
+        resume_version_id=row.id,
+        source="EDIT",
+        confirmed=row.confirmed_at is not None,
+        created_at=row.created_at,
+    )
+
+
+@router.post(
+    "/versions/{resume_version_id}/confirm",
+    response_model=ResumeConfirmResponse,
+    dependencies=[CandidateOnly],
+    summary="Confirm a reviewed version so it can be scored",
+)
+async def confirm_version(
+    resume_version_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> ResumeConfirmResponse:
+    """**The mandatory confirm gate** (SRS 1.4.4). Until this succeeds, the
+    version cannot reach scoring at all.
+
+    200 rather than 201: nothing is created, and confirming twice is a retry
+    that returns the original timestamp rather than a second confirmation.
+    """
+    row, already = await service.confirm_version(
+        session, user_id=user.user_id, resume_version_id=resume_version_id
+    )
+    return ResumeConfirmResponse(
+        resume_version_id=row.id,
+        confirmed_at=row.confirmed_at,
+        already_confirmed=already,
     )

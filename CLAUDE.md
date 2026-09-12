@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 905 tests
+.venv/Scripts/pytest.exe                # 954 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -64,6 +64,11 @@ pytest --cov=app
 - `app.core` never imports `app.modules` (one documented exception:
   `app/core/metadata.py`, which exists only to populate `Base.metadata`).
 - `domain.py` is pure — no I/O, no DB, no clock.
+- Other modules **never** import `resume.repository` or `resume.models`. The
+  confirm gate (SRS 1.4.4) lives in `resume.service.get_scorable_version`, and
+  a rule in a service is only a rule while the service is the only way in —
+  `repository.list_versions` returns unconfirmed versions quite correctly, for
+  the review screen.
 
 ## Authentication — the part most likely to be got wrong
 
@@ -79,6 +84,30 @@ pytest --cov=app
   RS256 tokens locally. `Settings` refuses to boot with it set outside local/CI.
   **CI needs it set** — with no Cognito pool configured, `Settings` otherwise
   refuses to construct and even Alembic fails.
+
+## The confirm gate — and the Day 8 trap under it
+
+SRS 1.4.4: an unconfirmed resume version can never reach scoring. Parsing is
+not accurate, so the candidate has to see what was extracted before a number is
+attached to it.
+
+- **`resume.service.get_scorable_version` is the only door.** The filter is a
+  SQL predicate (`confirmed_at IS NOT NULL`), so an unconfirmed row is never
+  loaded rather than loaded and then checked.
+- **Scoring must trigger on `resume.version_confirmed`, never on
+  `resume.version_created`.** The creation event is the obvious choice and it
+  is wrong: it fires on every unconfirmed parse and every unconfirmed
+  correction, so consuming it bypasses the gate *while the whole suite still
+  passes* — the gate function stays intact and is simply never called.
+  `tests/invariants/test_confirm_gate.py` fails the build on it.
+- **Versions are append-only.** An edit creates a row chained by
+  `supersedes_id`; the chain cannot fork (unique index) and `confirmed_at` is a
+  latch (conditional UPDATE, `WHERE confirmed_at IS NULL`). An edit never
+  inherits confirmation — that would be the gate reached through a side door.
+
+Anything that feeds a deliberately unreadable document into the parse chain
+will call **Textract for real** unless it is pinned to `LocalResumeParser` —
+see the `local_parser_only` fixture.
 
 ## Resume parsing — local first, Textract as fallback
 
