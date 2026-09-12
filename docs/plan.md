@@ -1794,20 +1794,20 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 | 3 | Cognito: pools, JWKS, phone OTP, Google, email | ◐ **partial 2026-09-11** — JWKS verification, local provider and the identity surface are in and CI-green (PR #2). Pools are **applied and verified** (`infra/terraform`). Phone OTP and Google are blocked — see below. |
 | 4 | MFA, memberships, role/tenant deps (anonymous flow removed in v4) | ◐ **partial 2026-09-11** — memberships and role/tenant deps done, cached 60s in Redis. Business-pool MFA is applied (software-token, required). |
 | 5 | Cross-tenant suite, permission matrix — **Week 1 gate** | ◐ **partial 2026-09-11** — permission matrix green across all 10 roles; no-anonymous-access enforced structurally for every documented route. Cross-tenant is proven at the database layer only — the HTTP-layer suite needs the Week 2 endpoints to exist. |
-| 6 | Resume upload, scan, parse task | ☐ |
-| 7 | Versions, review, confirm gate, status polling | ☐ |
-| 8 | **Scoring: extraction + rubric, caps, replay-from-storage — invariants 1, 2, 3, 4′** | ☐ |
-| 9 | Integrity engine (no duplicate rule), suppression, employer tenancy + type/industry | ☐ |
+| 6 | Resume upload, scan, parse task | ◐ **partial 2026-09-11** — 5 endpoints, presigned upload, local parsers (pypdf/python-docx) with **Textract as an OCR fallback behind a length floor**, parse task idempotent by file id, `parser`/`parser_version` stored per extraction. **Malware scanning is a seam with nothing behind it** (E1) and Textract is waiting on AWS account activation (E2). |
+| 7 | Versions, review, confirm gate, status polling | ☐ **next** |
+| 8 | **Scoring: extraction + rubric, caps, replay-from-storage — invariants 1, 2, 3, 4′** | ◐ **partial 2026-09-11** — the rubric is defined, implemented (`scoring/domain.py`) and **calibrated against a 35-profile corpus with a golden-replay gate** verified to catch a 1-point drift. Still owed: Layer 1/2 extraction, persistence, and replay-from-storage. Invariants 1–4′ land with those. |
+| 9 | Integrity engine (no duplicate rule), suppression, employer tenancy + type/industry | ◐ **partial 2026-09-12** — **8 rules and the severity policy built and tested** (`integrity/domain.py`, 40 tests), employer type and industry vocabularies confirmed and built. Still owed: wiring the engine to the parse chain, persisting signals, and the discovery-query suppression join. |
 | 10 | KYB (auto-approve default), jobs, publish gate — **invariant 8, Week 2 gate** | ☐ |
 | 11 | Job search, eligibility, apply, withdraw | ☐ |
 | 12 | Stage machine, events, hire confirm, expiry | ☐ |
 | 13 | Masked discovery, filters, search indexes | ☐ |
 | 14 | **Access windows, reveal audit, abuse controls — invariants 7, 7′** | ☐ |
-| 15 | Payments, **subscriptions, courses**, signed callbacks, entitlements — **Week 3 gate** | ☐ |
-| 16 | Questionnaire, device check, audio session, chunk upload | ☐ |
-| 17 | Evaluation stubs, college tenant + **seats + referral codes**, roster import | ☐ |
+| 15 | Payments, **subscriptions, courses**, signed callbacks, entitlements — **Week 3 gate** | ☐ — no machinery yet, but its **content dependency is cleared**: the price list (11 plans + 2 products) and the course syllabus exist as data (`subscriptions/catalogue.py`, `courses/catalogue.py`). |
+| 16 | Questionnaire, device check, audio session, chunk upload | ☐ — content dependency cleared: **questionnaire and interview banks plus the evaluation rubric** are built (`questionnaire/bank.py`, `interview/bank.py`). |
+| 17 | Evaluation stubs, college tenant + **seats + referral codes**, roster import | ☐ — content dependency cleared: college onboarding form and seat-tier plans exist. **C12 is open and it is a pricing question**, not a build one. |
 | 18 | **Consent scopes, cohort analytics — invariant 9** | ☐ |
-| 19 | Admin queues, drill-downs, disputes, **seats + suspension**, notifications + **nudges** | ☐ |
+| 19 | Admin queues, drill-downs, disputes, **seats + suspension**, notifications + **nudges** | ☐ — content dependency cleared: 21 message templates drafted and 8 locale bundles shipped. **Sending is gated on DLT registration** (D1, 2–4 weeks, not started on the template side). |
 | 20 | Privacy, rate limits, index review, handover — **Week 4 gate** | ☐ |
 
 ### Invariant coverage
@@ -1816,10 +1816,10 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 |---|---|---|---|
 | 5 | No age-gating | Day 1 | ☑ **green** |
 | 6 | No financial framing | Day 1 | ☑ **green** |
-| 1 | Score reproducible — **incl. add-ons and the stored extraction chain** | Day 8 | ☐ |
-| 2 | Scale **700–990**; base not floor; stored == displayed | Day 8 | ☐ |
+| 1 | Score reproducible — **incl. add-ons and the stored extraction chain** | Day 8 | ◐ **half** — the rubric half is gated: a 35-profile golden corpus fails CI naming any profile whose score moves. The extraction half is not built, so a score cannot yet be replayed from storage. |
+| 2 | Scale **700–990**; base not floor; stored == displayed | Day 8 | ◐ **half** — the arithmetic is asserted rather than clamped (`total_score`), and the caps are proven to sum to 200. Nothing is stored or displayed yet. |
 | 3 | Score not human-editable, **directly or indirectly** | Day 8 | ☐ |
-| **4′** | **Add-on contributions bounded and versioned** | Day 8, re-verified Day 16 | ☐ |
+| **4′** | **Add-on contributions bounded and versioned** | Day 8, re-verified Day 16 | ◐ **half** — caps in `scoring/domain.py` and a CHECK constraint on `courses`; import-linter stops any add-on module importing `scoring`. Not yet exercised end-to-end. |
 | 8 | No publish before KYB *(gate built, flag defaults open)* | Day 10 | ☐ |
 | 7 | Masked without an active access window, **raw score never revealed** | Day 14 | ☐ |
 | **7′** | **Every PII reveal audited, under blanket access** | Day 14 | ☐ |
