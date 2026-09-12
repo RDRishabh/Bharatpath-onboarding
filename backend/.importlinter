@@ -118,6 +118,13 @@ forbidden_modules =
 [importlinter:contract:resume-internals-are-private]
 name = The confirm gate is the only route to a resume version (SRS 1.4.4)
 type = forbidden
+; `allow_indirect_imports` for the same reason the `layers` contract above
+; needs it, and it bit here exactly as it bit there. Without it this also
+; forbids scoring.service -> resume.service -> resume.repository, which is the
+; intended path and the one this contract exists to funnel traffic INTO. The
+; rule is about the DIRECT import: reaching past the service, not reaching
+; through it.
+allow_indirect_imports = True
 source_modules =
     app.modules.candidate
     app.modules.scoring

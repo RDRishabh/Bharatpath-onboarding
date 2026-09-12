@@ -53,7 +53,7 @@ late.
 | # | Blocker | Owner | Blocks | Status |
 |---|---|---|---|---|
 | **A1** | **Scoring weights and dimension definitions** | Client | **Day 8** — the next high-judgment day | Open. NDA-gated. The arithmetic sent 2026-08-27 does not close to 990 (`questions.txt` Q1). Day 8 ships `v0-placeholder` with invented weights until this lands. |
-| **A2** | **Calibration corpus — 50–100 real CVs with expected bands** | Client | **Day 8**, and the golden-corpus CI gate | Open. Without it the weights are invented rather than calibrated, and the replay gate has nothing to gate against. Realistically one working session with whoever owns product judgment. |
+| ~~**A2**~~ | ~~**Calibration corpus — 50–100 real CVs with expected bands**~~ | Client | ~~Day 8~~ | ✅ **CLOSED 2026-09-12.** Resolved a different way than asked: rather than supplying real CVs, the client reviewed our 35 synthetic profiles with the live engine's scores and accepted all of them (*"the scores are perfect fine"*). The rubric is now agreed rather than merely consistent. **The corpus is still synthetic** — a systematic gap between these profiles and the CVs that actually arrive stays invisible, so re-run this against thirty real CVs once thirty exist. |
 
 > Day 8 can be *built* without these — the engine is `base + bounded
 > contributions, clamped` regardless. It cannot be **calibrated**, and a score

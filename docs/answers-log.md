@@ -7,7 +7,7 @@
 > **Still-open questions live in [`questions.txt`](questions.txt)**, written in plain language and
 > ready to send. This file is the archive; that file is the ask.
 >
-> Last updated 12 September 2026 — Round 8 added (C12, the college seat model).
+> Last updated 12 September 2026 — Round 9 added (calibration accepted).
 
 ---
 
@@ -15,6 +15,34 @@
 
 | Round | Source | Asked | Answered | Still open |
 |---
+
+## Round 9 — client answer, 2026-09-12
+
+| # | Question | Client answer (verbatim) | What we did |
+|---|---|---|---|
+| **9.1** | Do these 35 scored profiles match your judgment? Mark each too low / about right / too high. | *"the scores are perfect fine"* | **A2 / N3 closed.** All 35 accepted with no adjustment. The rubric moves from *internally consistent* to *agreed*; no band table changed, so no score moved and the golden corpus did not need regenerating. |
+
+### Why this mattered more than its length
+
+The rubric was calibrated by us from general industry practice, because the
+client declined to supply real CVs (Round 7.1). That proved it was internally
+consistent — quality beats tenure, keyword stuffing loses, no sector bias —
+but **not** that it matched their commercial judgment. If their idea of
+"strong" had sat higher or lower than ours, every score would have been wrong
+in the same direction and nothing in CI could have detected it, because CI
+only knows what we told it.
+
+Thirty-five profiles were put to them with the live engine's scores against
+each. The answer was that all of them are right. That is the strongest form
+the answer could take, and it is what unblocked the rest of Day 8.
+
+**What this does and does not settle.** It settles the shape of the rubric
+against the client's judgment. It does not make the corpus real: the profiles
+are still synthetic, and a systematic difference between synthetic profiles
+and the CVs that actually arrive would still be invisible. Worth re-running
+against thirty real CVs once there are thirty real CVs.
+
+---
 
 ## Round 8 — client answer, 2026-09-12
 

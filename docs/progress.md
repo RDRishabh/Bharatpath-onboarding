@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 958 passing (local + CI) |
+| **Tests** | 1046 passing (local + CI) |
 | **Coverage** | 78% |
-| **Days done** | 1, 2, 7 complete · 3, 4, 5, 6 partial |
-| **Next** | Day 8 — scoring: extraction, persistence, replay-from-storage |
+| **Days done** | 1, 2, 7 complete · 3, 4, 5, 6, 8 partial |
+| **Next** | Day 9 — wire integrity to the parse chain; then Day 10, KYB and the Week 2 gate |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -49,7 +49,118 @@ states. Newest entries first.
 | **Twilio account** | Phone OTP, the 3 Cognito custom-auth Lambdas | Days |
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
-| **N2 — can CV text leave India?** | Day 8 scoring design | Open. `ap-south-1` chosen so the answer cannot be wrong. |
+| ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-12 (latest) — Day 8: the scoring pipeline, and invariants 1–4′
+
+**958 -> 1046 tests.** The client accepted the calibration (35/35 "about
+right"), which took the rubric from provisional to agreed, and the rest of Day
+8 followed: Layer 2, the extraction cache, persistence, replay, the display
+floor, the candidate route and the trigger.
+
+### Invariants 1, 2, 3 and 4′ are green
+
+| # | What makes it true |
+|---|---|
+| **1** | `replay(score_id)` re-runs Layers 2 and 3 over the **stored** model response and never calls the model. Tested with add-on contributions, not only base scores — a replay that only reproduces base scores breaks the first time someone buys a course. A mismatch **raises**: a replay that quietly disagreed would be used to answer a dispute and would answer it wrongly. |
+| **2** | CHECK constraints hold 700–990 and `raw = base + addon`. `display_value` applies the floor at the serialization boundary **and nowhere else**, so what is stored is what was computed. Asserted across all 291 values in range. |
+| **3** | `repository.insert_score` is the only write path; there is deliberately no update and no delete function, and the app role holds neither grant. |
+| **4′** | Exercised end to end through the real write path: a caller asking for 500 + 500 add-on points gets 90, and the decomposition still sums. |
+
+### The design decision that carries the most weight
+
+**The model's output is an input to scoring, captured once and stored — not a
+step in the computation.** Everything else follows from that. Replay is
+bit-identical in perpetuity because it re-reads a stored JSON blob rather than
+re-asking a model that may have been retired, upgraded or simply moved on.
+
+The cache key is `sha256(normalised_text + model_id + prompt_version +
+schema_version)` — **not the resume id and not the user id**. So the model is
+called once per distinct CV ever; two candidates with identical text get
+identical extractions because it is literally the same row; and re-scoring
+after a course purchase is Layer 3 only, costing nothing and unable to drift.
+
+### Decisions taken inside that work
+
+- **There is deliberately no heuristic fallback extractor.** With no model
+  wired, `UnconfiguredResumeExtractor` raises and the score stays **PENDING**.
+  A keyword-matching stand-in would produce a plausible wrong number, which
+  `scoring-approach.md` §11 forbids: unfixable once the candidate has seen it,
+  and a dispute we cannot win. A test asserts an unconfigured build yields
+  pending rather than 700.
+- **Experience is summed from the roles, not read from the model's own
+  total.** The roles are checkable and the total is not; a model that
+  miscounts its own arithmetic must not move a score by 55 points.
+- **An unrecognised job title resolves to `unknown` and scores zero.**
+  Guessing is how a scoring system starts rewarding inflated titles. Longest
+  match wins, so "Senior Vice President" is an executive, not a senior.
+- **Layer 2 is total, never raising.** It runs against extractions stored
+  years earlier under a schema that has since moved on, and a replay that
+  throws cannot answer a dispute — which is the one thing it exists to do. A
+  malformed field degrades that dimension to zero.
+- **Skill evidence is the mean, rounded down**, over *distinct* skills. A CV
+  with one well-evidenced skill and nine bare keywords is mostly a keyword
+  list; rounding up would pay for the keywords.
+- **STRONG runs to 990, not 900.** 900 is the resume-only ceiling. Stopping
+  the top band there would leave every candidate who bought an add-on in no
+  band at all — and the band is what an employer sees (R4).
+- **`ALGORITHM_VERSION` is composed** from the taxonomy and rubric versions
+  rather than being a number somebody has to remember to bump.
+- **`prompt_hash` is stored beside `prompt_version`.** The version is a label
+  a human maintains and can forget; the hash is computed and cannot be, so a
+  replay comparing both can tell a deliberate change from a careless one.
+
+### The Day 8 trap, closed at the place it would actually be sprung
+
+Day 7 left a tripwire: scoring must consume `resume.version_confirmed`, never
+`resume.version_created`. That test scanned `app/modules/scoring/` for the
+wrong event name — which would not have caught anything, because **the
+subscription does not live in that module**. It lives in the task wiring.
+
+So `app/tasks/routing.py` now holds one table mapping event to task, and the
+invariant test asserts against the table directly: the confirmed event routes
+to scoring, the created event does not, and the routed task name is one a
+worker actually registers. That last one was verified by renaming the task and
+watching it fail — a routing table pointing at a name nobody registers is
+wiring that reads as working and does nothing, and the symptom would have been
+scores that never appear rather than an error anyone sees.
+
+### Found while building
+
+- **My own new import-linter contract was wrong.** `resume-internals-are-
+  private` (added yesterday) forbade the *indirect* chain
+  `scoring.service -> resume.service -> resume.repository`, which is the exact
+  path the contract exists to funnel traffic into. Same failure the `layers`
+  contract hit on Day 3, with the same fix (`allow_indirect_imports`). Re-
+  verified that a **direct** import still breaks it.
+- **The extraction cache made tests order-dependent, correctly.** Several
+  tests shared one CV body, so the second to run saw zero model calls and
+  failed an assertion about caching. That is the cache doing exactly what it
+  promises — one call per distinct CV **ever**, across users and across time,
+  with rows outliving the test that wrote them. Fixed by giving each test its
+  own document, not by weakening the cache.
+- **The invariant-5 checker caught my own test.** A test asserting the
+  extraction schema has no date-of-birth field had to *name* the field to do
+  so, which trips `check_no_age_fields.py`. The script exempts exactly one
+  file — invariant 5's own test — and diluting that for convenience would
+  weaken a legal-requirement guard. Rewritten to assert on the prompt text
+  instead; repo-wide field absence was already guaranteed by the existing
+  test.
+
+### Owed before Day 8 can be called done
+
+- **The Layer 1 model client.** The seam is real, exercised and tested; the
+  client lands when credentials do. Nothing else moves when it does — the
+  cache, Layers 2 and 3, persistence and replay all sit behind
+  `get_resume_extractor` and none of them knows which extractor produced a
+  result.
+- **The shareable card** (band by default, exact number on explicit opt-in,
+  opaque revocable token). Not started.
+- **The outbox -> broker hop** remains the pre-existing Day 19 TODO. The
+  subscription table is declared and tested; `_publish` still logs rather than
+  enqueuing.
 
 ---
 

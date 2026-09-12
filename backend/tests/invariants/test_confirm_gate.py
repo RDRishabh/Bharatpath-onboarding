@@ -198,6 +198,56 @@ def test_scoring_is_not_wired_to_the_version_created_event() -> None:
     )
 
 
+def test_the_subscription_table_routes_scoring_to_the_confirmed_event() -> None:
+    """**The gate expressed as a subscription, and the stronger half of this
+    file.**
+
+    The source scan above proves scoring does not *name* the creation event.
+    This proves the trigger names the right one — which is the thing that
+    actually decides what gets scored, and the thing a Day 15/16 author adding
+    a re-score trigger will edit.
+    """
+    from app.tasks.routing import SCORE_RESUME_TASK, tasks_for
+
+    assert SCORE_RESUME_TASK in tasks_for(CONFIRMED_EVENT), (
+        f"{CONFIRMED_EVENT!r} does not trigger scoring, so confirming a resume computes nothing."
+    )
+
+
+def test_the_creation_event_triggers_no_scoring() -> None:
+    """The mistake, caught at the one place it would actually be made.
+
+    `resume.version_created` fires on every parse and every correction,
+    including unconfirmed ones. Routing it to the scoring task would score
+    content the candidate has never reviewed.
+    """
+    from app.tasks.routing import SCORE_RESUME_TASK, tasks_for
+
+    assert SCORE_RESUME_TASK not in tasks_for(CREATED_EVENT), (
+        f"{CREATED_EVENT!r} triggers scoring. It fires for versions nobody has "
+        f"reviewed — scoring must trigger on {CONFIRMED_EVENT!r}."
+    )
+
+
+def test_the_routed_task_name_is_one_a_worker_actually_registers() -> None:
+    """A routing table pointing at a task name nobody registers is wiring that
+    reads as working and does nothing.
+
+    The two strings live in different files — `routing.py` names the task,
+    `app/tasks/score_resume.py` registers it — so a rename in either direction
+    silently breaks the trigger, and the symptom is scores that never appear
+    rather than an error anyone sees.
+    """
+    import app.tasks.score_resume  # noqa: F401  - registers the task
+    from app.tasks.routing import SCORE_RESUME_TASK
+    from app.worker import celery_app
+
+    assert SCORE_RESUME_TASK in celery_app.tasks, (
+        f"{SCORE_RESUME_TASK!r} is routed to but no task registers under that "
+        f"name. Registered: {sorted(n for n in celery_app.tasks if not n.startswith('celery.'))}"
+    )
+
+
 def test_confirmation_still_emits_an_event_for_scoring_to_consume() -> None:
     """The other half. A gate nothing announces would leave Day 8 with no
     trigger, and the obvious fix would be to reach for the creation event."""

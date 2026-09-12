@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 954 tests
+.venv/Scripts/pytest.exe                # 1046 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -108,6 +108,31 @@ attached to it.
 Anything that feeds a deliberately unreadable document into the parse chain
 will call **Textract for real** unless it is pinned to `LocalResumeParser` —
 see the `local_parser_only` fixture.
+
+## Scoring — the model reads, code scores
+
+Three layers (`docs/scoring-approach.md` §4). Layer 1 reads a CV into facts
+and bounded 0–4 ratings; Layers 2 and 3 are ordinary, versioned, tested code.
+**The model never sees the weights and never returns a total**, so it cannot
+aim at a target score and neither can anyone writing instructions into a CV.
+
+- **The model's output is an *input* to scoring, captured once and stored.**
+  `replay(score_id)` re-runs Layers 2 and 3 over the stored response and
+  **never calls the model**, so a 2029 dispute about a 2026 score gets an
+  exact answer. A mismatch raises rather than returning a different number.
+- **The extraction cache is keyed on the CV text**, not the resume or the
+  user: `sha256(normalised_text + model_id + prompt_version + schema_version)`.
+  One model call per distinct CV ever. Two candidates with identical text
+  share one row. **Tests that count model calls must use unique CV text** —
+  cache rows outlive the test that wrote them.
+- **There is no fallback extractor, deliberately.** With no model wired,
+  `UnconfiguredResumeExtractor` raises and the score stays PENDING. A
+  heuristic stand-in would produce a plausible wrong number, which is
+  unfixable once a candidate has seen it (§11).
+- **`scoring.repository.insert_score` is the only write path.** No update, no
+  delete, and the app role holds neither grant.
+- The display floor lives in `display_value`, applied at the serialization
+  boundary and nowhere else — what is stored is what was computed.
 
 ## Resume parsing — local first, Textract as fallback
 

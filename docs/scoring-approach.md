@@ -316,6 +316,21 @@ the quality of this score than any amount of engineering.
 
 ---
 
+## 10b. Calibration — accepted by the client *(2026-09-12)*
+
+The 35 profiles below were put to the client with the live engine's score
+against each, and asked to be marked *too low*, *about right* or *too high*.
+
+**All 35 were accepted.** No band table changed, so no score moved and the
+golden corpus did not need regenerating.
+
+What that settles: the rubric's judgment matches the client's. What it does
+not settle: the profiles are still synthetic, so a systematic difference
+between them and the CVs that actually arrive remains undetectable. Re-run
+this exercise against thirty real CVs once thirty exist.
+
+---
+
 ## 10a. Calibration — what we actually did *(2026-09-11)*
 
 The client declined to supply real CVs and asked us to calibrate from general

@@ -103,12 +103,20 @@ async def _relay_batch() -> dict[str, int]:
 def _publish(event: dict[str, Any]) -> None:
     """Hand the event to the broker.
 
-    TODO(Day 19): publish to SQS/EventBridge. Until the queues exist this
-    logs, which is a deliberate no-op rather than a silent drop - the row
-    stays unpublished only if this raises.
+    TODO(Day 19): publish to SQS/EventBridge and enqueue `subscribers`. Until
+    the queues exist this logs, which is a deliberate no-op rather than a
+    silent drop - the row stays unpublished only if this raises.
+
+    The subscriber list is resolved here rather than at enqueue time so that
+    an event routed to a task nobody wired is visible in the log today, before
+    the broker hop exists to hide it.
     """
+    from app.tasks.routing import tasks_for
+
+    subscribers = tasks_for(event["event_type"])
     logger.info(
         "outbox_event_published",
         event_type=event["event_type"],
         aggregate_type=event["aggregate_type"],
+        subscribers=list(subscribers),
     )

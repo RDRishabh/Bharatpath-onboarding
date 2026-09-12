@@ -22,6 +22,9 @@ us on 2026-09-11 (`answers-log.md` Round 7.1).
 
 from __future__ import annotations
 
+import hashlib
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Final
 
@@ -29,6 +32,13 @@ from typing import Final
 #: candidate whose score moves can be told which version moved it, and a
 #: replay can reproduce the number the rubric produced at the time.
 RUBRIC_VERSION: Final = "v1-2026-09-11"
+
+#: Layer 2. Bump when the mapping from a Layer 1 extraction onto
+#: `ResumeFeatures` changes in a way that alters output -- a new seniority
+#: synonym, a different rounding rule. Stored on every score, because a score
+#: is only reproducible if the *normalisation* that produced its features is
+#: identifiable too, not just the model and the weights.
+TAXONOMY_VERSION: Final = "v1-2026-09-12"
 
 BASE_SCORE: Final = 700
 MAX_RESUME_POINTS: Final = 200
@@ -232,3 +242,336 @@ def total_score(resume: ResumeScore, addons: AddOnContributions) -> int:
 # work against the thing being sold. This is a business decision and the client
 # can reverse it -- but it should be a decision, made once, in the open, rather
 # than a weight nobody noticed.
+
+
+def clamped_addon_points(addons: AddOnContributions) -> int:
+    """The add-on points that actually count, after the caps.
+
+    **Invariant 4-prime as one function.** `total_score` applies the same caps
+    on its way to a total; this exposes the clamped figure so the total can be
+    decomposed into `base_value + addon_value` without either caller
+    re-deriving the caps and getting them subtly different. A row whose parts
+    did not sum to its total would fail its CHECK constraint, which is the
+    cheap version of this bug; the expensive version is a stored decomposition
+    that sums correctly but attributes points to the wrong half.
+    """
+    course = min(max(0, addons.course_points), MAX_COURSE_POINTS)
+    interview = min(max(0, addons.interview_points), MAX_INTERVIEW_POINTS)
+    return course + interview
+
+
+# ---------------------------------------------------------------------------
+# Bands - what an employer sees instead of a number (R4)
+# ---------------------------------------------------------------------------
+#: `(label, inclusive lower bound, inclusive upper bound)`, ascending.
+#:
+#: The four labels are fixed by `docs/design-tokens.json` -> `score.bandLabels`,
+#: which the mobile app and three web front-ends all read. Adding a fifth is a
+#: design-system change, not a scoring change.
+#:
+#: **STRONG runs to 990, not 900.** 900 is the resume-only ceiling; the last 90
+#: points come from the course and mock interviews. Stopping STRONG at 900
+#: would leave every candidate who bought an add-on in no band at all -- and
+#: the band is what an employer sees, because employers never see the raw
+#: score (R4, 2026-08-24).
+BANDS: Final[tuple[tuple[str, int, int], ...]] = (
+    ("ENTRY", 700, 769),
+    ("DEVELOPING", 770, 819),
+    ("SOLID", 820, 864),
+    ("STRONG", 865, MAX_SCORE),
+)
+
+
+def band_for(value: int) -> str:
+    """The band a score falls in. Total over the whole 700-990 scale.
+
+    Out-of-range values resolve to the nearest end rather than raising: this
+    runs at a serialization boundary, and a display path that throws turns a
+    bad number into a 500 for a candidate who did nothing wrong. A value that
+    could reach here out of range has already failed a CHECK constraint.
+    """
+    for label, low, high in BANDS:
+        if low <= value <= high:
+            return label
+    return BANDS[0][0] if value < BANDS[0][1] else BANDS[-1][0]
+
+
+# ---------------------------------------------------------------------------
+# The display floor (invariant 2)
+# ---------------------------------------------------------------------------
+def display_value(raw_value: int) -> int:
+    """The number a human is shown, from the number that was stored.
+
+    **The floor lives here and nowhere else.** Storing a floored value would
+    make the stored score a lie about what the engine computed, and invariant
+    1 asks a replay to reproduce what the engine computed -- so the raw value
+    is written exactly as calculated and the floor is applied on the way out.
+
+    Today it can never bite: `total_score` is 700 + non-negative parts, and a
+    CHECK constraint refuses anything below 700. That is the point. If this
+    function ever changes a number, a cap above it is broken, and the floor
+    turns a wrong number into a merely unhelpful one instead of letting a
+    sub-700 score reach a candidate.
+
+    Invariant 2 also requires stored == displayed. It does, in every case the
+    arithmetic can actually produce, which is what the invariant test asserts.
+    """
+    return max(BASE_SCORE, raw_value)
+
+
+# ---------------------------------------------------------------------------
+# Content addressing (scoring-approach.md section 6)
+# ---------------------------------------------------------------------------
+def normalise_for_cache(text: str) -> str:
+    """The exact text the cache key is computed over.
+
+    Whitespace and unicode form are normalised away so that the same CV
+    re-uploaded as a DOCX instead of a PDF -- same words, different spacing,
+    different quote characters -- lands on the same cache entry and therefore
+    the same score. Case is deliberately **kept**: a CV in block capitals is a
+    different document to a model, and pretending otherwise would silently
+    merge two extractions that legitimately differ.
+
+    NFKC first, because a CV pasted from a PDF viewer is full of ligatures and
+    non-breaking spaces that are the same characters to a reader and different
+    bytes to a hash.
+    """
+    cleaned = unicodedata.normalize("NFKC", text).replace("\u00a0", " ")
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def extraction_cache_key(
+    *, text: str, model_id: str, prompt_version: str, schema_version: str
+) -> str:
+    """`sha256(normalised_text + model_id + prompt_version + schema_version)`.
+
+    **Not the resume id and not the user id**, and that is the whole design:
+    the model is called once per distinct CV ever, re-scoring after a course
+    purchase costs nothing, and two candidates who submit identical text get
+    identical extractions because it is literally the same row -- so
+    cross-candidate consistency is exact rather than probabilistic.
+
+    Every component that could change the output is in the key. Leaving any
+    of them out would serve a cached extraction produced by a different model
+    or a different prompt, which is the one way this cache could corrupt a
+    score rather than merely miss.
+    """
+    material = "\x00".join([normalise_for_cache(text), model_id, prompt_version, schema_version])
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# LAYER 2 - normalisation (scoring-approach.md section 4)
+# ---------------------------------------------------------------------------
+#: Title vocabulary -> the canonical levels `SENIORITY_POINTS` scores.
+#:
+#: Longest match wins, so "senior vice president" resolves to executive rather
+#: than being caught by "senior". A title we do not recognise is `unknown` and
+#: scores zero: guessing from an unknown title is how a scoring system starts
+#: rewarding inflated job titles.
+SENIORITY_SYNONYMS: Final[tuple[tuple[str, str], ...]] = (
+    ("vice president", "executive"),
+    ("chief", "executive"),
+    ("founder", "executive"),
+    ("director", "executive"),
+    ("partner", "executive"),
+    ("head of", "executive"),
+    ("principal", "principal"),
+    ("staff", "principal"),
+    ("architect", "principal"),
+    ("lead", "lead"),
+    ("manager", "lead"),
+    ("supervisor", "lead"),
+    ("senior", "senior"),
+    ("sr.", "senior"),
+    ("associate", "mid"),
+    ("mid", "mid"),
+    ("engineer ii", "mid"),
+    ("executive", "executive"),
+    ("junior", "junior"),
+    ("jr.", "junior"),
+    ("trainee", "junior"),
+    ("graduate", "junior"),
+    ("intern", "intern"),
+    ("apprentice", "intern"),
+)
+
+#: Qualification vocabulary -> the canonical levels `QUALIFICATION_POINTS`
+#: scores. Indian qualifications are named here explicitly rather than being
+#: approximated from western ones: a B.Tech, a BE and an ITI diploma are what
+#: this market's CVs actually say.
+QUALIFICATION_SYNONYMS: Final[tuple[tuple[str, str], ...]] = (
+    ("phd", "doctorate"),
+    ("ph.d", "doctorate"),
+    ("doctor", "doctorate"),
+    ("dphil", "doctorate"),
+    ("master", "master"),
+    ("m.tech", "master"),
+    ("mtech", "master"),
+    ("m.sc", "master"),
+    ("msc", "master"),
+    ("mba", "master"),
+    ("m.a", "master"),
+    ("m.com", "master"),
+    ("me ", "master"),
+    ("bachelor", "bachelor"),
+    ("b.tech", "bachelor"),
+    ("btech", "bachelor"),
+    ("b.e", "bachelor"),
+    ("be ", "bachelor"),
+    ("b.sc", "bachelor"),
+    ("bsc", "bachelor"),
+    ("b.com", "bachelor"),
+    ("bcom", "bachelor"),
+    ("b.a", "bachelor"),
+    ("bca", "bachelor"),
+    ("degree", "bachelor"),
+    ("diploma", "diploma"),
+    ("iti", "diploma"),
+    ("polytechnic", "diploma"),
+    ("certificate", "diploma"),
+    ("secondary", "secondary"),
+    ("hsc", "secondary"),
+    ("ssc", "secondary"),
+    ("12th", "secondary"),
+    ("10th", "secondary"),
+    ("high school", "secondary"),
+)
+
+#: Ranked worst to best, so "the highest reached" is a max over this order.
+SENIORITY_ORDER: Final[tuple[str, ...]] = (
+    "unknown",
+    "intern",
+    "junior",
+    "mid",
+    "senior",
+    "lead",
+    "principal",
+    "executive",
+)
+QUALIFICATION_ORDER: Final[tuple[str, ...]] = (
+    "unknown",
+    "none",
+    "secondary",
+    "diploma",
+    "bachelor",
+    "master",
+    "doctorate",
+)
+
+
+def _canonical(
+    value: object, synonyms: tuple[tuple[str, str], ...], allowed: dict[str, int]
+) -> str:
+    """Resolve free text onto a canonical level. `unknown` when nothing fits."""
+    if not isinstance(value, str):
+        return "unknown"
+    text = unicodedata.normalize("NFKC", value).strip().lower()
+    if not text:
+        return "unknown"
+    # An already-canonical value passes through untouched, so a re-run over
+    # stored features is a no-op rather than a second round of guessing.
+    if text in allowed:
+        return text
+    for needle, canonical in synonyms:
+        if needle in text:
+            return canonical
+    return "unknown"
+
+
+def canonical_seniority(value: object) -> str:
+    return _canonical(value, SENIORITY_SYNONYMS, SENIORITY_POINTS)
+
+
+def canonical_qualification(value: object) -> str:
+    return _canonical(value, QUALIFICATION_SYNONYMS, QUALIFICATION_POINTS)
+
+
+def _clamp_ordinal(value: object) -> int:
+    """Layer 1 is schema-constrained to 0-4. This is still clamped, because
+    stored extractions outlive the schema that validated them."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return max(0, min(4, value))
+
+
+def _rank(value: str, order: tuple[str, ...]) -> int:
+    return order.index(value) if value in order else 0
+
+
+def features_from_extraction(extracted: dict[str, object]) -> ResumeFeatures:
+    """**Layer 2.** A Layer 1 extraction becomes the features Layer 3 scores.
+
+    Pure and total: every field is derived defensively, because this runs
+    against extractions stored months or years ago under a schema that has
+    since moved on. A missing or malformed field degrades that one dimension
+    to zero rather than raising -- a replay that throws is a replay that
+    cannot answer a dispute, which is the one thing it exists to do.
+
+    Two decisions worth knowing:
+
+    * **Experience is summed from the roles, not read from the model's own
+      total.** The roles are checkable and the total is not, and a model that
+      miscounts its own arithmetic should not be able to move a score by
+      fifty-five points. Where roles overlap the sum overstates slightly; the
+      bands are wide enough that it does not cross a boundary.
+    * **Skill evidence is the mean, rounded down.** A CV with one
+      well-evidenced skill and nine bare keywords is mostly a keyword list,
+      and rounding up would pay for the keywords.
+    """
+    roles = extracted.get("roles")
+    roles = roles if isinstance(roles, list) else []
+
+    months = 0
+    best_seniority = "unknown"
+    for role in roles:
+        if not isinstance(role, dict):
+            continue
+        value = role.get("months")
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            months += value
+        level = canonical_seniority(role.get("seniority_level"))
+        if _rank(level, SENIORITY_ORDER) > _rank(best_seniority, SENIORITY_ORDER):
+            best_seniority = level
+
+    education = extracted.get("education")
+    education = education if isinstance(education, list) else []
+    best_qualification = "unknown"
+    for entry in education:
+        if not isinstance(entry, dict):
+            continue
+        level = canonical_qualification(entry.get("qualification_level"))
+        if _rank(level, QUALIFICATION_ORDER) > _rank(best_qualification, QUALIFICATION_ORDER):
+            best_qualification = level
+
+    skills = extracted.get("skills")
+    skills = skills if isinstance(skills, list) else []
+    # Distinct canonical names. A CV listing "Python" three times across three
+    # roles is not three skills, and `SKILL_COUNT_BANDS` counts distinct ones.
+    seen: dict[str, int] = {}
+    for skill in skills:
+        if not isinstance(skill, dict):
+            continue
+        name = skill.get("canonical_name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        key = name.strip().lower()
+        strength = _clamp_ordinal(skill.get("evidence_strength"))
+        seen[key] = max(seen.get(key, 0), strength)
+
+    evidence = sum(seen.values()) // len(seen) if seen else 0
+
+    certifications = extracted.get("certifications")
+    certifications = certifications if isinstance(certifications, list) else []
+
+    return ResumeFeatures(
+        total_experience_months=months,
+        highest_seniority=best_seniority,
+        role_progression=_clamp_ordinal(extracted.get("role_progression")),
+        skill_count=len(seen),
+        skill_evidence=evidence,
+        achievement_specificity=_clamp_ordinal(extracted.get("achievement_specificity")),
+        scope_of_responsibility=_clamp_ordinal(extracted.get("scope_of_responsibility")),
+        highest_qualification=best_qualification,
+        certification_count=len(certifications),
+    )

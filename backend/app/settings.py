@@ -145,6 +145,20 @@ class Settings(BaseSettings):
     # it cannot be used as free object storage.
     resume_max_text_chars: int = 60_000
 
+    # -- scoring -----------------------------------------------------------
+    # Layer 1 (reading a CV into facts) needs a model. Off by default and off
+    # in CI: with no extractor wired, a score stays PENDING rather than being
+    # computed from nothing. `scoring-approach.md` section 11 -- we never
+    # produce a partial or degraded score, because a plausible wrong number is
+    # unfixable once a candidate has seen it.
+    scoring_extraction_enabled: bool = False
+
+    # Pinned exactly, never a floating alias. The id is stored on every score
+    # and is half of what makes a replay attributable after the model is
+    # retired; an alias that silently moved would make two scores computed
+    # months apart claim the same provenance.
+    scoring_model_id: str = "claude-opus-5"
+
     # -- celery ------------------------------------------------------------
     celery_broker_url: str = "sqs://"
     celery_result_backend: str | None = None
