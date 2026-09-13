@@ -59,6 +59,11 @@ class IntegritySignal(Base, UUIDPrimaryKey):
     # change ships as config and old signals still say which version fired.
     rule_id: Mapped[str] = mapped_column(String(64), nullable=False)
     rule_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: Which `IntegrityThresholds` were in force. With `rule_version` this is
+    #: the whole answer to "what exactly raised this?"
+    thresholds_version: Mapped[str] = mapped_column(
+        String(32), default="default", server_default=text("'default'"), nullable=False
+    )
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     evidence: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
@@ -126,6 +131,11 @@ class IntegrityCheck(Base, UUIDPrimaryKey):
         nullable=False,
     )
     rule_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: Which `IntegrityThresholds` were in force. With `rule_version` this is
+    #: the whole answer to "what exactly raised this?"
+    thresholds_version: Mapped[str] = mapped_column(
+        String(32), default="default", server_default=text("'default'"), nullable=False
+    )
     #: NULL when the check found nothing. Stored so the reviewer queue and the
     #: event can say what a check concluded without re-reading every signal.
     highest_severity: Mapped[str | None] = mapped_column(String(16))

@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from datetime import datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.models import ConfigValue
 from app.modules.integrity.domain import Signal
 from app.modules.integrity.models import IntegrityCheck, IntegritySignal
 
@@ -29,6 +31,7 @@ async def claim_check(
     candidate_id: uuid.UUID,
     resume_version_id: uuid.UUID,
     rule_version: str,
+    thresholds_version: str,
     highest_severity: str | None,
     signal_count: int,
 ) -> bool:
@@ -46,6 +49,7 @@ async def claim_check(
             candidate_id=candidate_id,
             resume_version_id=resume_version_id,
             rule_version=rule_version,
+            thresholds_version=thresholds_version,
             highest_severity=highest_severity,
             signal_count=signal_count,
         )
@@ -73,6 +77,7 @@ async def insert_signals(
     candidate_id: uuid.UUID,
     resume_version_id: uuid.UUID,
     signals: Sequence[Signal],
+    thresholds_version: str,
 ) -> None:
     """Every signal is stored with the rule version that raised it, so a
     reviewer looking at a two-month-old item knows which rule fired."""
@@ -85,6 +90,7 @@ async def insert_signals(
                 resume_version_id=resume_version_id,
                 rule_id=signal.rule_id,
                 rule_version=signal.rule_version,
+                thresholds_version=thresholds_version,
                 severity=signal.severity,
                 evidence=dict(signal.evidence),
                 state="OPEN",
@@ -134,5 +140,21 @@ async def resolve_signal(
             resolution_note=note,
         )
         .returning(IntegritySignal)
+    )
+    return result.scalar_one_or_none()
+
+
+async def current_config(session: AsyncSession, *, key: str, now: datetime) -> ConfigValue | None:
+    """The highest version of a config key in effect at `now`.
+
+    `now` is the moment the CV was scored, not the moment this runs, so
+    re-evaluating an old version applies the thresholds that were in force
+    then -- the same reason `evaluate_version` takes `as_of`.
+    """
+    result = await session.execute(
+        select(ConfigValue)
+        .where(ConfigValue.key == key, ConfigValue.effective_from <= now)
+        .order_by(ConfigValue.version.desc())
+        .limit(1)
     )
     return result.scalar_one_or_none()

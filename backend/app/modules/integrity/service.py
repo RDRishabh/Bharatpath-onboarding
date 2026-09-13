@@ -19,24 +19,58 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
+from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import AuditAction, audit_event
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import AppError, ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.core.outbox import emit
 from app.modules.integrity import repository
 from app.modules.integrity.domain import (
+    DEFAULT_THRESHOLDS,
     RULE_VERSION,
+    IntegrityThresholds,
+    IntegrityThresholdsError,
     claims_from_extraction,
     detect,
     highest_severity,
     month_index,
     suppresses_from_discovery,
+    thresholds_from_config,
 )
 from app.modules.integrity.events import MODULE
 
 logger = get_logger(__name__)
+
+
+#: Where the thresholds live. Insert a row with a higher `version` to change
+#: them; `effective_from` lets a change be written ahead of the day it applies.
+THRESHOLDS_CONFIG_KEY = "integrity.thresholds"
+
+
+class IntegrityConfigError(AppError):
+    """The thresholds row cannot be parsed. **The check does not run.**
+
+    Not a fallback to defaults: a misspelt key that silently kept the old
+    number would look applied. Failing leaves the candidate unchecked, which
+    discovery treats as invisible -- loud, and safe for the person being
+    judged.
+    """
+
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    code = "integrity_thresholds_invalid"
+    title = "Integrity thresholds are misconfigured"
+
+
+async def current_thresholds(session: AsyncSession, *, as_of: datetime) -> IntegrityThresholds:
+    row = await repository.current_config(session, key=THRESHOLDS_CONFIG_KEY, now=as_of)
+    if row is None:
+        return DEFAULT_THRESHOLDS
+    try:
+        return thresholds_from_config(row.value, version=str(row.version))
+    except IntegrityThresholdsError as exc:
+        raise IntegrityConfigError(params={"detail": str(exc)}) from exc
 
 
 class SignalNotFoundError(NotFoundError):
@@ -80,8 +114,11 @@ async def evaluate_version(
     Idempotent by `(resume_version_id, RULE_VERSION)`. A second delivery of
     the same score event returns the first result and writes nothing.
     """
+    thresholds = await current_thresholds(session, as_of=as_of)
     claims = claims_from_extraction(extracted, visible_text=visible_text)
-    signals = detect(claims, as_of_month=month_index(as_of.year, as_of.month))
+    signals = detect(
+        claims, as_of_month=month_index(as_of.year, as_of.month), thresholds=thresholds
+    )
     top = highest_severity(signals)
     suppresses = suppresses_from_discovery(signals)
 
@@ -90,6 +127,7 @@ async def evaluate_version(
         candidate_id=candidate_id,
         resume_version_id=resume_version_id,
         rule_version=RULE_VERSION,
+        thresholds_version=thresholds.version,
         highest_severity=top,
         signal_count=len(signals),
     )
@@ -112,6 +150,7 @@ async def evaluate_version(
         candidate_id=candidate_id,
         resume_version_id=resume_version_id,
         signals=signals,
+        thresholds_version=thresholds.version,
     )
 
     # Counts and severity only. Signal evidence names employers and quotes CV
@@ -127,6 +166,7 @@ async def evaluate_version(
             "signal_count": len(signals),
             "highest_severity": top,
             "suppresses": suppresses,
+            "thresholds_version": thresholds.version,
         },
     )
     logger.info(

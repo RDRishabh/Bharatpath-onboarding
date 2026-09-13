@@ -10,12 +10,14 @@ cannot aim at a target score -- and neither can anyone writing instructions
 into their CV, which is the attack `integrity/domain.py` detects and this
 layer is structured to make pointless.
 
-**No implementation is wired.** `UnconfiguredResumeExtractor` raises, and the
-score stays pending. That is the behaviour `scoring-approach.md` section 11
+**Bedrock is the implementation (`bedrock.py`), and it is off by default.**
+With `scoring_extraction_enabled` false, `UnconfiguredResumeExtractor` raises
+and the score stays pending. That is the behaviour `scoring-approach.md` section 11
 specifies for every failure: *we never produce a partial or degraded score*. A
 heuristic stand-in that guessed seniority from keywords would be exactly that
 -- a wrong number that looks right, unfixable once a candidate has seen it.
-The seam is real and exercised; the model client lands when credentials do.
+Turning extraction on takes two settings: the flag, and a pinned
+`scoring_model_id`.
 """
 
 from __future__ import annotations
@@ -333,8 +335,14 @@ def get_resume_extractor(settings: Settings | None = None) -> ResumeExtractor:
     settings = settings or get_settings()
     if not settings.scoring_extraction_enabled:
         return UnconfiguredResumeExtractor()
-    raise NotImplementedError(
-        "scoring_extraction_enabled is on but no Layer 1 extractor is implemented. "
-        "Wire the model client here; it must return an Extraction carrying the "
-        "verbatim raw_response, or replay cannot reproduce the score."
-    )
+    if not settings.scoring_model_id.strip():
+        # Enabled with no model is refused, not defaulted. Which model reads
+        # every CV is a client decision, and a default here would make it
+        # silently.
+        raise ExtractionUnavailableError(params={"reason": "no_model_configured"})
+
+    # Imported here so boto3's Bedrock client is built only when extraction is
+    # actually on, and so `bedrock` can import from this module without a cycle.
+    from app.modules.scoring.bedrock import BedrockResumeExtractor
+
+    return BedrockResumeExtractor(model_id=settings.scoring_model_id)

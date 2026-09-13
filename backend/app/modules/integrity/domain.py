@@ -46,6 +46,7 @@ candidate far more often than it would catch a dishonest one:
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
@@ -167,6 +168,83 @@ STUFFING_MAX_EVIDENCE: Final = 1
 HIDDEN_TEXT_MIN_CHARS: Final = 80
 
 
+@dataclass(frozen=True, slots=True)
+class IntegrityThresholds:
+    """Every number a rule compares against, as one versioned value.
+
+    **The numbers are configuration; the rules are code.** The constants above
+    are the defaults, and `config_values` key `integrity.thresholds` overrides
+    any of them without a deploy (plan.md Day 9: "changes ship as config").
+    The injection patterns and the senior-title vocabulary deliberately stay in
+    code: a regular expression edited in a database row is a way to suppress
+    every candidate in the country with one typo.
+
+    `version` is stored on every signal and every check, beside the rule
+    version, so a reviewer looking at a flag knows which numbers raised it.
+    """
+
+    version: str = "default"
+    overlap_tolerance_months: int = OVERLAP_TOLERANCE_MONTHS
+    future_dating_tolerance_months: int = FUTURE_DATING_TOLERANCE_MONTHS
+    experience_inflation_min_months: int = EXPERIENCE_INFLATION_MIN_MONTHS
+    experience_inflation_min_ratio: float = EXPERIENCE_INFLATION_MIN_RATIO
+    senior_title_min_months: int = SENIOR_TITLE_MIN_MONTHS
+    stuffing_min_skills: int = STUFFING_MIN_SKILLS
+    stuffing_max_evidence: int = STUFFING_MAX_EVIDENCE
+    hidden_text_min_chars: int = HIDDEN_TEXT_MIN_CHARS
+
+
+DEFAULT_THRESHOLDS: Final = IntegrityThresholds()
+
+_INTEGER_THRESHOLDS: Final[frozenset[str]] = frozenset(
+    {
+        "overlap_tolerance_months",
+        "future_dating_tolerance_months",
+        "experience_inflation_min_months",
+        "senior_title_min_months",
+        "stuffing_min_skills",
+        "stuffing_max_evidence",
+        "hidden_text_min_chars",
+    }
+)
+
+
+class IntegrityThresholdsError(ValueError):
+    """A thresholds document that cannot be trusted. Raised, never defaulted."""
+
+
+def thresholds_from_config(value: Mapping[str, object], *, version: str) -> IntegrityThresholds:
+    """Parse a `config_values` document. **Strict**: anything doubtful raises.
+
+    A missing key keeps its default, so a row can change one number. An
+    unknown key raises, because the likeliest cause is a misspelling
+    (`overlap_tolerance_month`), and ignoring it would leave the old number
+    live while the row looked applied. Falling back to defaults on a bad row
+    has the same flaw at larger scale.
+    """
+    unknown = set(value) - _INTEGER_THRESHOLDS - {"experience_inflation_min_ratio"}
+    if unknown:
+        raise IntegrityThresholdsError(f"unknown threshold keys: {sorted(unknown)}")
+
+    chosen: dict[str, int | float] = {}
+    for key in _INTEGER_THRESHOLDS & set(value):
+        number = value[key]
+        if isinstance(number, bool) or not isinstance(number, int) or number < 0:
+            raise IntegrityThresholdsError(f"{key} must be a non-negative integer")
+        chosen[key] = number
+
+    if "stuffing_max_evidence" in chosen and chosen["stuffing_max_evidence"] > 4:
+        raise IntegrityThresholdsError("stuffing_max_evidence is an evidence rating, 0 to 4")
+
+    if "experience_inflation_min_ratio" in value:
+        ratio = value["experience_inflation_min_ratio"]
+        if isinstance(ratio, bool) or not isinstance(ratio, int | float) or not 0 <= ratio <= 1:
+            raise IntegrityThresholdsError("experience_inflation_min_ratio must be between 0 and 1")
+        chosen["experience_inflation_min_ratio"] = float(ratio)
+
+    return IntegrityThresholds(version=version, **chosen)  # type: ignore[arg-type]
+
+
 # ---------------------------------------------------------------------------
 # Instruction injection
 # ---------------------------------------------------------------------------
@@ -242,7 +320,9 @@ def find_injected_instructions(text: str) -> tuple[str, ...]:
 # ---------------------------------------------------------------------------
 
 
-def _rule_injected_instructions(claims: ResumeClaims, as_of_month: int) -> list[Signal]:
+def _rule_injected_instructions(
+    claims: ResumeClaims, as_of_month: int, t: IntegrityThresholds = DEFAULT_THRESHOLDS
+) -> list[Signal]:
     matched = find_injected_instructions(claims.visible_text) + find_injected_instructions(
         claims.hidden_text
     )
@@ -262,9 +342,11 @@ def _rule_injected_instructions(claims: ResumeClaims, as_of_month: int) -> list[
     ]
 
 
-def _rule_hidden_text(claims: ResumeClaims, as_of_month: int) -> list[Signal]:
+def _rule_hidden_text(
+    claims: ResumeClaims, as_of_month: int, t: IntegrityThresholds = DEFAULT_THRESHOLDS
+) -> list[Signal]:
     hidden = len(claims.hidden_text.strip())
-    if hidden < HIDDEN_TEXT_MIN_CHARS:
+    if hidden < t.hidden_text_min_chars:
         return []
     # HIGH: text engineered to be read by us and not by the employer is a
     # deliberate act, whatever the text turns out to say.
@@ -277,8 +359,10 @@ def _rule_hidden_text(claims: ResumeClaims, as_of_month: int) -> list[Signal]:
     ]
 
 
-def _rule_future_dated_employment(claims: ResumeClaims, as_of_month: int) -> list[Signal]:
-    cutoff = as_of_month + FUTURE_DATING_TOLERANCE_MONTHS
+def _rule_future_dated_employment(
+    claims: ResumeClaims, as_of_month: int, t: IntegrityThresholds = DEFAULT_THRESHOLDS
+) -> list[Signal]:
+    cutoff = as_of_month + t.future_dating_tolerance_months
     offenders = [p for p in claims.periods if p.start_month > cutoff]
     if not offenders:
         return []
@@ -298,7 +382,9 @@ def _rule_future_dated_employment(claims: ResumeClaims, as_of_month: int) -> lis
     ]
 
 
-def _rule_overlapping_full_time_roles(claims: ResumeClaims, as_of_month: int) -> list[Signal]:
+def _rule_overlapping_full_time_roles(
+    claims: ResumeClaims, as_of_month: int, t: IntegrityThresholds = DEFAULT_THRESHOLDS
+) -> list[Signal]:
     full_time = sorted(
         (p for p in claims.periods if p.full_time), key=lambda p: (p.start_month, p.employer)
     )
@@ -310,7 +396,7 @@ def _rule_overlapping_full_time_roles(claims: ResumeClaims, as_of_month: int) ->
                 break  # sorted by start, so nothing later can overlap this one
             second_end = second.end_month if second.end_month is not None else as_of_month
             months = min(first_end, second_end) - second.start_month
-            if months > OVERLAP_TOLERANCE_MONTHS:
+            if months > t.overlap_tolerance_months:
                 overlaps.append(
                     {"a": first.employer, "b": second.employer, "overlap_months": months}
                 )
@@ -349,15 +435,17 @@ def _dated_experience_months(claims: ResumeClaims, as_of_month: int) -> int:
     return max(0, total)
 
 
-def _rule_experience_exceeds_timeline(claims: ResumeClaims, as_of_month: int) -> list[Signal]:
+def _rule_experience_exceeds_timeline(
+    claims: ResumeClaims, as_of_month: int, t: IntegrityThresholds = DEFAULT_THRESHOLDS
+) -> list[Signal]:
     stated = claims.stated_total_experience_months
     if stated is None or stated <= 0:
         return []
     dated = _dated_experience_months(claims, as_of_month)
     excess = stated - dated
-    if excess < EXPERIENCE_INFLATION_MIN_MONTHS:
+    if excess < t.experience_inflation_min_months:
         return []
-    if excess < stated * EXPERIENCE_INFLATION_MIN_RATIO:
+    if excess < stated * t.experience_inflation_min_ratio:
         return []
     # MEDIUM. It reads like the strongest signal here and it is not: a CV that
     # lists only the last three employers, or a parse that lost one date range,
@@ -377,12 +465,14 @@ def _rule_experience_exceeds_timeline(claims: ResumeClaims, as_of_month: int) ->
     ]
 
 
-def _rule_seniority_without_tenure(claims: ResumeClaims, as_of_month: int) -> list[Signal]:
+def _rule_seniority_without_tenure(
+    claims: ResumeClaims, as_of_month: int, t: IntegrityThresholds = DEFAULT_THRESHOLDS
+) -> list[Signal]:
     title = claims.highest_seniority.strip().lower()
     if title not in SENIOR_TITLES:
         return []
     dated = _dated_experience_months(claims, as_of_month)
-    if dated >= SENIOR_TITLE_MIN_MONTHS:
+    if dated >= t.senior_title_min_months:
         return []
     # LOW, and it stays LOW. A founder is a director on day one, and titles in
     # small companies mean whatever that company decided they mean. This is a
@@ -390,10 +480,12 @@ def _rule_seniority_without_tenure(claims: ResumeClaims, as_of_month: int) -> li
     return [Signal("SENIOR_TITLE_SHORT_TENURE", "LOW", {"title": title, "dated_months": dated})]
 
 
-def _rule_unevidenced_skill_list(claims: ResumeClaims, as_of_month: int) -> list[Signal]:
-    if claims.skill_count < STUFFING_MIN_SKILLS:
+def _rule_unevidenced_skill_list(
+    claims: ResumeClaims, as_of_month: int, t: IntegrityThresholds = DEFAULT_THRESHOLDS
+) -> list[Signal]:
+    if claims.skill_count < t.stuffing_min_skills:
         return []
-    if claims.skill_evidence > STUFFING_MAX_EVIDENCE:
+    if claims.skill_evidence > t.stuffing_max_evidence:
         return []
     # LOW. Padding a skills section is what every CV template tells people to
     # do. It is already priced into the score -- `SKILL_COUNT_BANDS` flattens
@@ -408,7 +500,9 @@ def _rule_unevidenced_skill_list(claims: ResumeClaims, as_of_month: int) -> list
     ]
 
 
-def _rule_fabricated_platform_score(claims: ResumeClaims, as_of_month: int) -> list[Signal]:
+def _rule_fabricated_platform_score(
+    claims: ResumeClaims, as_of_month: int, t: IntegrityThresholds = DEFAULT_THRESHOLDS
+) -> list[Signal]:
     if claims.claimed_platform_score is None:
         return []
     # MEDIUM. This is not a claim about the candidate, it is a claim about us,
@@ -454,7 +548,12 @@ RULE_IDS: Final[frozenset[str]] = frozenset(
 )
 
 
-def detect(claims: ResumeClaims, *, as_of_month: int) -> tuple[Signal, ...]:
+def detect(
+    claims: ResumeClaims,
+    *,
+    as_of_month: int,
+    thresholds: IntegrityThresholds = DEFAULT_THRESHOLDS,
+) -> tuple[Signal, ...]:
     """Run every rule. Pure: the same claims and month give the same signals.
 
     `as_of_month` is a parameter and not `date.today()` because this file may
@@ -463,7 +562,7 @@ def detect(claims: ResumeClaims, *, as_of_month: int) -> tuple[Signal, ...]:
     """
     signals: list[Signal] = []
     for rule in RULES:
-        signals.extend(rule(claims, as_of_month))
+        signals.extend(rule(claims, as_of_month, thresholds))
     return tuple(signals)
 
 

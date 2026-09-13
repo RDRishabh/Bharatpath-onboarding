@@ -157,7 +157,12 @@ class Settings(BaseSettings):
     # and is half of what makes a replay attributable after the model is
     # retired; an alias that silently moved would make two scores computed
     # months apart claim the same provenance.
-    scoring_model_id: str = "claude-opus-5"
+    #
+    # A Bedrock model or inference-profile id, e.g.
+    # `global.anthropic.claude-sonnet-4-6`. **Empty until the client chooses**
+    # (offered 2026-09-13: Sonnet 4.6, Haiku 4.5, Sonnet 5, GPT-5.6 Luna).
+    # Enabling extraction without one is refused rather than defaulted.
+    scoring_model_id: str = ""
 
     # -- celery ------------------------------------------------------------
     celery_broker_url: str = "sqs://"

@@ -66,6 +66,25 @@ data "aws_iam_policy_document" "app" {
     resources = ["*"]
   }
 
+  # Layer 1 of scoring (docs/scoring-approach.md s4): read a CV into facts.
+  # Invoke only, and only the models in var.scoring_model_ids -- never
+  # bedrock:*, so a key that leaks off a laptop cannot run arbitrary models on
+  # the account's bill. Converse is authorised by bedrock:InvokeModel.
+  #
+  # Both resource kinds are required. The call names an inference profile in
+  # this region; a cross-Region profile then runs the underlying foundation
+  # model in whichever region serves it, and that is authorised separately --
+  # hence any region, including none, on the foundation-model ARNs.
+  statement {
+    sid     = "ScoringModelInvoke"
+    effect  = "Allow"
+    actions = ["bedrock:InvokeModel"]
+    resources = concat(
+      [for id in var.scoring_model_ids : "arn:aws:bedrock:${var.aws_region}:${data.aws_caller_identity.current.account_id}:inference-profile/${id}"],
+      [for id in var.scoring_model_ids : "arn:aws:bedrock:*::foundation-model/${join(".", slice(split(".", id), 1, length(split(".", id))))}"],
+    )
+  }
+
   statement {
     sid       = "ReadSecrets"
     effect    = "Allow"
