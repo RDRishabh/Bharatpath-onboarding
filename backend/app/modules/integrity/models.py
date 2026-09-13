@@ -29,8 +29,10 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -77,10 +79,75 @@ class IntegritySignal(Base, UUIDPrimaryKey):
         # The discovery query joins against this to suppress high-severity
         # candidates pre-review. It has to be an index hit or masked search
         # gets slow at exactly the wrong moment.
+        #
+        # **OPEN and CONFIRMED both suppress; only CLEARED restores.** The
+        # original predicate matched OPEN alone, which meant a reviewer
+        # *confirming* that a CV injected instructions into the model would
+        # have put that candidate straight back into employer search -- the
+        # one outcome worse than never flagging it. The discovery CTE uses
+        # this exact predicate so the planner can use this index, and
+        # `test_discovery_suppression.py` asserts the two stay identical.
         Index(
             "ix_integrity_suppressing",
             "candidate_id",
-            postgresql_where="severity = 'HIGH' AND state = 'OPEN'",
+            postgresql_where="severity = 'HIGH' AND state IN ('OPEN', 'CONFIRMED')",
         ),
         Index("ix_integrity_queue", "state", "severity", "created_at"),
+    )
+
+
+class IntegrityCheck(Base, UUIDPrimaryKey):
+    """That a resume version has been through the rules -- whatever they found.
+
+    **This row is what makes suppression fail closed.** Integrity runs
+    asynchronously, after a score is computed, so there is a window in which a
+    candidate has a score and no signals yet. Without a record that the check
+    ran, "no signals" is ambiguous between *clean* and *not looked at*, and a
+    CV carrying injected instructions would be visible to every employer for
+    exactly that window. Discovery therefore shows a candidate only when this
+    row exists for their current scored version: unchecked is invisible.
+
+    Unique on `(resume_version_id, rule_version)`, which makes the evaluation
+    idempotent under at-least-once delivery. Discovery accepts a check under
+    *any* rule version, so bumping `RULE_VERSION` does not make every existing
+    candidate vanish until they are re-evaluated.
+    """
+
+    __tablename__ = "integrity_checks"
+
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    resume_version_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("resume_versions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rule_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: NULL when the check found nothing. Stored so the reviewer queue and the
+    #: event can say what a check concluded without re-reading every signal.
+    highest_severity: Mapped[str | None] = mapped_column(String(16))
+    signal_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "resume_version_id", "rule_version", name="uq_integrity_checks_version_rule"
+        ),
+        CheckConstraint(
+            "highest_severity IS NULL OR highest_severity IN ('LOW', 'MEDIUM', 'HIGH')",
+            name="ck_integrity_checks_severity",
+        ),
+        CheckConstraint("signal_count >= 0", name="ck_integrity_checks_count"),
+        # A count with no severity, or a severity with no signals, is a check
+        # that disagrees with itself. Both halves, so neither can drift.
+        CheckConstraint(
+            "(signal_count = 0) = (highest_severity IS NULL)",
+            name="ck_integrity_checks_count_matches_severity",
+        ),
+        Index("ix_integrity_checks_version", "resume_version_id"),
     )

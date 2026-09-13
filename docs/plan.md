@@ -274,7 +274,8 @@ bharatpath-backend/
 │   │   ├── analytics/             # cohort aggregates, placement tracking
 │   │   ├── admin/                 # queues, drill-downs, disputes
 │   │   ├── notifications/         # event → channel fan-out, templates
-│   │   └── privacy/               # export and deletion requests, DSR tracking
+│   │   ├── privacy/               # export and deletion requests, DSR tracking
+│   │   └── engagement/            # ADDED 2026-09-13: daily streaks + engagement points — never the score (docs/streaks.md)
 │   │
 │   └── tasks/                     # Celery task definitions, thin wrappers over services
 │
@@ -1797,7 +1798,7 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 | 6 | Resume upload, scan, parse task | ◐ **partial 2026-09-11, extended 09-12** — 5 endpoints, presigned upload, local parsers (pypdf/python-docx) with **Textract as an OCR fallback behind a length floor**, parse task idempotent by file id, `parser`/`parser_version` stored per extraction. Day 7 added the terminal `parse_status` the parse task now writes on every exit. **Malware scanning is a seam with nothing behind it** (E1) and Textract is waiting on AWS account activation (E2). |
 | 7 | Versions, review, confirm gate, status polling | ☑ **done 2026-09-12** — 4 endpoints (history, review, edit, confirm). Edits create versions and never update one; the chain **cannot fork** (unique index on `supersedes_id`) and `confirmed_at` is a **latch** (conditional UPDATE), so confirming twice is a retry and no path can move the timestamp. `parse_status` makes the 202 pollable to a terminal state. **SRS 1.4.4 is enforced on three levels**: a SQL predicate, a new import-linter contract making resume's internals private, and a tripwire that fails the build if Day 8 wires scoring to `version_created` instead of `version_confirmed`. |
 | 8 | **Scoring: extraction + rubric, caps, replay-from-storage — invariants 1, 2, 3, 4′** | ◐ **substantially done 2026-09-12** — Layer 2 normalisation, the content-addressed extraction cache, `persist()` as sole write path, `replay()` that never calls the model, the display floor, the candidate route, and the confirm-gated trigger. **Calibration accepted by the client 2026-09-12** (35/35 'about right'), so the rubric is no longer provisional. Owed: the Layer 1 model client (a real seam — `UnconfiguredResumeExtractor` raises and the score stays PENDING), and the shareable card. |
-| 9 | Integrity engine (no duplicate rule), suppression, employer tenancy + type/industry | ◐ **partial 2026-09-12** — **8 rules and the severity policy built and tested** (`integrity/domain.py`, 40 tests), employer type and industry vocabularies confirmed and built. Still owed: wiring the engine to the parse chain, persisting signals, and the discovery-query suppression join. |
+| 9 | Integrity engine (no duplicate rule), suppression, employer tenancy + type/industry | ◐ **substantially done 2026-09-13** — integrity wired to scoring (`scoring.score_computed` → `integrity.detect`), signals and an `integrity_checks` record persisted, and **HIGH suppression inside the one discovery CTE**: fail-closed on an unchecked version, candidate-wide, and CONFIRMED keeps suppressing. Employer tenancy built: organisation creation, the three roles, and team add, re-role and remove with audit. Owed: rule thresholds moved into `config_values` (versioned, not yet config-driven), and the reviewer-queue routes (Day 19). |
 | 10 | KYB (auto-approve default), jobs, publish gate — **invariant 8, Week 2 gate** | ☐ |
 | 11 | Job search, eligibility, apply, withdraw | ☐ |
 | 12 | Stage machine, events, hire confirm, expiry | ☐ |
@@ -1809,6 +1810,12 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 | 18 | **Consent scopes, cohort analytics — invariant 9** | ☐ |
 | 19 | Admin queues, drill-downs, disputes, **seats + suspension**, notifications + **nudges** | ☐ — content dependency cleared: 21 message templates drafted and 8 locale bundles shipped. **Sending is gated on DLT registration** (D1, 2–4 weeks, not started on the template side). |
 | 20 | Privacy, rate limits, index review, handover — **Week 4 gate** | ☐ |
+
+**Added outside the twenty days**
+
+| Added | Feature | Status |
+|---|---|---|
+| 2026-09-13 | **Daily streaks and engagement points** (client request) — `engagement` module, 3 endpoints | ☑ **built 2026-09-13** — current/longest streak, last active date, −10 per break, +10/+15/+20 at 30/90/365 days, all numbers in `config_values`. **Built as a separate balance, not the score:** applied to the score the request breaks invariants 1, 2, 3 and 4′, so `engagement` and `scoring` are made independent by an import-linter contract and an invariant test. Eight decisions (S1–S8) await client confirmation. See [`streaks.md`](streaks.md). |
 
 ### Invariant coverage
 
@@ -1885,6 +1892,7 @@ Resolved by the client's comments and note. Full detail in [§13](#13-decisions-
 | **N7** | **🔴 Course content — who produces it, what format, how completion is determined** | **Scope** | Now / Day 15 | ☐ **Open — never asked** |
 | **N8** | **Plans, prices, course catalogue** | Decision | Day 15 | ☐ **Open — never asked** |
 | **N9** | **Language list (6–8) and who funds translation** | Soft | Day 19 | ☐ Open |
+| **S1** | **Streak points: separate from the score (as built), and what are they for?** Plus S2–S8 on the rules — [`streaks.md`](streaks.md) §7 | Decision | Before launch | ☐ **Open — never asked** |
 
 ### Infrastructure readiness — confirm before Day 1
 

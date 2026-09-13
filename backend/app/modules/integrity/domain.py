@@ -492,3 +492,165 @@ def suppresses_from_discovery(signals: tuple[Signal, ...]) -> bool:
     separate filtering step, so a new endpoint cannot forget it.
     """
     return any(s.severity == "HIGH" for s in signals)
+
+
+# ---------------------------------------------------------------------------
+# From a Layer 1 extraction to claims (Day 9)
+# ---------------------------------------------------------------------------
+# The rules above read `ResumeClaims`. Layer 1 produces a JSON extraction
+# (`scoring/extractor.py`). This is the one translation between the two.
+#
+# **Nothing here imports `scoring`**, and that is enforced rather than hoped
+# for: the `integrity-never-imports-scoring` contract is SRS 1.4.5. The
+# extraction arrives as plain data, handed over by the task layer, so this
+# module can read what Layer 1 saw without being able to reach the code that
+# turns it into points.
+#
+# **Every choice below prefers a missed signal to a false one.** A false HIGH
+# hides a real person from every employer before anyone has looked; a false
+# MEDIUM puts an honest CV in front of a reviewer. A missed signal costs one
+# check that did not happen. So an ambiguous date is dropped, never guessed,
+# and the rules that reason about a whole career run only when the whole
+# career is dated.
+
+_SENIORITY_RANK: Final[dict[str, int]] = {
+    "unknown": 0,
+    "intern": 1,
+    "junior": 2,
+    "mid": 3,
+    "senior": 4,
+    "lead": 5,
+    "principal": 6,
+    "executive": 7,
+}
+
+
+def _as_int(value: object) -> int | None:
+    """An int, or None. `bool` is refused although Python counts it as an int:
+    a stored `true` in a month field is corruption, not January."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _month(year: object, month: object) -> int | None:
+    y, m = _as_int(year), _as_int(month)
+    if y is None or m is None or not 1 <= m <= 12:
+        return None
+    return month_index(y, m)
+
+
+def dated_period(role: dict[str, object]) -> EmploymentPeriod | None:
+    """One role as a period, or None when its dates are not precise enough.
+
+    **Month precision or nothing.** "2019 - 2021" does not say whether the
+    role ended in January or December, and the rules need opposite guesses to
+    stay quiet: the overlap rule is safe with late starts and early ends, the
+    future-dating rule with early starts. Any single guess makes one of them
+    fire on an honest CV, so a year-only role is not dated at all.
+
+    A reversed range, an end before its start, is a typo or a misread and is
+    dropped the same way.
+    """
+    start = _month(role.get("start_year"), role.get("start_month"))
+    if start is None:
+        return None
+
+    end: int | None
+    if role.get("is_current") is True:
+        end = None
+    else:
+        end = _month(role.get("end_year"), role.get("end_month"))
+        if end is None or end < start:
+            return None
+
+    employer = role.get("employer")
+    title = role.get("title")
+    return EmploymentPeriod(
+        employer=employer if isinstance(employer, str) else "",
+        title=title if isinstance(title, str) else "",
+        start_month=start,
+        end_month=end,
+        # Only an explicit full-time role counts. Reading an unknown engagement
+        # as full time is what turns consulting alongside a job into a false
+        # overlap signal.
+        full_time=role.get("employment_type") == "full_time",
+    )
+
+
+def skill_profile(skills: object) -> tuple[int, int]:
+    """`(distinct skills, mean evidence rounded down)`.
+
+    **Deliberately identical to the derivation in `scoring/domain.py`**, and
+    `test_integrity_claims.py` asserts the two agree. The skill-list rule's
+    thresholds are written against the numbers the rubric consumes; if the
+    two drifted, the rule would annotate a different candidate than the one
+    whose score it sits beside. Duplicated rather than imported, because the
+    import is the thing SRS 1.4.5 forbids.
+    """
+    if not isinstance(skills, list):
+        return 0, 0
+    best: dict[str, int] = {}
+    for skill in skills:
+        if not isinstance(skill, dict):
+            continue
+        name = skill.get("canonical_name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        strength = _as_int(skill.get("evidence_strength"))
+        strength = 0 if strength is None else max(0, min(4, strength))
+        key = name.strip().lower()
+        best[key] = max(best.get(key, 0), strength)
+    if not best:
+        return 0, 0
+    return len(best), sum(best.values()) // len(best)
+
+
+def claims_from_extraction(extracted: dict[str, object], *, visible_text: str) -> ResumeClaims:
+    """**The translation between Layer 1 and the rules.** Pure and total.
+
+    **A timeline is complete only when every role is month-dated.** Two rules
+    reason about the whole career -- claimed experience exceeding the dated
+    roles, and a senior title with too little tenure -- and both read an
+    *incomplete* timeline as a short one. A CV with four roles of which one
+    is dated "2014 - 2016" would look like it had lost two years. So when the
+    timeline is incomplete those two rules are handed nothing to fire on:
+    the stated experience is withheld and the seniority reads as unknown.
+
+    The rules that look at individual dates -- overlap and future-dating --
+    still run on the roles that *are* dated. Dropping a role can hide an
+    overlap; it can never invent one.
+
+    Hidden text stays empty: the parser does not extract it yet
+    (`docs/blockers.md` E5), so that rule is inert rather than wrong.
+    """
+    raw_roles = extracted.get("roles")
+    roles: list[dict[str, object]] = (
+        [r for r in raw_roles if isinstance(r, dict)] if isinstance(raw_roles, list) else []
+    )
+
+    periods: list[EmploymentPeriod] = []
+    for role in roles:
+        period = dated_period(role)
+        if period is not None:
+            periods.append(period)
+    timeline_complete = bool(roles) and len(periods) == len(roles)
+
+    best = "unknown"
+    for role in roles:
+        level = role.get("seniority_level")
+        if isinstance(level, str) and _SENIORITY_RANK.get(level, 0) > _SENIORITY_RANK[best]:
+            best = level
+
+    skill_count, skill_evidence = skill_profile(extracted.get("skills"))
+    stated = _as_int(extracted.get("stated_experience_months"))
+
+    return ResumeClaims(
+        periods=tuple(periods),
+        stated_total_experience_months=stated if timeline_complete else None,
+        highest_seniority=best if timeline_complete else "unknown",
+        skill_count=skill_count,
+        skill_evidence=skill_evidence,
+        visible_text=visible_text,
+        claimed_platform_score=_as_int(extracted.get("claimed_platform_score")),
+    )

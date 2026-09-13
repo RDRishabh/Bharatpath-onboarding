@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1046 passing (local + CI) |
-| **Coverage** | 78% |
-| **Days done** | 1, 2, 7 complete · 3, 4, 5, 6, 8 partial |
-| **Next** | Day 9 — wire integrity to the parse chain; then Day 10, KYB and the Week 2 gate |
+| **Tests** | 1237 passing locally 2026-09-13 — 1046 committed, plus 80 Day 9 tests and 111 streak tests, both uncommitted in the same tree. **CI not yet run on either.** |
+| **Coverage** | 85% |
+| **Days done** | 1, 2, 7 complete · 3, 4, 5, 6, 8, 9 partial |
+| **Next** | Day 10 — KYB state machine, jobs, and the publish gate (invariant 8, Week 2 gate) |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -38,7 +38,7 @@ states. Newest entries first.
 > are stored per extraction precisely so a replay can tell which engine produced
 > a score, and so a change is a **re-score**, not a silent drift.
 
-**Full register: [`blockers.md`](blockers.md)** — 40 items by category.
+**Full register: [`blockers.md`](blockers.md)** — 44 items by category.
 
 ### Blocked, and not on us
 
@@ -53,7 +53,178 @@ states. Newest entries first.
 
 ---
 
-## 2026-09-12 (latest) — Day 8: the scoring pipeline, and invariants 1–4′
+## 2026-09-13 (latest) — Day 9: integrity on real CVs, suppression inside discovery, employer tenancy
+
+**+80 tests.** Built in the same working tree, at the same time, as the streak
+work in the next entry, by a second session. Neither overwrote the other, the
+combined suite passes, and **both are uncommitted**.
+
+### What landed
+
+| | |
+|---|---|
+| **Integrity runs on real CVs** | `scoring.score_computed` routes to `integrity.detect`, which reads the stored Layer 1 extraction and the CV text, runs the eight rules, and persists signals. Idempotent by resume version. |
+| **Suppression lives inside discovery** | One CTE, `VISIBLE_CANDIDATES_CTE`, that every discovery query is built on. `test_discovery_suppression.py` fails the build if a query skips it. |
+| **Employer tenancy** | Create an organisation, the three employer roles, and add, re-role and remove members by email. Eight endpoints; every team change audited without the address. |
+
+### Four decisions worth knowing
+
+- **Visibility fails closed.** Integrity runs asynchronously after scoring, so
+  a candidate briefly has a score and no signals. Without a record that the
+  check ran, *no signals* cannot tell *clean* from *not yet looked at*, and a CV
+  carrying injected instructions would be searchable for exactly that window.
+  A new `integrity_checks` row closes it: **unchecked means invisible**.
+- **A confirmed dishonest CV stays hidden.** The existing partial index matched
+  `state = 'OPEN'` alone, so a reviewer *confirming* manipulation would have put
+  the candidate straight back into search. OPEN and CONFIRMED now both suppress,
+  and only CLEARED restores. The index and the CTE share one predicate, asserted
+  character for character so the planner can use the index.
+- **Suppression is candidate-wide, not per version.** Otherwise: inject, get
+  flagged, upload a clean copy, and reach employers before anyone has looked.
+- **Dates are dropped, never guessed.** Layer 1 captured only durations, so the
+  timeline rules were unreachable from a real CV. Schema v2 adds role dates, with
+  a month only where the CV states one. "2019–2021, 2021–2023" rounded to
+  January starts and December ends becomes eleven months of two full-time jobs.
+  The whole-career rules run only when every role is month-dated. Scoring reads
+  none of the new fields — asserted.
+
+### Employer onboarding
+
+- **Creating an organisation was unreachable.** `current_user` refuses a
+  business account with no membership, and an account cannot create its
+  organisation if it must already belong to one. New `current_business_identity`
+  returns a `BusinessIdentity`, deliberately not a `TenantContext`, and backs
+  exactly two routes.
+- **`get_db` never binds `app.tenant_id`.** The employer service binds it from
+  the resolved membership before every read. Without that, RLS on `employers`
+  returns nothing, which looks like a missing row rather than a bug.
+- **One organisation per account, checked against raw `memberships`.**
+  Authorisation hides a suspended tenant's membership, so a naive check would let
+  the owner of a suspended employer start a fresh one. Tested.
+- **Concurrency.** The last-owner rule holds under `FOR UPDATE`; one account,
+  one organisation holds under an advisory lock.
+- **No enumeration oracle.** Adding an address that belongs to a candidate or to
+  another employer's member returns one identical refusal, so no employer can
+  test whether a person is registered.
+
+### Found while building
+
+- **`module-privacy` had been wrong since Day 1.** Missing
+  `allow_indirect_imports`, it forbade `employer.service -> identity.service ->
+  identity.repository`, the path it exists to funnel traffic into. Invisible
+  until a module first called `identity.service`. The third time this exact bug
+  has appeared in `.importlinter`; a direct import was re-verified to break it.
+- **Manual-form resumes never score, so they never reach employers.** Day 8
+  scoring refuses a version with no free text; Day 9 visibility requires a
+  score. Recorded as `blockers.md` E6.
+- Two test bugs, not code bugs: raw SQL used the ORM attribute
+  `event_metadata` rather than the column `metadata`, and a resolve test passed
+  a random reviewer id into a real foreign key.
+
+### Owed before Day 9 is done
+
+- **Rule thresholds in `config_values`.** Rules are versioned but the numbers
+  are still named constants in `integrity/domain.py`.
+- The reviewer-queue routes (Day 19). `resolve_signal` exists; no HTTP route yet.
+- Hidden-text extraction (E5), so `HIDDEN_TEXT` stays inert.
+- CI has not run on this tree.
+
+---
+
+## 2026-09-13 — Daily streaks and engagement points (client request)
+
+**+111 tests, one new module (`engagement`, the 21st), three endpoints, two new
+import-linter contracts.** Outside the twenty-day schedule. Full write-up:
+[`streaks.md`](streaks.md).
+
+### What was asked, and the contradiction in it
+
+The client asked for LeetCode-style streaks: −10 points when a streak breaks,
+and +10/+15/+20 at 30/90/365 days, all configurable. The request does not say
+*which* points. **Read as points on the candidate score, it breaks invariants
+1, 2, 3 and 4′ at once:**
+- a −10 takes a fresh 700 below its base, and milestones take 990 past the
+  ceiling, so both writes would hit the CHECK constraints;
+- "opened the app" is not an input `replay()` can reproduce;
+- 700 + 200 + 30 + 60 = 990 has no room for another contributor.
+
+**Built as a separate engagement-points balance**, and kept separate
+structurally rather than by convention:
+- an import-linter **independence** contract between `engagement` and
+  `scoring`;
+- a forbidden contract stopping employer, jobs, applications, discovery,
+  college and analytics from importing `engagement`;
+- `tests/invariants/test_streak_never_moves_the_score.py`, which guards both
+  contracts and the task routing table (routing holds task *names*, so an
+  import contract alone would not catch a subscription).
+
+Confirming this with the client is **S1** in `streaks.md` §7, along with *what
+the points are for*: nothing spends them yet.
+
+### Decisions taken inside it (S2–S8, all cheap to reverse)
+
+- **One deduction per break**, however many days were missed. The **balance is
+  floored at 0**, and the ledger stores `requested_points` beside `points` so
+  clipping stays visible.
+- **Milestones once per streak run**, re-earnable after a break. Nothing past
+  365.
+- **The day is IST, decided by the server.** A check-in carries no date,
+  because one that did could keep a streak alive forever. Fixed offset, not
+  `ZoneInfo`: IST has no DST, and `ZoneInfo` needs `tzdata` on Windows.
+- **A break shows at once, and the deduction lands at the next check-in.**
+  `GET` returns BROKEN with streak 0 immediately; no nightly sweep.
+- **Candidates only, and not behind the subscription gate.** Behind the
+  paywall, a lapsed subscriber would lose points for not paying rather than
+  for not opening the app.
+
+### How "configurable" is made true
+
+- **Every number lives in `StreakRules`**, loaded from `config_values` key
+  `engagement.streak_rules`: the highest version whose `effective_from` has
+  passed. With no row, `DEFAULT_RULES` applies.
+- **`check_in` names no number.** `test_without_a_milestone_at_thirty_nothing_is_awarded_at_thirty`
+  proves it.
+- **Parsing is strict.** An unknown key, a boolean, a negative value or a
+  duplicate milestone raises `streak_rules_invalid`. Falling back to defaults
+  would make a misspelt row look applied.
+- **Every ledger row stores `rules_version`.**
+
+### Guarantees and where they live
+
+| Guarantee | Mechanism | Test |
+|---|---|---|
+| Two devices checking in at once count once and deduct once | `SELECT … FOR UPDATE` after `INSERT … ON CONFLICT DO NOTHING` | `test_two_simultaneous_first_opens_count_once`, `test_simultaneous_opens_after_a_break_deduct_once` |
+| The ledger cannot be rewritten | `REVOKE UPDATE, DELETE ON streak_point_events` | `test_the_points_ledger_is_append_only` (as the app role) |
+| Balance never negative | Domain floor + CHECK on both tables | 25-seed property test; `test_the_database_refuses_a_negative_balance` |
+| A milestone once per run, a break once per day | Partial unique indexes | — (belt and braces behind the lock) |
+| Streaks never write a score | Independence contract | `test_streak_points_never_write_a_score` |
+
+### Found while building
+
+- **A test simulating March 2026 cannot use a config row effective from the
+  real `now()`.** The row is in the future relative to the injected clock, so
+  the "config changes the numbers" test silently ran on the defaults. The
+  fixture now defaults `effective_from` to 2000-01-01. Noted in `CLAUDE.md`,
+  because the next time-injected test will hit the same thing.
+- **Python-side `default=0` does not help a raw SQL insert.** The
+  negative-balance test failed on NOT NULL before the CHECK was reached. The
+  integer columns now carry server defaults too.
+- **Parallel work in the same tree.** Day 9 integrity changes (`integrity/`,
+  `discovery/`, `scoring/service.py`, `tasks/routing.py`, `integrity_checks`
+  in the baseline) appeared uncommitted during this session. They were left
+  untouched. `mypy app` currently reports 3 errors there, and `ruff` reports
+  E501 in `discovery/repository.py`. **Both are outside `engagement`, and both
+  will fail CI until that work is finished.**
+
+### Schema
+
+The baseline migration gains `user_streaks` and `streak_point_events`. As
+always, **rebuild with `reset_local_db.sh`**: 43 tables and 12 RLS policies
+with the Day 9 work included.
+
+---
+
+## 2026-09-12 — Day 8: the scoring pipeline, and invariants 1–4′
 
 **958 -> 1046 tests.** The client accepted the calibration (35/35 "about
 right"), which took the rubric from provisional to agreed, and the rest of Day

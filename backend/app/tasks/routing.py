@@ -25,6 +25,7 @@ from typing import Final
 #: enqueues by name and must not drag every module's dependencies into the
 #: worker that publishes events.
 SCORE_RESUME_TASK: Final = "scoring.score_resume"
+DETECT_INTEGRITY_TASK: Final = "integrity.detect"
 
 #: `event_type -> the tasks it triggers`.
 #:
@@ -45,6 +46,16 @@ EVENT_SUBSCRIPTIONS: Final[dict[str, tuple[str, ...]]] = {
     # emit, not rediscovering which event scoring listens for.
     "courses.completion_recorded": (SCORE_RESUME_TASK,),
     "interview.session_completed": (SCORE_RESUME_TASK,),
+    # Integrity runs once a confirmed version has been scored, because that is
+    # the first moment both halves it reads exist: the CV text, and the Layer 1
+    # extraction stored on the score row. The task receives the event's
+    # `aggregate_id`, which is the score id.
+    #
+    # Subscribed to the *score* event and not to `resume.version_confirmed`:
+    # a confirmation whose extraction fails produces no score and so no
+    # extraction to read, and an integrity check against nothing would record
+    # a clean result for a CV nobody has read.
+    "scoring.score_computed": (DETECT_INTEGRITY_TASK,),
 }
 
 

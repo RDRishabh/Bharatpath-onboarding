@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1046 tests
+.venv/Scripts/pytest.exe                # 1237 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -186,6 +186,45 @@ injected instructions and hidden text, the two things nobody does by accident.
 Everything that could equally be a typo, an unusual career, or our own extractor
 misreading is MEDIUM or LOW. `test_only_the_two_deliberate_rules_can_ever_reach_high`
 is where a third one would have to be argued for.
+
+## Employer tenancy and discovery — Day 9
+
+- **`get_db` does not bind `app.tenant_id`.** A service reading an RLS table
+  must call `set_transaction_tenant(session, ctx.tenant_id)` first, from the
+  resolved membership and never from a path or body. Without it the policy
+  matches nothing and reads come back empty, which looks like a missing row
+  rather than a bug.
+- **`current_business_identity` admits a business account with no
+  membership.** It exists so an account can create its organisation, and it
+  returns `BusinessIdentity`, not a `TenantContext`. Every route added to it is
+  a way in that skips the membership check; keep it to the two it has.
+- **Who an employer can see is `VISIBLE_CANDIDATES_CTE`, and nothing else.**
+  Every discovery query is built on it, and a test enforces that. It fails
+  closed: a candidate needs a score, an `integrity_checks` row for that version,
+  and no HIGH signal that is OPEN or CONFIRMED. Only CLEARED restores.
+- **The integrity task reads a score and never writes one** (SRS 1.4.5). It
+  lives in `app/tasks/` because `integrity` may not import `scoring`, and a test
+  fails the build if it names a scoring write path.
+- **Manual-form resumes currently never score, so they never appear to
+  employers.** `docs/blockers.md` E6.
+
+## Streak points are not the score
+
+`app/modules/engagement` (added 2026-09-13, `docs/streaks.md`) keeps daily
+app-open streaks: −10 per break, +10/+15/+20 at 30/90/365 days. **Those points
+are a separate balance and must never reach the 700–990 score.** Applied to
+the score they break invariants 1, 2, 3 and 4′ at once: below the 700 base,
+past 990, and not replayable. `engagement` and `scoring` are independent under
+import-linter, employer-facing modules may not import `engagement`, and
+`tests/invariants/test_streak_never_moves_the_score.py` guards both contracts
+and the event routing table.
+
+- **The numbers are config, not code:** `config_values` key
+  `engagement.streak_rules`. Bad config raises rather than falling back.
+  Every ledger row stores `rules_version`.
+- **The day is IST and decided by the server.** A check-in carries no date.
+- Streak integration tests inject `now`, so a config row they insert must be
+  `effective_from` before the simulated day, not the real `now()`.
 
 ## Environment
 

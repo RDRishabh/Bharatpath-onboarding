@@ -47,6 +47,45 @@ forbidden_modules =
     app.modules.scoring
 
 ; ---------------------------------------------------------------------------
+; Streak points never move the score, and the score never reads streaks.
+;
+; The client asked for streak points (2026-09-13): -10 for a missed day, +10 /
+; +15 / +20 at 30 / 90 / 365 days. Applied to the score, that breaks
+; invariants 1, 2, 3 and 4-prime at once -- a -10 takes a score below its 700
+; base, milestones take it past 990, and "opened the app" is not an input any
+; replay can reproduce. So they are a separate balance, and this contract is
+; what keeps them separate: independence, so neither module can reach the
+; other directly or through a third. See docs/streaks.md section 2.
+; ---------------------------------------------------------------------------
+[importlinter:contract:engagement-and-scoring-are-independent]
+name = Streak points never move the score (docs/streaks.md)
+type = independence
+modules =
+    app.modules.engagement
+    app.modules.scoring
+
+; ---------------------------------------------------------------------------
+; Engagement points are not an employer signal.
+;
+; A streak measures how often someone opens an app, not whether they can do a
+; job. Shown to an employer it becomes a second, unexplained ranking -- and
+; one that penalises a candidate for being busy, ill, or offline. Changing
+; that is a client decision, not an import.
+; ---------------------------------------------------------------------------
+[importlinter:contract:engagement-is-not-an-employer-signal]
+name = Employer and college surfaces never read engagement points
+type = forbidden
+source_modules =
+    app.modules.employer
+    app.modules.jobs
+    app.modules.applications
+    app.modules.discovery
+    app.modules.college
+    app.modules.analytics
+forbidden_modules =
+    app.modules.engagement
+
+; ---------------------------------------------------------------------------
 ; Layering inside every module: routers -> services -> repositories.
 ; A router that touches a repository has skipped the transaction boundary
 ; and the business rules with it.
@@ -74,6 +113,13 @@ forbidden_modules =
 [importlinter:contract:module-privacy]
 name = A module's repository and models are private to it
 type = forbidden
+; `allow_indirect_imports`, for the third time in this file and for the same
+; reason as `layers` and `resume-internals-are-private`. Without it this also
+; forbids employer.service -> identity.service -> identity.repository: the
+; path this contract exists to push cross-module traffic INTO. It stayed
+; invisible from Day 1 until Day 9 because no module called identity.service
+; until employer tenancy did. The rule is about the DIRECT import.
+allow_indirect_imports = True
 source_modules =
     app.modules.candidate
     app.modules.resume
@@ -94,6 +140,7 @@ source_modules =
     app.modules.admin
     app.modules.notifications
     app.modules.privacy
+    app.modules.engagement
 forbidden_modules =
     app.modules.identity.repository
     app.modules.identity.models
@@ -144,6 +191,7 @@ source_modules =
     app.modules.admin
     app.modules.notifications
     app.modules.privacy
+    app.modules.engagement
 forbidden_modules =
     app.modules.resume.repository
     app.modules.resume.models

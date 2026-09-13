@@ -14,6 +14,7 @@ from . import (
     courses,
     discovery,
     employer,
+    engagement,
     identity,
     integrity,
     interview,
@@ -48,4 +49,5 @@ ALL_MODULES: tuple[ModuleType, ...] = (
     admin,
     notifications,
     privacy,
+    engagement,
 )

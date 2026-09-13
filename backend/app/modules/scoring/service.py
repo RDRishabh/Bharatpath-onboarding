@@ -329,6 +329,17 @@ def _points_of_kind(events: list[dict[str, Any]], kind: str) -> int:
     return total
 
 
+async def get_score(session: AsyncSession, *, score_id: uuid.UUID) -> Any:
+    """One stored score row by id, or None. **Read only.**
+
+    Exists for the integrity task, which needs the stored extraction and must
+    never be able to change a number (SRS 1.4.5). It is handed the row, not a
+    write path -- and `test_discovery_suppression.py` fails the build if that
+    task ever names one.
+    """
+    return await repository.get_score(session, score_id=score_id)
+
+
 async def score_for_version(session: AsyncSession, *, resume_version_id: uuid.UUID) -> Any:
     """Any score already computed for this resume version, or None.
 

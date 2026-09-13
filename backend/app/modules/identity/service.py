@@ -10,10 +10,13 @@ transaction closes.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import membership as membership_lookup
+from app.core.errors import ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.core.ratelimit import hit
 from app.modules.identity import repository
@@ -92,3 +95,198 @@ async def revoke_membership(
     """
     await repository.revoke_membership(session, user_id=user_id, tenant_id=tenant_id)
     await membership_lookup.invalidate(user_id)
+
+
+# ---------------------------------------------------------------------------
+# Tenants and teams (Day 9)
+# ---------------------------------------------------------------------------
+EMPLOYER_OWNER_ROLE = "EMPLOYER_OWNER"
+EMPLOYER_TEAM_ROLES: frozenset[str] = frozenset(
+    {"EMPLOYER_OWNER", "EMPLOYER_RECRUITER", "EMPLOYER_VIEWER"}
+)
+
+
+class AlreadyInOrganisationError(ConflictError):
+    """The account already belongs to an organisation, including a suspended one."""
+
+    code = "identity_already_in_organisation"
+    title = "Account already belongs to an organisation"
+
+
+class AlreadyAMemberError(ConflictError):
+    code = "identity_already_a_member"
+    title = "Already a member of this organisation"
+
+
+class CannotAddMemberError(ConflictError):
+    """**One refusal for every reason that is about someone else's account.**
+
+    The address might belong to a candidate, or to a member of another
+    employer. Saying which would let any employer test whether a person is
+    registered on the platform -- an enumeration oracle for exactly the
+    people whose contact details the product exists to protect. The caller
+    learns only that this address cannot be added.
+
+    Residual, stated rather than hidden: "cannot be added" still differs from
+    success, so an owner can learn that an address exists *somewhere*. Closing
+    that needs an accept-by-link invitation, which does not exist yet.
+    """
+
+    code = "identity_cannot_add_member"
+    title = "This address cannot be added"
+
+
+class MemberNotFoundError(NotFoundError):
+    code = "identity_member_not_found"
+    title = "Team member not found"
+
+
+class LastOwnerError(ConflictError):
+    """An organisation must always have an owner. Without one, nobody can add
+    staff, change roles, or close the account, and only a platform admin with
+    a database session can recover it."""
+
+    code = "identity_last_owner"
+    title = "An organisation needs at least one owner"
+
+
+@dataclass(frozen=True, slots=True)
+class TeamMember:
+    user_id: uuid.UUID
+    email: str | None
+    role: str
+    added_at: datetime
+
+
+def normalise_email(email: str) -> str:
+    return email.strip().lower()
+
+
+async def create_tenant_with_owner(
+    session: AsyncSession,
+    *,
+    owner_user_id: uuid.UUID,
+    tenant_type: str,
+    name: str,
+    owner_role: str,
+) -> uuid.UUID:
+    """Create a tenant and make the caller its owner, atomically.
+
+    **One organisation per account.** `membership.resolve` answers "which
+    tenant is this caller acting for?" with a single row, so a second
+    membership would make that answer depend on row order.
+    """
+    await repository.lock_user(session, user_id=owner_user_id)
+    if await repository.active_membership(session, user_id=owner_user_id) is not None:
+        raise AlreadyInOrganisationError()
+
+    tenant_id = await repository.create_tenant(session, tenant_type=tenant_type, name=name)
+    await grant_membership(session, user_id=owner_user_id, tenant_id=tenant_id, role=owner_role)
+    logger.info("tenant_created", tenant_id=str(tenant_id), tenant_type=tenant_type)
+    return tenant_id
+
+
+async def rename_tenant(session: AsyncSession, *, tenant_id: uuid.UUID, name: str) -> None:
+    await repository.rename_tenant(session, tenant_id=tenant_id, name=name)
+
+
+async def list_team(session: AsyncSession, *, tenant_id: uuid.UUID) -> list[TeamMember]:
+    rows = await repository.list_active_members(session, tenant_id=tenant_id)
+    return [
+        TeamMember(
+            user_id=user.id, email=user.email, role=membership.role, added_at=membership.created_at
+        )
+        for membership, user in rows
+    ]
+
+
+async def add_team_member(
+    session: AsyncSession, *, tenant_id: uuid.UUID, email: str, role: str
+) -> TeamMember:
+    """Invite by email. The person gets access the first time they sign in.
+
+    Business accounts are provisioned, not self-registered (the business
+    Cognito pool is admin-create-only), so an address with no account yet gets
+    one here and waits to be claimed.
+    """
+    if role not in EMPLOYER_TEAM_ROLES:
+        raise CannotAddMemberError()
+
+    address = normalise_email(email)
+    user = await repository.user_by_email(session, email=address)
+    if user is None:
+        user = await repository.create_business_user(session, email=address)
+    if user.pool != "BUSINESS":
+        # A candidate. The email column is unique across both pools, so one
+        # address cannot be a candidate and a recruiter at once.
+        raise CannotAddMemberError()
+
+    await repository.lock_user(session, user_id=user.id)
+    current = await repository.active_membership(session, user_id=user.id)
+    if current is not None:
+        if current.tenant_id == tenant_id:
+            raise AlreadyAMemberError()
+        raise CannotAddMemberError()
+
+    await grant_membership(session, user_id=user.id, tenant_id=tenant_id, role=role)
+    membership = await repository.get_membership(session, user_id=user.id, tenant_id=tenant_id)
+    if membership is None:  # pragma: no cover - just written on this transaction
+        raise MemberNotFoundError()
+    return TeamMember(user_id=user.id, email=user.email, role=role, added_at=membership.created_at)
+
+
+async def _ensure_another_owner(
+    session: AsyncSession, *, tenant_id: uuid.UUID, leaving_user_id: uuid.UUID
+) -> None:
+    owners = await repository.lock_active_holders_of_role(
+        session, tenant_id=tenant_id, role=EMPLOYER_OWNER_ROLE
+    )
+    if not any(owner != leaving_user_id for owner in owners):
+        raise LastOwnerError()
+
+
+async def _active_member(
+    session: AsyncSession, *, tenant_id: uuid.UUID, user_id: uuid.UUID
+) -> tuple[object, object]:
+    membership = await repository.get_membership(session, user_id=user_id, tenant_id=tenant_id)
+    if membership is None or membership.status != "ACTIVE":
+        raise MemberNotFoundError()
+    user = await repository.get_user(session, user_id)
+    if user is None:  # pragma: no cover - the membership's foreign key guarantees it
+        raise MemberNotFoundError()
+    return membership, user
+
+
+async def change_member_role(
+    session: AsyncSession, *, tenant_id: uuid.UUID, user_id: uuid.UUID, role: str
+) -> TeamMember:
+    if role not in EMPLOYER_TEAM_ROLES:
+        raise MemberNotFoundError()
+    membership = await repository.get_membership(session, user_id=user_id, tenant_id=tenant_id)
+    if membership is None or membership.status != "ACTIVE":
+        raise MemberNotFoundError()
+    if membership.role == EMPLOYER_OWNER_ROLE and role != EMPLOYER_OWNER_ROLE:
+        await _ensure_another_owner(session, tenant_id=tenant_id, leaving_user_id=user_id)
+
+    await grant_membership(session, user_id=user_id, tenant_id=tenant_id, role=role)
+    user = await repository.get_user(session, user_id)
+    return TeamMember(
+        user_id=user_id,
+        email=user.email if user is not None else None,
+        role=role,
+        added_at=membership.created_at,
+    )
+
+
+async def remove_team_member(
+    session: AsyncSession, *, tenant_id: uuid.UUID, user_id: uuid.UUID
+) -> None:
+    """Revoke, never delete -- the row is the evidence of who could see what,
+    and when. The cached membership is dropped so access ends on the next
+    request, not a minute later."""
+    membership = await repository.get_membership(session, user_id=user_id, tenant_id=tenant_id)
+    if membership is None or membership.status != "ACTIVE":
+        raise MemberNotFoundError()
+    if membership.role == EMPLOYER_OWNER_ROLE:
+        await _ensure_another_owner(session, tenant_id=tenant_id, leaving_user_id=user_id)
+    await revoke_membership(session, user_id=user_id, tenant_id=tenant_id)

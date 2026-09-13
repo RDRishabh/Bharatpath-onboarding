@@ -238,8 +238,11 @@ def _create_candidate_tables() -> None:
         "resume_extractions",
         "scores",
         "integrity_signals",
+        "integrity_checks",
         "device_checks",
         "dsr_requests",
+        "user_streaks",
+        "streak_point_events",
     )
 
 
@@ -341,6 +344,10 @@ def _apply_append_only_grants() -> None:
     # Score-moving writes (invariant 3's blast radius). Now that add-ons move
     # the score, a mutable completion row is a mutable score.
     op.execute(f"REVOKE UPDATE, DELETE ON course_completions FROM {APP_ROLE}")
+
+    # The engagement-points ledger. Not a score, but it is a balance a
+    # candidate sees, and one that could be rewritten would explain nothing.
+    op.execute(f"REVOKE UPDATE, DELETE ON streak_point_events FROM {APP_ROLE}")
 
 
 # ---------------------------------------------------------------------------
