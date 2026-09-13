@@ -15,6 +15,7 @@ not instead of it.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Final
 
 from sqlalchemy import select
@@ -64,5 +65,24 @@ async def update_employer(
         return None
     for field, value in changes.items():
         setattr(row, field, value)
+    await session.flush()
+    return row
+
+
+async def set_kyb_status(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    status: str,
+    verified_at: datetime | None,
+) -> Employer | None:
+    """Written only by the KYB service, through `employer.service`. Kept apart
+    from `update_employer` on purpose: a profile edit must never be a way to
+    set this column, or invariant 8 is one PATCH away from bypassed."""
+    row = await get_employer(session, tenant_id=tenant_id)
+    if row is None:
+        return None
+    row.kyb_status = status
+    row.verified_at = verified_at
     await session.flush()
     return row

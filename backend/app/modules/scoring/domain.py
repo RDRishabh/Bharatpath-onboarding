@@ -575,3 +575,71 @@ def features_from_extraction(extracted: dict[str, object]) -> ResumeFeatures:
         highest_qualification=best_qualification,
         certification_count=len(certifications),
     )
+
+
+# ---------------------------------------------------------------------------
+# Structured resumes (blocker E6)
+# ---------------------------------------------------------------------------
+def render_structured_resume(parsed: dict[str, object]) -> str:
+    """The manual form, as the text Layer 1 reads. `""` if there is nothing.
+
+    **Why a form is not scored directly.** It carries facts -- roles, years,
+    qualifications, skills -- but not the three judgments Layer 1 makes:
+    achievement specificity, role progression and scope of responsibility.
+    Scored without them those dimensions are zero, so the same career would
+    score lower through the form than through an upload. That is a plausible
+    wrong number, which `scoring-approach.md` section 11 forbids. Rendered to
+    text, the form takes the same path as an upload and is cached the same way.
+
+    **Deliberately left out:** the candidate's name, which the model does not
+    need, and the year a qualification was completed, which says nothing about
+    ability and a great deal about age (invariant 5).
+
+    Deterministic by construction -- the same form always renders the same
+    text -- because the rendered text is what the extraction cache is keyed on.
+    """
+    lines: list[str] = []
+
+    headline = parsed.get("headline")
+    if isinstance(headline, str) and headline.strip():
+        lines.append(f"Headline: {headline.strip()}")
+
+    experience = parsed.get("experience")
+    roles = [r for r in experience if isinstance(r, dict)] if isinstance(experience, list) else []
+    if roles:
+        lines.append("Experience:")
+        for role in roles:
+            title = str(role.get("title") or "").strip()
+            employer = str(role.get("employer") or "").strip()
+            start = role.get("start_year")
+            end = role.get("end_year")
+            span = ""
+            if isinstance(start, int) and not isinstance(start, bool):
+                ending = (
+                    str(end) if isinstance(end, int) and not isinstance(end, bool) else "present"
+                )
+                span = f", {start} to {ending}"
+            lines.append(f"- {title} at {employer}{span}")
+            summary = role.get("summary")
+            if isinstance(summary, str) and summary.strip():
+                lines.append(f"  {summary.strip()}")
+
+    education = parsed.get("education")
+    entries = [e for e in education if isinstance(e, dict)] if isinstance(education, list) else []
+    if entries:
+        lines.append("Education:")
+        for entry in entries:
+            qualification = str(entry.get("qualification") or "").strip()
+            institution = str(entry.get("institution") or "").strip()
+            lines.append(f"- {qualification}, {institution}")
+
+    skills = parsed.get("skills")
+    names = (
+        [n.strip() for n in skills if isinstance(n, str) and n.strip()]
+        if isinstance(skills, list)
+        else []
+    )
+    if names:
+        lines.append("Skills: " + ", ".join(names))
+
+    return "\n".join(lines)

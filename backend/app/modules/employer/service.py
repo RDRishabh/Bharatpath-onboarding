@@ -20,6 +20,7 @@ the vocabularies, and the audit trail of who changed a team.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -121,6 +122,34 @@ async def get_organisation(session: AsyncSession, *, ctx: TenantContext) -> Any:
     if row is None:
         raise OrganisationNotFoundError()
     return row
+
+
+async def kyb_status(session: AsyncSession, *, ctx: TenantContext) -> str:
+    """The caller's organisation's KYB status, for the publish gate (invariant 8).
+
+    Read through this service rather than by `jobs` reaching into `employers`,
+    so the rule "which column says an employer is verified" has one home.
+    """
+    return str((await get_organisation(session, ctx=ctx)).kyb_status)
+
+
+async def set_kyb_status(
+    session: AsyncSession, *, tenant_id: uuid.UUID, status: str, verified_at: datetime | None
+) -> None:
+    """Mirror a KYB decision onto the row the publish trigger reads.
+
+    Called by the KYB service only. The tenant id is passed in rather than
+    taken from a caller's context because a reviewer belongs to no employer;
+    it is bound here before the write, as RLS on `employers` requires.
+    """
+    await set_transaction_tenant(session, tenant_id)
+    if (
+        await repository.set_kyb_status(
+            session, tenant_id=tenant_id, status=status, verified_at=verified_at
+        )
+        is None
+    ):
+        raise OrganisationNotFoundError()
 
 
 async def update_organisation(

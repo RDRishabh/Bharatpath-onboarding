@@ -5,12 +5,111 @@ Composer, validation, publish gate, lifecycle.
 Separate Create / Update / Read schemas. ORM models are never exposed
 directly - the schema IS the API contract, and for several modules it is also
 where an invariant is enforced structurally.
+
+**Money is integer paise**, never a float and never rupees, and the fields say
+so in their names. **Salary is mandatory** (PRD 5.2): a job without a range is
+refused here and by a NOT NULL in the database.
+
+**No request carries a status.** A job moves through its lifecycle only through
+the publish, pause and close actions, so the publish gate cannot be bypassed by
+sending `"status": "PUBLISHED"` in an edit -- `extra="forbid"` makes that a 422.
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+import uuid
+from datetime import datetime
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+WorkMode = Literal["ONSITE", "HYBRID", "REMOTE"]
+JobStatus = Literal["DRAFT", "PUBLISHED", "PAUSED", "CLOSED"]
+
+#: The `jobs` salary columns are 32-bit integers. Refused here rather than
+#: overflowing into a 500. In paise this is about Rs 2.1 crore.
+_MAX_MINOR = 2_147_483_647
+
+Skill = Annotated[str, Field(min_length=1, max_length=80)]
 
 
 class _Base(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class CreateJobRequest(_Base):
+    title: Annotated[str, Field(min_length=3, max_length=255)]
+    description: Annotated[str, Field(min_length=20, max_length=20_000)]
+    skills: Annotated[list[Skill], Field(default_factory=list, max_length=50)]
+    location: Annotated[str | None, Field(default=None, max_length=255)] = None
+    work_mode: WorkMode | None = None
+    #: Experience required, in months. Never an age, and never a proxy for one
+    #: (invariant 5): a requirement is about what someone has done.
+    experience_min_months: Annotated[int | None, Field(default=None, ge=0, le=600)] = None
+    salary_min_minor: Annotated[int, Field(ge=0, le=_MAX_MINOR)]
+    salary_max_minor: Annotated[int, Field(ge=0, le=_MAX_MINOR)]
+    #: The lowest score an applicant needs. 700 is the base every candidate
+    #: has, so a threshold below it filters nothing.
+    min_score: Annotated[int | None, Field(default=None, ge=700, le=990)] = None
+
+    @model_validator(mode="after")
+    def _salary_range(self) -> CreateJobRequest:
+        if self.salary_max_minor < self.salary_min_minor:
+            raise ValueError("salary_max_minor is below salary_min_minor")
+        return self
+
+
+class UpdateJobRequest(_Base):
+    """A partial edit, allowed only while the job is a draft or paused. The
+    salary range is re-checked against the stored values, because an edit may
+    send only one end of it."""
+
+    title: Annotated[str | None, Field(default=None, min_length=3, max_length=255)] = None
+    description: Annotated[str | None, Field(default=None, min_length=20, max_length=20_000)] = None
+    skills: Annotated[list[Skill] | None, Field(default=None, max_length=50)] = None
+    location: Annotated[str | None, Field(default=None, max_length=255)] = None
+    work_mode: WorkMode | None = None
+    experience_min_months: Annotated[int | None, Field(default=None, ge=0, le=600)] = None
+    salary_min_minor: Annotated[int | None, Field(default=None, ge=0, le=_MAX_MINOR)] = None
+    salary_max_minor: Annotated[int | None, Field(default=None, ge=0, le=_MAX_MINOR)] = None
+    min_score: Annotated[int | None, Field(default=None, ge=700, le=990)] = None
+
+    @model_validator(mode="after")
+    def _something(self) -> UpdateJobRequest:
+        if not self.model_fields_set:
+            raise ValueError("send at least one field to change")
+        for required in ("title", "description", "skills", "salary_min_minor", "salary_max_minor"):
+            if required in self.model_fields_set and getattr(self, required) is None:
+                raise ValueError(f"{required} cannot be cleared")
+        return self
+
+
+class JobResponse(_Base):
+    id: uuid.UUID
+    title: str
+    description: str
+    skills: list[str]
+    location: str | None = None
+    work_mode: str | None = None
+    experience_min_months: int | None = None
+    salary_min_minor: int
+    salary_max_minor: int
+    min_score: int | None = None
+    status: JobStatus
+    published_at: datetime | None = None
+    closed_at: datetime | None = None
+    created_at: datetime
+
+
+class ThresholdPreviewResponse(_Base):
+    """How many visible candidates would clear a threshold -- coarsely.
+
+    Never an exact small number; see `jobs/domain.py` for why an exact count
+    here is a way to learn one person's score.
+    """
+
+    min_score: int
+    approximate_count: int = Field(
+        description="Rounded down to the nearest ten. 0 when fewer_than_ten is true."
+    )
+    fewer_than_ten: bool

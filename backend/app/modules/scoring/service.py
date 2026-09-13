@@ -32,6 +32,7 @@ from app.modules.scoring.domain import (
     clamped_addon_points,
     extraction_cache_key,
     features_from_extraction,
+    render_structured_resume,
     score_resume,
     total_score,
 )
@@ -230,10 +231,14 @@ async def score_confirmed_resume(
     parsed = version.parsed if isinstance(version.parsed, dict) else {}
     text = parsed.get("raw_text")
     if not isinstance(text, str) or not text.strip():
-        # A structured (MANUAL) version carries no free text to read. Layer 1
-        # exists to turn prose into facts; a form already is facts.
+        # A structured version -- the manual form, or a correction made through
+        # it -- has facts and no prose. It still goes through Layer 1, rendered
+        # to text: see `render_structured_resume` for why scoring the form
+        # directly would give form-fillers a lower score for the same career.
+        text = render_structured_resume(parsed)
+    if not text.strip():
         raise ExtractionInvalidError(
-            params={"detail": "this resume version carries no text to extract from"}
+            params={"detail": "this resume version carries nothing to extract from"}
         )
 
     extractor = get_resume_extractor(settings)

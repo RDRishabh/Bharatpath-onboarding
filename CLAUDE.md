@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1237 tests
+.venv/Scripts/pytest.exe                # 1406 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -207,6 +207,25 @@ is where a third one would have to be argued for.
   fails the build if it names a scoring write path.
 - **Manual-form resumes currently never score, so they never appear to
   employers.** `docs/blockers.md` E6.
+
+## KYB and jobs — Day 10
+
+- **R15 is one config row:** `kyb.require_approval`, `{"enabled": true|false}`,
+  off when absent. A malformed row refuses (`kyb_config_invalid`) rather than
+  defaulting, because defaulting to "off" approves employers nobody meant to.
+- **`employers.kyb_status` is what the publish trigger reads.** Only
+  `kyb.service` changes it, through `employer.service.set_kyb_status`. The
+  profile PATCH must never be a way to set it.
+- **Forms are validated on the server** by `app.core.forms.validate_answers`;
+  the patterns in a form definition are hints to the client. Option lists shared
+  between modules live in `app/core/reference.py`.
+- **The threshold preview is a leak vector.** Steps of ten, counts floored to
+  ten, anything under ten reported only as "fewer than ten", rate-limited per
+  organisation. Don't make it more precise.
+- **Config rows are global in tests.** Insert with a past `effective_from`, and
+  delete the row in a `finally`.
+- **Review actions (KYB and integrity) exist only in the services.** No
+  platform-staff account can exist yet (`docs/blockers.md` E10).
 
 ## Streak points are not the score
 

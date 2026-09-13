@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,6 +43,14 @@ class KybSubmission(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
     __tablename__ = "kyb_submissions"
 
     state: Mapped[str] = mapped_column(String(24), default="DRAFT", nullable=False)
+    #: The form answers, as submitted. Kept whole rather than spread into
+    #: columns because the form is data (`kyb/forms.py`) and will change; a
+    #: submission must keep saying what was asked and answered at the time.
+    answers: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
+    )
+    #: Which version of the form these answers are to.
+    form_version: Mapped[str | None] = mapped_column(String(64))
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id")
@@ -63,6 +73,18 @@ class KybSubmission(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
             name="ck_kyb_rejection_has_reason",
         ),
         Index("ix_kyb_submissions_tenant_state", "tenant_id", "state"),
+        # **One open submission per organisation.** Two would make "is this
+        # employer verified?" depend on which row a query happened to find.
+        # A closed submission (APPROVED or REJECTED) is history and does not
+        # block a new one.
+        Index(
+            "uq_kyb_open_submission_per_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where=(
+                "state IN ('DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'MORE_INFO_REQUIRED')"
+            ),
+        ),
     )
 
 
@@ -79,4 +101,6 @@ class KybDocument(Base, UUIDPrimaryKey, TenantScoped):
     )
     doc_type: Mapped[str] = mapped_column(String(64), nullable=False)
     s3_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    #: Sniffed from the stored bytes, never taken from the upload request.
+    mime: Mapped[str | None] = mapped_column(String(64))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -17,7 +17,10 @@ browser and the browser is not ours.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Final, Literal
 
 FieldType = Literal[
@@ -115,3 +118,120 @@ AISHE_PATTERN: Final = r"^[A-Z]-[0-9]{1,6}$"
 
 #: Indian mobile. Ten digits starting 6-9, optionally +91 prefixed.
 INDIAN_MOBILE_PATTERN: Final = r"^(\+91)?[6-9][0-9]{9}$"
+
+
+# ---------------------------------------------------------------------------
+# Server-side validation
+# ---------------------------------------------------------------------------
+# **The authority.** `pattern`, `required` and `max_length` above are published
+# to four clients as hints; this is where they are enforced, because a hint the
+# browser honours is a hint the API caller does not have to.
+
+_EMAIL: Final = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@dataclass(frozen=True, slots=True)
+class AnswerIssue:
+    """One problem with one field. A code, not a sentence: the client renders
+    the message in the user's language."""
+
+    field: str
+    code: str
+
+
+def _blank(value: object) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def validate_answers(
+    form: FormDefinition,
+    answers: Mapping[str, object],
+    *,
+    options: Mapping[str, frozenset[str]],
+    uploaded: frozenset[str] = frozenset(),
+    complete: bool,
+) -> tuple[AnswerIssue, ...]:
+    """Every problem with a set of answers, in form order. Empty means valid.
+
+    `complete=False` checks only what was sent, so a form can be saved half
+    finished. `complete=True` is submission: every required field must be
+    answered, every required document uploaded, every required undertaking
+    accepted.
+
+    `options` maps each `options_source` to its allowed codes. A source the
+    form names but the caller does not supply is a programming error and
+    raises -- validating a SELECT against nothing would accept anything.
+
+    `uploaded` is the set of FILE field codes that have a stored document.
+    Files are never answered inline: a FILE code appearing in `answers` is an
+    issue, because an uploaded document has to go through the upload path
+    that sniffs its type and caps its size.
+    """
+    issues: list[AnswerIssue] = []
+    known = {f.code for f in form.fields}
+
+    for code in answers:
+        if code not in known:
+            issues.append(AnswerIssue(code, "unknown_field"))
+
+    for spec in form.fields:
+        if spec.type == "FILE":
+            if spec.code in answers:
+                issues.append(AnswerIssue(spec.code, "not_answerable"))
+            elif complete and spec.required and spec.code not in uploaded:
+                issues.append(AnswerIssue(spec.code, "required"))
+            continue
+
+        value = answers.get(spec.code)
+        if _blank(value):
+            if complete and spec.required:
+                issues.append(AnswerIssue(spec.code, "required"))
+            continue
+
+        issue = _check_value(spec, value, options)
+        if issue is not None:
+            issues.append(AnswerIssue(spec.code, issue))
+
+    return tuple(issues)
+
+
+def _check_value(
+    spec: FormField, value: object, options: Mapping[str, frozenset[str]]
+) -> str | None:
+    if spec.type == "CHECKBOX":
+        if not isinstance(value, bool):
+            return "wrong_type"
+        # An undertaking that is present but false is not accepted.
+        return "must_be_accepted" if spec.required and value is not True else None
+
+    if spec.type == "NUMBER":
+        return None if isinstance(value, int) and not isinstance(value, bool) else "wrong_type"
+
+    if spec.type in ("SELECT", "MULTISELECT"):
+        if spec.options_source is None:
+            raise ValueError(f"{spec.code} is a {spec.type} with no options_source")
+        if spec.options_source not in options:
+            raise ValueError(f"no options supplied for {spec.options_source}")
+        allowed = options[spec.options_source]
+        if spec.type == "SELECT":
+            if not isinstance(value, str):
+                return "wrong_type"
+            return None if value in allowed else "not_an_option"
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return "wrong_type"
+        return None if set(value) <= allowed else "not_an_option"
+
+    if not isinstance(value, str):
+        return "wrong_type"
+    if spec.max_length is not None and len(value) > spec.max_length:
+        return "too_long"
+    if spec.type == "EMAIL" and not _EMAIL.match(value):
+        return "invalid_format"
+    if spec.type == "DATE":
+        try:
+            date.fromisoformat(value)
+        except ValueError:
+            return "invalid_format"
+    if spec.pattern is not None and re.fullmatch(spec.pattern, value) is None:
+        return "invalid_format"
+    return None

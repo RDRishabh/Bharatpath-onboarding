@@ -113,3 +113,30 @@ async def is_candidate_visible(session: AsyncSession, *, candidate_id: uuid.UUID
     )
     result = await session.execute(text(query), {"cid": str(candidate_id)})
     return result.first() is not None
+
+
+async def count_visible_at_or_above(session: AsyncSession, *, min_score: int) -> int:
+    """How many visible candidates' current score is at least `min_score`.
+
+    Exact, and therefore **never returned to a client as it is**: the jobs
+    service coarsens it before it leaves the building (`jobs/domain.py`). Built
+    on the same CTE as search, so a suppressed or unchecked candidate is not
+    counted -- a count that included them would reveal that they exist.
+    """
+    query = (
+        "WITH "  # noqa: S608 - see the note on visible_candidate_ids
+        + VISIBLE_CANDIDATES_CTE
+        + """
+        SELECT count(*)
+          FROM visible_candidates vc
+          JOIN LATERAL (
+                SELECT s.raw_value
+                  FROM scores s
+                 WHERE s.user_id = vc.user_id
+                 ORDER BY s.computed_at DESC, s.id DESC
+                 LIMIT 1
+               ) AS current ON true
+         WHERE current.raw_value >= :min_score
+        """
+    )
+    return int(await session.scalar(text(query), {"min_score": min_score}) or 0)

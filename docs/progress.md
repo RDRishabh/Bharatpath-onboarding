@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1237 passing locally 2026-09-13 — 1046 committed, plus 80 Day 9 tests and 111 streak tests, both uncommitted in the same tree. **CI not yet run on either.** |
+| **Tests** | 1406 passing locally 2026-09-13. `c50d246` green on CI; `59e9edc` pushed, CI not yet checked; Day 10 uncommitted. |
 | **Coverage** | 85% |
-| **Days done** | 1, 2, 7 complete · 3, 4, 5, 6, 8, 9 partial |
-| **Next** | Day 10 — KYB state machine, jobs, and the publish gate (invariant 8, Week 2 gate) |
+| **Days done** | 1, 2, 5, 7, 10 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 11 — job search, eligibility, apply and withdraw |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -38,7 +38,7 @@ states. Newest entries first.
 > are stored per extraction precisely so a replay can tell which engine produced
 > a score, and so a change is a **re-score**, not a silent drift.
 
-**Full register: [`blockers.md`](blockers.md)** — 44 items by category.
+**Full register: [`blockers.md`](blockers.md)** — 45 items by category.
 
 ### Blocked, and not on us
 
@@ -53,7 +53,89 @@ states. Newest entries first.
 
 ---
 
-## 2026-09-13 (latest) — Day 9: integrity on real CVs, suppression inside discovery, employer tenancy
+## 2026-09-13 (evening) — Day 10: KYB and jobs; Bedrock connected; Week 1 gate closed
+
+**1237 -> 1406 tests.** `59e9edc` carries the Bedrock connection, integrity
+thresholds as config and the cross-tenant suite; Day 10 is uncommitted.
+
+### Day 10 — KYB, jobs, invariant 8
+
+- **R15 is one switch.** `config_values` key `kyb.require_approval`,
+  `{"enabled": true|false}`, off when absent. Off: a complete submission is
+  approved on arrival and marked `auto_approved`. On: it waits at SUBMITTED for
+  a reviewer. A malformed row refuses with `kyb_config_invalid` rather than
+  guessing: guessing "off" approves organisations nobody meant to approve.
+- **Answers are validated on the server** against the published form, by a new
+  `app.core.forms.validate_answers`. Every problem is returned at once, by field
+  and code. Until now nothing checked a submitted form; the patterns in the
+  definition were hints to the browser only.
+- **Documents follow the CV intake rules.** The server derives the key, the
+  type is sniffed from the bytes (PDF, JPEG or PNG), size is capped at 10 MB, a
+  rejected object is deleted, and completing twice is a retry.
+- **Each decision is mirrored onto `employers.kyb_status`**, the column the
+  publish trigger reads, through `employer.service.set_kyb_status` only. A
+  profile edit cannot set it.
+- **Jobs.** DRAFT -> PUBLISHED -> PAUSED -> PUBLISHED -> CLOSED. CLOSED is
+  terminal. A job is editable only as a draft or while paused, so nobody applies
+  on terms that are then changed. A smuggled `status` is a 422.
+- **Invariant 8 is held twice**: a service check that can say what to do, and
+  the trigger that nothing can route around. The trigger re-checks on
+  PAUSED -> PUBLISHED, so losing verification keeps a paused job off the board.
+  Tested with the switch on, and through a direct repository call.
+- **Threshold preview is treated as the leak vector the plan names.** Thresholds
+  in steps of ten, counts floored to the nearest ten, anything under ten
+  reported only as "fewer than ten", 30 previews an hour per organisation.
+- **The Week 2 path works through the API alone**: sign up, complete KYB,
+  publish a job. Tested end to end, with nothing set behind the API's back.
+
+### Found while building
+
+- **`reference.INDIAN_STATES` did not exist.** Both the KYB and college forms
+  name it as an options source, so every state an employer chose would have been
+  refused. Added in `app/core/reference.py`, where both modules can use it
+  without importing each other.
+- **KYB submissions had nowhere to store their answers.** Added `answers`,
+  `form_version`, and a partial unique index allowing one open submission per
+  organisation.
+- **No reviewer can exist** (E10). A membership needs a tenant, and tenants are
+  only EMPLOYER or COLLEGE. KYB and integrity review actions are built and tested
+  in their services, with no routes until platform-staff tenancy is decided.
+
+### Also today
+
+- **Manual-form CVs now go through Layer 1**, rendered to text without the name
+  or the graduation year (E6 closed in code). A correction to what I told the
+  client: they cannot be scored without a model. Scoring the form directly would
+  give zero for the three judgments only the model makes, so the same career
+  would score lower through the form than through an upload.
+- **Bedrock extractor built**, off by default, with no default model. Terraform
+  grants invoke-only on the four offered models; planned, not applied.
+- **Integrity thresholds are config.** Every number is in
+  `integrity.thresholds`; `thresholds_version` is stored on every signal and
+  check; a bad row stops the check.
+- **Week 1 gate closed.** The cross-tenant suite enumerates every tenant route
+  with an id from the running app, and a new route without a 404 case fails the
+  build. It caught all six Day 10 routes the moment they existed.
+
+### AWS, checked live on 2026-09-13
+
+- **Bedrock:** "account being verified" has cleared, but every model, Amazon
+  Nova included, returns `Operation not allowed`. Claude shows `NOT_AUTHORIZED`
+  and the Anthropic use-case form has not been submitted.
+- **Textract and GuardDuty:** `SubscriptionRequiredException`, in two regions.
+  The Health dashboard does not show per-account service activation. Needs a
+  support case.
+
+### Owed
+
+- The subscription gate on jobs and KYB (Day 15; pay-first, R13).
+- Reviewer routes for KYB and integrity (E10).
+- Model choice, the Terraform apply, and AWS service activation. Until then the
+  Week 2 gate's "20 real resumes, upload to score" cannot run.
+
+---
+
+## 2026-09-13 — Day 9: integrity on real CVs, suppression inside discovery, employer tenancy
 
 **+80 tests.** Built in the same working tree, at the same time, as the streak
 work in the next entry, by a second session. Neither overwrote the other, the

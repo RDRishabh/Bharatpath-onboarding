@@ -29,3 +29,7 @@ async def visible_candidate_ids(
 
 async def is_candidate_visible(session: AsyncSession, *, candidate_id: uuid.UUID) -> bool:
     return await repository.is_candidate_visible(session, candidate_id=candidate_id)
+
+
+async def count_visible_at_or_above(session: AsyncSession, *, min_score: int) -> int:
+    return await repository.count_visible_at_or_above(session, min_score=min_score)
