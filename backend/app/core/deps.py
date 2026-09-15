@@ -17,15 +17,19 @@ the wrong thing to do about it.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import membership as membership_lookup
 from app.core.auth.provider import get_identity_provider
-from app.core.auth.users import resolve_or_create_user
+from app.core.auth.tokens import VerifiedToken
+from app.core.auth.users import AuthenticatedUser, resolve_or_create_user
 from app.core.db import get_db
+from app.core.entitlements import has_active_subscription
 from app.core.errors import (
     AccessWindowExpiredError,
     KybRequiredError,
@@ -33,7 +37,7 @@ from app.core.errors import (
     SubscriptionRequiredError,
     UnauthenticatedError,
 )
-from app.core.tenant import TenantContext
+from app.core.tenant import Membership, TenantContext
 
 # --- roles, SRS 1.2 -------------------------------------------------------
 CANDIDATE = "CANDIDATE"
@@ -65,6 +69,35 @@ ALL_ROLES: frozenset[str] = frozenset(
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
+async def _authenticate(
+    session: AsyncSession, authorization: str | None
+) -> tuple[AuthenticatedUser, VerifiedToken]:
+    """Steps 1 and 2 of `current_user`: verify the token, resolve the user.
+
+    Shared with `current_business_identity` so the two can never disagree
+    about what a valid credential is. A second copy of this is exactly where
+    the `account_inactive` check would quietly go missing.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise UnauthenticatedError()
+
+    raw_token = authorization[7:].strip()
+    if not raw_token:
+        raise UnauthenticatedError()
+
+    provider = get_identity_provider()
+    token = await provider.verify(raw_token)  # raises InvalidTokenError
+
+    user = await resolve_or_create_user(
+        session, provider=provider, raw_token=raw_token, token=token
+    )
+    if user.status != "ACTIVE":
+        # Suspended and deleted users hold tokens that are still
+        # cryptographically valid. The account state is ours to enforce.
+        raise UnauthenticatedError(code="account_inactive")
+    return user, token
+
+
 async def current_user(
     session: DbSession,
     authorization: Annotated[str | None, Header()] = None,
@@ -88,23 +121,7 @@ async def current_user(
     are different authentication models with different assurance -- the
     business pool requires software-token MFA and the candidate pool does not.
     """
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise UnauthenticatedError()
-
-    raw_token = authorization[7:].strip()
-    if not raw_token:
-        raise UnauthenticatedError()
-
-    provider = get_identity_provider()
-    token = await provider.verify(raw_token)  # raises InvalidTokenError
-
-    user = await resolve_or_create_user(
-        session, provider=provider, raw_token=raw_token, token=token
-    )
-    if user.status != "ACTIVE":
-        # Suspended and deleted users hold tokens that are still
-        # cryptographically valid. The account state is ours to enforce.
-        raise UnauthenticatedError(code="account_inactive")
+    user, token = await _authenticate(session, authorization)
 
     membership = await membership_lookup.resolve(session, user.id)
 
@@ -136,6 +153,53 @@ async def current_user(
 CurrentUser = Annotated[TenantContext, Depends(current_user)]
 
 
+@dataclass(frozen=True, slots=True)
+class BusinessIdentity:
+    """A verified business-pool account, **with or without a membership**.
+
+    `current_user` refuses a business account that belongs to no tenant --
+    rightly, for every route that reads tenant data. But that makes the first
+    step of employer onboarding unreachable: an account cannot create its
+    organisation if it must already belong to one.
+
+    So this exists, and it is deliberately **not** a `TenantContext`. It has
+    no role and no tenant id to confuse with one, and a route that takes it
+    cannot accidentally read tenant data as though authorised to.
+    """
+
+    user_id: UUID
+    membership: Membership | None
+
+
+async def current_business_identity(
+    session: DbSession,
+    authorization: Annotated[str | None, Header()] = None,
+) -> BusinessIdentity:
+    """For the handful of routes a business account needs before it has a tenant.
+
+    Today that is creating an organisation and reading the vocabularies its
+    form needs. **Adding a route here is adding a way into the product that
+    skips the membership check**, so each one should be as narrow as those
+    two are.
+
+    The business Cognito pool is admin-create-only, so this is reachable only
+    by accounts we provisioned. If the client ever opens self-registration
+    (R15 says an employer "signs up"), this dependency is what makes that work
+    without a code change -- and it is also what starts admitting strangers.
+    """
+    user, token = await _authenticate(session, authorization)
+    if token.pool != "BUSINESS":
+        raise PermissionDeniedError(code="business_account_required")
+
+    membership = await membership_lookup.resolve(session, user.id)
+    if membership is not None and membership.role == CANDIDATE:
+        raise PermissionDeniedError(code="pool_role_mismatch")
+    return BusinessIdentity(user_id=user.id, membership=membership)
+
+
+CurrentBusinessIdentity = Annotated[BusinessIdentity, Depends(current_business_identity)]
+
+
 def require_role(*roles: str) -> Callable[[TenantContext], Awaitable[TenantContext]]:
     """Authorisation is by role, never by URL prefix.
 
@@ -163,16 +227,47 @@ def require_tenant() -> Callable[[TenantContext], Awaitable[TenantContext]]:
     return _dep
 
 
-async def require_active_subscription(user: CurrentUser) -> TenantContext:
+async def require_active_subscription(user: CurrentUser, session: DbSession) -> TenantContext:
     """Pay-first, for all three audiences (R13).
 
     Sign-up creates an account; everything else needs payment. A lapsed
     subscriber keeps their account and their score history and loses access -
     they never lose data.
 
-    TODO(Day 11/15): read the subscription state.
+    **A candidate is entitled by a personal subscription OR by an active
+    college seat** (client, 2026-09-12, closing C12). A seated student pays us
+    nothing and must still get in, so this is a check with two limbs and a
+    seated student failing it would be a college's entire cohort locked out of
+    something the college has already paid for.
+
+    The seat limb is the one with a lifecycle: a personal subscription lapses
+    on a date this user controls, a seat is withdrawn by someone else - the
+    college not renewing, or an admin reassigning it. Both must be read live.
+    **Do not cache the answer**; `require_active_access_window` below carries
+    the same warning for the same reason.
+
+    A candidate subscribes as a USER; an employer or college as its TENANT.
+    **Put a role guard before this one** in a route's dependencies, so a caller
+    with the wrong role is told 403 rather than invited to pay for a surface
+    they cannot use.
+
+    **The seat limb is not built yet, and cannot be.** `college_seats` is one
+    allowance row per college with no per-student assignment, so there is
+    nothing to ask "does this student hold a seat?" of. It lands with seat
+    assignment on Day 17. Until then a seated student is refused, which is
+    the safe direction: no college has been sold a seat yet.
     """
-    raise SubscriptionRequiredError()
+    if user.tenant_id is None:
+        paying = await has_active_subscription(
+            session, subscriber_type="USER", subscriber_id=user.user_id
+        )
+    else:
+        paying = await has_active_subscription(
+            session, subscriber_type="TENANT", subscriber_id=user.tenant_id
+        )
+    if not paying:
+        raise SubscriptionRequiredError()
+    return user
 
 
 async def require_active_access_window(user: CurrentUser) -> TenantContext:

@@ -274,7 +274,8 @@ bharatpath-backend/
 │   │   ├── analytics/             # cohort aggregates, placement tracking
 │   │   ├── admin/                 # queues, drill-downs, disputes
 │   │   ├── notifications/         # event → channel fan-out, templates
-│   │   └── privacy/               # export and deletion requests, DSR tracking
+│   │   ├── privacy/               # export and deletion requests, DSR tracking
+│   │   └── engagement/            # ADDED 2026-09-13: daily streaks + engagement points — never the score (docs/streaks.md)
 │   │
 │   └── tasks/                     # Celery task definitions, thin wrappers over services
 │
@@ -1793,22 +1794,28 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 | 2 | Schema, RLS, audit, idempotency, outbox, OpenAPI stub publish | ☑ **done 2026-08-30** |
 | 3 | Cognito: pools, JWKS, phone OTP, Google, email | ◐ **partial 2026-09-11** — JWKS verification, local provider and the identity surface are in and CI-green (PR #2). Pools are **applied and verified** (`infra/terraform`). Phone OTP and Google are blocked — see below. |
 | 4 | MFA, memberships, role/tenant deps (anonymous flow removed in v4) | ◐ **partial 2026-09-11** — memberships and role/tenant deps done, cached 60s in Redis. Business-pool MFA is applied (software-token, required). |
-| 5 | Cross-tenant suite, permission matrix — **Week 1 gate** | ◐ **partial 2026-09-11** — permission matrix green across all 10 roles; no-anonymous-access enforced structurally for every documented route. Cross-tenant is proven at the database layer only — the HTTP-layer suite needs the Week 2 endpoints to exist. |
-| 6 | Resume upload, scan, parse task | ☐ |
-| 7 | Versions, review, confirm gate, status polling | ☐ |
-| 8 | **Scoring: extraction + rubric, caps, replay-from-storage — invariants 1, 2, 3, 4′** | ☐ |
-| 9 | Integrity engine (no duplicate rule), suppression, employer tenancy + type/industry | ☐ |
-| 10 | KYB (auto-approve default), jobs, publish gate — **invariant 8, Week 2 gate** | ☐ |
-| 11 | Job search, eligibility, apply, withdraw | ☐ |
+| 5 | Cross-tenant suite, permission matrix — **Week 1 gate** | ☑ **done 2026-09-13** — permission matrix across all 10 roles, no-anonymous-access, audit append-only and revocation tests, and a cross-tenant suite that enumerates every tenant route with an id from the running app: tenant A asking for tenant B's resource must be a 404, and a new route without a case fails the build. |
+| 6 | Resume upload, scan, parse task | ◐ **partial 2026-09-11, extended 09-12** — 5 endpoints, presigned upload, local parsers (pypdf/python-docx) with **Textract as an OCR fallback behind a length floor**, parse task idempotent by file id, `parser`/`parser_version` stored per extraction. Day 7 added the terminal `parse_status` the parse task now writes on every exit. **Malware scanning is a seam with nothing behind it** (E1) and Textract is waiting on AWS account activation (E2). |
+| 7 | Versions, review, confirm gate, status polling | ☑ **done 2026-09-12** — 4 endpoints (history, review, edit, confirm). Edits create versions and never update one; the chain **cannot fork** (unique index on `supersedes_id`) and `confirmed_at` is a **latch** (conditional UPDATE), so confirming twice is a retry and no path can move the timestamp. `parse_status` makes the 202 pollable to a terminal state. **SRS 1.4.4 is enforced on three levels**: a SQL predicate, a new import-linter contract making resume's internals private, and a tripwire that fails the build if Day 8 wires scoring to `version_created` instead of `version_confirmed`. |
+| 8 | **Scoring: extraction + rubric, caps, replay-from-storage — invariants 1, 2, 3, 4′** | ◐ **substantially done** — Layer 2, the extraction cache, persistence, replay, the display floor and the confirm-gated trigger (2026-09-12). **Bedrock extractor built 2026-09-13**, off by default; manual-form CVs go through it as rendered text. Owed: a model choice, the Terraform apply, AWS service activation, and the shareable card. |
+| 9 | Integrity engine (no duplicate rule), suppression, employer tenancy + type/industry | ◐ **substantially done 2026-09-13** — integrity wired to scoring, HIGH suppression inside the one discovery CTE (fail-closed, candidate-wide, CONFIRMED keeps suppressing), employer tenancy with the three roles, and **rule thresholds now versioned config** (`integrity.thresholds`). Owed: reviewer-queue routes, blocked on platform-staff tenancy (blockers E10). |
+| 10 | KYB (auto-approve default), jobs, publish gate — **invariant 8, Week 2 gate** | ☑ **done 2026-09-13** — KYB state machine with the `kyb.require_approval` switch (off: approved on arrival; on: waits for review), server-side form validation, document upload, and the decision mirrored onto `employers.kyb_status`. Jobs lifecycle, editable only as draft or paused, publish gated in service and trigger, and a coarse, rate-limited threshold preview. Sign up → KYB → publish works through the API. **Week 2 gate partly met:** invariants 1, 2, 3, 4′ and 8 are green, but the 20-real-resume run waits on a working model. |
+| 11 | Job search, eligibility, apply, withdraw | ☑ **done 2026-09-15** — candidate job board (`/candidate/jobs`: search, filters, keyset cursor, detail) and the candidate's applications (`/candidate/applications`: apply, list, read, withdraw). **Pay-first is live**: `require_active_subscription` reads `subscriptions` on every request, never cached, and gates search and apply. Eligibility is judged on the stored score and returned as ELIGIBLE / BELOW_THRESHOLD / SCORE_PENDING, **the threshold itself never shown**. Apply is idempotent by the partial unique index, follows the discovery visibility rule, and is held in the database by five candidate RLS policies and a `(job_id, tenant_id)` foreign key. Owed: the seat limb (Day 17), and the gate on score and resume routes (Day 15, when a subscription can be bought). |
 | 12 | Stage machine, events, hire confirm, expiry | ☐ |
 | 13 | Masked discovery, filters, search indexes | ☐ |
 | 14 | **Access windows, reveal audit, abuse controls — invariants 7, 7′** | ☐ |
-| 15 | Payments, **subscriptions, courses**, signed callbacks, entitlements — **Week 3 gate** | ☐ |
-| 16 | Questionnaire, device check, audio session, chunk upload | ☐ |
-| 17 | Evaluation stubs, college tenant + **seats + referral codes**, roster import | ☐ |
+| 15 | Payments, **subscriptions, courses**, signed callbacks, entitlements — **Week 3 gate** | ☐ — no machinery yet, but its **content dependency is cleared**: the price list (11 plans + 2 products) and the course syllabus exist as data (`subscriptions/catalogue.py`, `courses/catalogue.py`). **C12 closed 2026-09-12 settles the entitlement rule**: a candidate is entitled by a personal subscription **OR** an active college seat, read live and never cached. The seat limb lands on Day 17; build the check with two limbs from the start. |
+| 16 | Questionnaire, device check, audio session, chunk upload | ☐ — content dependency cleared: **questionnaire and interview banks plus the evaluation rubric** are built (`questionnaire/bank.py`, `interview/bank.py`). |
+| 17 | Evaluation stubs, college tenant + **seats + referral codes**, roster import | ☐ — content dependency cleared: college onboarding form and seat-tier plans exist. **C12 closed 2026-09-12 — and it was a build question after all**: a seat *replaces* the student's subscription, so `college_seats` is an entitlement row, not an allowance counter. Withdrawing a seat is an access change. Prices rebuilt ~2.7x. |
 | 18 | **Consent scopes, cohort analytics — invariant 9** | ☐ |
-| 19 | Admin queues, drill-downs, disputes, **seats + suspension**, notifications + **nudges** | ☐ |
+| 19 | Admin queues, drill-downs, disputes, **seats + suspension**, notifications + **nudges** | ☐ — content dependency cleared: 21 message templates drafted and 8 locale bundles shipped. **Sending is gated on DLT registration** (D1, 2–4 weeks, not started on the template side). |
 | 20 | Privacy, rate limits, index review, handover — **Week 4 gate** | ☐ |
+
+**Added outside the twenty days**
+
+| Added | Feature | Status |
+|---|---|---|
+| 2026-09-13 | **Daily streaks and engagement points** (client request) — `engagement` module, 3 endpoints | ☑ **built 2026-09-13** — current/longest streak, last active date, −10 per break, +10/+15/+20 at 30/90/365 days, all numbers in `config_values`. **Built as a separate balance, not the score:** applied to the score the request breaks invariants 1, 2, 3 and 4′, so `engagement` and `scoring` are made independent by an import-linter contract and an invariant test. Eight decisions (S1–S8) await client confirmation. See [`streaks.md`](streaks.md). |
 
 ### Invariant coverage
 
@@ -1816,11 +1823,11 @@ machinery either way, but it ships with placeholder numbers unless these land. A
 |---|---|---|---|
 | 5 | No age-gating | Day 1 | ☑ **green** |
 | 6 | No financial framing | Day 1 | ☑ **green** |
-| 1 | Score reproducible — **incl. add-ons and the stored extraction chain** | Day 8 | ☐ |
-| 2 | Scale **700–990**; base not floor; stored == displayed | Day 8 | ☐ |
-| 3 | Score not human-editable, **directly or indirectly** | Day 8 | ☐ |
-| **4′** | **Add-on contributions bounded and versioned** | Day 8, re-verified Day 16 | ☐ |
-| 8 | No publish before KYB *(gate built, flag defaults open)* | Day 10 | ☐ |
+| 1 | Score reproducible — **incl. add-ons and the stored extraction chain** | Day 8 | ☑ **green 2026-09-12** — `replay(score_id)` re-runs Layers 2 and 3 over the stored model response and **never calls the model**; a mismatch raises rather than returning a different number. Tested with add-on contributions, not only base scores. The 35-profile golden corpus still gates the rubric half. |
+| 2 | Scale **700–990**; base not floor; stored == displayed | Day 8 | ☑ **green 2026-09-12** — CHECK constraints hold the range and the component sum; `display_value` applies the floor at the serialization boundary **and nowhere else**, so what is stored is what was computed. Asserted across all 291 values in range. |
+| 3 | Score not human-editable, **directly or indirectly** | Day 8 | ☑ **green 2026-09-12** — `repository.insert_score` is the only write path and there is deliberately no update or delete function; the app role holds no UPDATE or DELETE grant on `scores`, proven by `test_scores_are_insert_only` rather than assumed. |
+| **4′** | **Add-on contributions bounded and versioned** | Day 8, re-verified Day 16 | ☑ **green 2026-09-12** — now exercised end to end through the real write path: a caller asking for 500 course points and 500 interview points gets 90, and `base + addon = raw` still holds. `contribution_version` is stored on every row. |
+| 8 | No publish before KYB *(gate built, flag defaults open)* | Day 10 | ☑ **green 2026-09-13** — service check plus the Postgres trigger, re-checked on PAUSED → PUBLISHED, and tested with `kyb.require_approval` on, and through a direct repository call. |
 | 7 | Masked without an active access window, **raw score never revealed** | Day 14 | ☐ |
 | **7′** | **Every PII reveal audited, under blanket access** | Day 14 | ☐ |
 | 9 | Consent and audit | Day 18 | ☐ |
@@ -1885,6 +1892,7 @@ Resolved by the client's comments and note. Full detail in [§13](#13-decisions-
 | **N7** | **🔴 Course content — who produces it, what format, how completion is determined** | **Scope** | Now / Day 15 | ☐ **Open — never asked** |
 | **N8** | **Plans, prices, course catalogue** | Decision | Day 15 | ☐ **Open — never asked** |
 | **N9** | **Language list (6–8) and who funds translation** | Soft | Day 19 | ☐ Open |
+| **S1** | **Streak points: separate from the score (as built), and what are they for?** Plus S2–S8 on the rules — [`streaks.md`](streaks.md) §7 | Decision | Before launch | ☐ **Open — never asked** |
 
 ### Infrastructure readiness — confirm before Day 1
 

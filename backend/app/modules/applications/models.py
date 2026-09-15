@@ -18,6 +18,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     String,
     Text,
@@ -28,20 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.mixins import TenantScoped, Timestamps, UUIDPrimaryKey
-
-# PRD section 9 / SRS 1.20.5. A fixed set, not a configurable pipeline.
-STAGES = (
-    "SUBMITTED",
-    "VIEWED",
-    "SHORTLISTED",
-    "INTERVIEW",
-    "DECISION",
-    "HIRED",
-    "REJECTED",
-    "WITHDRAWN",
-    "EXPIRED",
-)
-TERMINAL_STAGES = ("HIRED", "REJECTED", "WITHDRAWN", "EXPIRED")
+from app.modules.applications.domain import STAGES, TERMINAL_STAGES
 
 _STAGE_LIST = ", ".join(f"'{s}'" for s in STAGES)
 _TERMINAL_LIST = ", ".join(f"'{s}'" for s in TERMINAL_STAGES)
@@ -56,11 +44,8 @@ class Application(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
 
     __tablename__ = "applications"
 
-    job_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("jobs.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    # Foreign key together with `tenant_id`; see `fk_applications_job_tenant`.
+    job_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     candidate_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -81,6 +66,18 @@ class Application(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
 
     __table_args__ = (
         CheckConstraint(f"stage IN ({_STAGE_LIST})", name="ck_applications_stage"),
+        # **The tenant an application is filed under is its job's tenant, and
+        # nothing else can be.** A candidate writes this row, and a candidate
+        # has no tenant of their own to bind; a single-column key on `job_id`
+        # would let the row claim any tenant and land in the wrong employer's
+        # pipeline. Referential checks ignore RLS, so this holds for every
+        # writer.
+        ForeignKeyConstraint(
+            ["job_id", "tenant_id"],
+            ["jobs.id", "jobs.tenant_id"],
+            name="fk_applications_job_tenant",
+            ondelete="CASCADE",
+        ),
         # The duplicate-application rule, as a database guarantee.
         Index(
             "uq_application_active",

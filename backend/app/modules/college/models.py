@@ -68,9 +68,24 @@ class CollegeSeat(Base, Timestamps):
     One payment per period covering up to N students - mirroring the employer
     model rather than the tiers the employer side rejected.
 
+    **A seat replaces the student's own subscription entirely** (client,
+    2026-09-12, closing C12): *"Student does not pay if the college has paid
+    for it."* Two things follow, and neither is optional.
+
+    First, `seats_used` is not bookkeeping. It is the count of students whose
+    access this row is paying for, so an off-by-one here is either a student
+    locked out of something bought for them or a student we are carrying free.
+
+    Second, **this row is an entitlement**, which makes withdrawing a seat an
+    access change rather than an administrative one. A student whose seat goes
+    away loses access unless they buy their own - see `require_active_-
+    subscription`, whose second limb this is.
+
     OPEN: what happens at the 501st student on a 500-seat plan? We recommend
     blocking, because it is the only option that cannot produce a surprise
-    invoice. Awaiting the client (docs/questions.txt section 2C).
+    invoice. Awaiting the client (docs/questions.txt section 2C). **C12 raises
+    the stakes on it**: over-allocating no longer just over-serves a seat, it
+    gives away a full subscription.
     """
 
     __tablename__ = "college_seats"

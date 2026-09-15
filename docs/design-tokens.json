@@ -1,0 +1,69 @@
+{
+  "$comment": "Source of truth for design tokens. See design-system.md for why each value is what it is. Consumed by the mobile app and the three web front-ends; changing a value here changes all four.",
+  "version": "placeholder-1-2026-09-11",
+  "color": {
+    "light": {
+      "bg": "#FFFFFF",
+      "surface": "#F6F7F9",
+      "border": "#D8DDE3",
+      "text": "#111820",
+      "text-muted": "#525F6D",
+      "accent": "#0E7C66",
+      "accent-text": "#FFFFFF",
+      "success": "#1B6B3A",
+      "warning": "#8A5A00",
+      "danger": "#A32020",
+      "focus": "#1A56DB"
+    },
+    "dark": {
+      "bg": "#0F1419",
+      "surface": "#171D24",
+      "border": "#2A333D",
+      "text": "#F2F5F8",
+      "text-muted": "#9AA8B6",
+      "accent": "#2FA98E",
+      "accent-text": "#06201B",
+      "success": "#3FA168",
+      "warning": "#D79A2B",
+      "danger": "#E06767",
+      "focus": "#7BA4F5"
+    }
+  },
+  "font": {
+    "$comment": "Noto per script. Subset and lazy-load per locale: shipping all seven families is several megabytes on a connection billed by the megabyte.",
+    "family": {
+      "en": "Noto Sans",
+      "hi": "Noto Sans Devanagari",
+      "mr": "Noto Sans Devanagari",
+      "bn": "Noto Sans Bengali",
+      "te": "Noto Sans Telugu",
+      "ta": "Noto Sans Tamil",
+      "gu": "Noto Sans Gujarati",
+      "kn": "Noto Sans Kannada"
+    },
+    "scale": {
+      "display": { "size": 32, "lineHeight": 40, "weight": 700 },
+      "h1": { "size": 24, "lineHeight": 32, "weight": 600 },
+      "h2": { "size": 20, "lineHeight": 28, "weight": 600 },
+      "body": { "size": 16, "lineHeight": 24, "weight": 400 },
+      "body-strong": { "size": 16, "lineHeight": 24, "weight": 600 },
+      "small": { "size": 14, "lineHeight": 20, "weight": 400 },
+      "label": { "size": 13, "lineHeight": 16, "weight": 600 }
+    },
+    "minimumSize": 13
+  },
+  "space": [4, 8, 12, 16, 24, 32, 48],
+  "radius": { "control": 8, "card": 12, "pill": 999 },
+  "touchTarget": { "minimum": 48, "minimumGap": 8 },
+  "motion": {
+    "stateChange": 150,
+    "transition": 250,
+    "$comment": "All motion is disabled under prefers-reduced-motion, and nothing may depend on an animation completing."
+  },
+  "score": {
+    "$comment": "INVARIANT 6, as a visual rule. The score is never drawn as a red-to-green gauge, dial or speedometer: that is the visual language of an Indian credit bureau score, and the resemblance is the legal risk check_vocabulary.py exists to hold back. A picture makes it stronger than any word could. Use a position marker on a neutral track, in a single hue.",
+    "forbiddenForms": ["gauge", "speedometer", "dial", "needle", "traffic-light"],
+    "ramp": "single-hue-accent",
+    "bandLabels": ["ENTRY", "DEVELOPING", "SOLID", "STRONG"]
+  }
+}

@@ -28,6 +28,15 @@ os.environ.setdefault("ENVIRONMENT", "local")
 # of a deployed environment.
 os.environ.setdefault("AUTH_ALLOW_LOCAL_TOKENS", "true")
 
+# Complete `Base.metadata` for every test, not just the ones that happen to
+# build the app. A test that imports one module's models alone cannot resolve
+# a foreign key into another module's table, and the failure
+# (`NoReferencedTableError`) points at SQLAlchemy rather than at the missing
+# import. See app/core/metadata.py.
+from app.core.metadata import load_all_models
+
+load_all_models()
+
 
 @pytest.fixture(scope="session")
 def app():

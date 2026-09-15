@@ -31,6 +31,61 @@ forbidden_modules =
     app.modules.scoring
 
 ; ---------------------------------------------------------------------------
+; SRS 1.4.5 — integrity detection never directly modifies the score.
+;
+; A dishonest CV is handled by a human looking at it. The alternative — a
+; quiet deduction the candidate can neither see nor appeal — is the thing this
+; contract exists to make impossible to add by accident. `integrity` raises
+; signals; `discovery` suppresses on them; neither path runs through `scoring`.
+; ---------------------------------------------------------------------------
+[importlinter:contract:integrity-never-imports-scoring]
+name = Integrity detection must not import scoring (SRS 1.4.5)
+type = forbidden
+source_modules =
+    app.modules.integrity
+forbidden_modules =
+    app.modules.scoring
+
+; ---------------------------------------------------------------------------
+; Streak points never move the score, and the score never reads streaks.
+;
+; The client asked for streak points (2026-09-13): -10 for a missed day, +10 /
+; +15 / +20 at 30 / 90 / 365 days. Applied to the score, that breaks
+; invariants 1, 2, 3 and 4-prime at once -- a -10 takes a score below its 700
+; base, milestones take it past 990, and "opened the app" is not an input any
+; replay can reproduce. So they are a separate balance, and this contract is
+; what keeps them separate: independence, so neither module can reach the
+; other directly or through a third. See docs/streaks.md section 2.
+; ---------------------------------------------------------------------------
+[importlinter:contract:engagement-and-scoring-are-independent]
+name = Streak points never move the score (docs/streaks.md)
+type = independence
+modules =
+    app.modules.engagement
+    app.modules.scoring
+
+; ---------------------------------------------------------------------------
+; Engagement points are not an employer signal.
+;
+; A streak measures how often someone opens an app, not whether they can do a
+; job. Shown to an employer it becomes a second, unexplained ranking -- and
+; one that penalises a candidate for being busy, ill, or offline. Changing
+; that is a client decision, not an import.
+; ---------------------------------------------------------------------------
+[importlinter:contract:engagement-is-not-an-employer-signal]
+name = Employer and college surfaces never read engagement points
+type = forbidden
+source_modules =
+    app.modules.employer
+    app.modules.jobs
+    app.modules.applications
+    app.modules.discovery
+    app.modules.college
+    app.modules.analytics
+forbidden_modules =
+    app.modules.engagement
+
+; ---------------------------------------------------------------------------
 ; Layering inside every module: routers -> services -> repositories.
 ; A router that touches a repository has skipped the transaction boundary
 ; and the business rules with it.
@@ -58,6 +113,13 @@ forbidden_modules =
 [importlinter:contract:module-privacy]
 name = A module's repository and models are private to it
 type = forbidden
+; `allow_indirect_imports`, for the third time in this file and for the same
+; reason as `layers` and `resume-internals-are-private`. Without it this also
+; forbids employer.service -> identity.service -> identity.repository: the
+; path this contract exists to push cross-module traffic INTO. It stayed
+; invisible from Day 1 until Day 9 because no module called identity.service
+; until employer tenancy did. The rule is about the DIRECT import.
+allow_indirect_imports = True
 source_modules =
     app.modules.candidate
     app.modules.resume
@@ -78,9 +140,61 @@ source_modules =
     app.modules.admin
     app.modules.notifications
     app.modules.privacy
+    app.modules.engagement
 forbidden_modules =
     app.modules.identity.repository
     app.modules.identity.models
+
+; ---------------------------------------------------------------------------
+; SRS 1.4.4 — the confirm gate has exactly one door.
+;
+; An unconfirmed resume version must never reach scoring. That rule lives in
+; `resume.service.get_scorable_version`, which is the only function that
+; filters on `confirmed_at IS NOT NULL`.
+;
+; A rule in a service is only a rule while the service is the only way in.
+; `resume.repository` has `list_versions` and `get_version`, both of which
+; return unconfirmed rows quite correctly — they serve the review screen. A
+; scoring module that imported the repository directly would reach those, and
+; the gate would be bypassed by a caller who never knew it was there.
+;
+; So resume's internals are private to resume, exactly as identity's are, and
+; every other module goes through the service. `resume` itself is absent from
+; the source list because a module importing its own repository is the design.
+; ---------------------------------------------------------------------------
+[importlinter:contract:resume-internals-are-private]
+name = The confirm gate is the only route to a resume version (SRS 1.4.4)
+type = forbidden
+; `allow_indirect_imports` for the same reason the `layers` contract above
+; needs it, and it bit here exactly as it bit there. Without it this also
+; forbids scoring.service -> resume.service -> resume.repository, which is the
+; intended path and the one this contract exists to funnel traffic INTO. The
+; rule is about the DIRECT import: reaching past the service, not reaching
+; through it.
+allow_indirect_imports = True
+source_modules =
+    app.modules.candidate
+    app.modules.scoring
+    app.modules.integrity
+    app.modules.questionnaire
+    app.modules.interview
+    app.modules.courses
+    app.modules.employer
+    app.modules.kyb
+    app.modules.jobs
+    app.modules.applications
+    app.modules.discovery
+    app.modules.billing
+    app.modules.subscriptions
+    app.modules.college
+    app.modules.analytics
+    app.modules.admin
+    app.modules.notifications
+    app.modules.privacy
+    app.modules.engagement
+forbidden_modules =
+    app.modules.resume.repository
+    app.modules.resume.models
 
 ; ---------------------------------------------------------------------------
 ; domain.py is pure. No I/O, no DB, no HTTP, no clock, no randomness that

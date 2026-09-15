@@ -113,6 +113,24 @@ async def set_transaction_tenant(session: AsyncSession, tenant_id: UUID) -> None
     )
 
 
+async def set_transaction_user(session: AsyncSession, user_id: UUID) -> None:
+    """Bind `app.user_id` for the current transaction only. Candidates only.
+
+    A candidate belongs to no tenant, so the tenant policies show them nothing.
+    The candidate policies (`current_candidate_id()` in the baseline) read this
+    instead, and honour it only when no tenant is bound and the id is an active
+    candidate account -- so binding a business user's id here grants nothing.
+
+    Same rules as `set_transaction_tenant`: the value comes from the verified
+    token, never from a request, and `set_config(..., true)` keeps it from
+    outliving the transaction on a pooled connection.
+    """
+    await session.execute(
+        text("SELECT set_config('app.user_id', :uid, true)"),
+        {"uid": str(user_id)},
+    )
+
+
 @asynccontextmanager
 async def tenant_session(tenant_id: UUID | None) -> AsyncIterator[AsyncSession]:
     """Open a session scoped to one tenant for the life of one transaction.

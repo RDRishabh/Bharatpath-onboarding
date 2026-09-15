@@ -89,6 +89,8 @@ def upgrade() -> None:
     _enable_row_level_security()
     _apply_append_only_grants()
     _create_publish_gate_trigger()
+    _create_published_at_stamp()
+    _create_candidate_marketplace_access()
 
 
 def downgrade() -> None:
@@ -238,8 +240,11 @@ def _create_candidate_tables() -> None:
         "resume_extractions",
         "scores",
         "integrity_signals",
+        "integrity_checks",
         "device_checks",
         "dsr_requests",
+        "user_streaks",
+        "streak_point_events",
     )
 
 
@@ -342,6 +347,10 @@ def _apply_append_only_grants() -> None:
     # the score, a mutable completion row is a mutable score.
     op.execute(f"REVOKE UPDATE, DELETE ON course_completions FROM {APP_ROLE}")
 
+    # The engagement-points ledger. Not a score, but it is a balance a
+    # candidate sees, and one that could be rewritten would explain nothing.
+    op.execute(f"REVOKE UPDATE, DELETE ON streak_point_events FROM {APP_ROLE}")
+
 
 # ---------------------------------------------------------------------------
 # Invariant 8 -- no job publish before KYB approval
@@ -405,5 +414,182 @@ def _create_publish_gate_trigger() -> None:
         CREATE TRIGGER trg_enforce_kyb_before_publish
           BEFORE INSERT OR UPDATE OF status ON jobs
           FOR EACH ROW EXECUTE FUNCTION enforce_kyb_before_publish();
+        """
+    )
+
+
+# ---------------------------------------------------------------------------
+# Day 11 -- a published job always knows when it was published
+# ---------------------------------------------------------------------------
+def _create_published_at_stamp() -> None:
+    """Stamp `published_at` on the way into PUBLISHED, in the database.
+
+    The candidate board pages on `(published_at, id)`, and a keyset cursor over
+    a nullable column skips or repeats rows. The service already sets the
+    column; this makes it true for every other writer too -- fixtures and data
+    migrations insert PUBLISHED rows directly. `ck_jobs_published_at` then
+    holds it. A separate trigger from the KYB gate, so that function keeps
+    doing exactly one thing.
+    """
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION stamp_published_at()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF NEW.status = 'PUBLISHED' AND NEW.published_at IS NULL THEN
+            NEW.published_at := now();
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_stamp_published_at
+          BEFORE INSERT OR UPDATE OF status ON jobs
+          FOR EACH ROW EXECUTE FUNCTION stamp_published_at();
+        """
+    )
+
+
+# ---------------------------------------------------------------------------
+# Day 11 -- what a candidate may read and write under Row-Level Security
+# ---------------------------------------------------------------------------
+#: Policies added for candidates, who belong to no tenant. Listed so the count
+#: `reset_local_db.sh` prints can be reconciled: 12 tenant policies plus these.
+CANDIDATE_POLICIES = (
+    "jobs_candidate_board",
+    "employers_candidate_board",
+    "applications_candidate_read",
+    "applications_candidate_apply",
+    "applications_candidate_update",
+)
+
+
+def _create_candidate_marketplace_access() -> None:
+    """A candidate reads the job board and their own applications, and nothing else.
+
+    The tenant policy cannot serve a candidate: they have no tenant, and the
+    board is every employer's published jobs at once. Binding `app.tenant_id`
+    to each employer in turn would be the tenant id coming from somewhere other
+    than a membership, which is the thing SRS 2.24.7 forbids.
+
+    So a second, narrower identity is bound instead: `app.user_id`, set by the
+    candidate services from the verified token (`set_transaction_user`).
+    `current_candidate_id()` turns it into a user id **only** when
+
+      * no tenant is bound -- a business transaction always binds one, so an
+        employer never sees another employer's jobs through these policies;
+      * the id is an ACTIVE account in the CANDIDATE pool.
+
+    Anything else yields NULL, every policy below matches nothing, and the
+    fail-closed property of the tenant policies is kept: a session that binds
+    nothing still reads no jobs (`test_unset_tenant_returns_no_rows_not_all_rows`).
+
+    **Permissive policies OR together**, so these add reach and remove none.
+    They grant SELECT on the board, and INSERT/UPDATE on the candidate's own
+    applications only. Nothing lets a candidate write a job or an employer.
+
+    `job_accepts_applications` is SECURITY DEFINER for the same reason as the
+    KYB trigger, plus one more: an INSERT check on `applications` that read
+    `jobs` under RLS would expand the `jobs` policy, which reads `applications`
+    -- Postgres refuses that as infinite recursion. The function is opaque to
+    the rewriter and reports only whether a job is live, which is public.
+    """
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION current_candidate_id()
+        RETURNS uuid
+        LANGUAGE sql STABLE
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT u.id
+            FROM users u
+           WHERE NULLIF(current_setting('app.tenant_id', true), '') IS NULL
+             AND u.id = NULLIF(current_setting('app.user_id', true), '')::uuid
+             AND u.pool = 'CANDIDATE'
+             AND u.status = 'ACTIVE'
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION job_accepts_applications(p_job_id uuid)
+        RETURNS boolean
+        LANGUAGE sql STABLE
+        SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT EXISTS (
+            SELECT 1 FROM jobs WHERE id = p_job_id AND status = 'PUBLISHED'
+          )
+        $$;
+        """
+    )
+
+    # `(SELECT current_candidate_id())` rather than a bare call: the subquery
+    # form is evaluated once per statement as an InitPlan, not once per row.
+    #
+    # The board shows PUBLISHED jobs, plus any job the candidate has applied
+    # to -- otherwise an application to a job that later closed would lose
+    # its title on the candidate's own Application Board. Board queries still
+    # filter on status explicitly for that reason.
+    op.execute(
+        """
+        CREATE POLICY jobs_candidate_board ON jobs FOR SELECT
+          USING (
+            (SELECT current_candidate_id()) IS NOT NULL
+            AND (
+              status = 'PUBLISHED'
+              OR EXISTS (
+                SELECT 1 FROM applications a
+                 WHERE a.job_id = jobs.id
+                   AND a.candidate_id = (SELECT current_candidate_id())
+              )
+            )
+          )
+        """
+    )
+    # An employer's name, for employers with a job the candidate can see. The
+    # subquery on `jobs` runs under the policy above, so this cannot reach an
+    # employer with nothing on the board.
+    op.execute(
+        """
+        CREATE POLICY employers_candidate_board ON employers FOR SELECT
+          USING (
+            (SELECT current_candidate_id()) IS NOT NULL
+            AND EXISTS (SELECT 1 FROM jobs j WHERE j.tenant_id = employers.tenant_id)
+          )
+        """
+    )
+    op.execute(
+        """
+        CREATE POLICY applications_candidate_read ON applications FOR SELECT
+          USING (candidate_id = (SELECT current_candidate_id()))
+        """
+    )
+    # Applying is checked in the service too; this is the version a direct
+    # repository call cannot route around. The tenant the row is filed under is
+    # held by the composite foreign key to `jobs (id, tenant_id)`, not here.
+    op.execute(
+        """
+        CREATE POLICY applications_candidate_apply ON applications FOR INSERT
+          WITH CHECK (
+            candidate_id = (SELECT current_candidate_id())
+            AND stage = 'SUBMITTED'
+            AND job_accepts_applications(job_id)
+          )
+        """
+    )
+    # No job-status check on update: withdrawing from a job that has since
+    # closed must still work.
+    op.execute(
+        """
+        CREATE POLICY applications_candidate_update ON applications FOR UPDATE
+          USING (candidate_id = (SELECT current_candidate_id()))
+          WITH CHECK (candidate_id = (SELECT current_candidate_id()))
         """
     )

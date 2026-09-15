@@ -54,6 +54,16 @@ class ResumeFile(Base, UUIDPrimaryKey):
     # Type is sniffed from content, never trusted from the filename or the
     # client-declared Content-Type.
     scan_status: Mapped[str] = mapped_column(String(16), default="PENDING", nullable=False)
+
+    # The state the candidate polls. Without it the only observable signal is
+    # "a version exists yet or not", which cannot tell *waiting* apart from
+    # *never going to work* -- so a CV we cannot read leaves the client
+    # polling an endpoint that will never change. See PARSE_STATES.
+    parse_status: Mapped[str] = mapped_column(String(16), default="QUEUED", nullable=False)
+    #: The parser's error code when `parse_status` is FAILED. A code, not a
+    #: sentence: the client renders it in the candidate's own language.
+    parse_error_code: Mapped[str | None] = mapped_column(String(64))
+
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -62,6 +72,16 @@ class ResumeFile(Base, UUIDPrimaryKey):
         CheckConstraint(
             "scan_status IN ('PENDING', 'CLEAN', 'INFECTED', 'FAILED')",
             name="ck_resume_files_scan_status",
+        ),
+        CheckConstraint(
+            "parse_status IN ('QUEUED', 'DONE', 'FAILED', 'BLOCKED')",
+            name="ck_resume_files_parse_status",
+        ),
+        # A code is only meaningful on a failure, and a failure without one
+        # tells the candidate nothing. Both halves, so neither can drift.
+        CheckConstraint(
+            "(parse_status = 'FAILED') = (parse_error_code IS NOT NULL)",
+            name="ck_resume_files_parse_error_code",
         ),
         CheckConstraint("size_bytes > 0", name="ck_resume_files_size_positive"),
         Index("ix_resume_files_user", "user_id", "uploaded_at"),
@@ -99,12 +119,33 @@ class ResumeVersion(Base, UUIDPrimaryKey):
 
     __table_args__ = (
         CheckConstraint(
-            "source IN ('UPLOAD', 'PASTE', 'MANUAL')", name="ck_resume_versions_source"
+            # EDIT is a source in its own right, not a flag on UPLOAD. The
+            # question "did a human assert this content?" is the one integrity
+            # review and score provenance both ask, and as a source it is one
+            # column rather than a walk up `supersedes_id`.
+            "source IN ('UPLOAD', 'PASTE', 'MANUAL', 'EDIT')",
+            name="ck_resume_versions_source",
         ),
         Index("ix_resume_versions_user", "user_id", "created_at"),
         Index(
             "ix_resume_versions_confirmed",
             "user_id",
             postgresql_where="confirmed_at IS NOT NULL",
+        ),
+        # **The chain cannot fork.** At most one version may supersede any
+        # given parent. Postgres treats NULLs as distinct in a unique index,
+        # so the many chain heads (supersedes_id IS NULL) are unaffected and
+        # only the parent links are constrained.
+        #
+        # The service refuses a second edit of the same parent with a 409, but
+        # two concurrent edits would both read "not yet superseded" and both
+        # write. Then "the candidate's current resume" has two answers and the
+        # score depends on which query won. The check in the service is for
+        # the error message; this is for the guarantee.
+        Index(
+            "uq_resume_versions_supersedes",
+            "supersedes_id",
+            unique=True,
+            postgresql_where="supersedes_id IS NOT NULL",
         ),
     )

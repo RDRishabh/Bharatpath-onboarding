@@ -30,7 +30,8 @@ class ModuleSpec:
     summary: str
 
 
-# The twenty modules from docs/plan.md section 4.
+# The modules from docs/plan.md section 4: the original twenty, plus
+# `engagement` (streaks, added 2026-09-13 -- docs/streaks.md).
 MODULES: tuple[ModuleSpec, ...] = (
     ModuleSpec("identity", "/auth", "Users, sessions, Cognito linkage, memberships."),
     ModuleSpec("candidate", "/candidate", "Candidate profile, settings, language preference."),
@@ -61,7 +62,7 @@ MODULES: tuple[ModuleSpec, ...] = (
     ModuleSpec("jobs", "/employer/jobs", "Composer, validation, publish gate, lifecycle."),
     ModuleSpec(
         "applications",
-        "/applications",
+        "/candidate/applications",
         "Apply, stages, withdraw, expiry, hire confirm.",
     ),
     ModuleSpec(
@@ -84,6 +85,11 @@ MODULES: tuple[ModuleSpec, ...] = (
     ModuleSpec("admin", "/admin", "Queues, drill-downs, disputes, suspensions."),
     ModuleSpec("notifications", "/notifications", "Event to channel fan-out, templates."),
     ModuleSpec("privacy", "/privacy", "Export and deletion requests, DSR tracking."),
+    ModuleSpec(
+        "engagement",
+        "/candidate/streak",
+        "Daily app-open streaks and engagement points. Never the score.",
+    ),
 )
 
 FILES = (

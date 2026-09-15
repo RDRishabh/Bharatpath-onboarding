@@ -92,6 +92,78 @@ class Settings(BaseSettings):
 
     presigned_url_ttl_seconds: int = 900
 
+    # -- resume intake (plan.md section 8, Day 6) --------------------------
+    # 10 MB. A CV that does not fit is a scanned photo album, and Textract
+    # bills per page. The cap is enforced twice: declared to the client when
+    # the upload is presigned, and re-checked server-side from S3 metadata
+    # before any row is written -- a presigned PUT cannot be trusted to have
+    # honoured it.
+    resume_max_upload_bytes: int = 10 * 1024 * 1024
+
+    # Sniffed from the first bytes of the object, never from the filename or
+    # the client-declared Content-Type. Both are attacker-controlled.
+    resume_allowed_mime_types: list[str] = [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword",
+    ]
+
+    # How much of the object to read back to identify it. Every magic number
+    # we match sits in the first few bytes; 8 KiB is generous and bounds what
+    # a malicious upload can make us pull into memory.
+    resume_sniff_bytes: int = 8192
+
+    # -- malware scanning --------------------------------------------------
+    # Off, because no scanner is implemented yet -- see
+    # app/modules/resume/scanner.py. Turning it on raises at startup rather
+    # than silently passing every file, so this cannot be enabled by accident
+    # and left doing nothing.
+    resume_scan_enabled: bool = False
+
+    # -- textract fallback -------------------------------------------------
+    # Local libraries first, Textract only when they come back empty or fail.
+    # The case that matters is a scanned CV -- a phone photo saved as PDF has
+    # no text layer, so pypdf extracts nothing and reports success. Without
+    # OCR that candidate scores as having no experience at all, which is a
+    # silent wrong answer rather than an error.
+    #
+    # Billing is per page and there is no free tier, so this is deliberately a
+    # fallback and not the default path. Turn it off to cap spend; uploads
+    # that need OCR then fail loudly instead of being scored as empty.
+    resume_textract_fallback_enabled: bool = True
+
+    # Textract reads multi-page PDFs asynchronously from S3 and is polled.
+    # A CV that has not finished in two minutes is not going to.
+    resume_textract_timeout_seconds: int = 120
+    resume_textract_poll_seconds: float = 2.0
+
+    # Refuse to OCR a document longer than this. Textract bills per page, so
+    # an unbounded page count is an unbounded bill.
+    resume_textract_max_pages: int = 20
+
+    # Paste-text path (PRD 4.2). Large enough for a long CV, small enough that
+    # it cannot be used as free object storage.
+    resume_max_text_chars: int = 60_000
+
+    # -- scoring -----------------------------------------------------------
+    # Layer 1 (reading a CV into facts) needs a model. Off by default and off
+    # in CI: with no extractor wired, a score stays PENDING rather than being
+    # computed from nothing. `scoring-approach.md` section 11 -- we never
+    # produce a partial or degraded score, because a plausible wrong number is
+    # unfixable once a candidate has seen it.
+    scoring_extraction_enabled: bool = False
+
+    # Pinned exactly, never a floating alias. The id is stored on every score
+    # and is half of what makes a replay attributable after the model is
+    # retired; an alias that silently moved would make two scores computed
+    # months apart claim the same provenance.
+    #
+    # A Bedrock model or inference-profile id, e.g.
+    # `global.anthropic.claude-sonnet-4-6`. **Empty until the client chooses**
+    # (offered 2026-09-13: Sonnet 4.6, Haiku 4.5, Sonnet 5, GPT-5.6 Luna).
+    # Enabling extraction without one is refused rather than defaulted.
+    scoring_model_id: str = ""
+
     # -- celery ------------------------------------------------------------
     celery_broker_url: str = "sqs://"
     celery_result_backend: str | None = None
@@ -142,6 +214,20 @@ class Settings(BaseSettings):
     # number space. Both are needed.
     otp_start_per_phone_per_hour: int = 5
     otp_start_per_ip_per_hour: int = 20
+
+    @field_validator("aws_endpoint_url", mode="before")
+    @classmethod
+    def _blank_endpoint_means_real_aws(cls, v: object) -> object:
+        """`AWS_ENDPOINT_URL=` means "no override", not "an empty endpoint".
+
+        Without this, pointing a local checkout at real AWS by blanking the
+        LocalStack line in .env produces an empty string, and boto3 builds
+        every URL against it -- the symptom is a connection refused to
+        127.0.0.1 while every credential and bucket name is correct.
+        """
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     @field_validator("database_admin_url", mode="after")
     @classmethod

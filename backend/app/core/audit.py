@@ -65,6 +65,14 @@ class AuditAction(StrEnum):
     TENANT_SUSPENDED = "tenant_suspended"
     TENANT_REINSTATED = "tenant_reinstated"
 
+    # Tenancy and team. Who can see candidate data is itself privileged
+    # information, and "who gave this recruiter access, and when?" is the
+    # first question after a leak.
+    ORGANISATION_CREATED = "organisation_created"
+    TEAM_MEMBER_ADDED = "team_member_added"
+    TEAM_MEMBER_ROLE_CHANGED = "team_member_role_changed"
+    TEAM_MEMBER_REMOVED = "team_member_removed"
+
     # Consent - PRD rule 8
     CONSENT_GRANTED = "consent_granted"
     CONSENT_REVOKED = "consent_revoked"

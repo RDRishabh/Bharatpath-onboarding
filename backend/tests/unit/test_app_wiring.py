@@ -12,8 +12,10 @@ def test_all_modules_registered() -> None:
 
     plan.md section 4 promises the client teams a publishable openapi.json from
     Day 2. That only holds if every module is wired on Day 1, even empty.
+
+    Twenty from the plan, plus `engagement` (streaks, 2026-09-13).
     """
-    assert len(ALL_MODULES) == 20
+    assert len(ALL_MODULES) == 21
     for module in ALL_MODULES:
         assert isinstance(module.name, str) and module.name
         assert module.prefix.startswith("/")

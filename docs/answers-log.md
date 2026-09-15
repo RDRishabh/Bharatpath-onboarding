@@ -7,14 +7,248 @@
 > **Still-open questions live in [`questions.txt`](questions.txt)**, written in plain language and
 > ready to send. This file is the archive; that file is the ask.
 >
-> Last updated 30 August 2026 — Round 6 added (raised by us on review, not client answers).
+> Last updated 12 September 2026 — Round 9 added (calibration accepted).
 
 ---
 
 ## Status at a glance
 
 | Round | Source | Asked | Answered | Still open |
+|---
+
+## Round 9 — client answer, 2026-09-12
+
+| # | Question | Client answer (verbatim) | What we did |
+|---|---|---|---|
+| **9.1** | Do these 35 scored profiles match your judgment? Mark each too low / about right / too high. | *"the scores are perfect fine"* | **A2 / N3 closed.** All 35 accepted with no adjustment. The rubric moves from *internally consistent* to *agreed*; no band table changed, so no score moved and the golden corpus did not need regenerating. |
+
+### Why this mattered more than its length
+
+The rubric was calibrated by us from general industry practice, because the
+client declined to supply real CVs (Round 7.1). That proved it was internally
+consistent — quality beats tenure, keyword stuffing loses, no sector bias —
+but **not** that it matched their commercial judgment. If their idea of
+"strong" had sat higher or lower than ours, every score would have been wrong
+in the same direction and nothing in CI could have detected it, because CI
+only knows what we told it.
+
+Thirty-five profiles were put to them with the live engine's scores against
+each. The answer was that all of them are right. That is the strongest form
+the answer could take, and it is what unblocked the rest of Day 8.
+
+**What this does and does not settle.** It settles the shape of the rubric
+against the client's judgment. It does not make the corpus real: the profiles
+are still synthetic, and a systematic difference between synthetic profiles
+and the CVs that actually arrive would still be invisible. Worth re-running
+against thirty real CVs once there are thirty real CVs.
+
+---
+
+## Round 8 — client answer, 2026-09-12
+
+One question, and it was the only open item that moved a revenue number rather
+than a date.
+
+| # | Question | Client answer (verbatim) | What we did |
+|---|---|---|---|
+| **8.1** | When a college buys seats for its students, does the student still pay their own subscription? | *"No - Student does not pay if the college has paid for it."* | **C12 closed.** A seat covers the student entirely. The college price list was rebuilt on that basis (~2.7x), and the entitlement rule for Day 15/17 is now settled: access is a personal subscription **OR** an active college seat. |
+
+### Why this one mattered more than its length
+
+C12 had **never been put to the client**. Both price lists were built on the
+unexamined assumption that a seat and a subscription were separate purchases —
+that a college deal earned the seat fee *on top of* whatever those students
+paid us directly. On that reading, ~₹12–17 per seat per month was a placement
+-cell tool sold alongside real candidate revenue, and it looked reasonable.
+
+The answer is the opposite one. The seat fee is the **entire** lifetime revenue
+from that student, which made the old ladder indefensible:
+
+| Plan | Old total | Old per seat / period, ex-tax | Direct candidate, ex-tax | Old yield |
 |---|---|---|---|---|
+| `COLLEGE_SEMESTER_250` | ₹24,999 | ₹99.99 | ₹592.37 | **17%** |
+| `COLLEGE_SEMESTER_1000` | ₹79,999 | ₹79.99 | ₹592.37 | **13%** |
+| `COLLEGE_ANNUAL_250` | ₹44,999 | ₹179.99 | ₹1,016.10 | **18%** |
+| `COLLEGE_ANNUAL_1000` | ₹1,39,999 | ₹139.99 | ₹1,016.10 | **14%** |
+
+A thousand-seat annual deal would have displaced roughly **₹10.2 lakh** of
+candidate revenue to book **₹1.4 lakh**. Every college signed would have made
+the business smaller, and the figure that reveals it — revenue per seat — was
+not computed anywhere in the codebase.
+
+### What replaced it
+
+A seat is now priced as what it actually is: **a bulk-rate candidate
+subscription**, discounted for volume rather than invented independently. The
+discount is genuine — one invoice, paid upfront, students delivered at zero
+acquisition cost, onboarding carried by the college — but it is a discount on
+a known number.
+
+| Plan | New total | Per seat, ex-tax | Yield vs direct |
+|---|---|---|---|
+| `COLLEGE_SEMESTER_250` | ₹69,999 | ₹279.99 | 47.3% |
+| `COLLEGE_SEMESTER_1000` | ₹2,19,999 | ₹219.99 | 37.1% |
+| `COLLEGE_ANNUAL_250` | ₹1,19,999 | ₹479.99 | 47.2% |
+| `COLLEGE_ANNUAL_1000` | ₹3,79,999 | ₹379.99 | 37.4% |
+
+**Ex-tax on both sides.** Candidate prices are quoted tax-inclusive and
+business prices exclusive, so comparing the raw numbers flatters a seat by 18%
+— the same class of error in miniature, and the reason `GST_RATE` is now a
+constant in the catalogue rather than something applied only at the invoice.
+
+`MIN_SEAT_SHARE_OF_DIRECT = 0.35` and
+`test_a_seat_never_undercuts_direct_candidate_revenue` hold the floor, so this
+cannot drift back by increments. **The old list sat at ~0.13 and nothing
+failed** — every existing price check was structural (totals ascending, periods
+consistent, tax flags correct), and a number can satisfy all of that while
+being an order of magnitude wrong about what it is selling.
+
+**Still placeholder.** `PLACEHOLDER_PRICING` is still `True`. These numbers
+still need sign-off — but they are now wrong in a direction that costs a deal
+rather than one that costs the business.
+
+### Three things this answer opens, which have not been asked
+
+Consequences of 8.1, not restatements of it. None blocks the build; all three
+need an answer before the first college contract.
+
+1. **A student who has already paid, then joins a college roster.** Refund,
+   credit, or does their own subscription simply run alongside the seat? We are
+   building the third — no money moves without a human deciding it — but a
+   student who paid ₹1,199 in June and is seated for free in July will ask.
+2. **What happens when the college does not renew.** The student loses access
+   unless they buy their own. That is a churn cliff arriving in batches of 250
+   or 1000 on a date we know in advance, and it is also a support load. Worth a
+   deliberate grace period rather than a hard cutoff discovered live.
+3. **Whether a seat covers the paid add-ons.** The course (+30) and interview
+   sessions (+60) are one-off purchases, not subscription features. Our
+   assumption is that a seat covers the **subscription only** and add-ons stay
+   the student's own purchase — otherwise a 1000-seat deal silently includes
+   ₹8.5 lakh of add-on inventory. Flagged rather than assumed.
+
+---
+
+## Round 7 — client answers, 2026-09-11
+
+The largest single unblocking round of the project. Ten decisions, eight of
+which had been open since August.
+
+| # | Question | Client answer (verbatim) | What we did |
+|---|---|---|---|
+| **7.1** | How is the score calculated — dimensions and weights? | *"choose best from your side how score should be calculated - use your best knowledge - unblocked"* | Delegated to us. Rubric defined in `scoring-approach.md` §4a and implemented in `scoring/domain.py`. **The arithmetic was already fixed and approved (700 + 200 + 30 + 60 = 990); only the 0–200 resume band was open.** |
+| **7.2** | May CV text leave India? | *"can be"* | **N2 closed.** Removes the constraint on model hosting and region. We are keeping processing in `ap-south-1` anyway — it costs nothing and is the answer that stays right if the position changes. |
+| **7.3** | Is the score ever explained to the candidate? | *"confirmed"* — never shown | **Q12 closed.** Breakdown is still computed and stored for admin drill-down and disputes; no candidate-facing schema exposes it. |
+| **7.4** | On account deletion, what is retained? | *"do full delete for them"* | **Q13 answered in principle, with a carve-out we are flagging.** Personal data is hard-deleted. Financial and audit rows cannot be — see the note below. |
+| **7.5** | Employer type and industry lists | *"explain what do you mean"* | Explained, and a proposed list supplied for confirmation. |
+| **7.6** | Rules for detecting dishonest CVs | *"use your best knowledge"* | Delegated to us. **Delivered 2026-09-12** — 8 rules in `integrity/domain.py`, 40 tests. See 7.6 below. |
+| **7.7** | College seat model — one payment covers up to N students? | *"yes"* | **Q10 closed.** Mirrors the employer model. |
+| **7.8** | Is "pay monthly, see everyone" correct, replacing per-candidate unlock? | *"that is correct"* | **N5 closed.** The rescission we had never asked for. Five stale acceptance criteria in SRS §2.25.2 are now formally superseded. |
+| **7.9** | Referral code typed by the student, rather than invite-and-accept? | *"do it"* | **N6 closed.** |
+| **7.10** | Course content, prices, question banks, translations, SMS copy, branding, form fields | *"create best for now according to your knowledge"* | Placeholder content to be produced by us, clearly marked as placeholder and replaceable without code changes. **Delivered 2026-09-12.** See 7.10 below. |
+
+**Also reported:** Twilio account started; TRAI DLT started. **Apple Developer
+declared not needed** — recorded as a scope decision, see below.
+
+### 7.4 — the one carve-out on "full delete"
+
+We are implementing full deletion of personal data. Two categories cannot be
+deleted with it, and this is a legal constraint rather than a technical one:
+
+- **Financial records** — subscription and course purchase rows. Indian
+  statutory retention applies to financial records regardless of a deletion
+  request; the right to erasure does not override it.
+- **Audit rows** — PRD §3.9 requires an immutable audit trail, and invariant 7′
+  requires every PII reveal to be audited. Deleting those rows destroys the
+  evidence that a reveal was lawful, which harms the candidate's position as
+  much as ours.
+
+**What we are building:** every field that identifies a person is hard-deleted
+(name, phone, email, CV files, parsed text, scores). Financial and audit rows
+survive with the person replaced by a non-reversible pseudonymous id, so they
+record *that* a transaction happened without recording *who*. From the
+candidate's point of view they are gone.
+
+**This needs a lawyer's sign-off, not ours.** It is the standard
+reconciliation, but retention periods are a legal question.
+
+### Apple Developer — scope consequence
+
+Declared not needed (2026-09-11). Recorded because it is reversible only at a
+cost: the account needs a D-U-N-S number and takes 1–3 weeks. **If iOS is
+wanted later, that is a 1–3 week lead time before a build can ship**, not a
+sprint decision. Android and the web consoles are unaffected.
+
+### 7.6 — what we built with "use your best knowledge" *(delivered 2026-09-12)*
+
+Eight rules in `integrity/domain.py`. **The part to review is not the list of
+rules, it is the severity policy**, because severity is what decides whether a
+real person disappears from employer search before anyone has looked at them.
+
+| Severity | Consequence | Rules |
+|---|---|---|
+| **HIGH** | Hidden from employer search until a human clears it (PRD 7.2) | Instructions aimed at an automated reader; text hidden from a human one |
+| **MEDIUM** | Reviewer queue. Candidate stays visible | Future-dated employment; overlapping full-time roles; claimed experience far exceeding the dates; a platform score written into the CV |
+| **LOW** | A note for a reviewer already looking | Senior title with little tenure; a long unevidenced skills list |
+
+Only two rules may ever reach HIGH, and a test enforces that. Both are things
+nobody does by accident — a mistyped year is not in that category, and neither
+is an unusual career.
+
+**Four rules we chose not to write**, each because it would hit honest
+candidates far more often than dishonest ones:
+
+- **Employment gaps.** They fall on women after childbirth, on carers and on
+  people with health conditions.
+- **Work predating a qualification.** Common in India, and it only works as a
+  signal by reasoning about the candidate's age — which invariant 5 forbids.
+- **Duplicate or templated CVs across candidates.** Dropped by the client
+  already (R6). Shared wording is what a CV-writing service produces, and
+  paying for help writing your CV is not dishonesty.
+- **Unverifiable claims generally.** Almost every line of a CV is unverifiable;
+  a rule that fires on all of them is a rule nobody reads.
+
+**Integrity never touches the score** (SRS 1.4.5), now enforced by an
+import-linter contract. A dishonest CV is handled by a person looking at it,
+not by a silent deduction a candidate can neither see nor appeal.
+
+### 7.10 — the placeholder content *(delivered 2026-09-12)*
+
+All of it, marked as ours rather than the client's by a flag that a test
+asserts — so "this is still a placeholder" survives a demo instead of living in
+a comment. Full table in [`blockers.md`](blockers.md) category C; the summary:
+
+| Item | Built | Flag |
+|---|---|---|
+| Prices | 11 plans, 2 one-off products | `PLACEHOLDER_PRICING` |
+| Course | 6 modules, 18 lessons, ~2h20 | `HAS_MEDIA = False` |
+| Questionnaire | 12 questions | `BANK_VERSION` |
+| Interview | 3 × 6 questions, 5-dimension rubric | `BANK_VERSION` |
+| Messages | 21 templates, 17 SMS | `dlt_template_id is None` |
+| Translations | 8 locales × 32 keys | native review owed |
+| Forms | KYB 27 fields, college 20 | `FORM_VERSION` |
+| Design | System, tokens, accessibility | no logo — **C7 stays open** |
+
+**Three things in there are decisions, not drafts, and are worth a reply:**
+
+1. **The score may never be drawn as a red-to-green gauge.** That picture is
+   the visual language of an Indian bureau score. Invariant 6 forbids the
+   *words* because the resemblance is a legal risk; a dial makes the
+   resemblance stronger than any word could.
+2. **We excluded marital status, gender, religion, caste and photograph** from
+   every form and the questionnaire. These are ordinary on Indian application
+   forms and are discrimination vectors. Adding any back is a decision for the
+   client and their counsel, in writing.
+3. **The mock interview never assesses accent, fluency, pace or pitch.** In
+   this market those measure schooling and region, not ability — and this is an
+   audio product used in eight languages.
+
+**One question this work surfaced that has never been asked** — `blockers.md`
+C12: **when a college buys seats, does the student still pay their own
+subscription?** Both price lists assume yes. If the answer is no, the college
+prices are far too low and the candidate revenue from those students is zero.
+It is one sentence now and an argument after the first college deal.
+
+---|---|---|---|---|
 | 0 | Build brief open questions | 8 | 6 | 2 |
 | 1 | Document comments, 24 Aug | 9 | 9 | 0 |
 | 2 | Client note, 27 Aug | 6 | 6 | 0 |
