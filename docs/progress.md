@@ -15,7 +15,7 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1406 passing locally 2026-09-13. `c50d246` green on CI; `59e9edc` pushed, CI not yet checked; Day 10 uncommitted. |
+| **Tests** | 1406 passing. Day 10 (`4115c6a`) green on CI 2026-09-13: tests, lint/types/boundaries, invariants 5 and 6, image build. |
 | **Coverage** | 85% |
 | **Days done** | 1, 2, 5, 7, 10 complete · 3, 4, 6, 8, 9 partial |
 | **Next** | Day 11 — job search, eligibility, apply and withdraw |
@@ -56,7 +56,8 @@ states. Newest entries first.
 ## 2026-09-13 (evening) — Day 10: KYB and jobs; Bedrock connected; Week 1 gate closed
 
 **1237 -> 1406 tests.** `59e9edc` carries the Bedrock connection, integrity
-thresholds as config and the cross-tenant suite; Day 10 is uncommitted.
+thresholds as config and the cross-tenant suite; `4115c6a` is Day 10. Both are
+green on CI.
 
 ### Day 10 — KYB, jobs, invariant 8
 
