@@ -20,11 +20,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
 import pytest
+from sqlalchemy import text
 
+from tests.conftest import _seed_url, sessions
 from tests.integration.test_resume_intake import FakeS3, fake_s3  # noqa: F401 - fixture
 
 pytestmark = [pytest.mark.invariant, pytest.mark.integration]
@@ -124,6 +127,77 @@ async def _complete_other_kyb_document(client: Any, attacker: dict, victim: dict
     return response
 
 
+async def _victim_application(victim: dict[str, Any]) -> str:
+    """An application in the victim's pipeline, seeded as the migrator: a
+    candidate, a live job of the victim's, and a SUBMITTED application to it."""
+    candidate, job, application = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    async with sessions(_seed_url())() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO users (id, pool, phone, status, locale) "
+                "VALUES (:u, 'CANDIDATE', :p, 'ACTIVE', 'en')"
+            ),
+            {"u": str(candidate), "p": f"+9195{uuid.uuid4().int % 10**8:08d}"},
+        )
+        await session.execute(
+            text("UPDATE employers SET kyb_status = 'APPROVED' WHERE tenant_id = :t"),
+            {"t": victim["tenant_id"]},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO jobs (id, tenant_id, title, description, salary_min_minor, "
+                "salary_max_minor, status) VALUES (:j, :t, 'Pipeline job', 'd', 1, 2, 'PUBLISHED')"
+            ),
+            {"j": str(job), "t": victim["tenant_id"]},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO applications (id, tenant_id, job_id, candidate_id, stage) "
+                "VALUES (:a, :t, :j, :c, 'SUBMITTED')"
+            ),
+            {"a": str(application), "t": victim["tenant_id"], "j": str(job), "c": str(candidate)},
+        )
+    return str(application)
+
+
+async def _assert_untouched(application_id: str) -> None:
+    """Opening, moving, booking and hiring all write. None of them may have."""
+    async with sessions(_seed_url())() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT stage, meeting_url, employer_confirmed_at FROM applications "
+                    "WHERE id = :a"
+                ),
+                {"a": application_id},
+            )
+        ).one()
+        events = await session.scalar(
+            text("SELECT count(*) FROM application_events WHERE application_id = :a"),
+            {"a": application_id},
+        )
+    assert tuple(row) == ("SUBMITTED", None, None), row
+    assert events == 0
+
+
+def _pipeline_case(method: str, suffix: str, body: dict[str, Any] | None = None) -> Case:
+    async def case(client: Any, attacker: dict, victim: dict) -> Any:
+        application = await _victim_application(victim)
+        response = await client.request(
+            method,
+            f"{API}/employer/applications/{application}{suffix}",
+            json=body,
+            headers=attacker["headers"],
+        )
+        await _assert_untouched(application)
+        return response
+
+    return case
+
+
+_TOMORROW = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+
+
 #: `(METHOD, path template) -> a request from tenant A for tenant B's resource`.
 #: Adding a tenant route with an id means adding its case here; the test below
 #: refuses to pass until someone does.
@@ -136,6 +210,18 @@ CROSS_TENANT_CASES: dict[tuple[str, str], Case] = {
     ("POST", f"{API}/employer/jobs/{{job_id}}/pause"): _move_other_job("pause"),
     ("POST", f"{API}/employer/jobs/{{job_id}}/close"): _move_other_job("close"),
     ("POST", f"{API}/employer/kyb/documents/{{upload_id}}/complete"): _complete_other_kyb_document,
+    ("GET", f"{API}/employer/applications/{{application_id}}"): _pipeline_case("GET", ""),
+    ("POST", f"{API}/employer/applications/{{application_id}}/stage"): _pipeline_case(
+        "POST", "/stage", {"stage": "REJECTED"}
+    ),
+    ("PUT", f"{API}/employer/applications/{{application_id}}/interview"): _pipeline_case(
+        "PUT",
+        "/interview",
+        {"interview_at": _TOMORROW, "meeting_url": "https://meet.example.com/x"},
+    ),
+    ("POST", f"{API}/employer/applications/{{application_id}}/hire"): _pipeline_case(
+        "POST", "/hire"
+    ),
 }
 
 
@@ -228,3 +314,23 @@ async def test_a_smuggled_tenant_id_changes_nothing(client: Any, mint_token: Any
     )
     assert response.status_code == 200
     assert response.json()["tenant_id"] == a["tenant_id"]
+
+
+async def test_another_tenants_job_has_no_pipeline_to_list(client: Any, mint_token: Any) -> None:
+    """The pipeline listing takes its job in the query string, where the guard
+    above cannot see an id. Naming tenant B's job is `job_not_found`, and
+    nothing of B's pipeline comes back."""
+    a = await _organisation(client, mint_token)
+    b = await _organisation(client, mint_token)
+    application = await _victim_application(b)
+    async with sessions(_seed_url())() as session:
+        victim_job = await session.scalar(
+            text("SELECT job_id FROM applications WHERE id = :a"), {"a": application}
+        )
+
+    response = await client.get(
+        f"{API}/employer/applications", params={"job_id": str(victim_job)}, headers=a["headers"]
+    )
+    assert response.status_code == 404
+    assert response.json()["code"] == "job_not_found"
+    assert application not in response.text

@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1455 tests
+.venv/Scripts/pytest.exe                # 1591 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -252,6 +252,41 @@ is where a third one would have to be argued for.
   decision: a lapsed subscriber loses access, not their data.
 - A module serving a second surface mounts it with `get_extra_routers()` in its
   `__init__.py` (`jobs` → `/candidate/jobs`).
+
+## The hiring pipeline — Day 12
+
+- **The stage machine lives twice, from one source.** `applications.domain`
+  decides who may move what; `guard_application_write` (baseline migration)
+  refuses anything else for every writer, the migrator included, and builds
+  its transition list from `domain.allowed_transitions()`. **Seed a test
+  application at SUBMITTED and walk it one UPDATE per stage** — an insert at
+  another stage, or a jump, is refused, and that is the guard working.
+- **Employers move one stage forward, or reject.** Acting on a SUBMITTED
+  application records VIEWED first, and opening one records VIEWED (any role,
+  once). HIRED is never the employer's to write: they propose
+  (`employer_confirmed_at`), and the candidate's confirmation is the
+  transition. A CHECK refuses HIRED without both; the confirmations and
+  `hire_disputed_at` are latches.
+- **The guard tells the parties apart by what is bound.** A tenant transaction
+  cannot withdraw, confirm or dispute; a candidate transaction (`app.user_id`,
+  no tenant) can do only those. Forget the binding and a candidate's confirm
+  looks like a migrator write, which the guard still accepts — the RLS
+  policies, not the guard, stop that session reading the row.
+- **`application_events` is not under RLS.** Read it only by application id,
+  after the row was loaded under the caller's policy. Notes and `actor_id` are
+  employer-only; a test fails if a candidate schema grows either.
+  `occurred_at` is `clock_timestamp()`, so two events in one transaction sort
+  as written.
+- **Expiry is measured, not stamped.** `employer_active_at` moves on every
+  employer action; the sweep compares it (and any booked interview) with the
+  period in `config_values` `applications.expiry` — a bad row raises rather
+  than defaulting. A proposed hire never expires. The sweep binds each tenant
+  from the `tenants` table (`identity.service.employer_tenant_ids`), **the one
+  place a tenant id does not come from a membership**, and is system-only.
+  Nothing schedules it yet (blockers E4).
+- **The pipeline is not a candidate profile.** No name, contact or score in
+  any employer schema here; that is the Day 13–14 reveal, behind the access
+  window and its audit row.
 
 ## Streak points are not the score
 

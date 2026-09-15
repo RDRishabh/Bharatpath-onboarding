@@ -186,6 +186,18 @@ async def create_tenant_with_owner(
     return tenant_id
 
 
+async def employer_tenant_ids(session: AsyncSession) -> list[uuid.UUID]:
+    """Every employer organisation, whatever its status. **For system sweeps only.**
+
+    The one place a tenant id comes from a table rather than a membership:
+    the application-expiry sweep has no caller, and binds each of these in
+    turn. `tenants` is not under RLS, and this returns identifiers only.
+    Suspended employers are included -- a suspended employer is the most
+    silent of all, and its candidates should be released too.
+    """
+    return await repository.tenant_ids_of_type(session, tenant_type="EMPLOYER")
+
+
 async def rename_tenant(session: AsyncSession, *, tenant_id: uuid.UUID, name: str) -> None:
     await repository.rename_tenant(session, tenant_id=tenant_id, name=name)
 

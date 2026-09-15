@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1455 passing locally 2026-09-15 (Day 11, full local CI chain; not yet committed or run on CI). Day 10 (`4115c6a`) green on CI 2026-09-13. |
+| **Tests** | 1591 passing locally 2026-09-15 (Day 12, full local CI chain). Day 10 (`4115c6a`) green on CI 2026-09-13. |
 | **Coverage** | 85% |
-| **Days done** | 1, 2, 5, 7, 10, 11 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 12 — stage machine, application events, hire confirmation, expiry |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 13 — masked candidate search, filters, search indexes |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -50,6 +50,75 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-15 — Day 12: the pipeline, interviews, the two-sided hire, expiry
+
+**1455 -> 1591 tests**, full local CI chain green (age, vocabulary, ruff,
+mypy, 9 import contracts, modules, pytest at 85%).
+
+### What landed
+
+| | |
+|---|---|
+| **Employer pipeline** | `/employer/applications`: list a job's applications (oldest first, by stage, keyset), open one, `POST /{id}/stage`, `PUT /{id}/interview`, `POST /{id}/hire`. Owners and recruiters act; viewers read. |
+| **Candidate side** | `GET /candidate/applications/{id}` now carries the history; `POST /{id}/hire/confirm` and `/hire/dispute`. Not paywalled. |
+| **Expiry** | `applications.service.expire_for_tenant` and the `applications.expire` task (`app/tasks/expire_applications.py`). |
+| **Schema** | `applications.expires_at` replaced by `employer_active_at`; `hire_disputed_at`; five CHECKs; `application_events.kind` and `actor_type`; trigger `guard_application_write`. **Rebuild with `reset_local_db.sh`.** |
+
+### Decisions worth knowing
+
+- **One stage forward, or rejected.** SRS 1.9.2's "next permitted stage".
+  Acting on a SUBMITTED application records VIEWED first, and opening one
+  records VIEWED once, for any role — so a candidate's board never shows a
+  decision about something nobody opened. Moving to the current stage is a
+  no-op, not a 409, so a retried drag is harmless.
+- **HIRED is nobody's alone.** The employer proposes (`employer_confirmed_at`);
+  the candidate's confirmation is the transition, written in one statement with
+  the stage because a CHECK refuses either without the other. Both are latches.
+  `applications.hire_confirmed` is the final hire event; **nothing is billed on
+  it** (client deferred, `answers-log.md` 0.8).
+- **A dispute adjudicates nothing.** It is recorded and the hire stays
+  unconfirmed; it closes by the candidate confirming, the employer rejecting,
+  or the candidate withdrawing. Nobody can review it yet (blockers E12, E10).
+- **The database holds the pipeline too**, as the publish trigger holds
+  invariant 8. `guard_application_write` enforces the transition graph (built
+  from `domain.allowed_transitions()`, so the two cannot drift), the latches,
+  filing at SUBMITTED, and **which party may write which columns** — a tenant
+  transaction cannot withdraw, confirm or dispute; a candidate transaction can
+  do nothing else. Tested on app-role sessions with the service out of the way.
+- **Expiry is measured, not stamped.** `employer_active_at` moves on every
+  employer action and the sweep compares it with the configured period, so
+  changing the period applies to every open application at once. A booked
+  interview holds an application open; a proposed hire never expires.
+  **The 30-day default is ours** (blockers C13). A malformed config row stops
+  the sweep rather than defaulting.
+- **The sweep binds each employer tenant from `tenants`** — the one place a
+  tenant id does not come from a membership. It is the system acting, with no
+  caller to supply one, and binding keeps it under the same RLS as a request,
+  one transaction per tenant, `SKIP LOCKED` so it never waits on an employer.
+- **The employer's notes, and which recruiter acted, never reach the
+  candidate.** The board shows who moved it as a party. A unit test fails if a
+  candidate schema grows `note` or `actor_id`.
+- **The meeting link stays off the outbox.** The candidate reads it behind
+  their own authentication. Links must be `https` with a real host and no
+  credentials; **which host is not restricted** (blockers E11).
+- **The pipeline is not a profile.** `candidate_id` and nothing about who they
+  are — that is the Day 13–14 reveal, behind the access window and its audit.
+- `application_events.occurred_at` is `clock_timestamp()`: VIEWED and
+  SHORTLISTED written in one transaction sort in the order they happened.
+
+### Owed
+
+- **The EventBridge schedule** for the sweep (E4). Until then nothing expires
+  on its own — the safe direction.
+- **Notifications** for stage changes, interviews and hires (Day 19; SMS
+  gated on DLT). The events are emitted with ids only.
+- **The employer subscription gate** on these routes (Day 15, with the rest).
+- **Whether a HIGH integrity signal raised after applying should hide the
+  application from the pipeline.** Today it does not: the pipeline shows no CV
+  content, and the Day 14 reveal is where the visibility rule should apply.
 
 ---
 

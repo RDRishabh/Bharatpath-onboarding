@@ -12,7 +12,21 @@ from typing import Final
 
 MODULE: Final = "applications"
 
-#: Payloads carry identifiers only -- the employer's pipeline (Day 12) resolves
-#: them behind its own guards. No name, phone or email ever rides an event.
+#: Payloads carry identifiers only -- consumers resolve them behind their own
+#: guards. No name, phone, email or meeting link ever rides an event.
 APPLICATION_SUBMITTED: Final = f"{MODULE}.application_submitted"
 APPLICATION_WITHDRAWN: Final = f"{MODULE}.application_withdrawn"
+
+#: Every employer move, one event per recorded stage. SRS 1.9.2: "Candidate
+#: receives the configured notification" -- `SMS_APPLICATION_UPDATE` on Day 19.
+APPLICATION_STAGE_CHANGED: Final = f"{MODULE}.stage_changed"
+INTERVIEW_SCHEDULED: Final = f"{MODULE}.interview_scheduled"
+APPLICATION_EXPIRED: Final = f"{MODULE}.application_expired"
+
+HIRE_PROPOSED: Final = f"{MODULE}.hire_proposed"
+HIRE_DISPUTED: Final = f"{MODULE}.hire_disputed"
+#: **The final hire event** (SRS 1.13.3): both sides have confirmed. What it is
+#: eligible for -- placement analytics, and any billing -- hangs off this one
+#: event. Billing is deliberately not built: the client has deferred it
+#: (`answers-log.md` 0.8), and the SRS says it "must not be assumed".
+HIRE_CONFIRMED: Final = f"{MODULE}.hire_confirmed"

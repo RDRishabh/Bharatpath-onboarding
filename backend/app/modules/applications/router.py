@@ -5,10 +5,17 @@ Apply, stages, withdraw, expiry, hire confirm.
 Routes only. No business logic, no repository access.
 import-linter enforces the second half of that sentence.
 
-**The candidate's own applications**, at `/candidate/applications`. Applying is
-behind the subscription (R13); reading and withdrawing are not, because a
-lapsed subscriber loses access, not their data -- see the service docstring.
-Another candidate's application is a 404.
+Two surfaces, one module:
+
+  * **`/candidate/applications`** -- the candidate's own. Applying is behind the
+    subscription (R13); reading, withdrawing and answering a hire are not,
+    because a lapsed subscriber loses access, not their data. Another
+    candidate's application is a 404.
+  * **`/employer/applications`** -- the organisation's pipeline (Day 12). Owners
+    and recruiters move applications, book interviews and propose hires;
+    viewers read. Another organisation's application is a 404. The employer
+    subscription gate lands on these with the other employer routes on
+    Day 15, when a subscription can be bought.
 """
 
 from __future__ import annotations
@@ -20,6 +27,9 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.core.deps import (
     CANDIDATE,
+    EMPLOYER_OWNER,
+    EMPLOYER_RECRUITER,
+    EMPLOYER_VIEWER,
     CurrentUser,
     DbSession,
     require_active_subscription,
@@ -27,15 +37,33 @@ from app.core.deps import (
 )
 from app.core.pagination import MAX_PAGE_SIZE, Page
 from app.modules.applications import service
-from app.modules.applications.schemas import ApplicationResponse, ApplyRequest
+from app.modules.applications.schemas import (
+    ApplicationDetailResponse,
+    ApplicationResponse,
+    ApplicationStage,
+    ApplyRequest,
+    EmployerApplicationDetail,
+    EmployerApplicationSummary,
+    MoveStageRequest,
+    ScheduleInterviewRequest,
+)
 
 router = APIRouter()
+
+#: The employer's pipeline, mounted at `/employer/applications` (see `__init__.py`).
+employer_router = APIRouter()
 
 CandidateOnly = Depends(require_role(CANDIDATE))
 # The role guard first, so an employer is told 403 rather than asked to pay.
 PayingCandidate = [CandidateOnly, Depends(require_active_subscription)]
 
+Movers = Depends(require_role(EMPLOYER_OWNER, EMPLOYER_RECRUITER))
+Readers = Depends(require_role(EMPLOYER_OWNER, EMPLOYER_RECRUITER, EMPLOYER_VIEWER))
 
+
+# ---------------------------------------------------------------------------
+# The candidate's applications
+# ---------------------------------------------------------------------------
 @router.post(
     "",
     response_model=ApplicationResponse,
@@ -76,13 +104,13 @@ async def list_mine(
 
 @router.get(
     "/{application_id}",
-    response_model=ApplicationResponse,
+    response_model=ApplicationDetailResponse,
     dependencies=[CandidateOnly],
-    summary="One of the candidate's applications",
+    summary="One of the candidate's applications, with its history",
 )
 async def get_mine(
     application_id: uuid.UUID, user: CurrentUser, session: DbSession
-) -> ApplicationResponse:
+) -> ApplicationDetailResponse:
     return await service.get_mine(session, ctx=user, application_id=application_id)
 
 
@@ -98,3 +126,116 @@ async def withdraw(
     """Any stage before the outcome. Repeating it returns the withdrawn
     application; 409 for one already hired, rejected or expired."""
     return await service.withdraw(session, ctx=user, application_id=application_id)
+
+
+@router.post(
+    "/{application_id}/hire/confirm",
+    response_model=ApplicationResponse,
+    dependencies=[CandidateOnly],
+    summary="Confirm a hire the employer proposed",
+)
+async def confirm_hire(
+    application_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> ApplicationResponse:
+    """Makes the hire final. Repeating it returns the hired application;
+    409 `hire_confirmation_not_pending` when there is nothing to confirm."""
+    return await service.confirm_hire(session, ctx=user, application_id=application_id)
+
+
+@router.post(
+    "/{application_id}/hire/dispute",
+    response_model=ApplicationResponse,
+    dependencies=[CandidateOnly],
+    summary="Dispute a hire the employer proposed",
+)
+async def dispute_hire(
+    application_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> ApplicationResponse:
+    return await service.dispute_hire(session, ctx=user, application_id=application_id)
+
+
+# ---------------------------------------------------------------------------
+# The employer's pipeline
+# ---------------------------------------------------------------------------
+@employer_router.get(
+    "",
+    response_model=Page[EmployerApplicationSummary],
+    dependencies=[Readers],
+    summary="A job's applications, oldest first",
+)
+async def list_for_job(
+    user: CurrentUser,
+    session: DbSession,
+    job_id: Annotated[uuid.UUID, Query()],
+    stage: Annotated[ApplicationStage | None, Query()] = None,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=MAX_PAGE_SIZE)] = None,
+) -> Page[EmployerApplicationSummary]:
+    return await service.list_for_job(
+        session, ctx=user, job_id=job_id, stage=stage, cursor=cursor, limit=limit
+    )
+
+
+@employer_router.get(
+    "/{application_id}",
+    response_model=EmployerApplicationDetail,
+    dependencies=[Readers],
+    summary="Open an application",
+)
+async def open_application(
+    application_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> EmployerApplicationDetail:
+    """Opening a SUBMITTED application moves it to VIEWED, once."""
+    return await service.open_application(session, ctx=user, application_id=application_id)
+
+
+@employer_router.post(
+    "/{application_id}/stage",
+    response_model=EmployerApplicationDetail,
+    dependencies=[Movers],
+    summary="Move an application to the next stage, or reject it",
+)
+async def move_stage(
+    application_id: uuid.UUID, payload: MoveStageRequest, user: CurrentUser, session: DbSession
+) -> EmployerApplicationDetail:
+    """One stage forward, or REJECTED. 409 `application_invalid_transition`
+    for anything else; moving to the current stage changes nothing."""
+    return await service.move_stage(
+        session, ctx=user, application_id=application_id, target=payload.stage, note=payload.note
+    )
+
+
+@employer_router.put(
+    "/{application_id}/interview",
+    response_model=EmployerApplicationDetail,
+    dependencies=[Movers],
+    summary="Book or rebook the interview",
+)
+async def schedule_interview(
+    application_id: uuid.UUID,
+    payload: ScheduleInterviewRequest,
+    user: CurrentUser,
+    session: DbSession,
+) -> EmployerApplicationDetail:
+    """At the INTERVIEW stage only (409 `interview_not_at_stage`). 422 for a
+    link that is not an https meeting link or a time not in the next year."""
+    return await service.schedule_interview(
+        session,
+        ctx=user,
+        application_id=application_id,
+        interview_at=payload.interview_at,
+        meeting_url=payload.meeting_url,
+    )
+
+
+@employer_router.post(
+    "/{application_id}/hire",
+    response_model=EmployerApplicationDetail,
+    dependencies=[Movers],
+    summary="Mark as hired, pending the candidate's confirmation",
+)
+async def propose_hire(
+    application_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> EmployerApplicationDetail:
+    """At DECISION only (409 `hire_not_allowed`). Idempotent."""
+    return await service.propose_hire(session, ctx=user, application_id=application_id)

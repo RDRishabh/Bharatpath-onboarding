@@ -91,6 +91,7 @@ def upgrade() -> None:
     _create_publish_gate_trigger()
     _create_published_at_stamp()
     _create_candidate_marketplace_access()
+    _create_application_guard()
 
 
 def downgrade() -> None:
@@ -591,5 +592,113 @@ def _create_candidate_marketplace_access() -> None:
         CREATE POLICY applications_candidate_update ON applications FOR UPDATE
           USING (candidate_id = (SELECT current_candidate_id()))
           WITH CHECK (candidate_id = (SELECT current_candidate_id()))
+        """
+    )
+
+
+# ---------------------------------------------------------------------------
+# Day 12 -- the hiring pipeline, held below the service
+# ---------------------------------------------------------------------------
+def _create_application_guard() -> None:
+    """The stage machine and the two-sided hire, for every writer.
+
+    The service checks all of this and says what went wrong. This is the
+    version a direct repository call cannot route around, in the same way the
+    publish trigger backs invariant 8. Four rules:
+
+      1. **An application is filed once.** It starts at SUBMITTED with no
+         interview and no hire, and its job, tenant and candidate never change.
+      2. **A stage change is one the pipeline allows** -- the pairs come from
+         `applications.domain.allowed_transitions()`, the same function the
+         service's rules are tested against, so the two cannot drift.
+      3. **Hire confirmations are latches.** Once set, nobody moves or clears
+         them; a dispute likewise. With the CHECKs on the table, that makes
+         HIRED unreachable without both parties.
+      4. **Each party writes only its own side.** A candidate transaction
+         (`app.user_id` bound, no tenant) may withdraw or confirm, and cannot
+         touch the stage otherwise, the interview or the employer's
+         confirmation. A tenant transaction cannot withdraw on the candidate's
+         behalf, confirm for them, or dispute.
+
+    A transaction binding neither -- the migrator seeding tests, a data
+    migration -- is held to rules 1 to 3 only.
+
+    Not SECURITY DEFINER: it reads nothing but the row and the two settings.
+    """
+    from app.modules.applications.domain import allowed_transitions
+
+    pairs = ", ".join(f"('{a}', '{b}')" for a, b in sorted(allowed_transitions()))
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION guard_application_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          tenant_bound boolean := NULLIF(current_setting('app.tenant_id', true), '') IS NOT NULL;
+          candidate_bound boolean := NOT tenant_bound
+            AND NULLIF(current_setting('app.user_id', true), '') IS NOT NULL;
+        BEGIN
+          IF TG_OP = 'INSERT' THEN
+            IF NEW.stage <> 'SUBMITTED'
+               OR NEW.employer_confirmed_at IS NOT NULL
+               OR NEW.candidate_confirmed_at IS NOT NULL
+               OR NEW.hire_disputed_at IS NOT NULL
+               OR NEW.meeting_url IS NOT NULL THEN
+              RAISE EXCEPTION 'APPLICATION_GUARD: an application starts at SUBMITTED'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            RETURN NEW;
+          END IF;
+
+          IF NEW.tenant_id <> OLD.tenant_id OR NEW.job_id <> OLD.job_id
+             OR NEW.candidate_id <> OLD.candidate_id OR NEW.created_at <> OLD.created_at THEN
+            RAISE EXCEPTION 'APPLICATION_GUARD: an application is never refiled'
+              USING ERRCODE = 'check_violation';
+          END IF;
+
+          IF NEW.stage <> OLD.stage AND (OLD.stage, NEW.stage) NOT IN ({pairs}) THEN
+            RAISE EXCEPTION 'APPLICATION_GUARD: % -> % is not a pipeline transition',
+              OLD.stage, NEW.stage USING ERRCODE = 'check_violation';
+          END IF;
+
+          IF (OLD.employer_confirmed_at IS NOT NULL
+                AND NEW.employer_confirmed_at IS DISTINCT FROM OLD.employer_confirmed_at)
+             OR (OLD.candidate_confirmed_at IS NOT NULL
+                AND NEW.candidate_confirmed_at IS DISTINCT FROM OLD.candidate_confirmed_at)
+             OR (OLD.hire_disputed_at IS NOT NULL
+                AND NEW.hire_disputed_at IS DISTINCT FROM OLD.hire_disputed_at) THEN
+            RAISE EXCEPTION 'APPLICATION_GUARD: hire confirmations are latches'
+              USING ERRCODE = 'check_violation';
+          END IF;
+
+          IF candidate_bound AND (
+               (NEW.stage <> OLD.stage AND NEW.stage NOT IN ('WITHDRAWN', 'HIRED'))
+               OR NEW.employer_confirmed_at IS DISTINCT FROM OLD.employer_confirmed_at
+               OR NEW.meeting_url IS DISTINCT FROM OLD.meeting_url
+               OR NEW.interview_at IS DISTINCT FROM OLD.interview_at
+               OR NEW.employer_active_at IS DISTINCT FROM OLD.employer_active_at) THEN
+            RAISE EXCEPTION 'APPLICATION_GUARD: not the candidate''s to change'
+              USING ERRCODE = 'check_violation';
+          END IF;
+
+          IF tenant_bound AND (
+               (NEW.stage <> OLD.stage AND NEW.stage IN ('WITHDRAWN', 'HIRED'))
+               OR NEW.candidate_confirmed_at IS DISTINCT FROM OLD.candidate_confirmed_at
+               OR NEW.hire_disputed_at IS DISTINCT FROM OLD.hire_disputed_at) THEN
+            RAISE EXCEPTION 'APPLICATION_GUARD: not the employer''s to change'
+              USING ERRCODE = 'check_violation';
+          END IF;
+
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_application_write
+          BEFORE INSERT OR UPDATE ON applications
+          FOR EACH ROW EXECUTE FUNCTION guard_application_write();
         """
     )
