@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1591 passing 2026-09-15 (Day 12, `65ba18e`) — local CI chain and **all five CI jobs green on PR #8**. |
+| **Tests** | 1662 on 2026-09-15 (Day 13, uncommitted) — 1661 passed in the full local run; `test_pipeline.py::test_a_smuggled_field_is_refused` failed there once and passes on its own (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 85% |
-| **Days done** | 1, 2, 5, 7, 10, 11, 12 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 13 — masked candidate search, filters, search indexes |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 14 — access windows, reveal audit, abuse controls |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -50,6 +50,79 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-15 — Day 13: masked candidate search
+
+**1591 -> 1662 tests.** Local CI chain green: age, vocabulary, ruff, format,
+mypy, 9 import contracts, modules. Full pytest: 1661 passed, coverage 85%.
+**One failure:** `test_pipeline.py::test_a_smuggled_field_is_refused` (Day 12)
+failed in the full run and passes on its own. It touches nothing Day 13
+changed, but the failure was not captured, so treat it as unexplained until CI
+has run. **The full local run took 1h40m.** No earlier duration is recorded, so
+whether Day 13 slowed it is unknown. Check the CI job time.
+
+### What landed
+
+| | |
+|---|---|
+| **Employer search** | `GET /employer/discovery/candidates`: filters `band` (repeatable), `skill` (up to 5, all must match, case-insensitive), `badge`, `min_experience_years`, `state`, `city` (contains), `q` (words in a skill); keyset `cursor`, `limit`. Owners and recruiters of a **KYB-approved** employer; 300 pages/hour per organisation. |
+| **The card** | `MaskedCandidate`: `candidate_id`, `band`, `experience_years`, `skills` (≤20), `badges`, `city`, `state_code`. Nothing else, and an invariant test holds the list. |
+| **Candidate location** | `GET /candidate/profile`, `PUT /candidate/profile/location`. Not paywalled. |
+| **Schema** | `candidate_search_documents` (trigger-written), `candidate_profiles`, trigger `project_candidate_search_document` on `scores`, index `ix_scores_user_latest`. **Rebuild with `reset_local_db.sh`.** |
+
+### Decisions worth knowing
+
+- **The search document is a trigger's, not a task's.** An `AFTER INSERT` on
+  `scores` writes it in the transaction that wrote the score; the app role has
+  no INSERT/UPDATE/DELETE on it. So it cannot miss an event, lag a re-score, or
+  carry something the score does not support. An older score arriving late
+  never overwrites a newer document.
+- **Generated, not hand-copied.** The trigger's band CASE comes from
+  `scoring.domain.BANDS`, badges from `BADGE_FOR_ADDON_KIND`, the contact
+  filter from `CONTACT_LIKE_PATTERN`, as the application guard comes from
+  `allowed_transitions()`. `discovery` still imports nothing from `scoring`;
+  the migration and the tests do the joining.
+- **Experience is summed in SQL**, and a parametrised test holds it equal to
+  `features_from_extraction` over malformed roles too (strings, floats,
+  booleans, negatives, non-lists).
+- **Visibility is still only the Day 9 CTE.** Search joins the document on
+  `(user_id, resume_version_id)`, so a suppressed or unchecked candidate keeps a
+  document and never appears, and a stale document matches nothing.
+- **Band, never score, and ordering by band only.** Within a band the order is
+  by id, which means nothing. No total: a count over a narrow filter says
+  whether one person is in the pool.
+- **Skills are CV text and can carry contact details.** Anything email- or
+  phone-shaped is dropped from the document, so it can't be searched for
+  either, and dropped again at the card. The pattern spares "ISO 9001:2015",
+  "IEC 61131-3", "Python 3.12".
+- **Location did not exist anywhere**, so it is new, and it is **ours, not the
+  client's**: optional, declared by the candidate, city plus state, no address
+  or PIN code (with a band and skills, a PIN narrows a card to a handful of
+  people). A city refuses digits and `@`. Layer 1 was not asked to extract a
+  location, since that changes the prompt version and so every score.
+- **Viewers cannot search.** SRS 1.14.1 names recruiter and owner. Widening it
+  is one dependency.
+- **No audit row for a search.** A card holds nothing PRD rule 9 calls private.
+  The audit belongs to the Day 14 reveal.
+- **Only the filters asked for are in the SQL.** A single statement of
+  `(:x IS NULL OR ...)` terms gets a generic plan that can use none of the GIN
+  indexes. Every value is still a bind parameter.
+- **Indexes:** GIN on `skill_keys`, `badges`, `search_vector` (`simple`
+  config: skills are proper nouns); btree `(band_rank DESC, user_id)` for the
+  keyset; trigram on `candidate_profiles.city`; and `ix_scores_user_latest`
+  matching the CTE's `DISTINCT ON` order, which the old index could not serve.
+  **Not verified under load**; that is Week 5 (plan §9, target < 600 ms).
+
+### Owed
+
+- **Questionnaire badges**: no questionnaire tables until Day 16.
+- **Configurable caps, the access window, anomaly detection** (Day 14). The
+  hourly page limit here is a constant floor.
+- **The employer subscription gate** (Day 15).
+- **N5**, the unlock-criteria rescission, is still unasked (blockers B6). It
+  does not block the build.
 
 ---
 

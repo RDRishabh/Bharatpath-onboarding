@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1591 tests
+.venv/Scripts/pytest.exe                # 1662 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -287,6 +287,33 @@ is where a third one would have to be argued for.
 - **The pipeline is not a candidate profile.** No name, contact or score in
   any employer schema here; that is the Day 13–14 reveal, behind the access
   window and its audit row.
+
+## Masked search — Day 13
+
+- **`MaskedCandidate` has no field for a name, contact or the score**, and
+  `tests/invariants/test_masked_candidate.py` holds its exact field list.
+  Widening the card is a product decision, not a refactor. Employers get the
+  **band**, never the number.
+- **`candidate_search_documents` is written by a trigger on `scores` and
+  nothing else** (`project_candidate_search_document`); the app role has no
+  INSERT/UPDATE/DELETE on it. Bands, badges and the contact filter in that
+  trigger are **generated** from `scoring.domain.BANDS`,
+  `discovery.domain.BADGE_FOR_ADDON_KIND` and `CONTACT_LIKE_PATTERN` — change
+  those and rebuild the database. Experience is summed in SQL and a test holds
+  it equal to `features_from_extraction`.
+- **The document never decides visibility.** Search joins it through
+  `VISIBLE_CANDIDATES_CTE` on `(user_id, resume_version_id)`, so a suppressed
+  candidate keeps a document and still never appears.
+- **Location is candidate-declared** (`candidate_profiles`, `PUT
+  /candidate/profile/location`) — nothing else in the schema has one. A city
+  refuses digits and `@` because every employer sees it; no address or PIN.
+- **Skills come from a CV, so they can carry a phone number.** Contact-like
+  skills are dropped from the document (unsearchable) and again at the card.
+- Search needs owner/recruiter **and** approved KYB, is rate-limited per
+  organisation, orders by band only, and returns **no total**. No audit row:
+  a card is not a reveal. The reveal, access window and view caps are Day 14.
+- Tests share one pool: give each test's candidates a unique skill and filter
+  on it.
 
 ## Streak points are not the score
 

@@ -18,11 +18,14 @@ with SQL rather than going through those modules' services. That is a
 deliberate exception to the usual cross-module rule, and it is the only way to
 honour the one above: suppression has to be a join the planner can use an
 index for, not a per-candidate round trip after the page is already built.
+Masked search extends the same exception to `candidate_profiles`, for the
+location, and for the same reason.
 """
 
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,7 +84,7 @@ async def visible_candidate_ids(
     everything an employer is shown about a candidate is a separate, audited
     read (invariant 7-prime).
     """
-    # S608 is a false positive in both queries here: every string joined is a
+    # S608 is a false positive in every query here: every string joined is a
     # module constant, and every value a caller supplies is a bind parameter.
     query = (
         "WITH "  # noqa: S608
@@ -140,3 +143,89 @@ async def count_visible_at_or_above(session: AsyncSession, *, min_score: int) ->
         """
     )
     return int(await session.scalar(text(query), {"min_score": min_score}) or 0)
+
+
+def _contains(value: str) -> str:
+    """An ILIKE pattern matching `value` literally, wildcards and all."""
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+async def search_candidates(
+    session: AsyncSession,
+    *,
+    bands: list[str],
+    skill_keys: list[str],
+    badges: list[str],
+    min_experience_months: int | None,
+    state_code: str | None,
+    city: str | None,
+    query: str | None,
+    after: tuple[int, uuid.UUID] | None,
+    limit: int,
+) -> list[Any]:
+    """A page of masked search rows: stronger bands first, then by id.
+
+    **Selects nothing a card may not show.** No score, no name, no contact --
+    the search document does not hold them, and the profile is read for its
+    location only. The row is not a `MaskedCandidate` yet; the service makes it
+    one, and the schema drops whatever it cannot show.
+
+    **Only the filters asked for are in the SQL.** `(:x IS NULL OR ...)` would
+    be one statement for every search, and a generic plan for it can use none
+    of the GIN indexes, because the planner must assume any predicate might be
+    switched off. Composing the WHERE clause from constant fragments keeps
+    every value a bind parameter and every index usable.
+    """
+    predicates: list[str] = []
+    params: dict[str, Any] = {"limit": limit}
+    if bands:
+        predicates.append("d.band = ANY(CAST(:bands AS text[]))")
+        params["bands"] = bands
+    if skill_keys:
+        predicates.append("d.skill_keys @> CAST(:skill_keys AS text[])")
+        params["skill_keys"] = skill_keys
+    if badges:
+        predicates.append("d.badges @> CAST(:badges AS text[])")
+        params["badges"] = badges
+    if min_experience_months is not None:
+        predicates.append("d.experience_months >= :min_months")
+        params["min_months"] = min_experience_months
+    if state_code:
+        predicates.append("p.state_code = :state_code")
+        params["state_code"] = state_code
+    if city:
+        # `ix_candidate_profiles_city_trgm` serves a contains-match.
+        predicates.append("p.city ILIKE :city ESCAPE '\\'")
+        params["city"] = _contains(city)
+    if query:
+        predicates.append("d.search_vector @@ plainto_tsquery('simple', :query)")
+        params["query"] = query
+    if after is not None:
+        predicates.append(
+            "(d.band_rank < :after_rank"
+            " OR (d.band_rank = :after_rank AND d.user_id > CAST(:after_id AS uuid)))"
+        )
+        params["after_rank"], params["after_id"] = after[0], str(after[1])
+
+    sql = (
+        "WITH "  # noqa: S608 - see the note on visible_candidate_ids
+        + VISIBLE_CANDIDATES_CTE
+        + """
+        SELECT d.user_id, d.band, d.band_rank, d.experience_months, d.skills, d.badges,
+               p.city, p.state_code
+          FROM visible_candidates vc
+          JOIN candidate_search_documents d
+            ON d.user_id = vc.user_id
+           AND d.resume_version_id = vc.resume_version_id
+          LEFT JOIN candidate_profiles p
+            ON p.user_id = vc.user_id
+         WHERE """
+        + (" AND ".join(predicates) if predicates else "true")
+        + """
+         ORDER BY d.band_rank DESC, d.user_id
+         LIMIT :limit
+        """
+    )
+    result = await session.execute(text(sql), params)
+    return list(result)

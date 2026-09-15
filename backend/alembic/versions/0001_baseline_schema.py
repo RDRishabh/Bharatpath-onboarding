@@ -92,6 +92,7 @@ def upgrade() -> None:
     _create_published_at_stamp()
     _create_candidate_marketplace_access()
     _create_application_guard()
+    _create_candidate_search_projection()
 
 
 def downgrade() -> None:
@@ -246,6 +247,8 @@ def _create_candidate_tables() -> None:
         "dsr_requests",
         "user_streaks",
         "streak_point_events",
+        "candidate_profiles",
+        "candidate_search_documents",
     )
 
 
@@ -351,6 +354,12 @@ def _apply_append_only_grants() -> None:
     # The engagement-points ledger. Not a score, but it is a balance a
     # candidate sees, and one that could be rewritten would explain nothing.
     op.execute(f"REVOKE UPDATE, DELETE ON streak_point_events FROM {APP_ROLE}")
+
+    # The masked-search document is written by the trigger on `scores` and by
+    # nothing else (`_create_candidate_search_projection`). The app role reads
+    # it; a write from the application would be a card the score does not
+    # support. Not even INSERT, unlike the tables above.
+    op.execute(f"REVOKE INSERT, UPDATE, DELETE ON candidate_search_documents FROM {APP_ROLE}")
 
 
 # ---------------------------------------------------------------------------
@@ -700,5 +709,161 @@ def _create_application_guard() -> None:
         CREATE TRIGGER trg_guard_application_write
           BEFORE INSERT OR UPDATE ON applications
           FOR EACH ROW EXECUTE FUNCTION guard_application_write();
+        """
+    )
+
+
+# ---------------------------------------------------------------------------
+# Day 13 -- the masked-search document, written by the database
+# ---------------------------------------------------------------------------
+_SEARCH_PROJECTION_SQL = r"""
+CREATE OR REPLACE FUNCTION project_candidate_search_document()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_features jsonb := COALESCE(NEW.extracted_features, '{}'::jsonb);
+  v_skills text[];
+  v_months bigint;
+  v_badges text[];
+BEGIN
+  -- Distinct canonical skills, first spelling wins, contact-like text dropped.
+  SELECT COALESCE(array_agg(d.skill ORDER BY d.ord), '{}'::text[])
+    INTO v_skills
+    FROM (
+      SELECT DISTINCT ON (lower(btrim(s.e->>'canonical_name', E' \t\r\n')))
+             btrim(s.e->>'canonical_name', E' \t\r\n') AS skill, s.ord
+        FROM jsonb_array_elements(
+               CASE WHEN jsonb_typeof(v_features->'skills') = 'array'
+                    THEN v_features->'skills' ELSE '[]'::jsonb END
+             ) WITH ORDINALITY AS s(e, ord)
+       WHERE jsonb_typeof(s.e->'canonical_name') = 'string'
+         AND btrim(s.e->>'canonical_name', E' \t\r\n') <> ''
+         AND char_length(btrim(s.e->>'canonical_name', E' \t\r\n')) <= __MAX_SKILL_LENGTH__
+         AND btrim(s.e->>'canonical_name', E' \t\r\n') !~ '__CONTACT_LIKE__'
+       ORDER BY lower(btrim(s.e->>'canonical_name', E' \t\r\n')), s.ord
+    ) AS d;
+
+  -- Months summed from the roles as `features_from_extraction` sums them:
+  -- positive JSON integers only. CASE, not AND, so the cast is never
+  -- attempted on "77", 12.5 or true.
+  SELECT COALESCE(sum(
+           CASE WHEN jsonb_typeof(r->'months') = 'number'
+                     AND (r->>'months') ~ '^[0-9]{1,9}$'
+                THEN (r->>'months')::bigint ELSE 0 END
+         ), 0)
+    INTO v_months
+    FROM jsonb_array_elements(
+           CASE WHEN jsonb_typeof(v_features->'roles') = 'array'
+                THEN v_features->'roles' ELSE '[]'::jsonb END
+         ) AS r;
+
+  SELECT COALESCE(array_agg(DISTINCT k.badge ORDER BY k.badge), '{}'::text[])
+    INTO v_badges
+    FROM (
+      SELECT __BADGE_CASE__ AS badge
+        FROM jsonb_array_elements(
+               CASE WHEN jsonb_typeof(NEW.contributing_events) = 'array'
+                    THEN NEW.contributing_events ELSE '[]'::jsonb END
+             ) AS e
+    ) AS k
+   WHERE k.badge IS NOT NULL;
+
+  INSERT INTO candidate_search_documents AS doc (
+           user_id, score_id, resume_version_id, computed_at, band, band_rank,
+           experience_months, skills, skill_keys, badges, search_vector)
+  VALUES (
+           NEW.user_id, NEW.id, NEW.resume_version_id, NEW.computed_at,
+           __BAND_CASE__, __RANK_CASE__,
+           LEAST(v_months, 2147483647)::integer,
+           v_skills,
+           ARRAY(SELECT lower(x) FROM unnest(v_skills) AS x),
+           v_badges,
+           to_tsvector('simple', array_to_string(v_skills, ' ')))
+  ON CONFLICT (user_id) DO UPDATE
+     SET score_id = EXCLUDED.score_id,
+         resume_version_id = EXCLUDED.resume_version_id,
+         computed_at = EXCLUDED.computed_at,
+         band = EXCLUDED.band,
+         band_rank = EXCLUDED.band_rank,
+         experience_months = EXCLUDED.experience_months,
+         skills = EXCLUDED.skills,
+         skill_keys = EXCLUDED.skill_keys,
+         badges = EXCLUDED.badges,
+         search_vector = EXCLUDED.search_vector
+   -- The discovery CTE's "latest": greatest (computed_at, id). An older score
+   -- arriving late never overwrites a newer document.
+   WHERE (doc.computed_at, doc.score_id) <= (EXCLUDED.computed_at, EXCLUDED.score_id);
+
+  RETURN NULL;
+END;
+$$;
+"""
+
+
+def _create_candidate_search_projection() -> None:
+    """Keep `candidate_search_documents` equal to each candidate's latest score.
+
+    **A trigger, not a task.** Masked search filters on facts taken from the
+    stored extraction, and an event-driven copy can miss an event, fall behind
+    a re-score, or be written by code that has a bug in it. An `AFTER INSERT`
+    trigger on `scores` runs in the transaction that wrote the score, reads
+    nothing but that row, and is the only writer the table has -- the app role
+    holds no INSERT, UPDATE or DELETE on it (`_apply_append_only_grants`).
+
+    **Generated from the rules it mirrors**, as the application guard is built
+    from `allowed_transitions()`:
+
+      * bands from `scoring.domain.BANDS`, out-of-range values going to the
+        nearest end exactly as `band_for` does;
+      * badges from `discovery.domain.BADGE_FOR_ADDON_KIND`;
+      * the contact filter from `discovery.domain.CONTACT_LIKE_PATTERN`, a
+        regex written in the dialect Python and Postgres share.
+
+    Experience is summed in SQL rather than generated, and
+    `test_masked_search.py` holds it equal to `features_from_extraction` on
+    malformed extractions as well as ordinary ones.
+
+    SECURITY DEFINER so the trigger can write a table the role that inserted
+    the score cannot. It reads only `NEW`.
+    """
+    from app.modules.discovery.domain import (
+        BADGE_FOR_ADDON_KIND,
+        CONTACT_LIKE_PATTERN,
+        MAX_SKILL_LENGTH,
+    )
+    from app.modules.scoring.domain import BANDS
+
+    upper_bounds = [(label, high) for label, _low, high in BANDS[:-1]]
+    band_case = (
+        "CASE "
+        + " ".join(f"WHEN NEW.raw_value <= {high} THEN '{label}'" for label, high in upper_bounds)
+        + f" ELSE '{BANDS[-1][0]}' END"
+    )
+    rank_case = (
+        "CASE "
+        + " ".join(f"WHEN NEW.raw_value <= {high} THEN {i}" for i, (_, high) in enumerate(upper_bounds))
+        + f" ELSE {len(BANDS) - 1} END"
+    )
+    badge_case = (
+        "CASE e->>'kind' "
+        + " ".join(f"WHEN '{kind}' THEN '{badge}'" for kind, badge in sorted(BADGE_FOR_ADDON_KIND.items()))
+        + " END"
+    )
+
+    op.execute(
+        _SEARCH_PROJECTION_SQL.replace("__BAND_CASE__", band_case)
+        .replace("__RANK_CASE__", rank_case)
+        .replace("__BADGE_CASE__", badge_case)
+        .replace("__CONTACT_LIKE__", CONTACT_LIKE_PATTERN.replace("'", "''"))
+        .replace("__MAX_SKILL_LENGTH__", str(MAX_SKILL_LENGTH))
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_project_candidate_search_document
+          AFTER INSERT ON scores
+          FOR EACH ROW EXECUTE FUNCTION project_candidate_search_document();
         """
     )
