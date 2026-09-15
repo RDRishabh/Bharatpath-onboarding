@@ -15,7 +15,7 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1662 on 2026-09-15 (Day 13, uncommitted) — 1661 passed in the full local run; `test_pipeline.py::test_a_smuggled_field_is_refused` failed there once and passes on its own (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Tests** | 1663 on 2026-09-15 (Day 13) — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 85% |
 | **Days done** | 1, 2, 5, 7, 10, 11, 12, 13 complete · 3, 4, 6, 8, 9 partial |
 | **Next** | Day 14 — access windows, reveal audit, abuse controls |
@@ -55,13 +55,21 @@ states. Newest entries first.
 
 ## 2026-09-15 — Day 13: masked candidate search
 
-**1591 -> 1662 tests.** Local CI chain green: age, vocabulary, ruff, format,
-mypy, 9 import contracts, modules. Full pytest: 1661 passed, coverage 85%.
-**One failure:** `test_pipeline.py::test_a_smuggled_field_is_refused` (Day 12)
-failed in the full run and passes on its own. It touches nothing Day 13
-changed, but the failure was not captured, so treat it as unexplained until CI
-has run. **The full local run took 1h40m.** No earlier duration is recorded, so
-whether Day 13 slowed it is unknown. Check the CI job time.
+**1591 -> 1663 tests.** Local CI chain green: age, vocabulary, ruff, format,
+mypy, 9 import contracts, modules. Coverage 85%.
+
+**The first push (`c10f20f`) failed CI on a flaky test of ours**:
+`test_a_newer_score_replaces_what_search_knows`, about one run in ten locally
+too. The product was right: the test's random skill was hex, and a hex token
+sometimes holds eight digits in a row, which `CONTACT_LIKE_PATTERN` drops as a
+phone number. Test tokens are now letters only. The contact filter's cost is
+the same for real data: a skill containing eight or more digits in a row is
+not indexed.
+
+- `test_pipeline.py::test_a_smuggled_field_is_refused` (Day 12) failed once in
+  the long local run and passes alone and with its file. It passed in CI.
+- **The full local run took 1h40m; the CI tests job takes about 2.5 minutes**,
+  so the slowness is this machine, not Day 13.
 
 ### What landed
 

@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1662 tests
+.venv/Scripts/pytest.exe                # 1663 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -313,7 +313,9 @@ is where a third one would have to be argued for.
   organisation, orders by band only, and returns **no total**. No audit row:
   a card is not a reveal. The reveal, access window and view caps are Day 14.
 - Tests share one pool: give each test's candidates a unique skill and filter
-  on it.
+  on it. **Make that skill letters only** — a hex token sometimes holds eight
+  digits in a row, the contact filter drops it as a phone number, and the test
+  fails about one run in ten.
 
 ## Streak points are not the score
 

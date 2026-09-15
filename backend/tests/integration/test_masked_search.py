@@ -47,8 +47,14 @@ ROLE = EXTRACTED["roles"][0]
 PHONE_IN_CV = "+91 98765 43210"
 
 
+#: Hex digits mapped to letters. A hex token sometimes carries eight digits in a
+#: row, which `CONTACT_LIKE_PATTERN` rightly reads as a phone number and drops
+#: -- so a test skill made of hex vanished from the index about one run in ten.
+_LETTERS = str.maketrans("0123456789", "ghijklmnop")
+
+
 def _token() -> str:
-    return f"skill{uuid.uuid4().hex[:12]}"
+    return f"skill{uuid.uuid4().hex[:12].translate(_LETTERS)}"
 
 
 def _extraction(*skills: str, months: int = 77, roles: Any = None) -> dict[str, Any]:
