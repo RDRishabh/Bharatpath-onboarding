@@ -15,7 +15,7 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1591 passing locally 2026-09-15 (Day 12, full local CI chain). Day 10 (`4115c6a`) green on CI 2026-09-13. |
+| **Tests** | 1591 passing 2026-09-15 (Day 12, `65ba18e`) — local CI chain and **all five CI jobs green on PR #8**. |
 | **Coverage** | 85% |
 | **Days done** | 1, 2, 5, 7, 10, 11, 12 complete · 3, 4, 6, 8, 9 partial |
 | **Next** | Day 13 — masked candidate search, filters, search indexes |
