@@ -42,3 +42,20 @@ async def set_location(
     profile = await get_profile(session, user_id=user_id)
     assert profile is not None  # just written in this transaction
     return profile
+
+
+async def set_full_name(
+    session: AsyncSession, *, user_id: uuid.UUID, full_name: str
+) -> CandidateProfile:
+    """Upsert the name alone, leaving the location as it was."""
+    await session.execute(
+        insert(CandidateProfile)
+        .values(user_id=user_id, full_name=full_name)
+        .on_conflict_do_update(
+            index_elements=[CandidateProfile.user_id],
+            set_={"full_name": full_name, "updated_at": func.now()},
+        )
+    )
+    profile = await get_profile(session, user_id=user_id)
+    assert profile is not None  # just written in this transaction
+    return profile

@@ -107,9 +107,9 @@ class DiscoveryLimits:
     """Every number that throttles an employer's reach into the pool.
 
     Loaded from `config_values` key `discovery.limits`; these defaults apply
-    only when no row exists. They are **ours, not the client's**: generous
-    for a recruiter screening by hand, and a ceiling far below the pool for
-    anyone walking it.
+    only when no row exists. We proposed them and the client accepted them as
+    the defaults on 2026-09-15: generous for a recruiter screening by hand,
+    and a ceiling far below the pool for anyone walking it.
     """
 
     #: Distinct candidates one organisation may open per rolling hour.

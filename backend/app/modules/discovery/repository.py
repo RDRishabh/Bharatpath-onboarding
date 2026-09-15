@@ -256,7 +256,7 @@ async def revealed_candidate(session: AsyncSession, *, candidate_id: uuid.UUID) 
         + """
         SELECT vc.user_id, vc.resume_version_id, u.phone, u.email,
                d.score_id, d.band, d.experience_months, d.skills, d.badges,
-               p.city, p.state_code
+               p.full_name, p.city, p.state_code
           FROM visible_candidates vc
           JOIN users u
             ON u.id = vc.user_id

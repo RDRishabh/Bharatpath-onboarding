@@ -30,7 +30,6 @@ states. Newest entries first.
 
 | Item | Decided | Why deferred | What it takes to land |
 |---|---|---|---|
-| **Legacy `.doc` (OLE2) parsing** | 2026-09-11 | No maintained pure-Python reader; the alternatives are native binaries that would go in the Docker image. | Either drop `application/msword` from the accepted types, or add a converter. Currently accepted at upload and will fail at parse — **decide before launch**. |
 
 > ⚠️ **Switching parser is not a drop-in.** Invariant 1 requires a score to be
 > reproducible from the stored extraction chain. A different parser yields
@@ -50,6 +49,26 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-15 — Client answers after Day 14, and two changes they asked for
+
+Recorded in `answers-log.md` Round 10.
+
+- **E3 — legacy `.doc` is no longer accepted.** Removed from
+  `resume_allowed_mime_types`; an OLE2 upload is refused as
+  `upload_legacy_doc_unsupported`. Removed from *Deferred by decision* above.
+- **E13 — the candidate's name is asked at sign-up.** `PUT
+  /candidate/profile/name` → `candidate_profiles.full_name`; the reveal prefers
+  it over the structured form's name. Never selected by masked search.
+  **Rebuild with `reset_local_db.sh`.** The app's sign-up screen must ask for
+  it; the API does not block anything without one.
+- **Closed or confirmed:** N4/B7 acknowledged, C11 dropped, C13 30 days
+  accepted, E11 not limited, discovery limits accepted as defaults. B3's
+  carve-out confirmed (retention period still owed). D4 still not started.
+- **E7 left as it is** pending a clearer answer on opening employer self
+  sign-up.
 
 ---
 

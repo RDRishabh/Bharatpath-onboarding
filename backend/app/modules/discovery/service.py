@@ -272,6 +272,8 @@ class OpenedCandidate:
     score_id: uuid.UUID
     phone: str | None
     email: str | None
+    #: As given at sign-up; None if the candidate has not given one.
+    full_name: str | None
     band: str
     experience_years: int
     skills: list[str]
@@ -368,6 +370,7 @@ async def open_candidate(
         score_id=revealed.score_id,
         phone=revealed.phone,
         email=revealed.email,
+        full_name=revealed.full_name,
         band=revealed.band,
         experience_years=experience_years(int(revealed.experience_months)),
         skills=list(revealed.skills),

@@ -28,6 +28,7 @@ from app.modules.candidate import repository
 from app.modules.candidate.schemas import (
     CandidateProfileResponse,
     LocationRequest,
+    NameRequest,
     RevealedCandidate,
 )
 from app.modules.discovery import service as discovery_service
@@ -62,6 +63,17 @@ async def set_location(
     return CandidateProfileResponse.model_validate(profile)
 
 
+async def set_full_name(
+    session: AsyncSession, *, ctx: TenantContext, payload: NameRequest
+) -> CandidateProfileResponse:
+    """Replace the candidate's name. Not paywalled, like the location."""
+    _candidate(ctx)
+    profile = await repository.set_full_name(
+        session, user_id=ctx.user_id, full_name=payload.full_name
+    )
+    return CandidateProfileResponse.model_validate(profile)
+
+
 async def reveal_to_employer(
     session: AsyncSession,
     *,
@@ -86,7 +98,9 @@ async def reveal_to_employer(
     score = await scoring_service.get_score(session, score_id=opened.score_id)
     if score is None:  # the search document's foreign key makes this unreachable
         raise discovery_service.CandidateNotFoundError()
-    full_name = await resume_service.declared_name(
+    # The name given at sign-up first; the structured form's for anyone who
+    # signed up before it was asked.
+    full_name = opened.full_name or await resume_service.declared_name(
         session, user_id=opened.candidate_id, resume_version_id=opened.resume_version_id
     )
     return RevealedCandidate(

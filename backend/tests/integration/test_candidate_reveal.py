@@ -384,3 +384,65 @@ async def test_the_partition_function_refuses_a_silly_range() -> None:
             await session.execute(
                 text("SELECT ensure_candidate_view_partitions(:d, 0)"), {"d": date(2030, 1, 1)}
             )
+
+
+# --- the name given at sign-up (blockers E13) ------------------------------------
+async def test_the_name_given_at_sign_up_is_shown_on_the_reveal_and_never_on_a_card(
+    client: Any, mint_token: Any
+) -> None:
+    skill = _token()
+    candidate = await _candidate(mint_token, skill)
+    saved = await client.put(
+        f"{API}/candidate/profile/name",
+        json={"full_name": "  Meera   Nair "},
+        headers=candidate["headers"],
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["full_name"] == "Meera Nair"
+
+    employer = await _employer(client, mint_token)
+    cards = await client.get(SEARCH, params={"skill": skill}, headers=employer["headers"])
+    assert cards.status_code == 200, cards.text
+    assert "Meera" not in cards.text
+
+    revealed = await _reveal(client, employer, candidate["id"])
+    assert revealed.json()["full_name"] == "Meera Nair"
+
+
+async def test_the_sign_up_name_wins_over_the_form(client: Any, mint_token: Any) -> None:
+    candidate = await _candidate(mint_token, _token())
+    async with sessions(_seed_url())() as session, session.begin():
+        await session.execute(
+            text(
+                'UPDATE resume_versions SET parsed = parsed || \'{"full_name": "Old Name"}\' '
+                "WHERE user_id = :u"
+            ),
+            {"u": str(candidate["id"])},
+        )
+    await client.put(
+        f"{API}/candidate/profile/name",
+        json={"full_name": "New Name"},
+        headers=candidate["headers"],
+    )
+    employer = await _employer(client, mint_token)
+    assert (await _reveal(client, employer, candidate["id"])).json()["full_name"] == "New Name"
+
+
+async def test_a_name_that_is_not_a_name_is_refused(client: Any, mint_token: Any) -> None:
+    candidate = await _candidate(mint_token, _token())
+    for refused in (
+        {"full_name": "call 9876543210"},
+        {"full_name": "a@b.in"},
+        {"full_name": ""},
+        {},
+    ):
+        response = await client.put(
+            f"{API}/candidate/profile/name", json=refused, headers=candidate["headers"]
+        )
+        assert response.status_code == 422, refused
+
+    employer = await _employer(client, mint_token)
+    response = await client.put(
+        f"{API}/candidate/profile/name", json={"full_name": "Anyone"}, headers=employer["headers"]
+    )
+    assert response.status_code == 403

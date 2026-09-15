@@ -21,7 +21,7 @@ from app.modules.resume.domain import (
     validate_upload,
 )
 
-ALLOWED = ["application/pdf", DOCX, "application/msword"]
+ALLOWED = ["application/pdf", DOCX]
 MAX = 10 * 1024 * 1024
 
 PDF = b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n"
@@ -104,7 +104,7 @@ def test_exactly_the_limit_is_allowed() -> None:
 
 
 def test_a_recognised_but_unlisted_type_is_refused() -> None:
-    r = validate_upload(head=DOC, size_bytes=100, max_bytes=MAX, allowed=["application/pdf"])
+    r = validate_upload(head=PDF, size_bytes=100, max_bytes=MAX, allowed=[DOCX])
     assert r is not None and r.code == "upload_unsupported_type"
 
 
@@ -138,3 +138,15 @@ def test_normalisation_is_idempotent() -> None:
     normalising twice cannot differ from normalising once."""
     once = normalise_pasted_text("a\r\n\r\n\r\n  b  \n\n\n")
     assert normalise_pasted_text(once) == once
+
+
+# --- legacy .doc (blockers E3, closed 2026-09-15) -------------------------------
+def test_a_legacy_doc_is_refused_at_upload_with_its_own_code() -> None:
+    rejection = validate_upload(head=DOC, size_bytes=4096, max_bytes=MAX, allowed=ALLOWED)
+    assert rejection is not None and rejection.code == "upload_legacy_doc_unsupported"
+
+
+def test_the_shipped_settings_do_not_accept_legacy_doc() -> None:
+    from app.settings import Settings
+
+    assert "application/msword" not in Settings.model_fields["resume_allowed_mime_types"].default

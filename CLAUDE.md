@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1663 tests
+.venv/Scripts/pytest.exe                # 1731 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -353,8 +353,9 @@ is where a third one would have to be argued for.
   DEFINER) adds more, via `app/tasks/view_event_partitions.py`, unscheduled
   (E4). Rows in DEFAULT block creating their month — move them first.
 - **`RevealedCandidate` has `score` (display) and no raw field**, and
-  `full_name` only when typed on the structured form; a name is never guessed
-  from a CV. Its field list, "no employer schema has a raw field" and "export
+  `full_name` from `candidate_profiles` (asked at sign-up, `PUT
+  /candidate/profile/name`), else the structured form's; never guessed from a
+  CV and never on a masked card. Its field list, "no employer schema has a raw field" and "export
   is not a feature" are invariant tests. No list endpoint may return it.
 - Discovery repository functions that do not use the CTE must be named in
   `READS_NO_CANDIDATE` (`test_discovery_suppression.py`) and may not mention a

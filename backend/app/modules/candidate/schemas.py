@@ -15,7 +15,13 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.modules.candidate.domain import MAX_CITY_LENGTH, STATE_CODES, normalise_city
+from app.modules.candidate.domain import (
+    MAX_CITY_LENGTH,
+    MAX_NAME_LENGTH,
+    STATE_CODES,
+    normalise_city,
+    normalise_full_name,
+)
 from app.modules.discovery.domain import MAX_CARD_SKILLS, MAX_EXPERIENCE_YEARS, displayable_skills
 from app.modules.discovery.schemas import Badge, ScoreBand
 
@@ -47,7 +53,19 @@ class LocationRequest(_Base):
         return value
 
 
+class NameRequest(_Base):
+    """The candidate's name, asked at sign-up. Letters, spaces and `. ' -` only."""
+
+    full_name: Annotated[str, Field(min_length=1, max_length=MAX_NAME_LENGTH * 2)]
+
+    @field_validator("full_name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        return normalise_full_name(value)
+
+
 class CandidateProfileResponse(_Base):
+    full_name: str | None = None
     city: str | None = None
     state_code: str | None = None
     updated_at: datetime | None = None
@@ -64,8 +82,8 @@ class RevealedCandidate(_Base):
     field for the raw value, `extra="forbid"` refuses one, and an invariant
     test fails if any employer response grows one.
 
-    `full_name` is present only when the candidate typed it on the structured
-    form; a name is never guessed from a CV.
+    `full_name` is the name the candidate gave at sign-up, else the one typed
+    on the structured form, else null; a name is never guessed from a CV.
     """
 
     candidate_id: uuid.UUID

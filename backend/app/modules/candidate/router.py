@@ -26,6 +26,7 @@ from app.modules.candidate import service
 from app.modules.candidate.schemas import (
     CandidateProfileResponse,
     LocationRequest,
+    NameRequest,
     RevealedCandidate,
 )
 
@@ -64,6 +65,20 @@ async def set_location(
     """A city and a state, both optional. Employers see them on a masked card
     and filter by them, so a city carrying digits or `@` is refused (422)."""
     return await service.set_location(session, ctx=user, payload=payload)
+
+
+@router.put(
+    "/profile/name",
+    response_model=CandidateProfileResponse,
+    dependencies=[CandidateOnly],
+    summary="Set the candidate's name",
+)
+async def set_name(
+    payload: NameRequest, user: CurrentUser, session: DbSession
+) -> CandidateProfileResponse:
+    """Asked at sign-up. Only an employer who opens the profile sees it, never
+    a masked card. Digits and `@` are refused (422)."""
+    return await service.set_full_name(session, ctx=user, payload=payload)
 
 
 @employer_router.get(
