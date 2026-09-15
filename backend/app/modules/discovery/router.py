@@ -8,8 +8,12 @@ import-linter enforces the second half of that sentence.
 **Who searches.** Owners and recruiters, the two actors SRS 1.14.1 names.
 Viewers read the organisation's jobs and pipeline, but candidate search is the
 surface a bulk-extraction attempt would use, so it is not widened past the
-spec by default. The employer subscription gate joins on Day 15 with the
-other employer routes, and the access window on Day 14 with the reveal.
+spec by default. Searching needs an active subscription (R15).
+
+**Opening a profile is `GET /employer/discovery/candidates/{candidate_id}`**,
+mounted from the `candidate` module because the response needs the display
+score and this module may not import `scoring`. The checks, the caps and the
+audit row are this module's (`service.open_candidate`).
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from app.core.deps import (
     EMPLOYER_RECRUITER,
     CurrentUser,
     DbSession,
+    require_active_subscription,
     require_role,
 )
 from app.core.pagination import MAX_PAGE_SIZE, Page
@@ -38,7 +43,7 @@ Searchers = Depends(require_role(EMPLOYER_OWNER, EMPLOYER_RECRUITER))
 @router.get(
     "/candidates",
     response_model=Page[MaskedCandidate],
-    dependencies=[Searchers],
+    dependencies=[Searchers, Depends(require_active_subscription)],
     summary="Search candidates, masked",
 )
 async def search_candidates(

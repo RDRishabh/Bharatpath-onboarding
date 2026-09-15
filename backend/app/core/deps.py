@@ -270,7 +270,7 @@ async def require_active_subscription(user: CurrentUser, session: DbSession) -> 
     return user
 
 
-async def require_active_access_window(user: CurrentUser) -> TenantContext:
+async def require_active_access_window(user: CurrentUser, session: DbSession) -> TenantContext:
     """Invariant 7: the employer's paid period, checked on every reveal (R14).
 
     One check, one place. The subscription IS the entitlement - there is no
@@ -278,9 +278,21 @@ async def require_active_access_window(user: CurrentUser) -> TenantContext:
     entitlement, deliberately**. A window lapsing mid-session must mask the
     very next read, so this reads current state every time.
 
-    TODO(Day 14): read the tenant's subscription window.
+    It reads the same row as `require_active_subscription` and refuses with a
+    different code on purpose: `subscription_required` tells an employer to
+    buy something before using the portal, `access_window_expired` tells one
+    who was revealing candidates a minute ago that their period has ended.
+
+    Only a tenant has an access window. A candidate or a business account with
+    no organisation is refused before any subscription is read.
     """
-    raise AccessWindowExpiredError()
+    if user.tenant_id is None:
+        raise PermissionDeniedError()
+    if not await has_active_subscription(
+        session, subscriber_type="TENANT", subscriber_id=user.tenant_id
+    ):
+        raise AccessWindowExpiredError()
+    return user
 
 
 async def require_kyb_approved(user: CurrentUser) -> TenantContext:

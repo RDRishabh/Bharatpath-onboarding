@@ -58,6 +58,8 @@ CandidateOnly = Depends(require_role(CANDIDATE))
 PayingCandidate = [CandidateOnly, Depends(require_active_subscription)]
 
 Movers = Depends(require_role(EMPLOYER_OWNER, EMPLOYER_RECRUITER))
+#: R15: working the pipeline needs an active subscription, after the role guard.
+PayingEmployer = Depends(require_active_subscription)
 Readers = Depends(require_role(EMPLOYER_OWNER, EMPLOYER_RECRUITER, EMPLOYER_VIEWER))
 
 
@@ -160,7 +162,7 @@ async def dispute_hire(
 @employer_router.get(
     "",
     response_model=Page[EmployerApplicationSummary],
-    dependencies=[Readers],
+    dependencies=[Readers, PayingEmployer],
     summary="A job's applications, oldest first",
 )
 async def list_for_job(
@@ -179,7 +181,7 @@ async def list_for_job(
 @employer_router.get(
     "/{application_id}",
     response_model=EmployerApplicationDetail,
-    dependencies=[Readers],
+    dependencies=[Readers, PayingEmployer],
     summary="Open an application",
 )
 async def open_application(
@@ -192,7 +194,7 @@ async def open_application(
 @employer_router.post(
     "/{application_id}/stage",
     response_model=EmployerApplicationDetail,
-    dependencies=[Movers],
+    dependencies=[Movers, PayingEmployer],
     summary="Move an application to the next stage, or reject it",
 )
 async def move_stage(
@@ -208,7 +210,7 @@ async def move_stage(
 @employer_router.put(
     "/{application_id}/interview",
     response_model=EmployerApplicationDetail,
-    dependencies=[Movers],
+    dependencies=[Movers, PayingEmployer],
     summary="Book or rebook the interview",
 )
 async def schedule_interview(
@@ -231,7 +233,7 @@ async def schedule_interview(
 @employer_router.post(
     "/{application_id}/hire",
     response_model=EmployerApplicationDetail,
-    dependencies=[Movers],
+    dependencies=[Movers, PayingEmployer],
     summary="Mark as hired, pending the candidate's confirmation",
 )
 async def propose_hire(

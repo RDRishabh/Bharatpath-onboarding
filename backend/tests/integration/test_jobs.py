@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
-from tests.conftest import _seed_url, sessions
+from tests.conftest import _seed_url, sessions, subscribe_tenant
 
 pytestmark = pytest.mark.integration
 
@@ -42,6 +42,7 @@ async def _organisation(client: Any, mint_token: Any) -> dict[str, Any]:
         f"{API}/organisation", json={"legal_name": "Jobs Test Pvt Ltd"}, headers=headers
     )
     assert created.status_code == 201, created.text
+    await subscribe_tenant(created.json()["tenant_id"])
     return {"headers": headers, "tenant_id": created.json()["tenant_id"]}
 
 

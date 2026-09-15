@@ -29,19 +29,57 @@ def _norm(sql: str) -> str:
     return re.sub(r"\s+", " ", sql).strip()
 
 
+#: Repository functions that query without the CTE because they read no
+#: candidate at all. Each needs a reason, and the test below fails if one of
+#: them starts naming a candidate table -- so this list cannot become the way
+#: round the rule.
+READS_NO_CANDIDATE: dict[str, str] = {
+    "current_config": "reads config_values: the abuse limits, not a person",
+    "lock_tenant_views": "takes an advisory lock; reads no table",
+    "view_counts": "counts the organisation's own view log to enforce its caps",
+    "ensure_view_partitions": "creates view-log partitions; reads no rows",
+}
+
+#: Tables that hold something about a candidate, as SQL would name them.
+CANDIDATE_TABLES = re.compile(
+    r"\b(users|scores|candidate_search_documents|candidate_profiles|resume_\w+|integrity_\w+"
+    r"|applications)\b|\b(Score|User|CandidateSearchDocument|CandidateProfile)\b"
+)
+
+
+def _query_functions() -> dict[str, str]:
+    source = (DISCOVERY / "repository.py").read_text(encoding="utf-8")
+    return {
+        node.name: ast.get_source_segment(source, node) or ""
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.AsyncFunctionDef)
+        and any(
+            call in (ast.get_source_segment(source, node) or "") for call in ("session.", "execute")
+        )
+    }
+
+
 def test_every_discovery_query_is_built_on_the_visibility_cte() -> None:
     """A query that skips the CTE shows suppressed candidates, and every other
     test in the suite still passes because the CTE itself is fine."""
-    source = (DISCOVERY / "repository.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
     offenders = [
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.AsyncFunctionDef)
-        and "session.execute" in (ast.get_source_segment(source, node) or "")
-        and "VISIBLE_CANDIDATES_CTE" not in (ast.get_source_segment(source, node) or "")
+        name
+        for name, body in _query_functions().items()
+        if "VISIBLE_CANDIDATES_CTE" not in body and name not in READS_NO_CANDIDATE
     ]
     assert not offenders, f"{offenders} query candidates without the visibility CTE"
+
+
+def test_the_queries_exempt_from_the_cte_read_no_candidate() -> None:
+    functions = _query_functions()
+    stale = sorted(set(READS_NO_CANDIDATE) - set(functions))
+    assert not stale, f"exemptions for functions that no longer exist: {stale}"
+    for name in READS_NO_CANDIDATE:
+        body = functions[name].split('"""', 2)[-1]  # the docstring may mention anything
+        found = CANDIDATE_TABLES.search(body)
+        assert found is None, (
+            f"{name} is exempt from the visibility CTE but reads {found.group(0)!r}"
+        )
 
 
 def test_the_suppression_predicate_matches_the_partial_index() -> None:

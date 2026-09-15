@@ -88,6 +88,7 @@ def upgrade() -> None:
 
     _enable_row_level_security()
     _apply_append_only_grants()
+    _create_view_event_partitions()
     _create_publish_gate_trigger()
     _create_published_at_stamp()
     _create_candidate_marketplace_access()
@@ -360,6 +361,86 @@ def _apply_append_only_grants() -> None:
     # it; a write from the application would be a card the score does not
     # support. Not even INSERT, unlike the tables above.
     op.execute(f"REVOKE INSERT, UPDATE, DELETE ON candidate_search_documents FROM {APP_ROLE}")
+
+
+# ---------------------------------------------------------------------------
+# Invariant 7-prime -- the view log, partitioned by month
+# ---------------------------------------------------------------------------
+_VIEW_EVENT_PARTITIONS_SQL = f"""
+CREATE OR REPLACE FUNCTION ensure_candidate_view_partitions(first_month date, months integer)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  created integer := 0;
+  lower_bound timestamptz;
+  partition_name text;
+BEGIN
+  IF first_month IS NULL OR months IS NULL OR months < 1 OR months > 36 THEN
+    RAISE EXCEPTION 'ensure_candidate_view_partitions: months must be between 1 and 36';
+  END IF;
+  FOR i IN 0 .. months - 1 LOOP
+    lower_bound := (date_trunc('month', first_month::timestamp) + make_interval(months => i))
+                   AT TIME ZONE 'UTC';
+    partition_name := 'candidate_view_events_' || to_char(lower_bound AT TIME ZONE 'UTC', 'YYYY_MM');
+    IF to_regclass(partition_name) IS NULL THEN
+      EXECUTE format(
+        'CREATE TABLE %I PARTITION OF candidate_view_events FOR VALUES FROM (%L) TO (%L)',
+        partition_name, lower_bound, lower_bound + interval '1 month'
+      );
+      EXECUTE format('REVOKE ALL ON %I FROM {APP_ROLE}', partition_name);
+      created := created + 1;
+    END IF;
+  END LOOP;
+  RETURN created;
+END;
+$$;
+"""
+
+#: One statement each: the driver prepares what `op.execute` sends, and a
+#: prepared statement holds exactly one command.
+_VIEW_EVENT_PARTITION_STATEMENTS = (
+    _VIEW_EVENT_PARTITIONS_SQL,
+    "REVOKE ALL ON FUNCTION ensure_candidate_view_partitions(date, integer) FROM PUBLIC",
+    f"GRANT EXECUTE ON FUNCTION ensure_candidate_view_partitions(date, integer) TO {APP_ROLE}",
+    "CREATE TABLE candidate_view_events_default PARTITION OF candidate_view_events DEFAULT",
+    f"REVOKE ALL ON candidate_view_events_default FROM {APP_ROLE}",
+    "SELECT ensure_candidate_view_partitions("
+    "(date_trunc('month', now() AT TIME ZONE 'UTC') - interval '1 month')::date, 15)",
+)
+
+
+def _create_view_event_partitions() -> None:
+    """Monthly partitions for `candidate_view_events`, and the function that adds them.
+
+    Every profile an employer opens writes a row (invariant 7'), so this is
+    the fastest-growing table in the schema. By month, so that retiring a
+    month is a `DETACH PARTITION` rather than a `DELETE` over millions of rows
+    -- and the retention period for this audit trail is still a question for
+    counsel (blockers B3), so nothing detaches anything yet.
+
+    **The partitions are revoked from the app role.** Default privileges grant
+    it DML on every table the migrator creates, partitions included, and RLS
+    on the parent does not apply to a query that names a partition directly.
+    So the app reads and writes through `candidate_view_events` or not at all.
+
+    **The DEFAULT partition is the safety net, not the plan.** A month with no
+    partition lands there, so a missed maintenance run never refuses a reveal
+    -- and never loses its audit row. `ensure_candidate_view_partitions` then
+    refuses to create that month while the default holds its rows, which is
+    loud on purpose: move them, then create it. The maintenance task
+    (`app/tasks/view_event_partitions.py`) keeps three months ahead, and this
+    creates fifteen from last month so nothing depends on it being scheduled
+    (blockers E4).
+
+    SECURITY DEFINER so the app role's worker can add a partition without
+    holding DDL rights itself; it can create partitions of this one table,
+    named by month, and nothing else.
+    """
+    for statement in _VIEW_EVENT_PARTITION_STATEMENTS:
+        op.execute(statement)
 
 
 # ---------------------------------------------------------------------------
@@ -844,12 +925,16 @@ def _create_candidate_search_projection() -> None:
     )
     rank_case = (
         "CASE "
-        + " ".join(f"WHEN NEW.raw_value <= {high} THEN {i}" for i, (_, high) in enumerate(upper_bounds))
+        + " ".join(
+            f"WHEN NEW.raw_value <= {high} THEN {i}" for i, (_, high) in enumerate(upper_bounds)
+        )
         + f" ELSE {len(BANDS) - 1} END"
     )
     badge_case = (
         "CASE e->>'kind' "
-        + " ".join(f"WHEN '{kind}' THEN '{badge}'" for kind, badge in sorted(BADGE_FOR_ADDON_KIND.items()))
+        + " ".join(
+            f"WHEN '{kind}' THEN '{badge}'" for kind, badge in sorted(BADGE_FOR_ADDON_KIND.items())
+        )
         + " END"
     )
 

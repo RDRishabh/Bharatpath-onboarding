@@ -15,7 +15,10 @@ trail, but PRD rule 9 still requires every reveal of private data to be logged
 writes a row there, in the same transaction as the reveal.
 
 That will be the fastest-growing table in the schema. It is partitioned by
-month in the Alembic baseline for exactly that reason.
+month for exactly that reason: `postgresql_partition_by` below makes the table
+a partitioned parent, and the baseline adds the monthly partitions, a DEFAULT
+partition and the function that creates the next ones
+(`_create_view_event_partitions`).
 """
 
 from __future__ import annotations
@@ -49,6 +52,14 @@ class CandidateViewEvent(Base):
     A bigserial key rather than a UUID: this is an append-only firehose where
     insert throughput matters more than opacity, and nothing external ever
     references a row by id.
+
+    **The key is `(id, viewed_at)`**, not `id` alone. Postgres requires every
+    unique constraint on a partitioned table to include the partition key, so
+    a primary key on `id` alone cannot exist here. `id` still comes from one
+    sequence and is unique in practice.
+
+    One row per profile opened, re-opens included: this is the audit spine,
+    not a set of candidates. The view caps count *distinct* candidates in it.
     """
 
     __tablename__ = "candidate_view_events"
@@ -70,7 +81,7 @@ class CandidateViewEvent(Base):
         nullable=False,
     )
     viewed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), primary_key=True
     )
 
     __table_args__ = (
@@ -80,6 +91,7 @@ class CandidateViewEvent(Base):
         Index("ix_view_events_tenant_time", "tenant_id", "viewed_at"),
         Index("ix_view_events_actor_time", "actor_id", "viewed_at"),
         Index("ix_view_events_candidate", "candidate_id"),
+        {"postgresql_partition_by": "RANGE (viewed_at)"},
     )
 
 

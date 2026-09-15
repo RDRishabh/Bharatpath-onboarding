@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 import pytest
 from sqlalchemy import text
 
-from tests.conftest import _seed_url, sessions
+from tests.conftest import _seed_url, sessions, subscribe_tenant
 from tests.integration.test_resume_intake import FakeS3, fake_s3  # noqa: F401 - fixture
 
 pytestmark = [pytest.mark.invariant, pytest.mark.integration]
@@ -53,6 +53,7 @@ async def _organisation(client: Any, mint_token: Any) -> dict[str, Any]:
     headers, _ = mint_token(pool="BUSINESS", email=_email())
     created = await client.post(f"{API}/employer/organisation", json=ORG, headers=headers)
     assert created.status_code == 201, created.text
+    await subscribe_tenant(created.json()["tenant_id"])
     member = await client.post(
         f"{API}/employer/team", json={"email": _email(), "role": "EMPLOYER_VIEWER"}, headers=headers
     )
@@ -195,6 +196,21 @@ def _pipeline_case(method: str, suffix: str, body: dict[str, Any] | None = None)
     return case
 
 
+async def _reveal_other_member(client: Any, attacker: dict, victim: dict) -> Any:
+    """A candidate belongs to no tenant, so what this route must protect is the
+    other organisation's people: naming tenant B's staff member as a candidate
+    reveals nothing about them. The attacker is paid (the helper) and approved,
+    so the refusal is the lookup's and not a gate's."""
+    async with sessions(_seed_url())() as session, session.begin():
+        await session.execute(
+            text("UPDATE employers SET kyb_status = 'APPROVED' WHERE tenant_id = :t"),
+            {"t": attacker["tenant_id"]},
+        )
+    return await client.get(
+        f"{API}/employer/discovery/candidates/{victim['member_id']}", headers=attacker["headers"]
+    )
+
+
 _TOMORROW = (datetime.now(UTC) + timedelta(days=1)).isoformat()
 
 
@@ -222,6 +238,7 @@ CROSS_TENANT_CASES: dict[tuple[str, str], Case] = {
     ("POST", f"{API}/employer/applications/{{application_id}}/hire"): _pipeline_case(
         "POST", "/hire"
     ),
+    ("GET", f"{API}/employer/discovery/candidates/{{candidate_id}}"): _reveal_other_member,
 }
 
 

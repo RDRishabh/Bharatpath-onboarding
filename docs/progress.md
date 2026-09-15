@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1663 on 2026-09-15 (Day 13) — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Tests** | 1714 on 2026-09-15 (Day 14), all green locally, not yet pushed. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 85% |
-| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 14 — access windows, reveal audit, abuse controls |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 15 — payments and subscriptions (the employer gate already reads `subscriptions`) |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -50,6 +50,77 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-15 — Day 14: access windows, the reveal audit, abuse controls
+
+**1663 -> 1714 tests**, all passing locally as CI runs them (bare `pytest --cov=app`), coverage 85%. Local CI chain green: age,
+vocabulary, ruff, format, mypy, 9 import contracts, modules. **Invariants 7
+and 7′ are green.** Not yet pushed, so not yet CI-verified.
+
+### What landed
+
+| | |
+|---|---|
+| **The reveal** | `GET /employer/discovery/candidates/{candidate_id}` → `RevealedCandidate`: phone, email, the display score, band, experience, skills, badges, location, and `full_name` only from the structured form. Owners and recruiters; mounted by `candidate` (it needs `display_value`), decided by `discovery.service.open_candidate`. |
+| **Access window** | `require_active_access_window` is real: the tenant's subscription, read live, `402 access_window_expired`. |
+| **Audit (7′)** | One `audit_events` row (`candidate_profile_viewed`, ids only) and one `candidate_view_events` row per open, same transaction, re-opens included. |
+| **Abuse controls** | Per-organisation caps on distinct candidates per rolling hour and day (`429 view_cap_reached`), a per-person burst limit, search pages per hour, and two alerts (`ACTOR_VELOCITY`, `DAILY_CAP_REACHED`) as audit rows plus `discovery.view_anomaly_flagged`. All in `config_values` `discovery.limits`. |
+| **R15** | `require_active_subscription` on every employer jobs, pipeline and search route. Organisation, team and KYB stay open. |
+| **Schema** | `candidate_view_events` partitioned by month (key `(id, viewed_at)`), 15 partitions + DEFAULT, `ensure_candidate_view_partitions()`; task `discovery.ensure_view_partitions`. **Rebuild with `reset_local_db.sh`.** |
+
+### Decisions worth knowing
+
+- **The partitioning the docstrings promised did not exist.** The model and
+  the migration both said "partitioned by month"; the table was an ordinary
+  one. It is now, and a test reads `pg_partitioned_table` rather than a
+  comment.
+- **Partitions are closed to the app role.** Default privileges grant it DML
+  on every new table, and RLS on a partitioned parent does not apply to a
+  query that names a partition. So the app goes through the parent or
+  nowhere, tested by trying.
+- **The DEFAULT partition is a safety net.** An unscheduled month lands there
+  rather than refusing a reveal and losing its audit row. Creating that month
+  later refuses while DEFAULT holds its rows, which is loud on purpose.
+- **Caps count distinct candidates and a re-open costs nothing**, but every
+  re-open is still audited. Charging for re-reading one profile would push
+  recruiters to copy details out of the product, which is worse.
+- **Caps are checked before the lookup**, so a capped organisation cannot
+  probe which ids exist. **Rolling windows, not calendar days**, so a cap
+  cannot be doubled across midnight. **Under an advisory lock per
+  organisation**, so fifty concurrent requests cannot each read the same
+  count.
+- **The view event is inserted from the visibility CTE**, so it cannot name a
+  candidate the reveal would not show, and a candidate suppressed between
+  search and click is a 404 with no trace.
+- **Alerts fire on the crossing, not the level**, once per burst, and block
+  nothing; the caps block. **No limit is the client's**: 60/hour, 300/day,
+  20 opens/minute per person, 40 distinct in 10 minutes flags. A malformed
+  row is a 500, never the defaults.
+- **The reveal route lives in `candidate`, the decisions in `discovery`.**
+  `discovery` may not import `scoring` (an invariant test), and the response
+  needs `display_value`. Everything that decides the reveal happens before
+  anything reads the candidate.
+- **`test_discovery_suppression.py` was refined, not relaxed.** The rule "every
+  discovery query uses the visibility CTE" now names four functions that read
+  no candidate (config, a lock, the view log's own counts, partition upkeep),
+  each with a reason, and **fails if any of them mentions a candidate table**.
+  Worth a second look in review.
+- **No name is guessed.** Only the structured form stores one; uploaded CVs
+  reveal contact details and no name (blockers E13).
+- **R15 landed here, not Day 15**, because Day 14 lists it and the employer's
+  subscription is the access window anyway. Existing employer test helpers
+  now seed one (`subscribe_tenant`).
+
+### Owed
+
+- **N4 / B7** — the client's written acknowledgement of the bulk-extraction
+  risk is still not in. These controls are mitigation; verification is the fix.
+- **Someone to read the alerts** (E14, blocked on E10), and the partition
+  schedule (E4).
+- **Per-organisation overrides of the limits**: one global row today.
+- **Load**: caps and the reveal query are indexed, not measured (Week 5).
 
 ---
 

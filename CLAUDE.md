@@ -317,6 +317,49 @@ is where a third one would have to be argued for.
   digits in a row, the contact filter drops it as a phone number, and the test
   fails about one run in ten.
 
+## Access windows, the reveal and abuse controls — Day 14
+
+- **For an employer the subscription IS the access window** (R14).
+  `require_active_access_window` and `require_active_subscription` read the
+  same row, live, and refuse with different codes (`access_window_expired` on
+  the reveal, `subscription_required` everywhere else). Never cache either.
+- **Payment gates every employer action (R15)**: jobs, the pipeline, search
+  and the reveal. Organisation, team and KYB stay open so an unpaid employer
+  can onboard. **Tests seed one with `subscribe_tenant`** (`tests/conftest.py`);
+  the shared `_employer` / `_organisation` helpers already do. An employer test
+  answering 402 has forgotten it.
+- **The reveal is `GET /employer/discovery/candidates/{id}`, mounted by the
+  `candidate` module**, because the response needs `display_value` and
+  `discovery` may not import `scoring`. `discovery.service.open_candidate`
+  owns every decision: KYB, the per-person burst limit, the organisation's
+  caps, visibility, the view event and the audit row. Nothing reads the
+  candidate before it returns.
+- **Every open writes an `audit_events` row and a `candidate_view_events` row
+  in the same transaction**, re-opens included (invariant 7′). Metadata holds
+  ids only. The view-event insert selects from the visibility CTE, so it cannot
+  name someone the reveal would not show.
+- **Caps count distinct candidates per organisation over a rolling hour and
+  day**, under a per-tenant advisory lock, checked *before* the lookup so a
+  capped employer cannot probe ids. Re-opening costs nothing. Every number is
+  `config_values` key `discovery.limits` (strict; a bad row is a 500, never
+  the defaults), and the defaults are ours, not the client's.
+- **Alerts are crossings, not levels**: one `candidate_view_anomaly_flagged`
+  audit row plus an outbox event per threshold crossed. They block nothing,
+  and nobody can read them yet (blockers E10).
+- **`candidate_view_events` is partitioned by month.** Its key is
+  `(id, viewed_at)`. Partitions are revoked from the app role, because RLS on
+  the parent does not cover a query naming a partition. The baseline creates
+  fifteen months plus DEFAULT; `ensure_candidate_view_partitions` (SECURITY
+  DEFINER) adds more, via `app/tasks/view_event_partitions.py`, unscheduled
+  (E4). Rows in DEFAULT block creating their month — move them first.
+- **`RevealedCandidate` has `score` (display) and no raw field**, and
+  `full_name` only when typed on the structured form; a name is never guessed
+  from a CV. Its field list, "no employer schema has a raw field" and "export
+  is not a feature" are invariant tests. No list endpoint may return it.
+- Discovery repository functions that do not use the CTE must be named in
+  `READS_NO_CANDIDATE` (`test_discovery_suppression.py`) and may not mention a
+  candidate table.
+
 ## Streak points are not the score
 
 `app/modules/engagement` (added 2026-09-13, `docs/streaks.md`) keeps daily

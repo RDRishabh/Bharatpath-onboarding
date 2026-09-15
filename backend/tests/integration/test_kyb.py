@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 import pytest
 from sqlalchemy import text
 
-from tests.conftest import _seed_url, sessions
+from tests.conftest import _seed_url, sessions, subscribe_tenant
 from tests.integration.test_resume_intake import FakeS3, fake_s3  # noqa: F401 - fixture
 
 pytestmark = pytest.mark.integration
@@ -65,6 +65,7 @@ async def _organisation(client: Any, mint_token: Any) -> dict[str, Any]:
         f"{API}/organisation", json={"legal_name": "KYB Test Pvt Ltd"}, headers=headers
     )
     assert created.status_code == 201, created.text
+    await subscribe_tenant(created.json()["tenant_id"])
     return {"headers": headers, "tenant_id": created.json()["tenant_id"]}
 
 

@@ -25,10 +25,13 @@ location, and for the same reason.
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.models import ConfigValue
 
 #: The candidates an employer may see, as a CTE named `visible_candidates`
 #: with columns `(user_id, resume_version_id)`. Compose it with
@@ -229,3 +232,156 @@ async def search_candidates(
     )
     result = await session.execute(text(sql), params)
     return list(result)
+
+
+# ---------------------------------------------------------------------------
+# The reveal (Day 14)
+# ---------------------------------------------------------------------------
+async def revealed_candidate(session: AsyncSession, *, candidate_id: uuid.UUID) -> Any:
+    """One visible candidate's contact details and card facts, or None.
+
+    **A different method from search, on purpose** (invariant 7): this is the
+    only query in the module that selects a phone number or an email address,
+    and nothing reaches it except through the access window, the caps and the
+    audit row in `service.open_candidate`.
+
+    Built on the visibility CTE, so "in the search results" and "openable"
+    cannot disagree, and a candidate suppressed between the two is a miss.
+    It returns the score's id, never its value: the display score is applied
+    where the response is built.
+    """
+    query = (
+        "WITH "  # noqa: S608 - see the note on visible_candidate_ids
+        + VISIBLE_CANDIDATES_CTE
+        + """
+        SELECT vc.user_id, vc.resume_version_id, u.phone, u.email,
+               d.score_id, d.band, d.experience_months, d.skills, d.badges,
+               p.city, p.state_code
+          FROM visible_candidates vc
+          JOIN users u
+            ON u.id = vc.user_id
+          JOIN candidate_search_documents d
+            ON d.user_id = vc.user_id
+           AND d.resume_version_id = vc.resume_version_id
+          LEFT JOIN candidate_profiles p
+            ON p.user_id = vc.user_id
+         WHERE vc.user_id = CAST(:cid AS uuid)
+        """
+    )
+    result = await session.execute(text(query), {"cid": str(candidate_id)})
+    return result.first()
+
+
+async def record_view(
+    session: AsyncSession, *, tenant_id: uuid.UUID, actor_id: uuid.UUID, candidate_id: uuid.UUID
+) -> bool:
+    """Write the view event, **only for a candidate who is visible right now**.
+
+    The insert selects from the visibility CTE, so the row cannot name
+    someone the reveal would not show. False means nothing was written, and
+    the caller must treat the candidate as not found.
+    """
+    query = (
+        "WITH "  # noqa: S608 - see the note on visible_candidate_ids
+        + VISIBLE_CANDIDATES_CTE
+        + """
+        INSERT INTO candidate_view_events (tenant_id, actor_id, candidate_id)
+        SELECT CAST(:tenant AS uuid), CAST(:actor AS uuid), vc.user_id
+          FROM visible_candidates vc
+         WHERE vc.user_id = CAST(:cid AS uuid)
+        RETURNING id
+        """
+    )
+    result = await session.execute(
+        text(query),
+        {"tenant": str(tenant_id), "actor": str(actor_id), "cid": str(candidate_id)},
+    )
+    return result.first() is not None
+
+
+# The functions below read no candidate: configuration, a lock, the view log's
+# own counts, and partition upkeep. `test_discovery_suppression.py` names each
+# one and fails if any of them starts reading a candidate table.
+async def current_config(session: AsyncSession, *, key: str, now: datetime) -> ConfigValue | None:
+    result = await session.execute(
+        select(ConfigValue)
+        .where(ConfigValue.key == key, ConfigValue.effective_from <= now)
+        .order_by(ConfigValue.version.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def lock_tenant_views(session: AsyncSession, *, tenant_id: uuid.UUID) -> None:
+    """Serialise one organisation's reveals for the rest of the transaction.
+
+    The caps are a count followed by an insert. Without this, a script firing
+    fifty requests at once reads the same count fifty times and every one of
+    them fits under the cap. Per organisation, so one employer's burst never
+    waits on another's.
+    """
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"discovery.views:{tenant_id}"},
+    )
+
+
+async def view_counts(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    velocity_minutes: int,
+) -> Any:
+    """Distinct candidates opened by this organisation and this person, from the log.
+
+    One rolling day, which `ix_view_events_tenant_time` serves and partition
+    pruning keeps to one or two months. Rolling rather than a calendar day, so
+    a cap cannot be doubled by straddling midnight.
+    """
+    query = text(
+        """
+        SELECT
+          count(DISTINCT e.candidate_id)
+            FILTER (WHERE e.viewed_at > now() - interval '1 hour') AS tenant_last_hour,
+          count(DISTINCT e.candidate_id) AS tenant_last_day,
+          count(DISTINCT e.candidate_id)
+            FILTER (WHERE e.actor_id = CAST(:actor AS uuid)
+                      AND e.viewed_at > now() - make_interval(mins => CAST(:minutes AS integer)))
+            AS actor_in_window,
+          coalesce(bool_or(e.candidate_id = CAST(:cid AS uuid)
+                           AND e.viewed_at > now() - interval '1 hour'), false)
+            AS seen_by_tenant_last_hour,
+          coalesce(bool_or(e.candidate_id = CAST(:cid AS uuid)), false)
+            AS seen_by_tenant_last_day,
+          coalesce(bool_or(e.candidate_id = CAST(:cid AS uuid)
+                           AND e.actor_id = CAST(:actor AS uuid)
+                           AND e.viewed_at > now()
+                               - make_interval(mins => CAST(:minutes AS integer))),
+                   false)
+            AS seen_by_actor_in_window
+          FROM candidate_view_events e
+         WHERE e.tenant_id = CAST(:tenant AS uuid)
+           AND e.viewed_at > now() - interval '24 hours'
+        """
+    )
+    result = await session.execute(
+        query,
+        {
+            "tenant": str(tenant_id),
+            "actor": str(actor_id),
+            "cid": str(candidate_id),
+            "minutes": velocity_minutes,
+        },
+    )
+    return result.one()
+
+
+async def ensure_view_partitions(session: AsyncSession, *, first_month: date, months: int) -> int:
+    """Create any missing monthly partitions of the view log. Returns how many."""
+    created = await session.scalar(
+        text("SELECT ensure_candidate_view_partitions(:first_month, :months)"),
+        {"first_month": first_month, "months": months},
+    )
+    return int(created or 0)

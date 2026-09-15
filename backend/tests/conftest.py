@@ -84,6 +84,49 @@ def sessions(url: str) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(create_async_engine(url), expire_on_commit=False)
 
 
+async def subscribe_tenant(tenant_id: uuid.UUID | str, *, lapsed: bool = False) -> uuid.UUID:
+    """An employer subscription for `tenant_id`, seeded as the migrator.
+
+    Employer actions need an active one (R15), and so does opening a profile:
+    for an employer the subscription IS the access window (R14). `lapsed`
+    seeds a period that ended ten days ago. Returns the subscription id, so a
+    test can end the window mid-session.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    start, end = (
+        (now - timedelta(days=40), now - timedelta(days=10))
+        if lapsed
+        else (now - timedelta(days=1), now + timedelta(days=29))
+    )
+    plan_id, subscription_id = uuid.uuid4(), uuid.uuid4()
+    async with sessions(_seed_url())() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO plans (id, audience, code, period, price_minor, entitlements, "
+                "active, version) VALUES (:p, 'EMPLOYER', :c, 'MONTHLY', 999900, "
+                "'{}'::jsonb, true, 1)"
+            ),
+            {"p": str(plan_id), "c": f"TEST_EMP_{plan_id.hex[:16]}"},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO subscriptions (id, subscriber_type, subscriber_id, plan_id, state, "
+                "current_period_start, current_period_end, renews_automatically) "
+                "VALUES (:id, 'TENANT', :t, :p, 'ACTIVE', :s, :e, false)"
+            ),
+            {
+                "id": str(subscription_id),
+                "t": str(tenant_id),
+                "p": str(plan_id),
+                "s": start,
+                "e": end,
+            },
+        )
+    return subscription_id
+
+
 @pytest.fixture
 async def seeded_tenants() -> AsyncIterator[tuple[uuid.UUID, uuid.UUID]]:
     """Two employer tenants, each with an approved employer and a live job.
