@@ -13,3 +13,10 @@ def get_router() -> APIRouter | None:
     from . import router as _router
 
     return getattr(_router, "router", None)
+
+
+def get_extra_routers() -> tuple[tuple[str, APIRouter], ...]:
+    """Routers for other surfaces. Employers compose jobs; candidates search them."""
+    from . import router as _router
+
+    return (("/candidate/jobs", _router.candidate_router),)

@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1406 tests
+.venv/Scripts/pytest.exe                # 1455 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -226,6 +226,32 @@ is where a third one would have to be argued for.
   delete the row in a `finally`.
 - **Review actions (KYB and integrity) exist only in the services.** No
   platform-staff account can exist yet (`docs/blockers.md` E10).
+
+## Candidate marketplace — Day 11
+
+- **A candidate has no tenant, so `app.tenant_id` cannot serve them.** Candidate
+  services call `jobs.service.bind_candidate`, which binds `app.user_id`
+  (`set_transaction_user`). Five candidate policies in the baseline read it
+  through `current_candidate_id()`, which yields NULL unless no tenant is bound
+  and the id is an ACTIVE CANDIDATE account. Forget the binding and the board
+  reads empty, the same look-alike failure as a forgotten tenant.
+- **The board policy also shows jobs the candidate applied to**, whatever their
+  status, so the Application Board can still name a closed job. Board queries
+  filter `status = 'PUBLISHED'` themselves; do not drop that filter.
+- **An application's tenant is its job's tenant**, held by the composite key
+  `fk_applications_job_tenant`, not by a policy.
+- **`require_active_subscription` is real now** and reads live. Put a role guard
+  before it. Tests seed `plans` + `subscriptions` as the migrator
+  (`_subscribe` in `test_candidate_marketplace.py`). The seat limb is not built:
+  `college_seats` has no per-student row yet (Day 17).
+- **Never return `min_score` to a candidate.** Beside their own score it is the
+  gap, which is the explanation R11 forbids. `eligibility` is the answer.
+- **Applying follows the discovery rule** (`is_candidate_visible`), or a CV held
+  back by a HIGH signal reaches employers through the apply button.
+- **Reading and withdrawing your own applications are not paywalled**, by
+  decision: a lapsed subscriber loses access, not their data.
+- A module serving a second surface mounts it with `get_extra_routers()` in its
+  `__init__.py` (`jobs` → `/candidate/jobs`).
 
 ## Streak points are not the score
 

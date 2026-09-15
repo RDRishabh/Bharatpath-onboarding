@@ -5,7 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 name = "applications"
-prefix = "/applications"
+# The candidate's side lands first (Day 11). The employer's pipeline (Day 12)
+# mounts under `/employer` through `get_extra_routers`, as `jobs` does.
+prefix = "/candidate/applications"
 
 
 def get_router() -> APIRouter | None:

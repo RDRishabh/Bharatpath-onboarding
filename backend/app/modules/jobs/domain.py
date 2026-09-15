@@ -9,7 +9,7 @@ this is the layer the invariant property tests exercise directly.
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, Literal
 
 #: SRS 1.20.6: `DRAFT -> PUBLISHED -> PAUSED -> PUBLISHED -> CLOSED`.
 #:
@@ -62,3 +62,29 @@ def coarse_count(count: int) -> tuple[int, bool]:
     if count < MIN_REPORTED_COUNT:
         return 0, True
     return (count // MIN_REPORTED_COUNT) * MIN_REPORTED_COUNT, False
+
+
+# ---------------------------------------------------------------------------
+# Eligibility: does a candidate's score meet a job's threshold?
+# ---------------------------------------------------------------------------
+Eligibility = Literal["ELIGIBLE", "BELOW_THRESHOLD", "SCORE_PENDING"]
+
+
+def eligibility(*, min_score: int | None, score: int | None) -> Eligibility:
+    """Three answers and no reasons.
+
+    `score` is the server's stored score, never a value from the request.
+    `SCORE_PENDING` wins over everything, a job with no threshold included:
+    nobody can apply until they have a score, so calling them eligible would
+    promise an application the service then refuses.
+
+    **Never how far below.** The client confirmed the score is never explained
+    (R11), and "you need 40 more" is an explanation. That is also why the
+    candidate board never shows the threshold itself: next to their own score,
+    it tells them the gap.
+    """
+    if score is None:
+        return "SCORE_PENDING"
+    if min_score is None or score >= min_score:
+        return "ELIGIBLE"
+    return "BELOW_THRESHOLD"

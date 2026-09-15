@@ -29,6 +29,7 @@ from app.core.auth.provider import get_identity_provider
 from app.core.auth.tokens import VerifiedToken
 from app.core.auth.users import AuthenticatedUser, resolve_or_create_user
 from app.core.db import get_db
+from app.core.entitlements import has_active_subscription
 from app.core.errors import (
     AccessWindowExpiredError,
     KybRequiredError,
@@ -226,7 +227,7 @@ def require_tenant() -> Callable[[TenantContext], Awaitable[TenantContext]]:
     return _dep
 
 
-async def require_active_subscription(user: CurrentUser) -> TenantContext:
+async def require_active_subscription(user: CurrentUser, session: DbSession) -> TenantContext:
     """Pay-first, for all three audiences (R13).
 
     Sign-up creates an account; everything else needs payment. A lapsed
@@ -245,10 +246,28 @@ async def require_active_subscription(user: CurrentUser) -> TenantContext:
     **Do not cache the answer**; `require_active_access_window` below carries
     the same warning for the same reason.
 
-    TODO(Day 11/15): read the subscription state, then the seat.
-    TODO(Day 17): the seat limb lands with college seats.
+    A candidate subscribes as a USER; an employer or college as its TENANT.
+    **Put a role guard before this one** in a route's dependencies, so a caller
+    with the wrong role is told 403 rather than invited to pay for a surface
+    they cannot use.
+
+    **The seat limb is not built yet, and cannot be.** `college_seats` is one
+    allowance row per college with no per-student assignment, so there is
+    nothing to ask "does this student hold a seat?" of. It lands with seat
+    assignment on Day 17. Until then a seated student is refused, which is
+    the safe direction: no college has been sold a seat yet.
     """
-    raise SubscriptionRequiredError()
+    if user.tenant_id is None:
+        paying = await has_active_subscription(
+            session, subscriber_type="USER", subscriber_id=user.user_id
+        )
+    else:
+        paying = await has_active_subscription(
+            session, subscriber_type="TENANT", subscriber_id=user.tenant_id
+        )
+    if not paying:
+        raise SubscriptionRequiredError()
+    return user
 
 
 async def require_active_access_window(user: CurrentUser) -> TenantContext:

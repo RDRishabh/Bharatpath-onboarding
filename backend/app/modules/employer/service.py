@@ -124,6 +124,19 @@ async def get_organisation(session: AsyncSession, *, ctx: TenantContext) -> Any:
     return row
 
 
+async def public_names(
+    session: AsyncSession, *, tenant_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """Employer names for the candidate job board.
+
+    **Takes no context, because it binds none.** The caller has already bound
+    a candidate transaction, and `employers_candidate_board` then shows only
+    employers with a job that candidate can see. Called in a transaction with
+    nothing bound, it returns nothing -- the fail-closed direction.
+    """
+    return await repository.legal_names(session, tenant_ids=tenant_ids)
+
+
 async def kyb_status(session: AsyncSession, *, ctx: TenantContext) -> str:
     """The caller's organisation's KYB status, for the publish gate (invariant 8).
 

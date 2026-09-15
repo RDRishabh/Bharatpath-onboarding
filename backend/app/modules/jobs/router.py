@@ -22,24 +22,33 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from app.core.deps import (
+    CANDIDATE,
     EMPLOYER_OWNER,
     EMPLOYER_RECRUITER,
     EMPLOYER_VIEWER,
     CurrentUser,
     DbSession,
+    require_active_subscription,
     require_role,
 )
+from app.core.pagination import MAX_PAGE_SIZE, Page
 from app.modules.jobs import service
 from app.modules.jobs.domain import THRESHOLD_STEP
 from app.modules.jobs.schemas import (
+    BoardJobDetail,
+    BoardJobSummary,
     CreateJobRequest,
     JobResponse,
     JobStatus,
     ThresholdPreviewResponse,
     UpdateJobRequest,
+    WorkMode,
 )
 
 router = APIRouter()
+
+#: The candidate job board, mounted at `/candidate/jobs` (see `jobs/__init__.py`).
+candidate_router = APIRouter()
 
 Composers = Depends(require_role(EMPLOYER_OWNER, EMPLOYER_RECRUITER))
 Readers = Depends(require_role(EMPLOYER_OWNER, EMPLOYER_RECRUITER, EMPLOYER_VIEWER))
@@ -147,3 +156,64 @@ async def pause_job(job_id: uuid.UUID, user: CurrentUser, session: DbSession) ->
 )
 async def close_job(job_id: uuid.UUID, user: CurrentUser, session: DbSession) -> JobResponse:
     return _job(await service.close_job(session, ctx=user, job_id=job_id))
+
+
+# ---------------------------------------------------------------------------
+# The candidate board
+# ---------------------------------------------------------------------------
+# Pay-first (R13): the role guard runs first, so an employer is told 403
+# rather than asked to pay for a surface they cannot use.
+PayingCandidate = [Depends(require_role(CANDIDATE)), Depends(require_active_subscription)]
+
+
+@candidate_router.get(
+    "",
+    response_model=Page[BoardJobSummary],
+    dependencies=PayingCandidate,
+    summary="Search published jobs",
+)
+async def search_board(
+    user: CurrentUser,
+    session: DbSession,
+    q: Annotated[
+        str | None, Query(max_length=100, description="Words in the title or description")
+    ] = None,
+    location: Annotated[str | None, Query(max_length=100)] = None,
+    work_mode: WorkMode | None = None,
+    skill: Annotated[str | None, Query(max_length=80)] = None,
+    min_salary_minor: Annotated[int | None, Query(ge=0, description="Paise")] = None,
+    eligible_only: bool = False,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=MAX_PAGE_SIZE)] = None,
+) -> Page[BoardJobSummary]:
+    """Every employer's published jobs, newest first.
+
+    Each carries `eligibility` against the candidate's **stored** score -- no
+    request parameter can stand in for it. The threshold itself is never
+    shown: beside the candidate's own score it would tell them the gap, and
+    the score is never explained.
+    """
+    return await service.search_board(
+        session,
+        ctx=user,
+        query=q,
+        location=location,
+        work_mode=work_mode,
+        skill=skill,
+        min_salary_minor=min_salary_minor,
+        eligible_only=eligible_only,
+        cursor=cursor,
+        limit=limit,
+    )
+
+
+@candidate_router.get(
+    "/{job_id}",
+    response_model=BoardJobDetail,
+    dependencies=PayingCandidate,
+    summary="One published job",
+)
+async def get_board_job(job_id: uuid.UUID, user: CurrentUser, session: DbSession) -> BoardJobDetail:
+    """404 for anything not on the board -- a draft, a paused or closed job, or
+    no job at all look the same."""
+    return await service.get_board_job(session, ctx=user, job_id=job_id)

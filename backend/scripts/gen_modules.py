@@ -62,7 +62,7 @@ MODULES: tuple[ModuleSpec, ...] = (
     ModuleSpec("jobs", "/employer/jobs", "Composer, validation, publish gate, lifecycle."),
     ModuleSpec(
         "applications",
-        "/applications",
+        "/candidate/applications",
         "Apply, stages, withdraw, expiry, hire confirm.",
     ),
     ModuleSpec(

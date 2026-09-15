@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1406 passing. Day 10 (`4115c6a`) green on CI 2026-09-13: tests, lint/types/boundaries, invariants 5 and 6, image build. |
+| **Tests** | 1455 passing locally 2026-09-15 (Day 11, full local CI chain; not yet committed or run on CI). Day 10 (`4115c6a`) green on CI 2026-09-13. |
 | **Coverage** | 85% |
-| **Days done** | 1, 2, 5, 7, 10 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 11 — job search, eligibility, apply and withdraw |
+| **Days done** | 1, 2, 5, 7, 10, 11 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 12 — stage machine, application events, hire confirmation, expiry |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -50,6 +50,83 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-15 — Day 11: the job board, eligibility, apply and withdraw
+
+**1406 -> 1455 tests.** Before starting, Days 1–10 were re-verified
+against a rebuilt database: 1406 passing, with the partial days (3, 4, 6, 8, 9)
+still partial for the external reasons already recorded (Twilio, AWS service
+activation, E10).
+
+### What landed
+
+| | |
+|---|---|
+| **Job board** | `GET /candidate/jobs` (search: words, location, work mode, skill, salary, eligible-only; keyset cursor) and `GET /candidate/jobs/{id}`. Every employer's published jobs with the employer's name. |
+| **Applications** | `POST /candidate/applications`, `GET` list and one, `POST /{id}/withdraw`. |
+| **Pay-first (R13)** | `require_active_subscription` stops being an unconditional 402. It reads `subscriptions` on every request, never cached, and the clock decides: a period that ended a second ago grants nothing, sweep or no sweep. |
+
+### Decisions worth knowing
+
+- **A candidate has no tenant, so the board needed its own RLS identity.**
+  Binding `app.tenant_id` to each employer in turn would take the tenant from
+  somewhere other than a membership, which SRS 2.24.7 forbids. Candidate
+  services bind `app.user_id` instead, and five new policies read it through
+  `current_candidate_id()`, which is NULL unless **no tenant is bound** and the
+  id is an **active candidate account**. So an employer transaction can never
+  see another employer's jobs through them, a business user bound as a user
+  sees nothing, and a transaction that binds nothing still reads no jobs.
+  17 policies, up from 12.
+- **The threshold is never shown to a candidate.** Beside their own score it is
+  the gap, and the gap is the explanation R11 rules out. They get
+  `ELIGIBLE / BELOW_THRESHOLD / SCORE_PENDING`, judged on the stored score. A
+  score in the query string is ignored, and a test says so.
+- **Applying follows the discovery rule.** Applying puts a candidate in front of
+  an employer, so it uses the same `is_candidate_visible` CTE as search.
+  Without it a CV held back by a HIGH integrity signal reaches employers
+  through the apply button: the bypass Day 9 closed for search. The refusal
+  (`application_unavailable`) does not say why, because naming an integrity
+  review tells someone gaming a CV that they were caught.
+- **Idempotent by the index, not by a read.** `ON CONFLICT DO NOTHING` against
+  `uq_application_active`; three simultaneous applies give one 201 and two 200s
+  with the same id. A retry is checked first, so it gets the same answer
+  whatever changed in between.
+- **An application's tenant is its job's tenant, by a key.** A candidate writes
+  the row and has no tenant to bind, so a single-column key on `job_id` would
+  let the row claim any tenant and land in the wrong employer's pipeline.
+  `fk_applications_job_tenant` on `(job_id, tenant_id)` holds it even for the
+  migrator.
+- **The database refuses what the service refuses.** A candidate session cannot
+  apply as someone else, apply to a job that is not live, read or withdraw
+  another candidate's application, or change a job. Tested on an app-role
+  session with the service out of the way.
+- **Reading and withdrawing are not paywalled.** A lapsed subscriber keeps their
+  applications and can withdraw them; they cannot search or apply. An
+  application nobody can withdraw without paying is their data held in an
+  employer's pipeline for a fee.
+- **A job off the board is a 404 everywhere**, for the detail and for applying:
+  draft, paused, closed and nonexistent look the same.
+- **The Application Board still names a job that closed.** The board policy
+  also shows jobs the candidate applied to, so board queries filter on status
+  themselves.
+- **`published_at` is stamped by a trigger** and held by a CHECK, because the
+  cursor is `(published_at, id)` and fixtures insert PUBLISHED rows directly.
+
+### Owed
+
+- **The seat limb of the entitlement check** (Day 17). `college_seats` is one
+  allowance row per college with no per-student assignment, so there is
+  nothing to ask. A seated student is refused until then; no seat has been
+  sold.
+- **The gate on the score, resume and employer routes** (Day 15). The
+  dependency works; nobody can buy a subscription yet, so adding it to routes
+  that exist today would lock every account out of them.
+- **GRACE semantics** (Day 15): a GRACE row grants access only while
+  `current_period_end` is in the future, so entering GRACE must move that date.
+- `IDEMPOTENT_OPERATIONS` lists `application_create`; apply is idempotent by
+  the unique index and does not read an `Idempotency-Key` header.
 
 ---
 

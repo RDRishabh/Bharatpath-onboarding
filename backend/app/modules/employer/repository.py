@@ -54,6 +54,23 @@ async def get_employer(session: AsyncSession, *, tenant_id: uuid.UUID) -> Employ
     return result.scalar_one_or_none()
 
 
+async def legal_names(
+    session: AsyncSession, *, tenant_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """Names by tenant, for as many of `tenant_ids` as the bound policy shows.
+
+    Selects the name column alone. Under the candidate board policy the rest of
+    the row -- KYB status above all -- is readable too, so what leaves this
+    function is what the board is allowed to say.
+    """
+    if not tenant_ids:
+        return {}
+    result = await session.execute(
+        select(Employer.tenant_id, Employer.legal_name).where(Employer.tenant_id.in_(tenant_ids))
+    )
+    return {row.tenant_id: row.legal_name for row in result}
+
+
 async def update_employer(
     session: AsyncSession, *, tenant_id: uuid.UUID, changes: dict[str, str | None]
 ) -> Employer | None:

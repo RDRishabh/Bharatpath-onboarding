@@ -12,10 +12,16 @@ where nothing can route around it. The service check is for the message; the
 trigger is for the guarantee. If the two ever disagree the trigger wins, and
 its error is translated into the same `kyb_required` a client already handles.
 
-**Not yet here: the subscription gate.** Employers get the portal on signup and
-can do nothing in it until they pay (R15). That is a second, independent gate
-with its own error code, and it lands with subscriptions on Day 15 -- see
-`require_active_subscription`, which would make every route here a 402 today.
+**Not yet here: the employer subscription gate.** Employers get the portal on
+signup and can do nothing in it until they pay (R15). That is a second,
+independent gate with its own error code. The dependency works as of Day 11 --
+the candidate board below sits behind it -- but employers cannot buy anything
+until Day 15, so the employer routes gain it then.
+
+**The candidate board** (Day 11) is the second half of this file. It reads
+every employer's published jobs, which no tenant binding can express, so it
+binds the candidate's own identity instead; see `set_transaction_user` and the
+candidate policies in the baseline migration.
 """
 
 from __future__ import annotations
@@ -27,7 +33,7 @@ from typing import Any, Final
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import set_transaction_tenant
+from app.core.db import set_transaction_tenant, set_transaction_user
 from app.core.errors import (
     ConflictError,
     KybRequiredError,
@@ -37,14 +43,21 @@ from app.core.errors import (
 )
 from app.core.logging import get_logger
 from app.core.outbox import emit
+from app.core.pagination import Page, clamp_limit, decode_cursor, encode_cursor
 from app.core.ratelimit import hit
 from app.core.tenant import TenantContext
 from app.modules.discovery import service as discovery_service
 from app.modules.employer import service as employer_service
 from app.modules.jobs import repository
-from app.modules.jobs.domain import coarse_count, is_editable, refuse_transition
+from app.modules.jobs.domain import coarse_count, eligibility, is_editable, refuse_transition
 from app.modules.jobs.events import MODULE
-from app.modules.jobs.schemas import CreateJobRequest, UpdateJobRequest
+from app.modules.jobs.schemas import (
+    BoardJobDetail,
+    BoardJobSummary,
+    CreateJobRequest,
+    UpdateJobRequest,
+)
+from app.modules.scoring import service as scoring_service
 
 logger = get_logger(__name__)
 
@@ -229,3 +242,150 @@ async def threshold_preview(
     count = await discovery_service.count_visible_at_or_above(session, min_score=min_score)
     approximate, fewer = coarse_count(count)
     return {"min_score": min_score, "approximate_count": approximate, "fewer_than_ten": fewer}
+
+
+# ---------------------------------------------------------------------------
+# The candidate board (Day 11)
+# ---------------------------------------------------------------------------
+async def bind_candidate(session: AsyncSession, ctx: TenantContext) -> uuid.UUID:
+    """Bind `app.user_id` for a candidate's transaction, and refuse anyone else.
+
+    Public because `applications` binds the same identity before reading its
+    own table, and one definition of "this is a candidate transaction" is
+    better than two.
+    """
+    if ctx.tenant_id is not None or ctx.role != "CANDIDATE":
+        raise PermissionDeniedError()
+    await set_transaction_user(session, ctx.user_id)
+    return ctx.user_id
+
+
+async def current_score(session: AsyncSession, *, user_id: uuid.UUID) -> int | None:
+    """The candidate's stored score, the only value eligibility is judged on.
+
+    `raw_value`, not a display value: the scale's CHECK keeps it within
+    700-990, so the two agree today, and if a display rule ever diverged the
+    decision should follow what was computed rather than what was drawn.
+    """
+    row = await scoring_service.get_latest(session, user_id=user_id)
+    return None if row is None else int(row.raw_value)
+
+
+def _cursor_of(job: Any) -> str:
+    return encode_cursor({"p": job.published_at.isoformat(), "i": str(job.id)})
+
+
+def _after(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    payload = decode_cursor(cursor)
+    try:
+        return datetime.fromisoformat(str(payload["p"])), uuid.UUID(str(payload["i"]))
+    except (KeyError, ValueError) as exc:
+        raise ValidationError(code="invalid_cursor") from exc
+
+
+def _summary(job: Any, *, employer_name: str | None, score: int | None) -> dict[str, Any]:
+    return {
+        "id": job.id,
+        "title": job.title,
+        "employer_name": employer_name,
+        "skills": list(job.skills),
+        "location": job.location,
+        "work_mode": job.work_mode,
+        "experience_min_months": job.experience_min_months,
+        "salary_min_minor": job.salary_min_minor,
+        "salary_max_minor": job.salary_max_minor,
+        "published_at": job.published_at,
+        "eligibility": eligibility(min_score=job.min_score, score=score),
+    }
+
+
+async def search_board(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    query: str | None = None,
+    location: str | None = None,
+    work_mode: str | None = None,
+    skill: str | None = None,
+    min_salary_minor: int | None = None,
+    eligible_only: bool = False,
+    cursor: str | None = None,
+    limit: int | None = None,
+) -> Page[BoardJobSummary]:
+    """Published jobs from every employer, with eligibility against the stored score.
+
+    One page past the limit is fetched to know whether there is a next page,
+    so the last page never hands out a cursor that leads nowhere.
+    """
+    user_id = await bind_candidate(session, ctx)
+    score = await current_score(session, user_id=user_id)
+    page_size = clamp_limit(limit)
+
+    rows = await repository.search_board(
+        session,
+        query=query,
+        location=location,
+        work_mode=work_mode,
+        skill=skill,
+        min_salary_minor=min_salary_minor,
+        eligible_at_score=score,
+        eligible_only=eligible_only,
+        after=_after(cursor),
+        limit=page_size + 1,
+    )
+    page, more = rows[:page_size], len(rows) > page_size
+    names = await employer_service.public_names(
+        session, tenant_ids=list({job.tenant_id for job in page})
+    )
+    return Page[BoardJobSummary](
+        items=[
+            BoardJobSummary(**_summary(job, employer_name=names.get(job.tenant_id), score=score))
+            for job in page
+        ],
+        next_cursor=_cursor_of(page[-1]) if more and page else None,
+    )
+
+
+async def get_board_job(
+    session: AsyncSession, *, ctx: TenantContext, job_id: uuid.UUID
+) -> BoardJobDetail:
+    user_id = await bind_candidate(session, ctx)
+    job = await repository.get_board_job(session, job_id=job_id)
+    if job is None:
+        raise JobNotFoundError()
+    score = await current_score(session, user_id=user_id)
+    names = await employer_service.public_names(session, tenant_ids=[job.tenant_id])
+    return BoardJobDetail(
+        **_summary(job, employer_name=names.get(job.tenant_id), score=score),
+        description=job.description,
+    )
+
+
+async def open_job_for_application(
+    session: AsyncSession, *, ctx: TenantContext, job_id: uuid.UUID
+) -> Any:
+    """The published job a candidate is applying to, or `job_not_found`.
+
+    Returns the row, threshold and owning tenant included, to the applications
+    service -- which needs both and exposes neither.
+    """
+    await bind_candidate(session, ctx)
+    job = await repository.get_board_job(session, job_id=job_id)
+    if job is None:
+        raise JobNotFoundError()
+    return job
+
+
+async def jobs_for_candidate(
+    session: AsyncSession, *, ctx: TenantContext, job_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[str, str | None]]:
+    """`job id -> (title, employer name)` for jobs on the candidate's own board,
+    including jobs that closed after they applied."""
+    await bind_candidate(session, ctx)
+    jobs = await repository.jobs_by_id(session, job_ids=job_ids)
+    names = await employer_service.public_names(
+        session, tenant_ids=list({job.tenant_id for job in jobs})
+    )
+    return {job.id: (job.title, names.get(job.tenant_id)) for job in jobs}

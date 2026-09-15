@@ -101,6 +101,36 @@ class JobResponse(_Base):
     created_at: datetime
 
 
+EligibilityStatus = Literal["ELIGIBLE", "BELOW_THRESHOLD", "SCORE_PENDING"]
+
+
+class BoardJobSummary(_Base):
+    """A published job as a candidate sees it in search.
+
+    **No `min_score`.** A candidate who sees their own score and a job's
+    threshold side by side learns the gap, which is the explanation the client
+    ruled out (R11). They get `eligibility` instead. No `tenant_id` and no
+    status either: everything on the board is published, and which tenant row
+    an employer is stored under is ours.
+    """
+
+    id: uuid.UUID
+    title: str
+    employer_name: str | None = None
+    skills: list[str]
+    location: str | None = None
+    work_mode: str | None = None
+    experience_min_months: int | None = None
+    salary_min_minor: int
+    salary_max_minor: int
+    published_at: datetime
+    eligibility: EligibilityStatus
+
+
+class BoardJobDetail(BoardJobSummary):
+    description: str
+
+
 class ThresholdPreviewResponse(_Base):
     """How many visible candidates would clear a threshold -- coarsely.
 

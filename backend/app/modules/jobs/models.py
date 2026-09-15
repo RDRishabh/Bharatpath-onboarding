@@ -15,7 +15,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Index, Integer, String, Text, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -61,6 +70,15 @@ class Job(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
             "min_score IS NULL OR min_score BETWEEN 700 AND 990",
             name="ck_jobs_min_score_range",
         ),
+        # The candidate board pages on (published_at, id). The trigger
+        # `trg_stamp_published_at` fills it; this holds it.
+        CheckConstraint(
+            "status <> 'PUBLISHED' OR published_at IS NOT NULL",
+            name="ck_jobs_published_at",
+        ),
+        # The target of `applications (job_id, tenant_id)`, so an application
+        # can only ever be filed under the tenant that owns its job.
+        UniqueConstraint("id", "tenant_id", name="uq_jobs_id_tenant"),
         Index(
             "ix_jobs_published",
             "status",
