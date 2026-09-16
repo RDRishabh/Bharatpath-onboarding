@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
-from tests.conftest import _seed_url, sessions
+from tests.conftest import _seed_url, sessions, subscribe_tenant
 from tests.integration.test_integrity_pipeline import (
     CLEAN_CV,
     EXTRACTED,
@@ -123,6 +123,7 @@ async def _employer(client: Any, mint_token: Any) -> dict[str, Any]:
     )
     assert created.status_code == 201, created.text
     await _set_kyb(created.json()["tenant_id"], "APPROVED")
+    await subscribe_tenant(created.json()["tenant_id"])
     return {"headers": headers, "tenant_id": created.json()["tenant_id"], "name": name}
 
 

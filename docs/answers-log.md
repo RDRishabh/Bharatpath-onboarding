@@ -7,7 +7,7 @@
 > **Still-open questions live in [`questions.txt`](questions.txt)**, written in plain language and
 > ready to send. This file is the archive; that file is the ask.
 >
-> Last updated 12 September 2026 — Round 9 added (calibration accepted).
+> Last updated 15 September 2026 — Round 10 added (post-Day 14 answers).
 
 ---
 
@@ -15,6 +15,29 @@
 
 | Round | Source | Asked | Answered | Still open |
 |---
+
+## Round 10 — client answers, 2026-09-15
+
+Answers to the pending list sent after Day 14. Short answers; where "correct"
+confirmed a statement rather than choosing an option, that is recorded as such.
+
+| # | Question | Client answer (verbatim) | What we did |
+|---|---|---|---|
+| **10.1** | N4: acknowledge in writing that anyone who pays can open every candidate's contact details, with KYB unverified. | *"N4 acknowledged"* | **B7 closed.** Day 14's caps, alerts and no-export rule stay as mitigation. |
+| **10.2** | B3: personal data fully deleted, payment and audit records kept as the law requires; counsel to set the period. | *"B3 correct"* | Carve-out confirmed. **The retention period is still owed.** |
+| **10.3** | D4: counsel has not started the scoring-model review. | *"D4 correct"* | Still open. |
+| **10.4** | C11: duplicate CV detection is dropped. | *"C11 correct"* | **C11 closed** — no duplicate detection. |
+| **10.5** | E13: should candidates enter their name at sign-up? | *"yes"* | **Built**: `PUT /candidate/profile/name`, shown on the reveal only. |
+| **10.6** | Abuse-limit defaults: 60 profiles/hour and 300/day per employer, 20 opens/minute per person, alert at 40 in 10 minutes. | *"correct deafult"* | Accepted as the client's defaults; still one `config_values` row. |
+| **10.7** | E7: employers cannot sign themselves up yet; opening it is one setting, and admits anyone who pays. | *"correct"* | **Unchanged.** "Correct" confirms the current state; whether to open it is **asked again**. |
+| **10.8** | E11: limit interview links to Meet, Zoom, Teams and Webex? | *"dont limit"* | **E11 closed**, no allowlist. |
+| **10.9** | C13: applications expire after 30 days of employer silence. | *"correct"* | **C13 closed** — 30 days is the client's number. |
+| **10.10** | E3: support legacy `.doc`, or stop accepting it? | *"stop accepting them"* | **E3 closed** — refused at upload. |
+
+Not answered this round: the three college-seat follow-ons (Round 8), and the
+external items (payment gateway, AWS activation, Twilio, platform staff tenant).
+
+---
 
 ## Round 9 — client answer, 2026-09-12
 

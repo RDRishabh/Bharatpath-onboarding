@@ -18,14 +18,20 @@ with SQL rather than going through those modules' services. That is a
 deliberate exception to the usual cross-module rule, and it is the only way to
 honour the one above: suppression has to be a join the planner can use an
 index for, not a per-candidate round trip after the page is already built.
+Masked search extends the same exception to `candidate_profiles`, for the
+location, and for the same reason.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
+from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.models import ConfigValue
 
 #: The candidates an employer may see, as a CTE named `visible_candidates`
 #: with columns `(user_id, resume_version_id)`. Compose it with
@@ -81,7 +87,7 @@ async def visible_candidate_ids(
     everything an employer is shown about a candidate is a separate, audited
     read (invariant 7-prime).
     """
-    # S608 is a false positive in both queries here: every string joined is a
+    # S608 is a false positive in every query here: every string joined is a
     # module constant, and every value a caller supplies is a bind parameter.
     query = (
         "WITH "  # noqa: S608
@@ -140,3 +146,242 @@ async def count_visible_at_or_above(session: AsyncSession, *, min_score: int) ->
         """
     )
     return int(await session.scalar(text(query), {"min_score": min_score}) or 0)
+
+
+def _contains(value: str) -> str:
+    """An ILIKE pattern matching `value` literally, wildcards and all."""
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+async def search_candidates(
+    session: AsyncSession,
+    *,
+    bands: list[str],
+    skill_keys: list[str],
+    badges: list[str],
+    min_experience_months: int | None,
+    state_code: str | None,
+    city: str | None,
+    query: str | None,
+    after: tuple[int, uuid.UUID] | None,
+    limit: int,
+) -> list[Any]:
+    """A page of masked search rows: stronger bands first, then by id.
+
+    **Selects nothing a card may not show.** No score, no name, no contact --
+    the search document does not hold them, and the profile is read for its
+    location only. The row is not a `MaskedCandidate` yet; the service makes it
+    one, and the schema drops whatever it cannot show.
+
+    **Only the filters asked for are in the SQL.** `(:x IS NULL OR ...)` would
+    be one statement for every search, and a generic plan for it can use none
+    of the GIN indexes, because the planner must assume any predicate might be
+    switched off. Composing the WHERE clause from constant fragments keeps
+    every value a bind parameter and every index usable.
+    """
+    predicates: list[str] = []
+    params: dict[str, Any] = {"limit": limit}
+    if bands:
+        predicates.append("d.band = ANY(CAST(:bands AS text[]))")
+        params["bands"] = bands
+    if skill_keys:
+        predicates.append("d.skill_keys @> CAST(:skill_keys AS text[])")
+        params["skill_keys"] = skill_keys
+    if badges:
+        predicates.append("d.badges @> CAST(:badges AS text[])")
+        params["badges"] = badges
+    if min_experience_months is not None:
+        predicates.append("d.experience_months >= :min_months")
+        params["min_months"] = min_experience_months
+    if state_code:
+        predicates.append("p.state_code = :state_code")
+        params["state_code"] = state_code
+    if city:
+        # `ix_candidate_profiles_city_trgm` serves a contains-match.
+        predicates.append("p.city ILIKE :city ESCAPE '\\'")
+        params["city"] = _contains(city)
+    if query:
+        predicates.append("d.search_vector @@ plainto_tsquery('simple', :query)")
+        params["query"] = query
+    if after is not None:
+        predicates.append(
+            "(d.band_rank < :after_rank"
+            " OR (d.band_rank = :after_rank AND d.user_id > CAST(:after_id AS uuid)))"
+        )
+        params["after_rank"], params["after_id"] = after[0], str(after[1])
+
+    sql = (
+        "WITH "  # noqa: S608 - see the note on visible_candidate_ids
+        + VISIBLE_CANDIDATES_CTE
+        + """
+        SELECT d.user_id, d.band, d.band_rank, d.experience_months, d.skills, d.badges,
+               p.city, p.state_code
+          FROM visible_candidates vc
+          JOIN candidate_search_documents d
+            ON d.user_id = vc.user_id
+           AND d.resume_version_id = vc.resume_version_id
+          LEFT JOIN candidate_profiles p
+            ON p.user_id = vc.user_id
+         WHERE """
+        + (" AND ".join(predicates) if predicates else "true")
+        + """
+         ORDER BY d.band_rank DESC, d.user_id
+         LIMIT :limit
+        """
+    )
+    result = await session.execute(text(sql), params)
+    return list(result)
+
+
+# ---------------------------------------------------------------------------
+# The reveal (Day 14)
+# ---------------------------------------------------------------------------
+async def revealed_candidate(session: AsyncSession, *, candidate_id: uuid.UUID) -> Any:
+    """One visible candidate's contact details and card facts, or None.
+
+    **A different method from search, on purpose** (invariant 7): this is the
+    only query in the module that selects a phone number or an email address,
+    and nothing reaches it except through the access window, the caps and the
+    audit row in `service.open_candidate`.
+
+    Built on the visibility CTE, so "in the search results" and "openable"
+    cannot disagree, and a candidate suppressed between the two is a miss.
+    It returns the score's id, never its value: the display score is applied
+    where the response is built.
+    """
+    query = (
+        "WITH "  # noqa: S608 - see the note on visible_candidate_ids
+        + VISIBLE_CANDIDATES_CTE
+        + """
+        SELECT vc.user_id, vc.resume_version_id, u.phone, u.email,
+               d.score_id, d.band, d.experience_months, d.skills, d.badges,
+               p.full_name, p.city, p.state_code
+          FROM visible_candidates vc
+          JOIN users u
+            ON u.id = vc.user_id
+          JOIN candidate_search_documents d
+            ON d.user_id = vc.user_id
+           AND d.resume_version_id = vc.resume_version_id
+          LEFT JOIN candidate_profiles p
+            ON p.user_id = vc.user_id
+         WHERE vc.user_id = CAST(:cid AS uuid)
+        """
+    )
+    result = await session.execute(text(query), {"cid": str(candidate_id)})
+    return result.first()
+
+
+async def record_view(
+    session: AsyncSession, *, tenant_id: uuid.UUID, actor_id: uuid.UUID, candidate_id: uuid.UUID
+) -> bool:
+    """Write the view event, **only for a candidate who is visible right now**.
+
+    The insert selects from the visibility CTE, so the row cannot name
+    someone the reveal would not show. False means nothing was written, and
+    the caller must treat the candidate as not found.
+    """
+    query = (
+        "WITH "  # noqa: S608 - see the note on visible_candidate_ids
+        + VISIBLE_CANDIDATES_CTE
+        + """
+        INSERT INTO candidate_view_events (tenant_id, actor_id, candidate_id)
+        SELECT CAST(:tenant AS uuid), CAST(:actor AS uuid), vc.user_id
+          FROM visible_candidates vc
+         WHERE vc.user_id = CAST(:cid AS uuid)
+        RETURNING id
+        """
+    )
+    result = await session.execute(
+        text(query),
+        {"tenant": str(tenant_id), "actor": str(actor_id), "cid": str(candidate_id)},
+    )
+    return result.first() is not None
+
+
+# The functions below read no candidate: configuration, a lock, the view log's
+# own counts, and partition upkeep. `test_discovery_suppression.py` names each
+# one and fails if any of them starts reading a candidate table.
+async def current_config(session: AsyncSession, *, key: str, now: datetime) -> ConfigValue | None:
+    result = await session.execute(
+        select(ConfigValue)
+        .where(ConfigValue.key == key, ConfigValue.effective_from <= now)
+        .order_by(ConfigValue.version.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def lock_tenant_views(session: AsyncSession, *, tenant_id: uuid.UUID) -> None:
+    """Serialise one organisation's reveals for the rest of the transaction.
+
+    The caps are a count followed by an insert. Without this, a script firing
+    fifty requests at once reads the same count fifty times and every one of
+    them fits under the cap. Per organisation, so one employer's burst never
+    waits on another's.
+    """
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"discovery.views:{tenant_id}"},
+    )
+
+
+async def view_counts(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    velocity_minutes: int,
+) -> Any:
+    """Distinct candidates opened by this organisation and this person, from the log.
+
+    One rolling day, which `ix_view_events_tenant_time` serves and partition
+    pruning keeps to one or two months. Rolling rather than a calendar day, so
+    a cap cannot be doubled by straddling midnight.
+    """
+    query = text(
+        """
+        SELECT
+          count(DISTINCT e.candidate_id)
+            FILTER (WHERE e.viewed_at > now() - interval '1 hour') AS tenant_last_hour,
+          count(DISTINCT e.candidate_id) AS tenant_last_day,
+          count(DISTINCT e.candidate_id)
+            FILTER (WHERE e.actor_id = CAST(:actor AS uuid)
+                      AND e.viewed_at > now() - make_interval(mins => CAST(:minutes AS integer)))
+            AS actor_in_window,
+          coalesce(bool_or(e.candidate_id = CAST(:cid AS uuid)
+                           AND e.viewed_at > now() - interval '1 hour'), false)
+            AS seen_by_tenant_last_hour,
+          coalesce(bool_or(e.candidate_id = CAST(:cid AS uuid)), false)
+            AS seen_by_tenant_last_day,
+          coalesce(bool_or(e.candidate_id = CAST(:cid AS uuid)
+                           AND e.actor_id = CAST(:actor AS uuid)
+                           AND e.viewed_at > now()
+                               - make_interval(mins => CAST(:minutes AS integer))),
+                   false)
+            AS seen_by_actor_in_window
+          FROM candidate_view_events e
+         WHERE e.tenant_id = CAST(:tenant AS uuid)
+           AND e.viewed_at > now() - interval '24 hours'
+        """
+    )
+    result = await session.execute(
+        query,
+        {
+            "tenant": str(tenant_id),
+            "actor": str(actor_id),
+            "cid": str(candidate_id),
+            "minutes": velocity_minutes,
+        },
+    )
+    return result.one()
+
+
+async def ensure_view_partitions(session: AsyncSession, *, first_month: date, months: int) -> int:
+    """Create any missing monthly partitions of the view log. Returns how many."""
+    created = await session.scalar(
+        text("SELECT ensure_candidate_view_partitions(:first_month, :months)"),
+        {"first_month": first_month, "months": months},
+    )
+    return int(created or 0)

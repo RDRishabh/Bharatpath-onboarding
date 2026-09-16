@@ -428,6 +428,26 @@ async def confirm_version(
     return row, False
 
 
+async def declared_name(
+    session: AsyncSession, *, user_id: uuid.UUID, resume_version_id: uuid.UUID
+) -> str | None:
+    """The name the candidate typed on the structured form, or None.
+
+    For a profile an employer has opened (Day 14). **Only the form carries a
+    name.** Uploaded and pasted CVs are stored as text, and a name guessed
+    from a first line would put the wrong name in front of an employer, so
+    none is guessed. The version passed is the one a score was computed from,
+    which the confirm gate has already let through.
+    """
+    row = await repository.get_version(
+        session, resume_version_id=resume_version_id, user_id=user_id
+    )
+    name = (row.parsed or {}).get("full_name") if row is not None else None
+    if not isinstance(name, str) or not name.strip():
+        return None
+    return name.strip()
+
+
 async def get_scorable_version(session: AsyncSession, *, user_id: uuid.UUID) -> Any:
     """**The only supported way to obtain a resume to score** (SRS 1.4.4).
 

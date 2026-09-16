@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1455 passing locally 2026-09-15 (Day 11, full local CI chain; not yet committed or run on CI). Day 10 (`4115c6a`) green on CI 2026-09-13. |
+| **Tests** | 1714 on 2026-09-15 (Day 14), all green locally, not yet pushed. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 85% |
-| **Days done** | 1, 2, 5, 7, 10, 11 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 12 — stage machine, application events, hire confirmation, expiry |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 15 — payments and subscriptions (the employer gate already reads `subscriptions`) |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -30,7 +30,6 @@ states. Newest entries first.
 
 | Item | Decided | Why deferred | What it takes to land |
 |---|---|---|---|
-| **Legacy `.doc` (OLE2) parsing** | 2026-09-11 | No maintained pure-Python reader; the alternatives are native binaries that would go in the Docker image. | Either drop `application/msword` from the accepted types, or add a converter. Currently accepted at upload and will fail at parse — **decide before launch**. |
 
 > ⚠️ **Switching parser is not a drop-in.** Invariant 1 requires a score to be
 > reproducible from the stored extraction chain. A different parser yields
@@ -50,6 +49,247 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-15 — Client answers after Day 14, and two changes they asked for
+
+Recorded in `answers-log.md` Round 10.
+
+- **E3 — legacy `.doc` is no longer accepted.** Removed from
+  `resume_allowed_mime_types`; an OLE2 upload is refused as
+  `upload_legacy_doc_unsupported`. Removed from *Deferred by decision* above.
+- **E13 — the candidate's name is asked at sign-up.** `PUT
+  /candidate/profile/name` → `candidate_profiles.full_name`; the reveal prefers
+  it over the structured form's name. Never selected by masked search.
+  **Rebuild with `reset_local_db.sh`.** The app's sign-up screen must ask for
+  it; the API does not block anything without one.
+- **Closed or confirmed:** N4/B7 acknowledged, C11 dropped, C13 30 days
+  accepted, E11 not limited, discovery limits accepted as defaults. B3's
+  carve-out confirmed (retention period still owed). D4 still not started.
+- **E7 left as it is** pending a clearer answer on opening employer self
+  sign-up.
+
+---
+
+## 2026-09-15 — Day 14: access windows, the reveal audit, abuse controls
+
+**1663 -> 1714 tests**, all passing locally as CI runs them (bare `pytest --cov=app`), coverage 85%. Local CI chain green: age,
+vocabulary, ruff, format, mypy, 9 import contracts, modules. **Invariants 7
+and 7′ are green.** Not yet pushed, so not yet CI-verified.
+
+### What landed
+
+| | |
+|---|---|
+| **The reveal** | `GET /employer/discovery/candidates/{candidate_id}` → `RevealedCandidate`: phone, email, the display score, band, experience, skills, badges, location, and `full_name` only from the structured form. Owners and recruiters; mounted by `candidate` (it needs `display_value`), decided by `discovery.service.open_candidate`. |
+| **Access window** | `require_active_access_window` is real: the tenant's subscription, read live, `402 access_window_expired`. |
+| **Audit (7′)** | One `audit_events` row (`candidate_profile_viewed`, ids only) and one `candidate_view_events` row per open, same transaction, re-opens included. |
+| **Abuse controls** | Per-organisation caps on distinct candidates per rolling hour and day (`429 view_cap_reached`), a per-person burst limit, search pages per hour, and two alerts (`ACTOR_VELOCITY`, `DAILY_CAP_REACHED`) as audit rows plus `discovery.view_anomaly_flagged`. All in `config_values` `discovery.limits`. |
+| **R15** | `require_active_subscription` on every employer jobs, pipeline and search route. Organisation, team and KYB stay open. |
+| **Schema** | `candidate_view_events` partitioned by month (key `(id, viewed_at)`), 15 partitions + DEFAULT, `ensure_candidate_view_partitions()`; task `discovery.ensure_view_partitions`. **Rebuild with `reset_local_db.sh`.** |
+
+### Decisions worth knowing
+
+- **The partitioning the docstrings promised did not exist.** The model and
+  the migration both said "partitioned by month"; the table was an ordinary
+  one. It is now, and a test reads `pg_partitioned_table` rather than a
+  comment.
+- **Partitions are closed to the app role.** Default privileges grant it DML
+  on every new table, and RLS on a partitioned parent does not apply to a
+  query that names a partition. So the app goes through the parent or
+  nowhere, tested by trying.
+- **The DEFAULT partition is a safety net.** An unscheduled month lands there
+  rather than refusing a reveal and losing its audit row. Creating that month
+  later refuses while DEFAULT holds its rows, which is loud on purpose.
+- **Caps count distinct candidates and a re-open costs nothing**, but every
+  re-open is still audited. Charging for re-reading one profile would push
+  recruiters to copy details out of the product, which is worse.
+- **Caps are checked before the lookup**, so a capped organisation cannot
+  probe which ids exist. **Rolling windows, not calendar days**, so a cap
+  cannot be doubled across midnight. **Under an advisory lock per
+  organisation**, so fifty concurrent requests cannot each read the same
+  count.
+- **The view event is inserted from the visibility CTE**, so it cannot name a
+  candidate the reveal would not show, and a candidate suppressed between
+  search and click is a 404 with no trace.
+- **Alerts fire on the crossing, not the level**, once per burst, and block
+  nothing; the caps block. **No limit is the client's**: 60/hour, 300/day,
+  20 opens/minute per person, 40 distinct in 10 minutes flags. A malformed
+  row is a 500, never the defaults.
+- **The reveal route lives in `candidate`, the decisions in `discovery`.**
+  `discovery` may not import `scoring` (an invariant test), and the response
+  needs `display_value`. Everything that decides the reveal happens before
+  anything reads the candidate.
+- **`test_discovery_suppression.py` was refined, not relaxed.** The rule "every
+  discovery query uses the visibility CTE" now names four functions that read
+  no candidate (config, a lock, the view log's own counts, partition upkeep),
+  each with a reason, and **fails if any of them mentions a candidate table**.
+  Worth a second look in review.
+- **No name is guessed.** Only the structured form stores one; uploaded CVs
+  reveal contact details and no name (blockers E13).
+- **R15 landed here, not Day 15**, because Day 14 lists it and the employer's
+  subscription is the access window anyway. Existing employer test helpers
+  now seed one (`subscribe_tenant`).
+
+### Owed
+
+- **N4 / B7** — the client's written acknowledgement of the bulk-extraction
+  risk is still not in. These controls are mitigation; verification is the fix.
+- **Someone to read the alerts** (E14, blocked on E10), and the partition
+  schedule (E4).
+- **Per-organisation overrides of the limits**: one global row today.
+- **Load**: caps and the reveal query are indexed, not measured (Week 5).
+
+---
+
+## 2026-09-15 — Day 13: masked candidate search
+
+**1591 -> 1663 tests.** Local CI chain green: age, vocabulary, ruff, format,
+mypy, 9 import contracts, modules. Coverage 85%.
+
+**The first push (`c10f20f`) failed CI on a flaky test of ours**:
+`test_a_newer_score_replaces_what_search_knows`, about one run in ten locally
+too. The product was right: the test's random skill was hex, and a hex token
+sometimes holds eight digits in a row, which `CONTACT_LIKE_PATTERN` drops as a
+phone number. Test tokens are now letters only. The contact filter's cost is
+the same for real data: a skill containing eight or more digits in a row is
+not indexed.
+
+- `test_pipeline.py::test_a_smuggled_field_is_refused` (Day 12) failed once in
+  the long local run and passes alone and with its file. It passed in CI.
+- **The full local run took 1h40m; the CI tests job takes about 2.5 minutes**,
+  so the slowness is this machine, not Day 13.
+
+### What landed
+
+| | |
+|---|---|
+| **Employer search** | `GET /employer/discovery/candidates`: filters `band` (repeatable), `skill` (up to 5, all must match, case-insensitive), `badge`, `min_experience_years`, `state`, `city` (contains), `q` (words in a skill); keyset `cursor`, `limit`. Owners and recruiters of a **KYB-approved** employer; 300 pages/hour per organisation. |
+| **The card** | `MaskedCandidate`: `candidate_id`, `band`, `experience_years`, `skills` (≤20), `badges`, `city`, `state_code`. Nothing else, and an invariant test holds the list. |
+| **Candidate location** | `GET /candidate/profile`, `PUT /candidate/profile/location`. Not paywalled. |
+| **Schema** | `candidate_search_documents` (trigger-written), `candidate_profiles`, trigger `project_candidate_search_document` on `scores`, index `ix_scores_user_latest`. **Rebuild with `reset_local_db.sh`.** |
+
+### Decisions worth knowing
+
+- **The search document is a trigger's, not a task's.** An `AFTER INSERT` on
+  `scores` writes it in the transaction that wrote the score; the app role has
+  no INSERT/UPDATE/DELETE on it. So it cannot miss an event, lag a re-score, or
+  carry something the score does not support. An older score arriving late
+  never overwrites a newer document.
+- **Generated, not hand-copied.** The trigger's band CASE comes from
+  `scoring.domain.BANDS`, badges from `BADGE_FOR_ADDON_KIND`, the contact
+  filter from `CONTACT_LIKE_PATTERN`, as the application guard comes from
+  `allowed_transitions()`. `discovery` still imports nothing from `scoring`;
+  the migration and the tests do the joining.
+- **Experience is summed in SQL**, and a parametrised test holds it equal to
+  `features_from_extraction` over malformed roles too (strings, floats,
+  booleans, negatives, non-lists).
+- **Visibility is still only the Day 9 CTE.** Search joins the document on
+  `(user_id, resume_version_id)`, so a suppressed or unchecked candidate keeps a
+  document and never appears, and a stale document matches nothing.
+- **Band, never score, and ordering by band only.** Within a band the order is
+  by id, which means nothing. No total: a count over a narrow filter says
+  whether one person is in the pool.
+- **Skills are CV text and can carry contact details.** Anything email- or
+  phone-shaped is dropped from the document, so it can't be searched for
+  either, and dropped again at the card. The pattern spares "ISO 9001:2015",
+  "IEC 61131-3", "Python 3.12".
+- **Location did not exist anywhere**, so it is new, and it is **ours, not the
+  client's**: optional, declared by the candidate, city plus state, no address
+  or PIN code (with a band and skills, a PIN narrows a card to a handful of
+  people). A city refuses digits and `@`. Layer 1 was not asked to extract a
+  location, since that changes the prompt version and so every score.
+- **Viewers cannot search.** SRS 1.14.1 names recruiter and owner. Widening it
+  is one dependency.
+- **No audit row for a search.** A card holds nothing PRD rule 9 calls private.
+  The audit belongs to the Day 14 reveal.
+- **Only the filters asked for are in the SQL.** A single statement of
+  `(:x IS NULL OR ...)` terms gets a generic plan that can use none of the GIN
+  indexes. Every value is still a bind parameter.
+- **Indexes:** GIN on `skill_keys`, `badges`, `search_vector` (`simple`
+  config: skills are proper nouns); btree `(band_rank DESC, user_id)` for the
+  keyset; trigram on `candidate_profiles.city`; and `ix_scores_user_latest`
+  matching the CTE's `DISTINCT ON` order, which the old index could not serve.
+  **Not verified under load**; that is Week 5 (plan §9, target < 600 ms).
+
+### Owed
+
+- **Questionnaire badges**: no questionnaire tables until Day 16.
+- **Configurable caps, the access window, anomaly detection** (Day 14). The
+  hourly page limit here is a constant floor.
+- **The employer subscription gate** (Day 15).
+- **N5**, the unlock-criteria rescission, is still unasked (blockers B6). It
+  does not block the build.
+
+---
+
+## 2026-09-15 — Day 12: the pipeline, interviews, the two-sided hire, expiry
+
+**1455 -> 1591 tests**, full local CI chain green (age, vocabulary, ruff,
+mypy, 9 import contracts, modules, pytest at 85%).
+
+### What landed
+
+| | |
+|---|---|
+| **Employer pipeline** | `/employer/applications`: list a job's applications (oldest first, by stage, keyset), open one, `POST /{id}/stage`, `PUT /{id}/interview`, `POST /{id}/hire`. Owners and recruiters act; viewers read. |
+| **Candidate side** | `GET /candidate/applications/{id}` now carries the history; `POST /{id}/hire/confirm` and `/hire/dispute`. Not paywalled. |
+| **Expiry** | `applications.service.expire_for_tenant` and the `applications.expire` task (`app/tasks/expire_applications.py`). |
+| **Schema** | `applications.expires_at` replaced by `employer_active_at`; `hire_disputed_at`; five CHECKs; `application_events.kind` and `actor_type`; trigger `guard_application_write`. **Rebuild with `reset_local_db.sh`.** |
+
+### Decisions worth knowing
+
+- **One stage forward, or rejected.** SRS 1.9.2's "next permitted stage".
+  Acting on a SUBMITTED application records VIEWED first, and opening one
+  records VIEWED once, for any role — so a candidate's board never shows a
+  decision about something nobody opened. Moving to the current stage is a
+  no-op, not a 409, so a retried drag is harmless.
+- **HIRED is nobody's alone.** The employer proposes (`employer_confirmed_at`);
+  the candidate's confirmation is the transition, written in one statement with
+  the stage because a CHECK refuses either without the other. Both are latches.
+  `applications.hire_confirmed` is the final hire event; **nothing is billed on
+  it** (client deferred, `answers-log.md` 0.8).
+- **A dispute adjudicates nothing.** It is recorded and the hire stays
+  unconfirmed; it closes by the candidate confirming, the employer rejecting,
+  or the candidate withdrawing. Nobody can review it yet (blockers E12, E10).
+- **The database holds the pipeline too**, as the publish trigger holds
+  invariant 8. `guard_application_write` enforces the transition graph (built
+  from `domain.allowed_transitions()`, so the two cannot drift), the latches,
+  filing at SUBMITTED, and **which party may write which columns** — a tenant
+  transaction cannot withdraw, confirm or dispute; a candidate transaction can
+  do nothing else. Tested on app-role sessions with the service out of the way.
+- **Expiry is measured, not stamped.** `employer_active_at` moves on every
+  employer action and the sweep compares it with the configured period, so
+  changing the period applies to every open application at once. A booked
+  interview holds an application open; a proposed hire never expires.
+  **The 30-day default is ours** (blockers C13). A malformed config row stops
+  the sweep rather than defaulting.
+- **The sweep binds each employer tenant from `tenants`** — the one place a
+  tenant id does not come from a membership. It is the system acting, with no
+  caller to supply one, and binding keeps it under the same RLS as a request,
+  one transaction per tenant, `SKIP LOCKED` so it never waits on an employer.
+- **The employer's notes, and which recruiter acted, never reach the
+  candidate.** The board shows who moved it as a party. A unit test fails if a
+  candidate schema grows `note` or `actor_id`.
+- **The meeting link stays off the outbox.** The candidate reads it behind
+  their own authentication. Links must be `https` with a real host and no
+  credentials; **which host is not restricted** (blockers E11).
+- **The pipeline is not a profile.** `candidate_id` and nothing about who they
+  are — that is the Day 13–14 reveal, behind the access window and its audit.
+- `application_events.occurred_at` is `clock_timestamp()`: VIEWED and
+  SHORTLISTED written in one transaction sort in the order they happened.
+
+### Owed
+
+- **The EventBridge schedule** for the sweep (E4). Until then nothing expires
+  on its own — the safe direction.
+- **Notifications** for stage changes, interviews and hires (Day 19; SMS
+  gated on DLT). The events are emitted with ids only.
+- **The employer subscription gate** on these routes (Day 15, with the rest).
+- **Whether a HIGH integrity signal raised after applying should hide the
+  application from the pipeline.** Today it does not: the pipeline shows no CV
+  content, and the Day 14 reveal is where the visibility rule should apply.
 
 ---
 

@@ -117,6 +117,14 @@ class Score(Base, UUIDPrimaryKey):
     )
 
 
+# "The latest score per candidate" is `DISTINCT ON (user_id) ... ORDER BY
+# user_id, computed_at DESC, id DESC` inside the discovery visibility CTE, which
+# every masked search runs. `ix_scores_user_computed` is ascending on
+# `computed_at` and lacks `id`, so it cannot serve that order; this one matches
+# it exactly (Day 13).
+Index("ix_scores_user_latest", Score.user_id, Score.computed_at.desc(), Score.id.desc())
+
+
 class ResumeExtraction(Base):
     """The reproducibility spine (scoring-approach.md section 6).
 

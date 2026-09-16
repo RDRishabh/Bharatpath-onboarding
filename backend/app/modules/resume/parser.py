@@ -137,11 +137,9 @@ class LocalResumeParser:
         elif mime == DOCX:
             text, pages = self._docx(content)
         elif mime == "application/msword":
-            # Legacy OLE2 .doc. No maintained pure-Python reader exists, and
-            # the alternatives are native binaries in the image. Accepted at
-            # upload today and refused here -- tracked in docs/progress.md
-            # under "Deferred by decision"; decide before launch whether to
-            # convert or to stop accepting it.
+            # Legacy OLE2 .doc. Refused at upload since 2026-09-15 (blockers
+            # E3); this branch remains for files accepted before that, so they
+            # fail with the same actionable code rather than a generic one.
             raise LegacyDocUnsupportedError()
         else:
             raise UnsupportedDocumentError(params={"mime": mime})

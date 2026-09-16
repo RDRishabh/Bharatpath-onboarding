@@ -30,6 +30,8 @@ _SIGNATURES: Final[tuple[tuple[bytes, str], ...]] = (
 )
 
 DOCX: Final = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+#: Still recognised, so it can be refused by name rather than as "unknown".
+LEGACY_DOC: Final = "application/msword"
 
 #: A DOCX always carries this, and a plain ZIP does not. Checking for it is
 #: what stops any renamed `.zip` walking in through the DOCX door.
@@ -93,6 +95,12 @@ def validate_upload(
             "The file is not a PDF or Word document.",
         )
     if mime not in allowed:
+        if mime == LEGACY_DOC:
+            # Its own code: the remedy is one the candidate can act on.
+            return UploadRejection(
+                "upload_legacy_doc_unsupported",
+                "Legacy .doc files are not accepted; save as PDF or .docx.",
+            )
         return UploadRejection(
             "upload_unsupported_type",
             f"{mime} is not an accepted resume format.",

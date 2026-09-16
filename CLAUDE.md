@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1455 tests
+.venv/Scripts/pytest.exe                # 1731 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -252,6 +252,114 @@ is where a third one would have to be argued for.
   decision: a lapsed subscriber loses access, not their data.
 - A module serving a second surface mounts it with `get_extra_routers()` in its
   `__init__.py` (`jobs` → `/candidate/jobs`).
+
+## The hiring pipeline — Day 12
+
+- **The stage machine lives twice, from one source.** `applications.domain`
+  decides who may move what; `guard_application_write` (baseline migration)
+  refuses anything else for every writer, the migrator included, and builds
+  its transition list from `domain.allowed_transitions()`. **Seed a test
+  application at SUBMITTED and walk it one UPDATE per stage** — an insert at
+  another stage, or a jump, is refused, and that is the guard working.
+- **Employers move one stage forward, or reject.** Acting on a SUBMITTED
+  application records VIEWED first, and opening one records VIEWED (any role,
+  once). HIRED is never the employer's to write: they propose
+  (`employer_confirmed_at`), and the candidate's confirmation is the
+  transition. A CHECK refuses HIRED without both; the confirmations and
+  `hire_disputed_at` are latches.
+- **The guard tells the parties apart by what is bound.** A tenant transaction
+  cannot withdraw, confirm or dispute; a candidate transaction (`app.user_id`,
+  no tenant) can do only those. Forget the binding and a candidate's confirm
+  looks like a migrator write, which the guard still accepts — the RLS
+  policies, not the guard, stop that session reading the row.
+- **`application_events` is not under RLS.** Read it only by application id,
+  after the row was loaded under the caller's policy. Notes and `actor_id` are
+  employer-only; a test fails if a candidate schema grows either.
+  `occurred_at` is `clock_timestamp()`, so two events in one transaction sort
+  as written.
+- **Expiry is measured, not stamped.** `employer_active_at` moves on every
+  employer action; the sweep compares it (and any booked interview) with the
+  period in `config_values` `applications.expiry` — a bad row raises rather
+  than defaulting. A proposed hire never expires. The sweep binds each tenant
+  from the `tenants` table (`identity.service.employer_tenant_ids`), **the one
+  place a tenant id does not come from a membership**, and is system-only.
+  Nothing schedules it yet (blockers E4).
+- **The pipeline is not a candidate profile.** No name, contact or score in
+  any employer schema here; that is the Day 13–14 reveal, behind the access
+  window and its audit row.
+
+## Masked search — Day 13
+
+- **`MaskedCandidate` has no field for a name, contact or the score**, and
+  `tests/invariants/test_masked_candidate.py` holds its exact field list.
+  Widening the card is a product decision, not a refactor. Employers get the
+  **band**, never the number.
+- **`candidate_search_documents` is written by a trigger on `scores` and
+  nothing else** (`project_candidate_search_document`); the app role has no
+  INSERT/UPDATE/DELETE on it. Bands, badges and the contact filter in that
+  trigger are **generated** from `scoring.domain.BANDS`,
+  `discovery.domain.BADGE_FOR_ADDON_KIND` and `CONTACT_LIKE_PATTERN` — change
+  those and rebuild the database. Experience is summed in SQL and a test holds
+  it equal to `features_from_extraction`.
+- **The document never decides visibility.** Search joins it through
+  `VISIBLE_CANDIDATES_CTE` on `(user_id, resume_version_id)`, so a suppressed
+  candidate keeps a document and still never appears.
+- **Location is candidate-declared** (`candidate_profiles`, `PUT
+  /candidate/profile/location`) — nothing else in the schema has one. A city
+  refuses digits and `@` because every employer sees it; no address or PIN.
+- **Skills come from a CV, so they can carry a phone number.** Contact-like
+  skills are dropped from the document (unsearchable) and again at the card.
+- Search needs owner/recruiter **and** approved KYB, is rate-limited per
+  organisation, orders by band only, and returns **no total**. No audit row:
+  a card is not a reveal. The reveal, access window and view caps are Day 14.
+- Tests share one pool: give each test's candidates a unique skill and filter
+  on it. **Make that skill letters only** — a hex token sometimes holds eight
+  digits in a row, the contact filter drops it as a phone number, and the test
+  fails about one run in ten.
+
+## Access windows, the reveal and abuse controls — Day 14
+
+- **For an employer the subscription IS the access window** (R14).
+  `require_active_access_window` and `require_active_subscription` read the
+  same row, live, and refuse with different codes (`access_window_expired` on
+  the reveal, `subscription_required` everywhere else). Never cache either.
+- **Payment gates every employer action (R15)**: jobs, the pipeline, search
+  and the reveal. Organisation, team and KYB stay open so an unpaid employer
+  can onboard. **Tests seed one with `subscribe_tenant`** (`tests/conftest.py`);
+  the shared `_employer` / `_organisation` helpers already do. An employer test
+  answering 402 has forgotten it.
+- **The reveal is `GET /employer/discovery/candidates/{id}`, mounted by the
+  `candidate` module**, because the response needs `display_value` and
+  `discovery` may not import `scoring`. `discovery.service.open_candidate`
+  owns every decision: KYB, the per-person burst limit, the organisation's
+  caps, visibility, the view event and the audit row. Nothing reads the
+  candidate before it returns.
+- **Every open writes an `audit_events` row and a `candidate_view_events` row
+  in the same transaction**, re-opens included (invariant 7′). Metadata holds
+  ids only. The view-event insert selects from the visibility CTE, so it cannot
+  name someone the reveal would not show.
+- **Caps count distinct candidates per organisation over a rolling hour and
+  day**, under a per-tenant advisory lock, checked *before* the lookup so a
+  capped employer cannot probe ids. Re-opening costs nothing. Every number is
+  `config_values` key `discovery.limits` (strict; a bad row is a 500, never
+  the defaults), and the defaults are ours, not the client's.
+- **Alerts are crossings, not levels**: one `candidate_view_anomaly_flagged`
+  audit row plus an outbox event per threshold crossed. They block nothing,
+  and nobody can read them yet (blockers E10).
+- **`candidate_view_events` is partitioned by month.** Its key is
+  `(id, viewed_at)`. Partitions are revoked from the app role, because RLS on
+  the parent does not cover a query naming a partition. The baseline creates
+  fifteen months plus DEFAULT; `ensure_candidate_view_partitions` (SECURITY
+  DEFINER) adds more, via `app/tasks/view_event_partitions.py`, unscheduled
+  (E4). Rows in DEFAULT block creating their month — move them first.
+- **`RevealedCandidate` has `score` (display) and no raw field**, and
+  `full_name` from `candidate_profiles` (asked at sign-up, `PUT
+  /candidate/profile/name`), else the structured form's; never guessed from a
+  CV and never on a masked card. Its field list, "no employer schema has a raw field" and "export
+  is not a feature" are invariant tests. No list endpoint may return it.
+- Discovery repository functions that do not use the CTE must be named in
+  `READS_NO_CANDIDATE` (`test_discovery_suppression.py`) and may not mention a
+  candidate table.
 
 ## Streak points are not the score
 

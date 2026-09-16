@@ -152,6 +152,13 @@ async def create_tenant(session: AsyncSession, *, tenant_type: str, name: str) -
     return tenant.id
 
 
+async def tenant_ids_of_type(session: AsyncSession, *, tenant_type: str) -> list[uuid.UUID]:
+    result = await session.execute(
+        select(Tenant.id).where(Tenant.type == tenant_type).order_by(Tenant.id)
+    )
+    return list(result.scalars().all())
+
+
 async def rename_tenant(session: AsyncSession, *, tenant_id: uuid.UUID, name: str) -> None:
     await session.execute(update(Tenant).where(Tenant.id == tenant_id).values(name=name))
 

@@ -51,6 +51,9 @@ router = APIRouter()
 candidate_router = APIRouter()
 
 Composers = Depends(require_role(EMPLOYER_OWNER, EMPLOYER_RECRUITER))
+#: R15: an employer sees the portal without paying, and does nothing in it.
+#: After the role guard, so the wrong role hears 403 rather than "pay us".
+PayingEmployer = Depends(require_active_subscription)
 Readers = Depends(require_role(EMPLOYER_OWNER, EMPLOYER_RECRUITER, EMPLOYER_VIEWER))
 
 
@@ -62,7 +65,7 @@ def _job(row: object) -> JobResponse:
     "",
     response_model=JobResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Composers],
+    dependencies=[Composers, PayingEmployer],
     summary="Create a draft job",
 )
 async def create_job(
@@ -74,7 +77,7 @@ async def create_job(
 @router.get(
     "",
     response_model=list[JobResponse],
-    dependencies=[Readers],
+    dependencies=[Readers, PayingEmployer],
     summary="The organisation's jobs, newest first",
 )
 async def list_jobs(
@@ -88,7 +91,7 @@ async def list_jobs(
 @router.get(
     "/threshold-preview",
     response_model=ThresholdPreviewResponse,
-    dependencies=[Composers],
+    dependencies=[Composers, PayingEmployer],
     summary="Roughly how many visible candidates clear a score threshold",
 )
 async def threshold_preview(
@@ -106,7 +109,7 @@ async def threshold_preview(
 @router.get(
     "/{job_id}",
     response_model=JobResponse,
-    dependencies=[Readers],
+    dependencies=[Readers, PayingEmployer],
     summary="One job",
 )
 async def get_job(job_id: uuid.UUID, user: CurrentUser, session: DbSession) -> JobResponse:
@@ -116,7 +119,7 @@ async def get_job(job_id: uuid.UUID, user: CurrentUser, session: DbSession) -> J
 @router.patch(
     "/{job_id}",
     response_model=JobResponse,
-    dependencies=[Composers],
+    dependencies=[Composers, PayingEmployer],
     summary="Edit a draft or paused job",
 )
 async def update_job(
@@ -130,7 +133,7 @@ async def update_job(
 @router.post(
     "/{job_id}/publish",
     response_model=JobResponse,
-    dependencies=[Composers],
+    dependencies=[Composers, PayingEmployer],
     summary="Put a job on the board (requires approved KYB)",
 )
 async def publish_job(job_id: uuid.UUID, user: CurrentUser, session: DbSession) -> JobResponse:
@@ -141,7 +144,7 @@ async def publish_job(job_id: uuid.UUID, user: CurrentUser, session: DbSession) 
 @router.post(
     "/{job_id}/pause",
     response_model=JobResponse,
-    dependencies=[Composers],
+    dependencies=[Composers, PayingEmployer],
     summary="Take a published job off the board",
 )
 async def pause_job(job_id: uuid.UUID, user: CurrentUser, session: DbSession) -> JobResponse:
@@ -151,7 +154,7 @@ async def pause_job(job_id: uuid.UUID, user: CurrentUser, session: DbSession) ->
 @router.post(
     "/{job_id}/close",
     response_model=JobResponse,
-    dependencies=[Composers],
+    dependencies=[Composers, PayingEmployer],
     summary="Close a job for good",
 )
 async def close_job(job_id: uuid.UUID, user: CurrentUser, session: DbSession) -> JobResponse:

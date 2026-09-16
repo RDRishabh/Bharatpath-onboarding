@@ -45,6 +45,10 @@ class AuditAction(StrEnum):
     CANDIDATE_PROFILE_VIEWED = "candidate_profile_viewed"
     CANDIDATE_CONTACT_REVEALED = "candidate_contact_revealed"
     CANDIDATE_SEARCH_PERFORMED = "candidate_search_performed"
+    #: An organisation's views crossed a velocity or cap threshold (Day 14).
+    #: The admin console reads these by action; nobody can hold a platform
+    #: role to read them yet (blockers E10).
+    CANDIDATE_VIEW_ANOMALY_FLAGGED = "candidate_view_anomaly_flagged"
 
     # Admin privilege - SRS 2.24.5, every drill-down
     ADMIN_CANDIDATE_DRILLDOWN = "admin_candidate_drilldown"

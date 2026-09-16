@@ -102,10 +102,14 @@ class Settings(BaseSettings):
 
     # Sniffed from the first bytes of the object, never from the filename or
     # the client-declared Content-Type. Both are attacker-controlled.
+    #
+    # **No legacy `.doc`** (client, 2026-09-15, closing blockers E3): no
+    # maintained pure-Python reader exists, so it was accepted and then failed
+    # at parse. It is now refused at upload with its own code, so the app can
+    # tell the candidate to save as PDF or .docx.
     resume_allowed_mime_types: list[str] = [
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/msword",
     ]
 
     # How much of the object to read back to identify it. Every magic number
