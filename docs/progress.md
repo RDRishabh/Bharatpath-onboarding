@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1820 on 2026-09-15 (Day 15), all green locally, not yet pushed. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Tests** | 1898 on 2026-09-16 (Day 16), all green locally, not yet pushed. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 85% |
-| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 16 — questionnaire and interview (the re-score path for add-ons is already wired) |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 17 — evaluation stubs, college tenant, seats and referral codes |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -49,6 +49,63 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-16 — Day 16: questionnaire and mock interview
+
+**1820 -> 1898 tests**, all passing locally as CI runs them. Local CI chain
+green: age, vocabulary, ruff, format, mypy, 9 import contracts, modules. Not
+yet pushed. **Rebuild with `reset_local_db.sh`** — new tables, guards, and the
+interview price in the seeded catalogue.
+
+### What landed
+
+| | |
+|---|---|
+| **Questionnaire** | `GET /candidate/questionnaire` (bank + saved answers), `PUT .../answers` (merge; `null` clears; one bad answer refuses the whole request with every issue listed), `POST .../submit`, `GET .../report` (by section, labels read back, 404 until submitted). `questionnaire_responses`, one row per candidate. Paywalled. |
+| **Device check** | `POST /candidate/interview/device-checks`: the app reports readings, `interview.domain.evaluate_device_check` decides, every failure listed, `rule_version` stored. Valid for 60 minutes. No camera, no lighting. |
+| **Offer and checkout** | `GET .../offer` (price, `will_increase_score`, `requires_acknowledgement`, check status, unstarted purchases, open session). `POST .../checkout` → billing, purpose `INTERVIEW_SESSION`, refused **before a payment exists** without a fresh passed check or, from the fourth session, without `acknowledge_no_score_increase`. |
+| **Purchase** | Granted by `billing._grant` after a verified callback into `interview_purchases`; `guard_interview_purchase` refuses anything else. Versioned `interview_products` seeded from `INTERVIEW_SESSION_PRODUCT` (placeholder ₹349). |
+| **Sessions** | `POST .../sessions` consumes the oldest purchase behind a fresh check, or returns the open session (recovery). Set 1, 2, 3 by session number. `GET .../sessions`, `GET .../sessions/{id}` — the answer manifest, one slot per question, `looking_for` only once that answer is stored. |
+| **Answers** | `POST .../answers/{i}/upload` (presigned PUT, key derived server-side; the first starts the session), `POST .../answers/{i}/complete` (size from S3, format sniffed — Ogg/WebM Opus, ADTS/MP4 AAC — duration bounded; rejected objects deleted; idempotent). |
+| **Completion** | `POST .../sessions/{id}/complete`: all six stored → COMPLETED, +20 and `contribution_version` frozen, audit `interview_completion_recorded`, outbox `interview.session_completed` → `rescore_for_addons`. Idempotent. |
+| **Scoring** | `addons_for` lists every completed session as an `interview` event; the +60 cap stays in `scoring/domain.py`. The `MOCK_INTERVIEW_COMPLETED` badge now appears. |
+
+### Decisions worth knowing
+
+- **Sessions are bought like the course, not through `entitlements`.** The plan's
+  data model has `interview_sessions.entitlement_id`; Day 15 kept courses in
+  their own module with their own guard, and interviews follow that, so the
+  purchase, what the candidate was told, and the session sit together. The
+  `entitlements` table is now written by nothing (its docstring says so).
+- **The fourth-session warning is enforced, not just shown.** Checkout refuses
+  with `interview_no_score_increase_unacknowledged` until the app sends the
+  acknowledgement, and a CHECK refuses a notice row that is neither
+  "will increase" nor acknowledged. Sessions "held" counts completed, open and
+  unstarted purchases, so buying three at once warns on the fourth.
+- **A fourth completion records +20 and scoring counts none of it.** Recording
+  0 in the interview module would have put the cap in two places.
+- **The candidate completes their own session**, unlike a course completion.
+  What earns the points is finishing, and "finished" is decided from stored,
+  validated audio — in the service and again in the database trigger. The
+  weakness is that silence is valid audio (**E19**).
+- **Every passed or failed device check is kept**, insert-only: it is the
+  evidence when a candidate says they paid and could not record.
+- **An abandoned session does not use a place under the cap** for the warning,
+  but nothing can abandon one yet (**E20**).
+- **The questionnaire has no employer surface and no badge** (**E21**). Submit
+  shares nothing further today; it marks the answers as the candidate's to
+  share once filters exist.
+
+### Owed
+
+- **Evaluation** (Day 17): transcription and rubric feedback; EVALUATED/FAILED
+  are in the machine and unreachable.
+- **E19** points on completion vs. evaluation, **E20** abandon policy, **E21**
+  questionnaire filters, **E22** audio retention.
+- The outbox relay still has no broker (E15): a completion re-scores in tests,
+  not in a running API.
 
 ---
 

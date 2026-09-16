@@ -17,6 +17,7 @@ The raw callback payload is stored verbatim for dispute forensics, in
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -36,6 +37,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.mixins import Timestamps, UUIDPrimaryKey
+from app.modules.billing.domain import ONE_OFF_PURPOSES, PURPOSES
+
+
+def _sql_list(values: Iterable[str]) -> str:
+    """Generated from the domain, so the constraint and the Literal cannot drift."""
+    return ", ".join(f"'{v}'" for v in values)
 
 
 class Payment(Base, UUIDPrimaryKey, Timestamps):
@@ -59,7 +66,7 @@ class Payment(Base, UUIDPrimaryKey, Timestamps):
     currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="PENDING", nullable=False)
 
-    #: What was bought: a plan or a course, by the id of the exact version
+    #: What was bought: a plan, a course or an interview session, by the id of the exact version
     #: priced at checkout, so a price change between checkout and callback
     #: cannot change what the money bought.
     purpose: Mapped[str] = mapped_column(String(24), nullable=False)
@@ -91,7 +98,7 @@ class Payment(Base, UUIDPrimaryKey, Timestamps):
         ),
         CheckConstraint("amount_minor >= 0", name="ck_payments_amount_non_negative"),
         CheckConstraint(
-            "purpose IN ('SUBSCRIPTION', 'COURSE', 'MANDATE_DEBIT')",
+            f"purpose IN ({_sql_list(PURPOSES)})",
             name="ck_payments_purpose",
         ),
         CheckConstraint(
@@ -99,7 +106,8 @@ class Payment(Base, UUIDPrimaryKey, Timestamps):
             name="ck_payments_settled_only_when_verified",
         ),
         CheckConstraint(
-            "purpose = 'COURSE' OR (subscriber_type IN ('USER', 'TENANT') "
+            f"purpose IN ({_sql_list(sorted(ONE_OFF_PURPOSES))}) "
+            "OR (subscriber_type IN ('USER', 'TENANT') "
             "AND subscriber_id IS NOT NULL)",
             name="ck_payments_subscription_has_subscriber",
         ),
@@ -165,9 +173,10 @@ class PaymentCallback(Base, UUIDPrimaryKey):
 class Entitlement(Base, UUIDPrimaryKey, Timestamps):
     """What a successful payment bought.
 
-    Used for discrete purchases (a mock interview session, Day 16). Employer
-    database access is NOT an entitlement row - it is the subscription window
-    itself - and neither is a course, which is `course_purchases`.
+    **Nothing writes this table yet.** Employer database access is NOT an
+    entitlement row - it is the subscription window itself - a course is
+    `course_purchases`, and a mock interview session is `interview_purchases`
+    (Day 16), each held by its own database guard beside the thing it buys.
     """
 
     __tablename__ = "entitlements"

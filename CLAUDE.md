@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1820 tests
+.venv/Scripts/pytest.exe                # 1898 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -393,6 +393,33 @@ is where a third one would have to be argued for.
 - **Plans and courses are versioned, never edited** — `scripts/seed_catalogue.py`
   (run by `reset_local_db.sh`). Other tests seed `TEST_…` plans, so assert on a
   plan's audience, not on the catalogue being the only rows.
+
+## Questionnaire and mock interview — Day 16
+
+- **The questionnaire is worth zero points.** Its event routes to nothing,
+  scoring never reads it, and `test_questionnaire_never_scores.py` fails on a
+  score-like field in either add-on's schemas (`will_increase_score` and its acknowledgement are
+  the allowed names). It has no badge on purpose (blockers E21).
+- **Interview sessions are bought like the course**, not through `entitlements`:
+  `interview_purchases` (guarded like `course_purchases`) and a session per
+  purchase. Payment purpose `INTERVIEW_SESSION`; the payment CHECKs are
+  generated from `billing.domain.PURPOSES` / `ONE_OFF_PURPOSES`.
+- **Checkout is refused before any payment exists** without a device check
+  passed in the last hour, or, once three sessions are held, without
+  `acknowledge_no_score_increase`. What the candidate was told is an
+  insert-only `interview_checkout_notices` row. Do not relax either.
+- **Each completed session records +20, a fourth included; the +60 cap is
+  scoring's alone** (`addons_for` lists every session, `total_score` clamps).
+  Completion goes through `interview.session_completed` → `rescore_for_addons`.
+- **The database holds the session machine**: `guard_interview_session_write`
+  (transitions generated from `interview.domain.SESSION_TRANSITIONS`, completion
+  latch, COMPLETED needs `QUESTIONS_PER_SESSION` STORED answers) and
+  `guard_interview_answer_write` (a STORED answer never changes; nothing is
+  written to a closed session). Tests that need a completed session record
+  real answers through the routes with the `fake_s3` fixture in
+  `tests/integration/test_interview.py`.
+- **POST /candidate/interview/sessions returns the open session** if there is
+  one. That is the recovery path, not a bug; there is no abandon (E20).
 
 ## Streak points are not the score
 

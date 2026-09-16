@@ -28,10 +28,18 @@ import hmac
 from dataclasses import dataclass
 from typing import Final, Literal
 
-Purpose = Literal["SUBSCRIPTION", "COURSE", "MANDATE_DEBIT"]
+Purpose = Literal["SUBSCRIPTION", "COURSE", "INTERVIEW_SESSION", "MANDATE_DEBIT"]
 
-#: What a payment can be for. The mock-interview session joins this on Day 16.
-PURPOSES: Final[tuple[Purpose, ...]] = ("SUBSCRIPTION", "COURSE", "MANDATE_DEBIT")
+#: What a payment can be for. Compiled into `ck_payments_purpose`.
+PURPOSES: Final[tuple[Purpose, ...]] = (
+    "SUBSCRIPTION",
+    "COURSE",
+    "INTERVIEW_SESSION",
+    "MANDATE_DEBIT",
+)
+
+#: Purposes bought by one person for themselves: no subscriber on the payment.
+ONE_OFF_PURPOSES: Final[frozenset[Purpose]] = frozenset({"COURSE", "INTERVIEW_SESSION"})
 
 #: Paise, always. No other currency is sold.
 CURRENCY: Final = "INR"

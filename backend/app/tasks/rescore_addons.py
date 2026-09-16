@@ -1,7 +1,7 @@
 """Re-score a candidate after an add-on completion.
 
-Add-ons move the score (R1). Triggered by `courses.completion_recorded` (and
-`interview.session_completed` from Day 16). **Never calls the model**: Layers
+Add-ons move the score (R1). Triggered by `courses.completion_recorded` and
+`interview.session_completed`. **Never calls the model**: Layers
 2 and 3 run over the extraction stored on the latest score
 (`scoring.service.rescore_for_addons`).
 

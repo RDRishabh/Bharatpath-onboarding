@@ -24,6 +24,7 @@ from app.core.errors import ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.core.outbox import emit
 from app.modules.courses import service as courses_service
+from app.modules.interview import service as interview_service
 from app.modules.resume import service as resume_service
 from app.modules.scoring import repository
 from app.modules.scoring.domain import (
@@ -266,11 +267,18 @@ async def addons_for(session: AsyncSession, *, user_id: uuid.UUID) -> AddOnContr
     **Scoring reads the add-ons; the add-ons never reach scoring** (invariant
     4'). Each completion becomes one entry in `contributing_events`, carrying
     its id and the points frozen on it, which is what `replay` reads back.
-    Interview sessions join on Day 16.
+
+    **Every completed interview session is listed, including a fourth**, at
+    the +20 it recorded. The +60 cap is applied by `total_score` and
+    `clamped_addon_points`, here and on replay, and nowhere else -- so the
+    stored events say exactly what was completed, and the stored value says
+    what counted.
     """
-    contributions = await courses_service.contributions_for(session, user_id=user_id)
+    courses = await courses_service.contributions_for(session, user_id=user_id)
+    interviews = await interview_service.contributions_for(session, user_id=user_id)
     return AddOnContributions(
-        course_points=sum(c.points for c in contributions),
+        course_points=sum(c.points for c in courses),
+        interview_points=sum(i.points for i in interviews),
         events=[
             {
                 "kind": "course",
@@ -279,7 +287,16 @@ async def addons_for(session: AsyncSession, *, user_id: uuid.UUID) -> AddOnContr
                 "points": c.points,
                 "contribution_version": c.contribution_version,
             }
-            for c in contributions
+            for c in courses
+        ]
+        + [
+            {
+                "kind": "interview",
+                "id": str(i.session_id),
+                "points": i.points,
+                "contribution_version": i.contribution_version,
+            }
+            for i in interviews
         ],
     )
 

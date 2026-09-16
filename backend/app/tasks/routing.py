@@ -44,8 +44,9 @@ EVENT_SUBSCRIPTIONS: Final[dict[str, tuple[str, ...]]] = {
     # Layers 2 and 3 over the stored extraction, so a completion costs no
     # model call and cannot drift the resume-derived part of the number.
     #
-    # Courses emit this from Day 15. The interview module emits its event on
-    # Day 16, when `scoring.service.addons_for` learns to count sessions.
+    # A course completion (Day 15) and a completed interview session (Day 16).
+    # Both are read back by `scoring.service.addons_for`, which applies the
+    # caps; the questionnaire is worth nothing and routes nowhere near here.
     "courses.completion_recorded": (RESCORE_FOR_ADDONS_TASK,),
     "interview.session_completed": (RESCORE_FOR_ADDONS_TASK,),
     # A verified gateway callback, stored by the callback route. Settling it
