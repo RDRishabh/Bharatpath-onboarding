@@ -52,6 +52,13 @@ REDIS_URL="redis://localhost:6379/0" \
 ENVIRONMENT=local \
   "${PYTHON:-python}" -m alembic upgrade head
 
+echo "==> price list and course (placeholder content)"
+DATABASE_URL="postgresql+asyncpg://bharatpath_migrator:bharatpath_migrator@localhost:5432/${DB}" \
+REDIS_URL="redis://localhost:6379/0" \
+ENVIRONMENT=local \
+AUTH_ALLOW_LOCAL_TOKENS=true \
+  "${PYTHON:-python}" scripts/seed_catalogue.py
+
 POLICIES=$(psql_run -tAc "SELECT count(*) FROM pg_policies WHERE schemaname='public'")
 TABLES=$(psql_run -tAc "SELECT count(*) FROM pg_tables WHERE schemaname='public'")
 echo "==> done: ${TABLES} tables, ${POLICIES} row-level security policies"

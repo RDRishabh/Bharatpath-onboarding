@@ -4,3 +4,4 @@ export DATABASE_ADMIN_URL="postgresql+asyncpg://bharatpath_admin:bharatpath_admi
 export REDIS_URL="redis://localhost:6379/0"
 export ENVIRONMENT=local
 export AUTH_ALLOW_LOCAL_TOKENS=true
+export PAYMENTS_PROVIDER=stub

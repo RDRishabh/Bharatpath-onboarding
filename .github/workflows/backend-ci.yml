@@ -96,6 +96,9 @@ jobs:
       # local development uses. Settings itself rejects this flag outside
       # local/CI, so it cannot leak into a deployed environment.
       AUTH_ALLOW_LOCAL_TOKENS: "true"
+      # No payment gateway exists. The stub signs callbacks with a real HMAC,
+      # so verification is exercised; Settings refuses it outside local/dev.
+      PAYMENTS_PROVIDER: stub
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -25,7 +25,9 @@ from typing import Final
 #: enqueues by name and must not drag every module's dependencies into the
 #: worker that publishes events.
 SCORE_RESUME_TASK: Final = "scoring.score_resume"
+RESCORE_FOR_ADDONS_TASK: Final = "scoring.rescore_for_addons"
 DETECT_INTEGRITY_TASK: Final = "integrity.detect"
+PROCESS_PAYMENT_CALLBACK_TASK: Final = "billing.process_callback"
 
 #: `event_type -> the tasks it triggers`.
 #:
@@ -37,15 +39,18 @@ EVENT_SUBSCRIPTIONS: Final[dict[str, tuple[str, ...]]] = {
     # event and not the created one.
     "resume.version_confirmed": (SCORE_RESUME_TASK,),
     # Add-ons move the score (R1, 2026-08-24), so a completion re-scores.
-    # Both re-runs are Layer 3 only — the extraction is cached and content
-    # addressed, so a purchase costs no model call and cannot drift the
-    # resume-derived part of the number.
+    # Not `SCORE_RESUME_TASK`: that task is idempotent by resume version and
+    # would find the version already scored and stop. The re-score runs
+    # Layers 2 and 3 over the stored extraction, so a completion costs no
+    # model call and cannot drift the resume-derived part of the number.
     #
-    # TODO(Day 15/16): the courses and interview modules do not emit these
-    # yet. The entries are declared here so that wiring them is adding an
-    # emit, not rediscovering which event scoring listens for.
-    "courses.completion_recorded": (SCORE_RESUME_TASK,),
-    "interview.session_completed": (SCORE_RESUME_TASK,),
+    # Courses emit this from Day 15. The interview module emits its event on
+    # Day 16, when `scoring.service.addons_for` learns to count sessions.
+    "courses.completion_recorded": (RESCORE_FOR_ADDONS_TASK,),
+    "interview.session_completed": (RESCORE_FOR_ADDONS_TASK,),
+    # A verified gateway callback, stored by the callback route. Settling it
+    # grants what was bought; the route itself never does.
+    "billing.callback_received": (PROCESS_PAYMENT_CALLBACK_TASK,),
     # Integrity runs once a confirmed version has been scored, because that is
     # the first moment both halves it reads exist: the CV text, and the Layer 1
     # extraction stored on the score row. The task receives the event's

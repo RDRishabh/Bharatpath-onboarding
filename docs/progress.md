@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1714 on 2026-09-15 (Day 14), all green locally, not yet pushed. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Tests** | 1820 on 2026-09-15 (Day 15), all green locally, not yet pushed. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 85% |
-| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 15 — payments and subscriptions (the employer gate already reads `subscriptions`) |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 16 — questionnaire and interview (the re-score path for add-ons is already wired) |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -49,6 +49,89 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-15 — Day 15: payments, subscriptions, courses
+
+**1732 -> 1820 tests** (62 unit, 26 integration), all passing locally as CI
+runs them. Local CI chain green: age, vocabulary, ruff, format, mypy, 9 import
+contracts, modules. Not yet pushed. **Rebuild with `reset_local_db.sh`** — it
+now seeds the price list and the course too.
+
+### What landed
+
+| | |
+|---|---|
+| **Gateway interface** | `billing/provider.py`: `PaymentProvider` for both renewal paths (order, mandate registration, pre-debit notice, debit, revocation). **Default `none` sells nothing** (checkout 503). `stub` signs callbacks with a real HMAC; `Settings` refuses it in staging and prod. |
+| **Checkout** | `POST /candidate/subscription/checkout`, `POST /employer/subscription/checkout` (owner only), `POST /candidate/courses/{id}/checkout`. PENDING payment + gateway order; a second checkout for the same item within 30 min returns the first. `GET /billing/payments/{id}` to poll (someone else's is 404). |
+| **Signed callbacks** | `POST /billing/callbacks/{provider}`, public. Signature over the raw body checked **before** parsing or writing — a forgery is a 401 and leaves no row. Verified payload stored verbatim in `payment_callbacks`, replay refused by `(provider, event_id)`, 200 at once, outbox `billing.callback_received` → task `billing.process_callback`. |
+| **Subscriptions** | Purchase, early renewal (extends from the end), cancel at period end, GRACE (mandate only), LAPSED, CANCELLED; every change in `subscription_events` + outbox. `GET .../subscription`, `/plans`, `/cancel`. Sweep task `subscriptions.renewals`. |
+| **UPI AutoPay** | `POST .../subscription/mandate` → PENDING until the gateway's `mandate.activated`. Sweep: notice → wait ≥24h → debit of the notified amount → callback renews from the paid end. Retries each get a fresh notice; exhausted, over-ceiling or `MANDATE_REVOKED`-style failures fall back to manual with `subscriptions.fell_back_to_manual`. `mandate_debit_notices` table. |
+| **Courses** | Catalogue and checkout behind the subscription; purchase recorded on a verified payment; `courses.service.record_completion` (SYSTEM / PLATFORM_ADMIN only, audited, outbox). **No completion route.** |
+| **Add-ons re-score** | `scoring.service.addons_for` reads completions; `rescore_for_addons` runs Layers 2–3 over the stored extraction (no model call) and appends a score that replays exactly. Routed from `courses.completion_recorded`. |
+| **Pay-first** | `/candidate/score/me` now needs an active subscription (the Day 8 TODO). |
+| **Catalogue** | `scripts/seed_catalogue.py` replaces `seed_placeholder_course.py`: 11 plans and the course, versioned — a changed price is a new row, never an edit. The course is written inactive while lessons have no media, so nothing is on sale. |
+
+### Decisions worth knowing
+
+- **The database holds the gate, not only the service.** `guard_payment_write`
+  refuses a payment inserted as anything but PENDING, any change to what was
+  charged, an un-latched verification, and any status move off
+  `billing.domain.PAYMENT_TRANSITIONS` (generated into the trigger).
+  `ck_payments_settled_only_when_verified` refuses SUCCEEDED without
+  `signature_verified_at`. `guard_course_purchase` refuses a purchase without
+  that user's verified payment for that course, and a completion has a foreign
+  key to its purchase. So a forged callback cannot produce a score change even
+  through a direct repository call.
+- **Callbacks are evidence.** The app role may insert them and update only
+  `processed_at` and `outcome` (column grant); payments cannot be deleted.
+- **A late success counts; a late failure does not.** FAILED → SUCCEEDED is
+  allowed because UPI reports late successes; SUCCEEDED → FAILED is refused.
+  A signed callback for the wrong amount grants nothing (`AMOUNT_MISMATCH`).
+- **Grace exists only for auto-renew.** A manual subscriber has nothing
+  outstanding at the end of a period, so they lapse and repurchase restores
+  them at once. Entering GRACE moves `current_period_end` (access reads it) and
+  keeps the paid end in `grace_from`, so a late debit renews from the paid end.
+- **A LAPSED or CANCELLED row is never revived by a purchase** — buying again
+  opens a new tenure, so each row's events are one run of payments. The one
+  exception is a mandate debit that settles after grace ran out: it was paid.
+- **Nothing debits a payer who was not told.** Every attempt has its own notice
+  and waits the full period (≥24h, refused below that in config); the debit is
+  for the amount in the notice, never a price changed since.
+- **The mandate ceiling is the plan price at registration**, capped at
+  ₹15,000 (RBI's limit for debits without per-debit approval). A price rise past
+  it falls back to manual while days remain. **Employer annual and every college
+  plan are over the cap, so they cannot auto-renew** — ours to verify with the
+  gateway (blockers E16).
+- **An organisation's money is its owner's.** Recruiters and viewers read the
+  subscription; only the owner buys, cancels or registers a mandate.
+- **A completion re-scores through a new task, not `score_resume`.** The Day 8
+  routing sent completions to `scoring.score_resume`, which is idempotent by
+  resume version — it would have found the version scored and done nothing, so
+  a course would never have moved a score. Fixed and tested.
+- **No schema says what a course is worth to the score** (R11, and the
+  "points for sale" reading). Copy is the client's.
+- **The dev simulate route is not a bypass**: it signs the stub's callback and
+  runs the ordinary receive and process path, and exists only with the stub.
+- **Resume intake stays open to non-payers**, by decision: uploading and
+  confirming before paying is the conversion moment. It has a cost — confirming
+  triggers a model call — so it is a client question (blockers E17).
+
+### Owed
+
+- **A real gateway** (D3) — nothing can be sold until one is chosen and its
+  adapter written behind `PaymentProvider`.
+- **The outbox relay has no broker** (Day 19). In a running API a callback is
+  verified and stored and then **not processed**, and a completion does not
+  re-score. Tests call the task's service directly; app teams can use
+  `POST /billing/dev/payments/{id}/simulate` (blockers E15).
+- **The renewal sweep's schedule** (E4). Access is unaffected: it is read
+  from the clock.
+- **A completion route** needs the assessment bank and the recorded lessons
+  (C1). The Week 3 gate's schemathesis fuzzing is not run yet.
+- **Refunds** — no flow; REFUNDED exists as a status only (E18). Pre-debit and
+  lapse messages wait on notifications (Day 19) and DLT (D1).
 
 ---
 

@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1731 tests
+.venv/Scripts/pytest.exe                # 1820 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -360,6 +360,39 @@ is where a third one would have to be argued for.
 - Discovery repository functions that do not use the CTE must be named in
   `READS_NO_CANDIDATE` (`test_discovery_suppression.py`) and may not mention a
   candidate table.
+
+## Payments, subscriptions and courses — Day 15
+
+- **An entitlement is granted only by `billing.service.process_callback`,
+  after the callback's HMAC verified.** The database backs it:
+  `guard_payment_write` (inserted PENDING, transitions from
+  `billing.domain.PAYMENT_TRANSITIONS`, verification is a latch),
+  `ck_payments_settled_only_when_verified`, `guard_course_purchase`, and a
+  completion's foreign key to its purchase. **A test that needs a paid state
+  either settles through a signed stub callback** (helpers in
+  `tests/integration/test_payments.py`) **or seeds `subscriptions` as the
+  migrator** (`subscribe_tenant`, `_subscribe`) — never an UPDATE of a payment.
+- **`PAYMENTS_PROVIDER=stub` in tests** (conftest, `.test-env.sh`, CI). The
+  default `none` answers checkout with 503; `Settings` refuses the stub in
+  staging and prod.
+- **Callbacks are verified and stored by the route, and settled by a task** via
+  the outbox, **which has no broker yet** (Day 19, blockers E15). In a running
+  API nothing is granted; use `POST /billing/dev/payments/{id}/simulate`.
+- **Access is the clock, the state machine is the record.** GRACE exists only
+  for auto-renew and moves `current_period_end` to the end of grace
+  (`grace_from` keeps the paid end). LAPSED and CANCELLED rows are never revived
+  by a purchase — a new tenure row is. The renewal sweep
+  (`app/tasks/subscription_renewals.py`) is unscheduled (E4).
+- **Nothing debits a payer who was not told**: a debit needs a NOTIFIED
+  `mandate_debit_notices` row whose `debit_not_before` passed, for the notified
+  amount. Config `subscriptions.renewal` refuses a notice period under 24h.
+- **A course completion has no route** and is written only by
+  `courses.service.record_completion` as SYSTEM or PLATFORM_ADMIN. It routes to
+  `scoring.rescore_for_addons`, **not `score_resume`**, which is idempotent by
+  resume version and would silently skip it.
+- **Plans and courses are versioned, never edited** — `scripts/seed_catalogue.py`
+  (run by `reset_local_db.sh`). Other tests seed `TEST_…` plans, so assert on a
+  plan's audience, not on the catalogue being the only rows.
 
 ## Streak points are not the score
 
