@@ -5,8 +5,590 @@ Payments, entitlements, signed callbacks.
 Services own the transaction. They never touch `Request`, and anything that
 reveals private data writes its audit row on the same session before the
 transaction closes.
+
+**The one way an entitlement is granted**, in order:
+
+  1. `checkout_*` opens a PENDING payment and a gateway order, and returns
+     where to send the payer. Nothing is granted.
+  2. The gateway calls `POST /billing/callbacks/{provider}`. `receive_callback`
+     verifies the signature over the raw body **before anything is written**,
+     stores the payload verbatim, refuses a replayed event by its id, emits an
+     outbox event, and returns -- the gateway gets its 200 at once.
+  3. `process_callback`, run by a task, settles the payment and grants what it
+     bought: a subscription period, a course. Settling sets
+     `signature_verified_at`, which the database requires of a SUCCEEDED row.
+
+A client that reports success, a redirect back from the gateway, a payment
+id in a URL -- none of those reach step 3 (PRD section 8). The payer polls
+`GET /billing/payments/{id}` to learn the outcome.
+
+**Both renewal paths go through here (R17).** Manual renewal is step 1 again.
+The mandate path is `register_mandate`, then `advance_renewal` from the sweep:
+a pre-debit notice, the wait, the debit, and its callback back through step 3.
 """
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncSession  # noqa: F401
+import json
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Final
+
+from fastapi import status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.deps import EMPLOYER_OWNER
+from app.core.errors import AppError, NotFoundError, PermissionDeniedError, UnauthenticatedError
+from app.core.errors import ValidationError as AppValidationError
+from app.core.logging import get_logger
+from app.core.outbox import emit
+from app.core.tenant import TenantContext
+from app.modules.billing import events, repository
+from app.modules.billing.domain import (
+    CURRENCY,
+    MANDATE_ACTIVATED,
+    MANDATE_GONE_FAILURE_CODES,
+    PAYMENT_EVENTS,
+    PAYMENT_FAILED,
+    PAYMENT_SUCCEEDED,
+    CallbackEvent,
+    parse_callback,
+    payment_step,
+)
+from app.modules.billing.models import Payment, PaymentCallback
+from app.modules.billing.provider import (
+    PaymentsUnavailableError,
+    StubPaymentProvider,
+    get_payment_provider,
+)
+from app.modules.courses import service as courses_service
+from app.modules.subscriptions import service as subscriptions_service
+from app.modules.subscriptions.models import UpiMandate
+from app.settings import get_settings
+
+logger = get_logger(__name__)
+
+#: A callback bigger than this is not a gateway callback.
+MAX_CALLBACK_BYTES: Final = 64 * 1024
+
+
+class CallbackSignatureInvalidError(UnauthenticatedError):
+    code = "callback_signature_invalid"
+    title = "Callback signature did not verify"
+
+
+class CallbackProviderUnknownError(NotFoundError):
+    code = "callback_provider_unknown"
+    title = "Unknown payment provider"
+
+
+class CallbackMalformedApiError(AppValidationError):
+    code = "callback_malformed"
+    title = "Callback could not be read"
+
+
+class CallbackTooLargeError(AppError):
+    status_code = status.HTTP_413_CONTENT_TOO_LARGE
+    code = "callback_too_large"
+    title = "Callback body too large"
+
+
+class PaymentNotFoundError(NotFoundError):
+    code = "payment_not_found"
+    title = "Payment not found"
+
+
+def _now(now: datetime | None) -> datetime:
+    return now or datetime.now(UTC)
+
+
+# ---------------------------------------------------------------------------
+# Checkout -- step 1
+# ---------------------------------------------------------------------------
+async def _open_checkout(
+    session: AsyncSession,
+    *,
+    payer_id: uuid.UUID,
+    purpose: str,
+    item_code: str,
+    item_id: uuid.UUID,
+    amount_minor: int,
+    subscriber_type: str | None,
+    subscriber_id: uuid.UUID | None,
+    now: datetime,
+) -> Payment:
+    """A PENDING payment and its gateway order. A second checkout for the same
+    item and price inside the reuse window returns the first."""
+    provider = get_payment_provider()
+    await repository.lock_checkout(session, user_id=payer_id, item_id=item_id)
+    existing = await repository.reusable_pending_payment(
+        session,
+        user_id=payer_id,
+        purpose=purpose,
+        item_id=item_id,
+        amount_minor=amount_minor,
+        provider=provider.name,
+        since=now - timedelta(minutes=get_settings().payments_checkout_reuse_minutes),
+    )
+    if existing is not None:
+        return existing
+    payment_id = uuid.uuid4()
+    order = await provider.create_order(
+        payment_id=payment_id, amount_minor=amount_minor, currency=CURRENCY
+    )
+    payment = await repository.insert_payment(
+        session,
+        payment_id=payment_id,
+        user_id=payer_id,
+        provider=provider.name,
+        provider_ref=order.provider_ref,
+        amount_minor=amount_minor,
+        purpose=purpose,
+        item_code=item_code,
+        item_id=item_id,
+        subscriber_type=subscriber_type,
+        subscriber_id=subscriber_id,
+        subscription_id=None,
+        checkout_url=order.redirect_url,
+    )
+    logger.info("payment_opened", purpose=purpose, item_code=item_code, amount_minor=amount_minor)
+    return payment
+
+
+def _require_buyer(ctx: TenantContext, subscriber: subscriptions_service.Subscriber) -> None:
+    """An organisation's money is its owner's to spend. Recruiters and viewers
+    can see the subscription and cannot buy, cancel or set up auto-renew."""
+    if subscriber.type == "TENANT" and ctx.role != EMPLOYER_OWNER:
+        raise PermissionDeniedError()
+
+
+async def checkout_subscription(
+    session: AsyncSession, *, ctx: TenantContext, plan_code: str, now: datetime | None = None
+) -> Payment:
+    """Buy a period of a plan: the first one, or a manual renewal."""
+    subscriber = subscriptions_service.subscriber_for(ctx)
+    _require_buyer(ctx, subscriber)
+    plan = await subscriptions_service.purchasable_plan(
+        session, code=plan_code, audience=subscriber.audience
+    )
+    return await _open_checkout(
+        session,
+        payer_id=ctx.user_id,
+        purpose="SUBSCRIPTION",
+        item_code=plan.code,
+        item_id=plan.id,
+        amount_minor=plan.price_minor,
+        subscriber_type=subscriber.type,
+        subscriber_id=subscriber.id,
+        now=_now(now),
+    )
+
+
+async def checkout_course(
+    session: AsyncSession, *, user_id: uuid.UUID, course_id: uuid.UUID, now: datetime | None = None
+) -> Payment:
+    course = await courses_service.purchasable_course(session, user_id=user_id, course_id=course_id)
+    return await _open_checkout(
+        session,
+        payer_id=user_id,
+        purpose="COURSE",
+        item_code=course.code,
+        item_id=course.id,
+        amount_minor=course.price_minor,
+        subscriber_type=None,
+        subscriber_id=None,
+        now=_now(now),
+    )
+
+
+async def payment_for_payer(
+    session: AsyncSession, *, user_id: uuid.UUID, payment_id: uuid.UUID
+) -> Payment:
+    """Someone else's payment is a 404, not a 403."""
+    payment = await repository.get_payment(session, payment_id=payment_id)
+    if payment is None or payment.user_id != user_id:
+        raise PaymentNotFoundError()
+    return payment
+
+
+# ---------------------------------------------------------------------------
+# Callbacks -- steps 2 and 3
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class CallbackReceipt:
+    callback_id: uuid.UUID | None
+    duplicate: bool
+
+
+async def receive_callback(
+    session: AsyncSession,
+    *,
+    provider_name: str,
+    body: bytes,
+    signature: str | None,
+    now: datetime | None = None,
+) -> CallbackReceipt:
+    """Verify, store, enqueue. **Grants nothing.**
+
+    The signature is checked first, against the raw bytes, before the body is
+    parsed or anything is written: a forged callback costs us one HMAC and
+    leaves no row. A replay of a genuine one is answered 200 -- the gateway
+    must stop retrying -- and changes nothing.
+    """
+    if len(body) > MAX_CALLBACK_BYTES:
+        raise CallbackTooLargeError()
+    provider = get_payment_provider()
+    if not provider.verify_signature(body=body, signature=signature):
+        logger.warning("payment_callback_signature_invalid", provider=provider_name[:32])
+        raise CallbackSignatureInvalidError()
+    if provider_name != provider.name:
+        raise CallbackProviderUnknownError()
+    try:
+        payload = json.loads(body)
+        event = parse_callback(payload)
+    except ValueError as exc:
+        logger.error("payment_callback_malformed", provider=provider.name, error=str(exc))
+        raise CallbackMalformedApiError() from exc
+
+    callback_id = await repository.insert_callback(
+        session,
+        provider=provider.name,
+        event_id=event.event_id,
+        event_type=event.event_type,
+        payload=payload,
+        verified_at=_now(now),
+    )
+    if callback_id is None:
+        logger.info("payment_callback_replayed", event_type=event.event_type)
+        return CallbackReceipt(None, duplicate=True)
+    await emit(
+        session,
+        event_type=events.CALLBACK_RECEIVED,
+        aggregate_type="payment_callback",
+        aggregate_id=callback_id,
+        payload={"callback_id": str(callback_id), "event_type": event.event_type},
+    )
+    return CallbackReceipt(callback_id, duplicate=False)
+
+
+async def process_callback(
+    session: AsyncSession, *, callback_id: uuid.UUID, now: datetime | None = None
+) -> str:
+    """Apply one stored callback. Idempotent: a processed callback returns its
+    recorded outcome and does nothing."""
+    now = _now(now)
+    row = await repository.lock_callback(session, callback_id=callback_id)
+    if row is None:
+        return "UNMATCHED"
+    if row.processed_at is not None:
+        return row.outcome or "DUPLICATE"
+    event = parse_callback(row.payload)  # verified and parsed once already
+    if event.event_type in PAYMENT_EVENTS:
+        outcome = await _apply_payment_event(session, row, event, now)
+    elif event.event_type == MANDATE_ACTIVATED:
+        outcome = await subscriptions_service.activate_mandate(
+            session, provider_mandate_ref=event.mandate_ref or "", now=now
+        )
+    else:
+        outcome = await subscriptions_service.mandate_revoked_by_payer(
+            session, provider_mandate_ref=event.mandate_ref or "", now=now
+        )
+    await repository.mark_callback_processed(session, row, outcome=outcome, now=now)
+    logger.info("payment_callback_processed", event_type=event.event_type, outcome=outcome)
+    return outcome
+
+
+async def _apply_payment_event(
+    session: AsyncSession, row: PaymentCallback, event: CallbackEvent, now: datetime
+) -> str:
+    payment = await repository.lock_payment_by_ref(
+        session, provider=row.provider, provider_ref=event.provider_ref or ""
+    )
+    if payment is None:
+        logger.warning("payment_callback_unmatched", event_type=event.event_type)
+        return "UNMATCHED"
+    step = payment_step(payment.status, event.event_type)
+    if step == "DUPLICATE":
+        return "DUPLICATE"
+    if step == "REFUSE":
+        logger.warning(
+            "payment_callback_refused", status=payment.status, event_type=event.event_type
+        )
+        return "REFUSED"
+
+    if event.event_type == PAYMENT_SUCCEEDED:
+        if event.amount_minor != payment.amount_minor or event.currency != payment.currency:
+            # Signed by the gateway and still wrong: an order edited at the
+            # gateway, or a bug on one side. Money moved, so a human settles
+            # it; granting on it would sell a plan at whatever price arrived.
+            logger.error(
+                "payment_callback_amount_mismatch",
+                payment_id=str(payment.id),
+                expected=payment.amount_minor,
+                received=event.amount_minor,
+            )
+            return "AMOUNT_MISMATCH"
+        payment.status = "SUCCEEDED"
+        payment.signature_verified_at = row.signature_verified_at
+        payment.raw_callback = row.payload
+        payment.settled_at = now
+        payment.failure_code = None
+        await session.flush()
+        await _grant(session, payment, now)
+        await emit(
+            session,
+            event_type=events.PAYMENT_SUCCEEDED,
+            aggregate_type="payment",
+            aggregate_id=payment.id,
+            payload={
+                "payment_id": str(payment.id),
+                "user_id": str(payment.user_id),
+                "purpose": payment.purpose,
+                "item_code": payment.item_code,
+            },
+        )
+        return "APPLIED"
+
+    assert event.event_type == PAYMENT_FAILED
+    payment.status = "FAILED"
+    payment.failure_code = event.failure_code or "UNSPECIFIED"
+    payment.raw_callback = row.payload
+    await session.flush()
+    if payment.purpose == "MANDATE_DEBIT":
+        await subscriptions_service.record_debit_failure(
+            session,
+            payment_id=payment.id,
+            failure_code=payment.failure_code,
+            mandate_gone=payment.failure_code in MANDATE_GONE_FAILURE_CODES,
+            now=now,
+        )
+    await emit(
+        session,
+        event_type=events.PAYMENT_FAILED,
+        aggregate_type="payment",
+        aggregate_id=payment.id,
+        payload={
+            "payment_id": str(payment.id),
+            "user_id": str(payment.user_id),
+            "purpose": payment.purpose,
+            "failure_code": payment.failure_code,
+        },
+    )
+    return "APPLIED"
+
+
+async def _grant(session: AsyncSession, payment: Payment, now: datetime) -> None:
+    """What a verified payment bought. Only ever called from `_apply_payment_event`."""
+    if payment.purpose == "COURSE":
+        await courses_service.record_purchase(
+            session, user_id=payment.user_id, course_id=payment.item_id, payment_id=payment.id
+        )
+        return
+    if payment.purpose == "MANDATE_DEBIT" and payment.subscription_id is not None:
+        await subscriptions_service.apply_mandate_renewal(
+            session,
+            subscription_id=payment.subscription_id,
+            plan_id=payment.item_id,
+            payment_id=payment.id,
+            now=now,
+        )
+        return
+    if payment.purpose == "SUBSCRIPTION" and payment.subscriber_id is not None:
+        await subscriptions_service.apply_purchase(
+            session,
+            subscriber_type=payment.subscriber_type or "",
+            subscriber_id=payment.subscriber_id,
+            plan_id=payment.item_id,
+            payment_id=payment.id,
+            now=now,
+        )
+        return
+    raise RuntimeError(f"payment {payment.id} has nothing to grant")  # pragma: no cover
+
+
+# ---------------------------------------------------------------------------
+# Cancellation and the mandate path
+# ---------------------------------------------------------------------------
+async def cancel_subscription(
+    session: AsyncSession, *, ctx: TenantContext, now: datetime | None = None
+) -> None:
+    """Stop renewing at the end of the period. The gateway is told in the
+    same transaction; if it refuses, nothing is cancelled and the caller can
+    retry."""
+    subscriber = subscriptions_service.subscriber_for(ctx)
+    _require_buyer(ctx, subscriber)
+    refs = await subscriptions_service.cancel_at_period_end(
+        session, subscriber=subscriber, now=_now(now)
+    )
+    provider = get_payment_provider()
+    for ref in refs:
+        await provider.revoke_mandate(mandate_ref=ref)
+
+
+@dataclass(frozen=True, slots=True)
+class MandateRegistration:
+    mandate: UpiMandate
+    authorisation_url: str
+
+
+async def register_mandate(
+    session: AsyncSession, *, ctx: TenantContext, now: datetime | None = None
+) -> MandateRegistration:
+    """Start UPI AutoPay for the live subscription. PENDING until the payer
+    approves it in their UPI app and the gateway's callback says so."""
+    now = _now(now)
+    subscriber = subscriptions_service.subscriber_for(ctx)
+    _require_buyer(ctx, subscriber)
+    policy = await subscriptions_service.load_policy(session, now=now)
+    target = await subscriptions_service.mandate_target(
+        session, subscriber=subscriber, policy=policy, now=now
+    )
+    valid_until = now + timedelta(days=policy.mandate_validity_days)
+    provider = get_payment_provider()
+    registered = await provider.register_mandate(
+        subscription_id=target.subscription_id,
+        max_amount_minor=target.ceiling_minor,
+        valid_until=valid_until,
+    )
+    mandate = await subscriptions_service.record_mandate(
+        session,
+        subscription_id=target.subscription_id,
+        registered_by=ctx.user_id,
+        provider_mandate_ref=registered.provider_mandate_ref,
+        max_amount_minor=target.ceiling_minor,
+        valid_until=valid_until,
+    )
+    return MandateRegistration(mandate, registered.authorisation_url)
+
+
+async def advance_renewal(
+    session: AsyncSession, *, subscription_id: uuid.UUID, now: datetime
+) -> str:
+    """Take the next step in renewing one subscription by mandate. Returns the
+    step taken. One subscription per transaction (`app/tasks/subscription_renewals.py`)."""
+    step = await subscriptions_service.next_renewal_step(
+        session, subscription_id=subscription_id, now=now
+    )
+    if step is None:
+        return "NONE"
+    action = step.action
+    provider = get_payment_provider()
+
+    if action.kind == "SEND_NOTICE" and step.mandate_ref is not None:
+        debit_not_before = now + timedelta(hours=step.policy.pre_debit_notice_hours)
+        notice_ref = await provider.notify_pre_debit(
+            mandate_ref=step.mandate_ref, amount_minor=step.price_minor, debit_on=debit_not_before
+        )
+        written = await subscriptions_service.record_notice(
+            session,
+            step=step,
+            provider_notice_ref=notice_ref,
+            now=now,
+            debit_not_before=debit_not_before,
+        )
+        return "SEND_NOTICE" if written else "NONE"
+
+    if (
+        action.kind == "REQUEST_DEBIT"
+        and step.notice_id is not None
+        and step.mandate_ref is not None
+        and step.registered_by is not None
+        and step.notice_amount_minor is not None
+    ):
+        # The amount the payer was told, never a price changed since.
+        payment_id = uuid.uuid4()
+        debit_ref = await provider.request_mandate_debit(
+            mandate_ref=step.mandate_ref,
+            payment_id=payment_id,
+            amount_minor=step.notice_amount_minor,
+        )
+        await repository.insert_payment(
+            session,
+            payment_id=payment_id,
+            user_id=step.registered_by,
+            provider=provider.name,
+            provider_ref=debit_ref,
+            amount_minor=step.notice_amount_minor,
+            purpose="MANDATE_DEBIT",
+            item_code=step.plan_code,
+            item_id=step.plan_id,
+            subscriber_type=step.subscriber_type,
+            subscriber_id=step.subscriber_id,
+            subscription_id=step.subscription_id,
+            checkout_url=None,
+        )
+        await subscriptions_service.mark_debit_requested(
+            session, notice_id=step.notice_id, payment_id=payment_id
+        )
+        return "REQUEST_DEBIT"
+
+    if action.kind == "FALL_BACK":
+        refs = await subscriptions_service.fall_back_to_manual(
+            session, subscription_id=subscription_id, reason=action.reason, now=now
+        )
+        for ref in refs:
+            await provider.revoke_mandate(mandate_ref=ref)
+        return "FALL_BACK"
+    return "NONE"
+
+
+async def close_period(
+    session: AsyncSession, *, subscription_id: uuid.UUID, now: datetime
+) -> str | None:
+    """Record the end of a period, revoking at the gateway any mandate the
+    ended tenure leaves behind."""
+    closed = await subscriptions_service.close_period(
+        session, subscription_id=subscription_id, now=now
+    )
+    if closed is None:
+        return None
+    provider = get_payment_provider()
+    for ref in closed.revoke_refs:
+        await provider.revoke_mandate(mandate_ref=ref)
+    return closed.to_state
+
+
+# ---------------------------------------------------------------------------
+# Local development only
+# ---------------------------------------------------------------------------
+async def simulate_callback(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    payment_id: uuid.UUID,
+    succeed: bool,
+    failure_code: str | None,
+    now: datetime | None = None,
+) -> Payment:
+    """Have the stub gateway call back about the caller's own payment.
+
+    **Not a bypass**: it builds the callback the stub gateway would send, signs
+    it, and runs it through `receive_callback` and `process_callback` exactly
+    as a real one. It exists so the app teams can finish a checkout with no
+    gateway, and only while the stub is configured, which `Settings` refuses
+    outside local and dev.
+    """
+    provider = get_payment_provider()
+    if not isinstance(provider, StubPaymentProvider):
+        raise PaymentsUnavailableError()
+    payment = await payment_for_payer(session, user_id=user_id, payment_id=payment_id)
+    body, signature = provider.signed_event(
+        {
+            "event_id": f"sim_{uuid.uuid4().hex}",
+            "event": PAYMENT_SUCCEEDED if succeed else PAYMENT_FAILED,
+            "payment": {
+                "provider_ref": payment.provider_ref,
+                "amount_minor": payment.amount_minor,
+                "currency": payment.currency,
+                "failure_code": None if succeed else (failure_code or "PAYMENT_DECLINED"),
+            },
+        }
+    )
+    receipt = await receive_callback(
+        session, provider_name=provider.name, body=body, signature=signature, now=now
+    )
+    if receipt.callback_id is not None:
+        await process_callback(session, callback_id=receipt.callback_id, now=now)
+    await session.refresh(payment)
+    return payment

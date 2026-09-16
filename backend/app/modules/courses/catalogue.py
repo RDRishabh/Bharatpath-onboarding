@@ -38,8 +38,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-#: Matches `seed_placeholder_course.py`. One course exists on the platform
-#: (client, 2026-08-27).
+#: Matches `COURSE_PRODUCT` in `subscriptions/catalogue.py`, and written by
+#: `scripts/seed_catalogue.py`. One course exists on the platform (client,
+#: 2026-08-27).
 COURSE_CODE: Final = "COURSE_RESUME_FOUNDATION"
 COURSE_TITLE: Final = "Presenting Your Work"
 

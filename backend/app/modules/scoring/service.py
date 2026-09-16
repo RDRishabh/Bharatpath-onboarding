@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.core.outbox import emit
+from app.modules.courses import service as courses_service
 from app.modules.resume import service as resume_service
 from app.modules.scoring import repository
 from app.modules.scoring.domain import (
@@ -227,6 +228,8 @@ async def score_confirmed_resume(
     settings = settings or get_settings()
 
     version = await resume_service.get_scorable_version(session, user_id=user_id)
+    if addons is None:
+        addons = await addons_for(session, user_id=user_id)
 
     parsed = version.parsed if isinstance(version.parsed, dict) else {}
     text = parsed.get("raw_text")
@@ -253,6 +256,71 @@ async def score_confirmed_resume(
         extracted_features=features,
         raw_model_response=raw_response,
         model_id=extractor.model_id,
+        addons=addons,
+    )
+
+
+async def addons_for(session: AsyncSession, *, user_id: uuid.UUID) -> AddOnContributions:
+    """The add-on contributions a score computed now folds in.
+
+    **Scoring reads the add-ons; the add-ons never reach scoring** (invariant
+    4'). Each completion becomes one entry in `contributing_events`, carrying
+    its id and the points frozen on it, which is what `replay` reads back.
+    Interview sessions join on Day 16.
+    """
+    contributions = await courses_service.contributions_for(session, user_id=user_id)
+    return AddOnContributions(
+        course_points=sum(c.points for c in contributions),
+        events=[
+            {
+                "kind": "course",
+                "id": str(c.completion_id),
+                "course_id": str(c.course_id),
+                "points": c.points,
+                "contribution_version": c.contribution_version,
+            }
+            for c in contributions
+        ],
+    )
+
+
+def _event_keys(events: Any) -> set[tuple[str, str]]:
+    return {
+        (str(e.get("kind")), str(e.get("id")))
+        for e in (events if isinstance(events, list) else [])
+        if isinstance(e, dict)
+    }
+
+
+async def rescore_for_addons(session: AsyncSession, *, user_id: uuid.UUID) -> ScoreResult | None:
+    """Re-score after an add-on completion, **without calling the model**.
+
+    Runs Layers 2 and 3 over the extraction stored on the latest score, with
+    today's add-ons, and appends a row -- the resume-derived part cannot move,
+    because its input is the stored response and not a fresh reading.
+
+    None when there is nothing to do: no score yet (the pending score will
+    fold the add-on in when it lands), or the latest score already carries
+    exactly these contributions -- which is what makes a redelivered event a
+    no-op. If the prompt has changed since that score, the stored extraction
+    belongs to another prompt, so this goes the long way round through the
+    confirm gate and the content-addressed cache instead.
+    """
+    latest = await repository.latest_score(session, user_id=user_id)
+    if latest is None:
+        return None
+    addons = await addons_for(session, user_id=user_id)
+    if _event_keys(latest.contributing_events) == _event_keys(addons.events):
+        return None
+    if latest.prompt_version != PROMPT_VERSION or not isinstance(latest.extracted_features, dict):
+        return await score_confirmed_resume(session, user_id=user_id, addons=addons)
+    return await persist(
+        session,
+        user_id=user_id,
+        resume_version_id=latest.resume_version_id,
+        extracted_features=latest.extracted_features,
+        raw_model_response=latest.raw_model_response,
+        model_id=latest.model_id,
         addons=addons,
     )
 

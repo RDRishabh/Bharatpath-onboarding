@@ -15,7 +15,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import PostgresDsn, RedisDsn, field_validator, model_validator
+from pydantic import PostgresDsn, RedisDsn, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "dev", "staging", "prod"]
@@ -168,6 +168,23 @@ class Settings(BaseSettings):
     # Enabling extraction without one is refused rather than defaulted.
     scoring_model_id: str = ""
 
+    # -- payments ------------------------------------------------------------
+    # No gateway is chosen (blockers D3), so the default sells nothing:
+    # checkout answers 503 and every callback fails verification. `stub`
+    # signs callbacks with a real HMAC and takes no money; it is for local
+    # development and CI, and `_stub_payments_are_never_production` refuses it
+    # anywhere else, because with it a caller can mark their own payment paid.
+    payments_provider: Literal["none", "stub"] = "none"
+
+    # The shared secret a gateway signs callbacks with. With the stub and no
+    # secret, a key is generated at boot.
+    payments_webhook_secret: SecretStr | None = None
+
+    # A second checkout for the same item within this window returns the
+    # pending payment instead of opening another order. A double tap is not
+    # two purchases.
+    payments_checkout_reuse_minutes: int = 30
+
     # -- celery ------------------------------------------------------------
     celery_broker_url: str = "sqs://"
     celery_result_backend: str | None = None
@@ -254,6 +271,17 @@ class Settings(BaseSettings):
                 "AUTH_ALLOW_LOCAL_TOKENS must not be set in staging or production: "
                 "it enables a token issuer whose signing key this process generates "
                 "itself, so anyone who can reach the API could mint any identity."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _stub_payments_are_never_production(self) -> Settings:
+        """The stub gateway exposes a route that settles the caller's own
+        payment. In a deployed environment that is free access for anyone."""
+        if self.payments_provider == "stub" and self.environment in ("staging", "prod"):
+            raise ValueError(
+                "PAYMENTS_PROVIDER=stub must not be set in staging or production: "
+                "the stub lets a caller mark their own payment as paid."
             )
         return self
 

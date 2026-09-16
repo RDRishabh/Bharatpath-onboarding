@@ -94,6 +94,7 @@ def upgrade() -> None:
     _create_candidate_marketplace_access()
     _create_application_guard()
     _create_candidate_search_projection()
+    _create_payment_guards()
 
 
 def downgrade() -> None:
@@ -268,11 +269,13 @@ def _create_employer_tables() -> None:
 def _create_billing_tables() -> None:
     _create_from_metadata(
         "payments",
+        "payment_callbacks",
         "entitlements",
         "plans",
         "subscriptions",
         "subscription_events",
         "upi_mandates",
+        "mandate_debit_notices",
         "courses",
         "course_purchases",
         "course_completions",
@@ -351,6 +354,19 @@ def _apply_append_only_grants() -> None:
     # Score-moving writes (invariant 3's blast radius). Now that add-ons move
     # the score, a mutable completion row is a mutable score.
     op.execute(f"REVOKE UPDATE, DELETE ON course_completions FROM {APP_ROLE}")
+
+    # Money (Day 15). A payment is the financial record the deletion carve-out
+    # keeps (blockers B3); its status moves, so it keeps UPDATE, and
+    # `guard_payment_write` holds what an update may change. A stored callback
+    # is dispute evidence: the app may mark it processed and nothing else.
+    op.execute(f"REVOKE DELETE ON payments FROM {APP_ROLE}")
+    op.execute(f"REVOKE UPDATE, DELETE ON payment_callbacks FROM {APP_ROLE}")
+    op.execute(f"GRANT UPDATE (processed_at, outcome) ON payment_callbacks TO {APP_ROLE}")
+    # A purchase grants a score-moving course; it is written once, by billing.
+    op.execute(f"REVOKE UPDATE, DELETE ON course_purchases FROM {APP_ROLE}")
+    # Lapsing loses access, not history (R13).
+    for table in ("plans", "subscriptions", "upi_mandates", "mandate_debit_notices"):
+        op.execute(f"REVOKE DELETE ON {table} FROM {APP_ROLE}")
 
     # The engagement-points ledger. Not a score, but it is a balance a
     # candidate sees, and one that could be rewritten would explain nothing.
@@ -950,5 +966,116 @@ def _create_candidate_search_projection() -> None:
         CREATE TRIGGER trg_project_candidate_search_document
           AFTER INSERT ON scores
           FOR EACH ROW EXECUTE FUNCTION project_candidate_search_document();
+        """
+    )
+
+
+# ---------------------------------------------------------------------------
+# Day 15 -- no entitlement without a verified payment, below the service
+# ---------------------------------------------------------------------------
+def _create_payment_guards() -> None:
+    """A payment is settled only by a verified callback, for every writer.
+
+    The service verifies the signature before it settles anything. These make
+    that true for a direct repository call too, as the publish trigger does
+    for invariant 8:
+
+      * **`guard_payment_write`** -- a payment is inserted PENDING and
+        unverified; what was charged, to whom and for what never changes;
+        `signature_verified_at` is a latch; and status moves only along
+        `billing.domain.PAYMENT_TRANSITIONS`, generated from the same set the
+        service is tested against. With `ck_payments_settled_only_when_verified`
+        that makes SUCCEEDED unreachable without a verification timestamp.
+      * **`guard_course_purchase`** -- a course purchase needs this user's
+        SUCCEEDED, verified payment for this course. A forged callback that
+        somehow got past the service still cannot produce the row that makes
+        a completion, and so a score change, possible.
+
+    Not SECURITY DEFINER: `payments` is not under Row-Level Security, and the
+    guards read nothing but the row and its payment.
+    """
+    from app.modules.billing.domain import PAYMENT_TRANSITIONS
+
+    pairs = ", ".join(f"('{a}', '{b}')" for a, b in sorted(PAYMENT_TRANSITIONS))
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION guard_payment_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF TG_OP = 'INSERT' THEN
+            IF NEW.status <> 'PENDING' OR NEW.signature_verified_at IS NOT NULL
+               OR NEW.settled_at IS NOT NULL THEN
+              RAISE EXCEPTION 'PAYMENT_GUARD: a payment starts PENDING and unverified'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            RETURN NEW;
+          END IF;
+
+          IF NEW.user_id <> OLD.user_id OR NEW.provider <> OLD.provider
+             OR NEW.provider_ref <> OLD.provider_ref OR NEW.amount_minor <> OLD.amount_minor
+             OR NEW.currency <> OLD.currency OR NEW.purpose <> OLD.purpose
+             OR NEW.item_code <> OLD.item_code OR NEW.item_id <> OLD.item_id
+             OR NEW.subscriber_type IS DISTINCT FROM OLD.subscriber_type
+             OR NEW.subscriber_id IS DISTINCT FROM OLD.subscriber_id
+             OR NEW.subscription_id IS DISTINCT FROM OLD.subscription_id
+             OR NEW.created_at <> OLD.created_at THEN
+            RAISE EXCEPTION 'PAYMENT_GUARD: what was charged, to whom and for what never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+
+          IF OLD.signature_verified_at IS NOT NULL
+             AND NEW.signature_verified_at IS DISTINCT FROM OLD.signature_verified_at THEN
+            RAISE EXCEPTION 'PAYMENT_GUARD: signature verification is a latch'
+              USING ERRCODE = 'check_violation';
+          END IF;
+
+          IF NEW.status <> OLD.status AND (OLD.status, NEW.status) NOT IN ({pairs}) THEN
+            RAISE EXCEPTION 'PAYMENT_GUARD: % -> % is not a payment transition',
+              OLD.status, NEW.status USING ERRCODE = 'check_violation';
+          END IF;
+
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_payment_write
+          BEFORE INSERT OR UPDATE ON payments
+          FOR EACH ROW EXECUTE FUNCTION guard_payment_write();
+        """
+    )
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_course_purchase()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM payments p
+             WHERE p.id = NEW.payment_id
+               AND p.user_id = NEW.user_id
+               AND p.purpose = 'COURSE'
+               AND p.item_id = NEW.course_id
+               AND p.status = 'SUCCEEDED'
+               AND p.signature_verified_at IS NOT NULL
+          ) THEN
+            RAISE EXCEPTION 'COURSE_PURCHASE_GUARD: a course is bought only by its verified payment'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_course_purchase
+          BEFORE INSERT ON course_purchases
+          FOR EACH ROW EXECUTE FUNCTION guard_course_purchase();
         """
     )

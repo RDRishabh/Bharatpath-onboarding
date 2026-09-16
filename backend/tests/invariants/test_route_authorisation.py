@@ -39,6 +39,13 @@ PUBLIC: dict[tuple[str, str], str] = {
         "The front door: sending a login code cannot require being logged in. "
         "Throttled per phone, and says nothing about whether the number is known."
     ),
+    ("POST", "/api/v1/billing/callbacks/{provider}"): (
+        "Called server-to-server by the payment gateway, which holds no user "
+        "token. Authenticated instead by an HMAC signature over the raw body, "
+        "checked before anything is read or stored: an unsigned call is a 401 "
+        "and writes nothing. It grants nothing itself either -- it stores the "
+        "callback for processing."
+    ),
     ("POST", "/api/v1/auth/dev/token"): (
         "Local development only. The route is not registered at all unless "
         "AUTH_ALLOW_LOCAL_TOKENS is set, and Settings refuses that flag outside "

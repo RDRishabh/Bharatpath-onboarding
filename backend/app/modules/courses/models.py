@@ -30,6 +30,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -67,6 +68,15 @@ class Course(Base, UUIDPrimaryKey, Timestamps):
 
 
 class CoursePurchase(Base, UUIDPrimaryKey):
+    """A course bought, by a verified payment.
+
+    `payment_id` is required, and `guard_course_purchase` (baseline migration)
+    refuses a row whose payment is not this user's SUCCEEDED, signature-verified
+    payment for this course. So a forged callback cannot reach this table even
+    through a direct repository call. A seat that covers add-ons would change
+    that, and is an open question (answers-log Round 8).
+    """
+
     __tablename__ = "course_purchases"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -77,8 +87,8 @@ class CoursePurchase(Base, UUIDPrimaryKey):
     course_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("courses.id"), nullable=False
     )
-    payment_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("payments.id", ondelete="SET NULL")
+    payment_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("payments.id", ondelete="RESTRICT"), nullable=False
     )
     purchased_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -110,8 +120,20 @@ class CourseCompletion(Base, UUIDPrimaryKey):
     # Without it, replaying an old score after the client changes the points
     # gives a different number.
     contribution_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    # The points this completion is worth, frozen when it was recorded. A
+    # course row re-priced later must not change what an earlier completion
+    # contributes to a score computed after it.
+    points_awarded: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __table_args__ = (
         UniqueConstraint("user_id", "course_id", name="uq_course_completion_once"),
         Index("ix_course_completions_user", "user_id"),
+        CheckConstraint("points_awarded BETWEEN 0 AND 30", name="ck_course_completions_points_cap"),
+        # No completion without a purchase, as a key rather than a check.
+        ForeignKeyConstraint(
+            ["user_id", "course_id"],
+            ["course_purchases.user_id", "course_purchases.course_id"],
+            name="fk_course_completions_purchase",
+            ondelete="RESTRICT",
+        ),
     )

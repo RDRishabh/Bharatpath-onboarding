@@ -9,7 +9,15 @@ prefix = "/subscriptions"
 
 
 def get_router() -> APIRouter | None:
-    """Return this module's router, or None while it is still a stub."""
+    """Nothing is mounted under `/subscriptions`: every subscription belongs to
+    an audience, and its routes live on that audience's surface."""
+    return None
+
+
+def get_extra_routers() -> tuple[tuple[str, APIRouter], ...]:
     from . import router as _router
 
-    return getattr(_router, "router", None)
+    return (
+        ("/candidate/subscription", _router.candidate_router),
+        ("/employer/subscription", _router.employer_router),
+    )

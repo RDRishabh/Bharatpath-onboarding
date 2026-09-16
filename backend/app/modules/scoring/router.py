@@ -17,7 +17,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, status
 
-from app.core.deps import CANDIDATE, CurrentUser, DbSession, require_role
+from app.core.deps import (
+    CANDIDATE,
+    CurrentUser,
+    DbSession,
+    require_active_subscription,
+    require_role,
+)
 from app.modules.scoring import service
 from app.modules.scoring.domain import band_for, display_value
 from app.modules.scoring.schemas import CandidateScoreResponse
@@ -31,7 +37,7 @@ CandidateOnly = Depends(require_role(CANDIDATE))
     "/me",
     response_model=CandidateScoreResponse,
     status_code=status.HTTP_200_OK,
-    dependencies=[CandidateOnly],
+    dependencies=[CandidateOnly, Depends(require_active_subscription)],
     summary="The candidate's own score",
 )
 async def my_score(user: CurrentUser, session: DbSession) -> CandidateScoreResponse:
@@ -41,10 +47,8 @@ async def my_score(user: CurrentUser, session: DbSession) -> CandidateScoreRespo
     looking at a missing resource — and every scoring failure resolves to
     PENDING too, because we never serve a partial or degraded number.
 
-    **TODO(Day 15): add `require_active_subscription`.** Pay-first applies to
-    all three audiences (R13), so seeing your own score is a paid feature. The
-    dependency exists but is an unconditional raise until subscriptions land,
-    and adding it now would make this route permanently 402.
+    **Pay-first (R13): seeing your own score needs an active subscription.** A
+    lapsed subscriber gets 402; their score history is kept, not deleted.
     """
     row = await service.get_latest(session, user_id=user.user_id)
     if row is None:

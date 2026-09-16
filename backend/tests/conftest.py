@@ -28,6 +28,11 @@ os.environ.setdefault("ENVIRONMENT", "local")
 # of a deployed environment.
 os.environ.setdefault("AUTH_ALLOW_LOCAL_TOKENS", "true")
 
+# No gateway exists. The stub signs callbacks with a real HMAC, so the suite
+# exercises verification rather than skipping it; Settings refuses it outside
+# local and dev.
+os.environ.setdefault("PAYMENTS_PROVIDER", "stub")
+
 # Complete `Base.metadata` for every test, not just the ones that happen to
 # build the app. A test that imports one module's models alone cannot resolve
 # a foreign key into another module's table, and the failure
