@@ -30,7 +30,7 @@ class PaymentResponse(_Base):
         description="PENDING until the gateway's signed callback has been processed. "
         "Poll this; a redirect back from the gateway says nothing."
     )
-    purpose: Literal["SUBSCRIPTION", "COURSE", "MANDATE_DEBIT"]
+    purpose: Literal["SUBSCRIPTION", "COURSE", "INTERVIEW_SESSION", "MANDATE_DEBIT"]
     item_code: str
     amount_minor: int = Field(ge=0, description="Paise.")
     currency: str

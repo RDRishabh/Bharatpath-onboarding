@@ -1,4 +1,4 @@
-"""Write the price list and the course into `plans` and `courses`.
+"""Write the price list, the course and the interview price into their tables.
 
 Idempotent. A changed price becomes a new version and the old one is
 deactivated, never edited (`subscriptions.service.sync_plans`). The course is
@@ -25,6 +25,7 @@ ALLOW_FLAG = "--allow-placeholder-prices"
 async def main(argv: list[str]) -> int:
     from app.core.db import get_session_factory
     from app.modules.courses import service as courses_service
+    from app.modules.interview import service as interview_service
     from app.modules.subscriptions import service as subscriptions_service
     from app.modules.subscriptions.catalogue import CATALOGUE_VERSION, PLACEHOLDER_PRICING
     from app.settings import get_settings
@@ -41,8 +42,12 @@ async def main(argv: list[str]) -> int:
     async with get_session_factory()() as session, session.begin():
         plans = await subscriptions_service.sync_plans(session)
         courses = await courses_service.sync_catalogue(session)
+        interviews = await interview_service.sync_catalogue(session)
     flag = " (PLACEHOLDER prices)" if PLACEHOLDER_PRICING else ""
-    print(f"catalogue {CATALOGUE_VERSION}{flag}: {plans} plan rows, {courses} course rows written")
+    print(
+        f"catalogue {CATALOGUE_VERSION}{flag}: {plans} plan rows, {courses} course rows, "
+        f"{interviews} interview price rows written"
+    )
     return 0
 
 

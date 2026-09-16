@@ -95,6 +95,7 @@ def upgrade() -> None:
     _create_application_guard()
     _create_candidate_search_projection()
     _create_payment_guards()
+    _create_interview_guards()
 
 
 def downgrade() -> None:
@@ -246,6 +247,7 @@ def _create_candidate_tables() -> None:
         "integrity_signals",
         "integrity_checks",
         "device_checks",
+        "questionnaire_responses",
         "dsr_requests",
         "user_streaks",
         "streak_point_events",
@@ -279,6 +281,9 @@ def _create_billing_tables() -> None:
         "courses",
         "course_purchases",
         "course_completions",
+        "interview_products",
+        "interview_checkout_notices",
+        "interview_purchases",
         "interview_sessions",
         "interview_answers",
     )
@@ -364,6 +369,15 @@ def _apply_append_only_grants() -> None:
     op.execute(f"GRANT UPDATE (processed_at, outcome) ON payment_callbacks TO {APP_ROLE}")
     # A purchase grants a score-moving course; it is written once, by billing.
     op.execute(f"REVOKE UPDATE, DELETE ON course_purchases FROM {APP_ROLE}")
+    # Day 16. A device check and a checkout notice are evidence of what was
+    # measured and what the candidate was told before paying; a purchase is
+    # written once, by billing. A session is score-moving once completed, so
+    # it is never deleted, and `guard_interview_session_write` holds what an
+    # update may change; a stored answer is held by its own guard.
+    for table in ("device_checks", "interview_checkout_notices", "interview_purchases"):
+        op.execute(f"REVOKE UPDATE, DELETE ON {table} FROM {APP_ROLE}")
+    for table in ("interview_products", "interview_sessions", "interview_answers"):
+        op.execute(f"REVOKE DELETE ON {table} FROM {APP_ROLE}")
     # Lapsing loses access, not history (R13).
     for table in ("plans", "subscriptions", "upi_mandates", "mandate_debit_notices"):
         op.execute(f"REVOKE DELETE ON {table} FROM {APP_ROLE}")
@@ -1077,5 +1091,159 @@ def _create_payment_guards() -> None:
         CREATE TRIGGER trg_guard_course_purchase
           BEFORE INSERT ON course_purchases
           FOR EACH ROW EXECUTE FUNCTION guard_course_purchase();
+        """
+    )
+
+
+# ---------------------------------------------------------------------------
+# Day 16 -- the mock interview, held below the service
+# ---------------------------------------------------------------------------
+def _create_interview_guards() -> None:
+    """A session is bought by a verified payment and completed by stored audio,
+    for every writer.
+
+      * **`guard_interview_purchase`** -- as for a course: this user's
+        SUCCEEDED, verified payment for this product, or no row.
+      * **`guard_interview_session_write`** -- a session starts CREATED from
+        the candidate's own purchase; what it is never changes; it moves only
+        along `interview.domain.SESSION_TRANSITIONS` (generated); completion is
+        a latch; and COMPLETED needs every answer STORED, counted in SQL
+        against `QUESTIONS_PER_SESSION`. So +20 cannot be reached by an UPDATE
+        that skips the recording, from any path.
+      * **`guard_interview_answer_write`** -- a STORED answer never changes,
+        and nothing is written to a session no longer being recorded.
+
+    Not SECURITY DEFINER: none of these tables is under Row-Level Security.
+    """
+    from app.modules.interview.bank import QUESTIONS_PER_SESSION
+    from app.modules.interview.domain import OPEN_STATES, SESSION_TRANSITIONS
+
+    pairs = ", ".join(f"('{a}', '{b}')" for a, b in sorted(SESSION_TRANSITIONS))
+    open_states = ", ".join(f"'{state}'" for state in sorted(OPEN_STATES))
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_interview_purchase()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM payments p
+             WHERE p.id = NEW.payment_id
+               AND p.user_id = NEW.user_id
+               AND p.purpose = 'INTERVIEW_SESSION'
+               AND p.item_id = NEW.product_id
+               AND p.status = 'SUCCEEDED'
+               AND p.signature_verified_at IS NOT NULL
+          ) THEN
+            RAISE EXCEPTION 'INTERVIEW_PURCHASE_GUARD: a session is bought only by its verified payment'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_interview_purchase
+          BEFORE INSERT ON interview_purchases
+          FOR EACH ROW EXECUTE FUNCTION guard_interview_purchase();
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION guard_interview_session_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF TG_OP = 'INSERT' THEN
+            IF NEW.state <> 'CREATED' OR NEW.completed_at IS NOT NULL
+               OR NEW.points_awarded IS NOT NULL THEN
+              RAISE EXCEPTION 'INTERVIEW_SESSION_GUARD: a session starts CREATED'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM interview_purchases p
+               WHERE p.id = NEW.purchase_id AND p.user_id = NEW.user_id
+            ) THEN
+              RAISE EXCEPTION 'INTERVIEW_SESSION_GUARD: a session starts from its owner''s purchase'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            RETURN NEW;
+          END IF;
+
+          IF NEW.user_id <> OLD.user_id OR NEW.purchase_id <> OLD.purchase_id
+             OR NEW.device_check_id <> OLD.device_check_id
+             OR NEW.session_number <> OLD.session_number
+             OR NEW.question_set_code <> OLD.question_set_code
+             OR NEW.question_set_version <> OLD.question_set_version
+             OR NEW.created_at <> OLD.created_at THEN
+            RAISE EXCEPTION 'INTERVIEW_SESSION_GUARD: what a session is never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+
+          IF OLD.completed_at IS NOT NULL AND (
+               NEW.completed_at IS DISTINCT FROM OLD.completed_at
+               OR NEW.points_awarded IS DISTINCT FROM OLD.points_awarded
+               OR NEW.contribution_version IS DISTINCT FROM OLD.contribution_version) THEN
+            RAISE EXCEPTION 'INTERVIEW_SESSION_GUARD: a completion is a latch'
+              USING ERRCODE = 'check_violation';
+          END IF;
+
+          IF NEW.state <> OLD.state AND (OLD.state, NEW.state) NOT IN ({pairs}) THEN
+            RAISE EXCEPTION 'INTERVIEW_SESSION_GUARD: % -> % is not a session transition',
+              OLD.state, NEW.state USING ERRCODE = 'check_violation';
+          END IF;
+
+          IF NEW.state = 'COMPLETED' AND OLD.state <> 'COMPLETED' AND (
+               SELECT count(*) FROM interview_answers a
+                WHERE a.session_id = NEW.id AND a.upload_state = 'STORED'
+             ) < {QUESTIONS_PER_SESSION} THEN
+            RAISE EXCEPTION 'INTERVIEW_SESSION_GUARD: a session completes only with every answer stored'
+              USING ERRCODE = 'check_violation';
+          END IF;
+
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_interview_session_write
+          BEFORE INSERT OR UPDATE ON interview_sessions
+          FOR EACH ROW EXECUTE FUNCTION guard_interview_session_write();
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION guard_interview_answer_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF TG_OP = 'UPDATE' AND OLD.upload_state = 'STORED' THEN
+            RAISE EXCEPTION 'INTERVIEW_ANSWER_GUARD: a stored answer never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF NOT EXISTS (
+            SELECT 1 FROM interview_sessions s
+             WHERE s.id = NEW.session_id AND s.state IN ({open_states})
+          ) THEN
+            RAISE EXCEPTION 'INTERVIEW_ANSWER_GUARD: the session is no longer being recorded'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_interview_answer_write
+          BEFORE INSERT OR UPDATE ON interview_answers
+          FOR EACH ROW EXECUTE FUNCTION guard_interview_answer_write();
         """
     )

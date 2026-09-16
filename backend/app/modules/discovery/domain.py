@@ -28,7 +28,9 @@ from typing import Final, Literal
 #: -- "badges only, never raw add-on content". The kinds are the ones
 #: `scoring.service.replay` reads, and an invariant test holds the two together.
 #:
-#: The questionnaire has no badge yet: it has no tables until Day 16.
+#: The questionnaire has no badge, deliberately: a badge here means an add-on
+#: folded into the score, and the questionnaire is worth nothing. Its answers
+#: reaching employers is a filter decision, not a badge (progress.md, Day 16).
 BADGE_FOR_ADDON_KIND: Final[dict[str, str]] = {
     "course": "COURSE_COMPLETED",
     "interview": "MOCK_INTERVIEW_COMPLETED",

@@ -15,7 +15,7 @@ transaction closes.
      stores the payload verbatim, refuses a replayed event by its id, emits an
      outbox event, and returns -- the gateway gets its 200 at once.
   3. `process_callback`, run by a task, settles the payment and grants what it
-     bought: a subscription period, a course. Settling sets
+     bought: a subscription period, a course, an interview session. Settling sets
      `signature_verified_at`, which the database requires of a SUCCEEDED row.
 
 A client that reports success, a redirect back from the gateway, a payment
@@ -63,6 +63,7 @@ from app.modules.billing.provider import (
     get_payment_provider,
 )
 from app.modules.courses import service as courses_service
+from app.modules.interview import service as interview_service
 from app.modules.subscriptions import service as subscriptions_service
 from app.modules.subscriptions.models import UpiMandate
 from app.settings import get_settings
@@ -200,6 +201,41 @@ async def checkout_course(
         subscriber_id=None,
         now=_now(now),
     )
+
+
+async def checkout_interview_session(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    acknowledge_no_score_increase: bool,
+    now: datetime | None = None,
+) -> Payment:
+    """One mock interview session. `interview.service.checkout_terms` refuses
+    before any payment exists -- no passed device check, or a session that
+    cannot move the score and was not acknowledged -- and what the candidate
+    was told is written beside the payment in the same transaction."""
+    now = _now(now)
+    terms = await interview_service.checkout_terms(
+        session,
+        user_id=user_id,
+        acknowledge_no_score_increase=acknowledge_no_score_increase,
+        now=now,
+    )
+    payment = await _open_checkout(
+        session,
+        payer_id=user_id,
+        purpose="INTERVIEW_SESSION",
+        item_code=terms.product.code,
+        item_id=terms.product.id,
+        amount_minor=terms.product.price_minor,
+        subscriber_type=None,
+        subscriber_id=None,
+        now=now,
+    )
+    await interview_service.record_checkout_notice(
+        session, payment_id=payment.id, user_id=user_id, terms=terms
+    )
+    return payment
 
 
 async def payment_for_payer(
@@ -383,6 +419,11 @@ async def _grant(session: AsyncSession, payment: Payment, now: datetime) -> None
     if payment.purpose == "COURSE":
         await courses_service.record_purchase(
             session, user_id=payment.user_id, course_id=payment.item_id, payment_id=payment.id
+        )
+        return
+    if payment.purpose == "INTERVIEW_SESSION":
+        await interview_service.record_purchase(
+            session, user_id=payment.user_id, product_id=payment.item_id, payment_id=payment.id
         )
         return
     if payment.purpose == "MANDATE_DEBIT" and payment.subscription_id is not None:
