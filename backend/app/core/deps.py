@@ -24,6 +24,7 @@ from uuid import UUID
 from fastapi import Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import ratelimit
 from app.core.auth import membership as membership_lookup
 from app.core.auth.provider import get_identity_provider
 from app.core.auth.tokens import VerifiedToken
@@ -38,6 +39,7 @@ from app.core.errors import (
     UnauthenticatedError,
 )
 from app.core.tenant import Membership, TenantContext
+from app.settings import get_settings
 
 # --- roles, SRS 1.2 -------------------------------------------------------
 CANDIDATE = "CANDIDATE"
@@ -132,7 +134,9 @@ async def current_user(
         # honoured.
         if membership is not None:
             raise PermissionDeniedError(code="pool_role_mismatch")
-        return TenantContext(user_id=user.id, tenant_id=None, role=CANDIDATE, pool=token.pool)
+        ctx = TenantContext(user_id=user.id, tenant_id=None, role=CANDIDATE, pool=token.pool)
+        await _global_limits(ctx)
+        return ctx
 
     if membership is None:
         # A verified business identity with no active membership: invited but
@@ -145,15 +149,47 @@ async def current_user(
     if membership.role == CANDIDATE:
         raise PermissionDeniedError(code="pool_role_mismatch")
 
-    return TenantContext(
+    ctx = TenantContext(
         user_id=user.id,
         tenant_id=membership.tenant_id,
         role=membership.role,
         pool=token.pool,
     )
+    await _global_limits(ctx)
+    return ctx
+
+
+async def _global_limits(ctx: TenantContext) -> None:
+    """The per-user and per-tenant tier of the global limit (Day 20).
+
+    Here, once, because every authenticated route resolves `current_user`
+    exactly once per request -- FastAPI caches a dependency within a request --
+    so this counts requests rather than dependency lookups. After the
+    membership is resolved and not before, so a tenant's budget is charged
+    only by that tenant's real members.
+    """
+    if not get_settings().rate_limit_global_enabled:
+        return
+    await ratelimit.enforce("global.user", subject=str(ctx.user_id))
+    if ctx.tenant_id is not None:
+        await ratelimit.enforce("global.tenant", subject=str(ctx.tenant_id))
 
 
 CurrentUser = Annotated[TenantContext, Depends(current_user)]
+
+
+def rate_limit(name: str) -> Callable[[TenantContext], Awaitable[None]]:
+    """A route dependency applying one named policy from `ratelimit.policies`
+    to the caller -- by user or by tenant, as the policy says. Fails closed."""
+    policy = ratelimit.policies()[name]
+    if policy.scope not in (ratelimit.Scope.USER, ratelimit.Scope.TENANT):
+        raise ValueError(f"{name} is not a per-user or per-tenant policy")
+
+    async def _limit(user: CurrentUser) -> None:
+        subject = user.tenant_id if policy.scope is ratelimit.Scope.TENANT else user.user_id
+        await ratelimit.enforce(name, subject=str(subject or user.user_id))
+
+    return _limit
 
 
 @dataclass(frozen=True, slots=True)

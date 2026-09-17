@@ -104,6 +104,7 @@ def upgrade() -> None:
     _create_college_access()
     _create_college_student_reads()
     _create_platform_access()
+    _create_privacy_access()
 
 
 def downgrade() -> None:
@@ -2467,3 +2468,271 @@ def _create_platform_access() -> None:
     op.execute(f"REVOKE UPDATE, DELETE ON profile_nudges FROM {APP_ROLE}")
     op.execute(f"REVOKE UPDATE, DELETE ON notification_suppressions FROM {APP_ROLE}")
     op.execute(f"GRANT UPDATE (lifted_at) ON notification_suppressions TO {APP_ROLE}")
+
+
+# ---------------------------------------------------------------------------
+# Day 20 -- the right to be forgotten, and the carve-out under it
+# ---------------------------------------------------------------------------
+def _create_privacy_access() -> None:
+    """Erasure is one SECURITY DEFINER function, and a guard over the request.
+
+    **Why the cascade is not Python.** The application role deliberately holds
+    no DELETE on `scores`, `course_completions`, `device_checks` or
+    `application_events`: that is invariant 3 and the append-only event logs,
+    and `test_scores_are_insert_only` proves the grant rather than trusting
+    it. Granting DELETE so an erasure task could run as the app role would
+    trade one legal requirement for another. So `erase_candidate` runs as its
+    owner -- the migrator -- and is the only thing on the platform that may
+    destroy a score.
+
+    **Why it is one statement.** Half an erasure is not a smaller erasure, it
+    is a corrupt account: a candidate with no CV and a live search document,
+    or scores with no resume to replay them from. One function, one
+    transaction, one manifest.
+
+    **Why the order is what it is.** Children before parents, because most of
+    these foreign keys are NO ACTION rather than CASCADE -- deliberately, so
+    that nothing deletes a person's history as a side effect of something
+    else. Two steps are worth reading twice:
+
+      * **The seat is released, not deleted.** `seats_used` is the seat
+        guard's, and it only ever moves through that guard. Deleting an
+        assignment row would leave a college's count one too high forever, so
+        the erasure releases the seat the ordinary way and then removes the
+        row -- the college gets its seat back, which is also the fair answer.
+      * **The extraction cache is content-addressed and shared.** A key is
+        deleted only when no other candidate's score still names it, which is
+        why `scores.extraction_cache_key` exists at all: without it the
+        model's reading of a person's career survives their erasure, in a
+        table with no column linking it to them.
+
+    `users` is emptied rather than deleted. It is the anchor every retained
+    payment and audit row points at, and an id pointing at a row with no
+    phone, no email and no Cognito link identifies nobody -- which is the
+    non-reversible pseudonymisation of answers-log 7.4, done once instead of
+    rewritten across an append-only trail we are forbidden to touch.
+
+    **`dsr_requests` is deliberately not under RLS**, for the same reason
+    `application_events` is not: the deletion sweep is a system transaction
+    binding neither a tenant nor a user, and a policy loose enough to admit it
+    would be loose enough to admit a forgotten binding. Reads are scoped in
+    the predicate instead -- every repository function that returns a request
+    takes a `user_id`, and `tests/invariants/test_erasure_plan.py` asserts
+    there is no unscoped reader.
+    """
+    from app.modules.privacy.domain import STATE_TRANSITIONS
+
+    pairs = ", ".join(
+        f"('{src}', '{dst}')"
+        for src, targets in sorted(STATE_TRANSITIONS.items())
+        for dst in sorted(targets)
+    )
+
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION guard_dsr_request_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $fn$
+        BEGIN
+          IF TG_OP = 'INSERT' THEN
+            IF NEW.state <> 'RECEIVED' OR NEW.completed_at IS NOT NULL
+               OR NEW.manifest IS NOT NULL THEN
+              RAISE EXCEPTION 'DSR_GUARD: a request starts RECEIVED and has finished nothing'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            RETURN NEW;
+          END IF;
+
+          IF NEW.user_id <> OLD.user_id OR NEW.type <> OLD.type
+             OR NEW.created_at <> OLD.created_at THEN
+            RAISE EXCEPTION 'DSR_GUARD: whose request it is, and what was asked, never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          -- A latch. "We deleted your data" can never be un-said, and neither
+          -- can "we refused", which is the sentence somebody appeals against.
+          IF OLD.completed_at IS NOT NULL
+             AND NEW.completed_at IS DISTINCT FROM OLD.completed_at THEN
+            RAISE EXCEPTION 'DSR_GUARD: a finished request stays finished'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF OLD.state IN ('COMPLETED', 'REJECTED') AND NEW.state <> OLD.state THEN
+            RAISE EXCEPTION 'DSR_GUARD: % is terminal', OLD.state
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF NEW.state <> OLD.state AND (OLD.state, NEW.state) NOT IN ({pairs}) THEN
+            RAISE EXCEPTION 'DSR_GUARD: % -> % is not a request transition',
+              OLD.state, NEW.state USING ERRCODE = 'check_violation';
+          END IF;
+          -- The manifest is the evidence. Written once, with the completion.
+          IF OLD.manifest IS NOT NULL AND NEW.manifest IS DISTINCT FROM OLD.manifest THEN
+            RAISE EXCEPTION 'DSR_GUARD: a recorded manifest never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $fn$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_dsr_request_write
+          BEFORE INSERT OR UPDATE ON dsr_requests
+          FOR EACH ROW EXECUTE FUNCTION guard_dsr_request_write()
+        """
+    )
+    # The record that somebody asked to be forgotten, and that we did it, is
+    # the evidence we complied. It is not the thing being forgotten.
+    op.execute(f"REVOKE DELETE ON dsr_requests FROM {APP_ROLE}")
+
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION erase_candidate(p_user_id uuid, p_policy_version text)
+        RETURNS jsonb
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $fn$
+        DECLARE
+          m jsonb := '{}'::jsonb;
+          n integer;
+        BEGIN
+          IF p_policy_version IS NULL OR p_policy_version = '' THEN
+            RAISE EXCEPTION 'ERASURE: refusing to erase under no stated policy'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF NOT EXISTS (
+            SELECT 1 FROM users WHERE id = p_user_id AND pool = 'CANDIDATE'
+          ) THEN
+            -- A business account is entangled with an organisation that
+            -- outlives it: erasing the last owner of an employer strands the
+            -- tenant, its jobs and its staff. Those go through support until
+            -- somebody decides what happens to the organisation (blockers B3).
+            RAISE EXCEPTION 'ERASURE: only a candidate account is erased this way'
+              USING ERRCODE = 'check_violation';
+          END IF;
+
+          -- The employer-facing projection first: it is written by a trigger
+          -- on `scores`, so deleting the scores alone would leave the card.
+          DELETE FROM candidate_search_documents WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT;
+          m := m || jsonb_build_object('candidate_search_documents', n);
+
+          DELETE FROM integrity_signals WHERE candidate_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('integrity_signals', n);
+          DELETE FROM integrity_checks WHERE candidate_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('integrity_checks', n);
+
+          -- Shared and content-addressed, so a key goes only when this person
+          -- is the last one whose score names it.
+          DELETE FROM resume_extractions re
+           WHERE re.cache_key IN (
+                   SELECT s.extraction_cache_key FROM scores s
+                    WHERE s.user_id = p_user_id AND s.extraction_cache_key IS NOT NULL)
+             AND NOT EXISTS (
+                   SELECT 1 FROM scores s2
+                    WHERE s2.extraction_cache_key = re.cache_key
+                      AND s2.user_id <> p_user_id);
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('resume_extractions', n);
+
+          DELETE FROM scores WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('scores', n);
+
+          DELETE FROM resume_versions WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('resume_versions', n);
+          DELETE FROM resume_files WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('resume_files', n);
+
+          -- A dispute about one of these applications goes with it, whoever
+          -- raised it: it exists to be read beside the application.
+          DELETE FROM disputes
+           WHERE raised_by = p_user_id
+              OR application_id IN (SELECT id FROM applications WHERE candidate_id = p_user_id);
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('disputes', n);
+          DELETE FROM application_events
+           WHERE application_id IN (SELECT id FROM applications WHERE candidate_id = p_user_id);
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('application_events', n);
+          DELETE FROM applications WHERE candidate_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('applications', n);
+
+          DELETE FROM interview_evaluations
+           WHERE session_id IN (SELECT id FROM interview_sessions WHERE user_id = p_user_id);
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('interview_evaluations', n);
+          DELETE FROM interview_transcripts
+           WHERE session_id IN (SELECT id FROM interview_sessions WHERE user_id = p_user_id);
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('interview_transcripts', n);
+          DELETE FROM interview_answers
+           WHERE session_id IN (SELECT id FROM interview_sessions WHERE user_id = p_user_id);
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('interview_answers', n);
+          DELETE FROM interview_sessions WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('interview_sessions', n);
+          DELETE FROM interview_checkout_notices WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT;
+          m := m || jsonb_build_object('interview_checkout_notices', n);
+          DELETE FROM device_checks WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('device_checks', n);
+
+          DELETE FROM course_completions WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('course_completions', n);
+          DELETE FROM entitlements WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('entitlements', n);
+
+          DELETE FROM questionnaire_responses WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT;
+          m := m || jsonb_build_object('questionnaire_responses', n);
+          DELETE FROM streak_point_events WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('streak_point_events', n);
+          DELETE FROM user_streaks WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('user_streaks', n);
+
+          -- Released through the guard, then removed: `seats_used` only ever
+          -- moves through that guard, and a deleted row would leave a college
+          -- one seat short forever.
+          UPDATE college_seat_assignments
+             SET released_at = now(), release_reason = 'ERASURE'
+           WHERE candidate_id = p_user_id AND released_at IS NULL;
+          DELETE FROM college_seat_assignments WHERE candidate_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT;
+          m := m || jsonb_build_object('college_seat_assignments', n);
+          DELETE FROM student_consents WHERE candidate_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('student_consents', n);
+
+          DELETE FROM profile_nudges WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('profile_nudges', n);
+          DELETE FROM notification_suppressions WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT;
+          m := m || jsonb_build_object('notification_suppressions', n);
+          DELETE FROM notification_preferences WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT;
+          m := m || jsonb_build_object('notification_preferences', n);
+          DELETE FROM notifications WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('notifications', n);
+
+          DELETE FROM candidate_profiles WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('candidate_profiles', n);
+          DELETE FROM memberships WHERE user_id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('memberships', n);
+
+          -- The anchor. Emptied, never dropped: `payments`, `audit_events`
+          -- and `candidate_view_events` still point here, and they are the
+          -- carve-out the client confirmed (answers-log 7.4, Round 10.2).
+          --
+          -- The subject is replaced by its SHA-256, not nulled. A token
+          -- issued before the erasure stays cryptographically valid until it
+          -- expires, and with a NULL here sign-in would find no row for it
+          -- and create a fresh account from the erased person's credential.
+          -- The hash cannot be turned back into the subject; sign-in hashes
+          -- the presented one and refuses a match as `account_inactive`.
+          UPDATE users
+             SET phone = NULL, email = NULL,
+                 cognito_sub = encode(sha256(convert_to(cognito_sub, 'UTF8')), 'hex'),
+                 status = 'DELETED', locale = 'en', updated_at = now()
+           WHERE id = p_user_id;
+          GET DIAGNOSTICS n = ROW_COUNT; m := m || jsonb_build_object('users', n);
+
+          RETURN m;
+        END;
+        $fn$;
+        """
+    )
+    op.execute("REVOKE ALL ON FUNCTION erase_candidate(uuid, text) FROM PUBLIC")
+    op.execute(f"GRANT EXECUTE ON FUNCTION erase_candidate(uuid, text) TO {APP_ROLE}")

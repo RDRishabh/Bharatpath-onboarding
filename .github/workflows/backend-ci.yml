@@ -99,6 +99,9 @@ jobs:
       # No payment gateway exists. The stub signs callbacks with a real HMAC,
       # so verification is exercised; Settings refuses it outside local/dev.
       PAYMENTS_PROVIDER: stub
+      # One runner IP makes more requests a minute than any person; the global
+      # tier is switched on by tests/integration/test_rate_limits.py.
+      RATE_LIMIT_GLOBAL_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -167,10 +170,18 @@ jobs:
           # here connects to either service -- the URLs are placeholders.
           AUTH_ALLOW_LOCAL_TOKENS: "true"
         run: python scripts/export_openapi.py
+      - name: export the Postman collection
+        # Generated from the schema above, for the same reason it is: a
+        # collection maintained by hand drifts within a week, and the drift
+        # is invisible -- a stale request 404s and looks like a broken
+        # endpoint (Day 20).
+        run: python scripts/export_postman.py
       - uses: actions/upload-artifact@v4
         with:
           name: openapi
-          path: backend/openapi.json
+          path: |
+            backend/openapi.json
+            backend/bharatpath.postman_collection.json
 
   image:
     name: build image

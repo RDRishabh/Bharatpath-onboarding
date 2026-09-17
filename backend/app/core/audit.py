@@ -112,6 +112,9 @@ class AuditAction(StrEnum):
     # Privacy
     DSR_EXPORT_REQUESTED = "dsr_export_requested"
     DSR_DELETION_REQUESTED = "dsr_deletion_requested"
+    #: A download link to an export was minted (Day 20). The link is a bearer
+    #: token for a whole person's record, so handing one out is a reveal.
+    DSR_EXPORT_DOWNLOADED = "dsr_export_downloaded"
     DSR_COMPLETED = "dsr_completed"
 
 

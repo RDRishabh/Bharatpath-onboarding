@@ -560,6 +560,55 @@ is where a third one would have to be argued for.
   cap and the concurrency guard. Tests inject `now` and page with
   `after_id = uuid - 1, limit = 1` to examine one person in a shared database.
 
+## Privacy, erasure and rate limits — Day 20
+
+- **The deletion policy is `privacy/domain.py`, and it names every table in
+  the schema.** ERASE, RETAIN (the financial and audit carve-out the client
+  confirmed), NOT_PERSONAL or SELF_EXPIRING, each with its reason.
+  `tests/invariants/test_erasure_plan.py` reads the **live database**: a table
+  added without a disposition fails the build, and the SQL must delete exactly
+  the ERASE set and never touch a retained one.
+- **`erase_candidate` is the cascade — one SECURITY DEFINER function, one
+  transaction.** Not Python, because the app role holds no DELETE on `scores`,
+  `course_completions`, `device_checks` or `application_events` and must not be
+  given one; half an erasure is not a smaller erasure, it is a corrupt account.
+- **`users` is emptied, never deleted.** It anchors every retained payment and
+  audit row. `cognito_sub` is replaced by its **SHA-256, not nulled** — with
+  NULL, a token issued before the erasure finds no row and sign-in *creates a
+  new account from the erased person's credential*. `_by_subject` matches the
+  hash and returns the DELETED row, so the answer is `account_inactive`. The
+  Cognito user itself is not deleted yet (blockers E32).
+- **Objects before rows.** The S3 keys live on the rows the cascade destroys,
+  so deleting rows first orphans the CV. A failure leaves the request RECEIVED
+  and the rows in place for the retry. **An export archive this person already
+  took is one of those objects** -- it is their whole record in one file, and
+  leaving it to the expiry sweep leaves a complete copy of somebody just
+  erased. The pointers on the retained request rows are cleared afterwards, in
+  Python, because the cascade may not touch a retained table. **An export archive this person already
+  took is one of those objects** — it is their whole record in one file, and
+  leaving it for the expiry sweep leaves a complete copy of somebody we have
+  just erased.
+- **The export carries the score and not the breakdown.** R11/Q12 — the score
+  is never explained, and an export is another door to the same room.
+  `EXPORT_FORBIDDEN_FIELDS` is stripped at any depth as a second lock.
+- **Deletion has a 24h cooling-off period and can be withdrawn**; the account
+  stays usable throughout, because locking it would lock the person out of
+  withdrawing. The seat is **released through its guard** and then deleted —
+  `seats_used` only ever moves through that guard.
+- **`dsr_requests` is deliberately not under RLS**, like `application_events`:
+  the sweep binds neither tenant nor user, and a policy loose enough to admit
+  it would admit a forgotten binding. Every repository reader takes `user_id`,
+  and a test asserts it.
+- **Every rate limit is in `app/core/ratelimit.py`.** The global tier (per IP
+  in middleware, per user and per tenant in `current_user`) **fails open**; the
+  specific ones **fail closed**. OTP and the threshold preview must stay the
+  tightest — `tests/unit/test_rate_limit_policies.py` fails on a new limit that
+  is tighter, so it is a decision rather than an accident.
+- **The index review is a test, not a one-off.** `test_index_review.py` plans
+  every hot query with `enable_seqscan = off` and holds every FK on a growing
+  table to an index or a written exemption. `users` is exempt as a parent
+  *because* an erasure empties rather than deletes it.
+
 ## Streak points are not the score
 
 `app/modules/engagement` (added 2026-09-13, `docs/streaks.md`) keeps daily

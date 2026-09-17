@@ -14,6 +14,7 @@ from importing `app.modules`.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 
@@ -100,11 +101,30 @@ async def resolve_or_create_user(
     return AuthenticatedUser(id=row.id, pool=row.pool, status=row.status)
 
 
+def erased_subject(subject: str) -> str:
+    """What an erasure leaves in `cognito_sub` (Day 20): the subject's SHA-256.
+
+    Must match `erase_candidate` in the baseline migration byte for byte.
+    """
+    return hashlib.sha256(subject.encode("utf-8")).hexdigest()
+
+
 async def _by_subject(session: AsyncSession, subject: str) -> AuthenticatedUser | None:
+    """The row for this subject -- **including an erased one**.
+
+    An erasure replaces the subject with its hash rather than clearing it.
+    Matching the hash here returns the DELETED row, which `_authenticate`
+    refuses; without it, a token issued before the erasure would find no row
+    and sign-in would create a new account from the erased person's still
+    valid credential.
+    """
     row = (
         await session.execute(
-            text("SELECT id, pool, status FROM users WHERE cognito_sub = :sub"),
-            {"sub": subject},
+            text(
+                "SELECT id, pool, status FROM users "
+                "WHERE cognito_sub = :sub OR (cognito_sub = :erased AND status = 'DELETED')"
+            ),
+            {"sub": subject, "erased": erased_subject(subject)},
         )
     ).first()
     return None if row is None else AuthenticatedUser(id=row.id, pool=row.pool, status=row.status)

@@ -102,7 +102,7 @@ class ResumeVersion(Base, UUIDPrimaryKey):
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     resume_file_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("resume_files.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), ForeignKey("resume_files.id", ondelete="SET NULL"), index=True
     )
     source: Mapped[str] = mapped_column(String(16), nullable=False)
     parsed: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

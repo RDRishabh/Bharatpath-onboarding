@@ -63,7 +63,7 @@ class Notification(Base, UUIDPrimaryKey):
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
     )
     roster_entry_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("roster_entries.id", ondelete="CASCADE")
+        PGUUID(as_uuid=True), ForeignKey("roster_entries.id", ondelete="CASCADE"), index=True
     )
     template_code: Mapped[str] = mapped_column(String(64), nullable=False)
     channel: Mapped[str] = mapped_column(String(8), nullable=False)

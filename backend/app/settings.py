@@ -258,6 +258,17 @@ class Settings(BaseSettings):
     otp_start_per_phone_per_hour: int = 5
     otp_start_per_ip_per_hour: int = 20
 
+    # The global tier (Day 20, `app/core/ratelimit.py`). Generous on purpose:
+    # a guard against a runaway client or a scraper, set well above what a
+    # person clicking can reach. Per tenant is higher than per user because an
+    # organisation's staff share it. Off in tests, whose one "IP" makes more
+    # requests a minute than any person could -- `tests/integration/
+    # test_rate_limits.py` switches it on to prove it.
+    rate_limit_global_enabled: bool = True
+    rate_limit_per_ip_per_minute: int = 600
+    rate_limit_per_user_per_minute: int = 300
+    rate_limit_per_tenant_per_minute: int = 1500
+
     @field_validator("aws_endpoint_url", mode="before")
     @classmethod
     def _blank_endpoint_means_real_aws(cls, v: object) -> object:

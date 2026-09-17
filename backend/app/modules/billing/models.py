@@ -194,6 +194,9 @@ class Entitlement(Base, UUIDPrimaryKey, Timestamps):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
+        # Consumed entitlements too: the erasure's predicate (Day 20 index
+        # review). `ix_entitlements_usable` covers only the unconsumed.
+        Index("ix_entitlements_user", "user_id"),
         Index(
             "ix_entitlements_usable",
             "user_id",

@@ -36,6 +36,9 @@ EVALUATE_INTERVIEW_TASK: Final = "interview.evaluate_session"
 #: disputed hire is filed in the console's queue.
 NOTIFY_TASK: Final = "notifications.dispatch"
 OPEN_HIRE_DISPUTE_TASK: Final = "admin.open_hire_dispute"
+#: Day 20. An export is built when it is asked for. Erasure is a sweep, not a
+#: subscription: it must wait out its grace period (`privacy/events.py`).
+BUILD_EXPORT_TASK: Final = "privacy.build_export"
 
 #: `event_type -> the tasks it triggers`.
 #:
@@ -77,6 +80,7 @@ _SUBSCRIPTIONS: Final[dict[str, tuple[str, ...]]] = {
     # Day 12 recorded a disputed hire and nobody read it (blockers E12). It is
     # now filed as the candidate's dispute, for our staff to work.
     "applications.hire_disputed": (OPEN_HIRE_DISPUTE_TASK,),
+    "privacy.export_requested": (BUILD_EXPORT_TASK,),
 }
 
 
@@ -110,6 +114,10 @@ TASK_ARGUMENTS: Final[dict[str, Callable[[Event], dict[str, str]]]] = {
     PROCESS_PAYMENT_CALLBACK_TASK: lambda e: {"callback_id": str(e["aggregate_id"])},
     EVALUATE_INTERVIEW_TASK: lambda e: {"session_id": str(e["payload"]["session_id"])},
     NOTIFY_TASK: lambda e: {"event_id": str(e["id"])},
+    BUILD_EXPORT_TASK: lambda e: {
+        "request_id": str(e["aggregate_id"]),
+        "user_id": str(e["payload"]["user_id"]),
+    },
     OPEN_HIRE_DISPUTE_TASK: lambda e: {
         "application_id": str(e["aggregate_id"]),
         "candidate_id": str(e["payload"]["candidate_id"]),
@@ -125,6 +133,7 @@ TASK_MODULES: Final = (
     "app.tasks.open_hire_dispute",
     "app.tasks.outbox_relay",
     "app.tasks.parse_resume",
+    "app.tasks.privacy_requests",
     "app.tasks.process_payment_callback",
     "app.tasks.profile_nudges",
     "app.tasks.rescore_addons",

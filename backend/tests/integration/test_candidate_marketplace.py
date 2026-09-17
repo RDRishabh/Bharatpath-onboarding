@@ -111,7 +111,7 @@ async def _candidate(
         await _subscribe(user_id)
 
     headers, _ = mint_token(pool="CANDIDATE", subject=subject, phone=phone)
-    return {"id": user_id, "headers": headers, "score": score}
+    return {"id": user_id, "headers": headers, "score": score, "subject": subject}
 
 
 async def _employer(client: Any, mint_token: Any) -> dict[str, Any]:

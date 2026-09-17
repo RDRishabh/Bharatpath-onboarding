@@ -166,3 +166,25 @@ async def delete_object(*, bucket: str, key: str) -> None:
     under DPDP."""
     client = get_s3_client()
     await asyncio.to_thread(client.delete_object, Bucket=bucket, Key=key)
+
+
+async def put_object(*, bucket: str, key: str, body: bytes, content_type: str) -> None:
+    """Write an object the server built itself, **encrypted at rest**.
+
+    Used for data-subject exports (Day 20), which are a whole person's data in
+    one file. `ServerSideEncryption` is set on the request rather than trusted
+    to a bucket default, so an export can never land unencrypted because
+    somebody changed a bucket in the console. The archive is not additionally
+    password-protected: a password has to reach the requester by some second
+    channel, and every channel we have is the same account the download link
+    already goes to.
+    """
+    client = get_s3_client()
+    await asyncio.to_thread(
+        client.put_object,
+        Bucket=bucket,
+        Key=key,
+        Body=body,
+        ContentType=content_type,
+        ServerSideEncryption="AES256",
+    )

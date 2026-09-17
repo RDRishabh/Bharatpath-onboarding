@@ -25,10 +25,10 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 2247 on 2026-09-17 (Day 19), not yet pushed. 2079 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Tests** | 2324 on 2026-09-17 (Day 20), not yet pushed. 2247 (Day 19). 2079 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 84% |
-| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 20 — privacy (DSR export and deletion), rate limits, index review, handover — Week 4 gate |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | **The twenty days are done.** What is outstanding is external or unscheduled rather than unbuilt: the sweeps' schedules (E4), a payment gateway (D3), DLT and Twilio (D1, D2), AWS service activation (E2), a model choice, and the client and counsel decisions in `blockers.md`. |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -59,6 +59,128 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-17 (night) — Day 20: privacy, rate limits, index review, handover · **Week 4 gate**
+
+**2247 -> 2324 tests**, all passing locally as CI runs them. Local CI chain
+green: age, vocabulary, ruff, format, mypy, 10 import contracts, modules. **Rebuild with
+`reset_local_db.sh`** — `erase_candidate`, `guard_dsr_request_write`, a
+relaxed `ck_users_has_identifier`, a new column on `scores`, and eight new
+indexes.
+
+### What landed
+
+| | |
+|---|---|
+| **The deletion policy, written down** | `privacy.domain.ERASURE_PLAN` classifies **every table in the schema**: ERASE, RETAIN under the carve-out, NOT_PERSONAL, or SELF_EXPIRING, each with the sentence justifying it. `tests/invariants/test_erasure_plan.py` reads the **live database**, so a table added next month without a decision fails the build rather than quietly surviving erasures. |
+| **The cascade** | `erase_candidate(uuid, text)` — one SECURITY DEFINER function, one transaction, returning a manifest of rows destroyed per table, recorded on the request and in the audit row. |
+| **Export** | `POST /privacy/requests/export` → outbox → `privacy.build_export` → a zip of JSON per section in S3 (server-side encrypted), behind a 10-minute presigned link minted and **audited per call**. Expires after 48h, and an erasure destroys it at once whatever the sweep is doing. |
+| **Deletion** | `POST /privacy/requests/deletion`, a 24h cooling-off period, withdrawable, then `privacy.erase_due`. Objects first, rows second. |
+| **Rate limits** | One table (`app/core/ratelimit.py`), three scopes, two tiers: global per IP / user / tenant (fail open), specific per route (fail closed). 429 now carries `Retry-After`. Includes the analytics limit Day 18 left owed. |
+| **Index review** | `tests/integration/test_index_review.py` — 39 hot query shapes planned with `enable_seqscan = off`, plus every foreign key on a growing table indexed or exempted in writing. |
+| **Invariant suite** | `test_all_ten_invariants_are_covered.py` names the file proving each of the ten and fails if one is renamed away or emptied. |
+| **Handover** | `openapi.json` (141 paths), a generated Postman collection (157 requests, 10 folders), [`integration-notes.md`](integration-notes.md), and a README that matches how the stack actually starts. |
+
+### Decisions worth knowing
+
+**The cascade is SQL because the app role must stay unable to delete a score.**
+Invariant 3 is proved by `test_scores_are_insert_only` reading the grant, not
+by trusting the code. An erasure task running as the app role would have needed
+DELETE on `scores`, `course_completions`, `device_checks` and
+`application_events` — trading one legal requirement for another. It runs as
+its owner instead, and it is the only thing on the platform that may destroy a
+score.
+
+**`users` is emptied, not deleted, and `cognito_sub` is hashed rather than
+cleared.** The row anchors every retained payment and audit row; emptied, its
+id identifies nobody, which is the pseudonymisation of answers-log 7.4 done
+once instead of rewritten across an append-only trail we are forbidden to
+touch. The hash is the half that was nearly wrong: **the test asserting a 401
+after erasure got a 200.** With `cognito_sub` NULL, a token issued before the
+erasure matches no row, so sign-in treats it as a first sign-in and **creates a
+fresh account from the erased person's credential**. Storing the subject's
+SHA-256 lets `_by_subject` recognise it and return the DELETED row, which
+`_authenticate` refuses. Deleting the Cognito user is still owed (**E32**), and
+until it is, an erased person signing in again with the same phone is refused
+rather than starting fresh.
+
+**Deletion waits, and the account stays usable while it waits.** Erasure has no
+undo, so there is a 24h window and a withdraw route. Locking the account during
+the window was the first design and it was wrong — it would have locked the
+person out of withdrawing. Nothing escapes by being written late: the cascade
+runs in one transaction over whatever exists when it runs.
+
+**The extraction cache needed a link to a person, and had none.**
+`resume_extractions` is content-addressed on CV text and holds the model's
+account of a career, with no user column by design. Without a handle, the
+model's reading of an erased candidate's CV would survive them. `scores` now
+stores `extraction_cache_key`, and the erasure deletes a cache row **only when
+no other candidate's score still names it** — two people with identical CV text
+share the entry, and one leaving must not take the other's with them.
+
+**The seat is released, then deleted.** `seats_used` only ever moves through
+`guard_college_seat_assignment`; deleting an assignment row directly would
+leave a college one seat short forever. The erasure releases it the ordinary
+way, so the college gets its seat back — which is also the fair answer.
+
+**Two judgment calls flagged for counsel rather than taken quietly.** An
+erasure deletes the candidate's `applications` and their stage history, which
+removes something from an employer's workspace, and it deletes `disputes` they
+raised, which is also our record of how a case was handled. Neither is a
+financial record nor an audit row, so the carve-out does not reach them.
+**`roster_entries` are not reached at all**: a college's own record of a
+contact it supplied carries no link to an account — deliberately, because a
+college must never learn who has one — so finding it would require exactly the
+match the design forbids. All three are recorded in **B3**.
+
+**The global rate limits fail open; the specific ones fail closed.** A Redis
+blip that took the whole API down would be a worse outage than the runaway
+client the global tier guards against. An unenforced throttle in front of a
+paid SMS gateway is somebody else's bill. `test_rate_limit_policies.py` also
+holds OTP and the threshold preview as the tightest limits on the platform —
+which immediately caught the DSR route being set tighter than either, on no
+reasoning at all. The real guard there is one open request of each kind per
+person, held by a partial unique index.
+
+**An export a person already took is destroyed by their erasure.** Found while
+re-reading the cascade rather than by a test: the archive is that person's
+whole record in one object, and it was being left to the 48-hour expiry sweep
+— which has no schedule (**E4**), so in practice it would have been left
+indefinitely, a complete copy of somebody we had just erased. The erasure now
+collects those keys beside the CV and the interview audio, and clears the
+pointers on the retained request rows afterwards. Done in Python rather than in
+`erase_candidate` because `dsr_requests` is a retained table and the cascade
+may not touch one — which the invariant test enforces.
+
+### Found on the way
+
+- **Four unindexed foreign keys the erasure would have scanned**:
+  `integrity_signals.candidate_id`, `integrity_checks.candidate_id`,
+  `college_seat_assignments.candidate_id` and `entitlements.user_id`. Each had
+  only a *partial* index — HIGH-and-open signals, the live seat, unconsumed
+  entitlements — which an erasure's predicate cannot use. Four more were added
+  where the erasure now deletes a parent (`resume_files`, `scores`,
+  `device_checks`, `student_consents`, `roster_entries`).
+- **One false alarm worth recording.** The review first flagged `subscriptions`
+  as unindexed for `require_active_subscription`, the hottest read on the
+  platform. It is not: `ix_subscription_active_window` is partial on
+  `state IN ('ACTIVE','GRACE')`, and the test's query had omitted the state
+  predicate the real query carries. The test was wrong, not the schema.
+- **The blocker register's E count had been stale since Day 6** — it said 4
+  while the section held 33 items. It is counted from the section now.
+
+### Owed
+
+| | |
+|---|---|
+| **The retention period** | B3. Counsel's, never arrived. `RETENTION_POLICY_VERSION` starts `placeholder-`, a test asserts the prefix, and retained rows are kept indefinitely rather than on a guess. |
+| **Both sweeps are unscheduled** | E4. `privacy.erase_due` and `privacy.expire_exports` exist and nothing runs them. A deletion is accepted, tracked and shown with its due date, and **nothing is destroyed** — safe, but a promise not being kept. Hourly is enough. |
+| **Cognito user deletion** | E32. |
+| **Business accounts cannot erase themselves** | E33 — refused in the route *and* in the function; what happens to an organisation whose last owner leaves is nobody's decision yet. |
+| **No S3 lifecycle rule on exports** | E34, same family as E22. |
+| **Week 4 gate: schemathesis fuzzing** | Still ☐, carried from the Week 3 gate. |
 
 ---
 
@@ -221,7 +343,7 @@ Pushed to PR #11 as `e1f3a97`: **all five CI jobs green on the first push**.
   consent was later revoked still reads ACCEPTED.
 - **The college-facing notice of a revocation** (Day 19) — without the
   student's name for ROSTER (E28).
-- A rate limit on analytics reads (Day 20's pass).
+- ~~A rate limit on analytics reads~~ ✅ **done Day 20** — `analytics.read`, 120/hour per organisation. Not a leak control (the aggregates are already floored and suppressed) but a cost one: an overview is several joins over every consenting student, and a dashboard left open in a tab should not run them continuously.
 
 ---
 

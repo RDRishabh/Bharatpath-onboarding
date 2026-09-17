@@ -51,9 +51,10 @@ class IntegritySignal(Base, UUIDPrimaryKey):
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     resume_version_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("resume_versions.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), ForeignKey("resume_versions.id", ondelete="SET NULL"), index=True
     )
     # Rules are configuration-driven and versioned (SRS 1.4.5), so a rule
     # change ships as config and old signals still say which version fired.
@@ -124,6 +125,7 @@ class IntegrityCheck(Base, UUIDPrimaryKey):
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     resume_version_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),

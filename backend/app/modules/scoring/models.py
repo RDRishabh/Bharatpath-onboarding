@@ -95,6 +95,14 @@ class Score(Base, UUIDPrimaryKey):
     taxonomy_version: Mapped[str | None] = mapped_column(String(32))
     rubric_version: Mapped[str | None] = mapped_column(String(32))
 
+    #: Which `resume_extractions` row Layer 1 came from. Not needed to replay
+    #: -- the response is on this row, which is the whole point of storing it
+    #: -- but it is the **only** link from a person to the extraction cache,
+    #: and without it an erasure cannot reach the cached reading of their CV
+    #: (Day 20). The cache is content-addressed and shared, so the erasure
+    #: deletes a key only when no other candidate's score still names it.
+    extraction_cache_key: Mapped[str | None] = mapped_column(String(64), index=True)
+
     # Stored for admin drill-down and disputes. NEVER serialized to a
     # candidate - the client confirmed the score is never explained.
     breakdown: Mapped[dict[str, Any]] = mapped_column(

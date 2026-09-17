@@ -124,12 +124,15 @@ class InterviewCheckoutNotice(Base, UUIDPrimaryKey):
         nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     will_increase_score: Mapped[bool] = mapped_column(nullable=False)
     acknowledged_no_increase: Mapped[bool] = mapped_column(nullable=False)
     device_check_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("device_checks.id", ondelete="RESTRICT"), nullable=False
+        PGUUID(as_uuid=True),
+        ForeignKey("device_checks.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -205,7 +208,10 @@ class InterviewSession(Base, UUIDPrimaryKey):
         nullable=False,
     )
     device_check_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("device_checks.id", ondelete="RESTRICT"), nullable=False
+        PGUUID(as_uuid=True),
+        ForeignKey("device_checks.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
     )
     #: 1 for the candidate's first session, and so on. Picks the question set.
     session_number: Mapped[int] = mapped_column(Integer, nullable=False)
