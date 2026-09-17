@@ -24,6 +24,16 @@ class ApiClient {
     );
 
     try {
+      const hasAuthHeader =
+        options.headers &&
+        "Authorization" in
+          (options.headers as Record<string, string>);
+
+      const bearerToken =
+        !hasAuthHeader && process.env.NEXT_PUBLIC_API_BEARER_TOKEN
+          ? process.env.NEXT_PUBLIC_API_BEARER_TOKEN
+          : null;
+
       const response = await fetch(
         `${this.baseUrl}${endpoint}`,
         {
@@ -34,6 +44,9 @@ class ApiClient {
             Accept: "application/json",
             ...(!(options.body instanceof FormData) && {
               "Content-Type": "application/json",
+            }),
+            ...(bearerToken && {
+              Authorization: `Bearer ${bearerToken}`,
             }),
             ...options.headers,
           },

@@ -1,78 +1,62 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
-import {
+import type {
+  CollegeSeats,
+  CollegeTeamMember,
+} from "@/store/college/types";
+
+import type {
   CollegeProfile,
   CollegeSettingsState,
   CollegeUser,
   SettingsTab,
+  UserRole,
 } from "@/features/college/settings/types";
+
+function initialsFor(email: string): string {
+  const parts = email
+    .split("@")[0]
+    .split(/[._-]+/)
+    .filter(Boolean);
+
+  return (
+    parts
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join("") || "?"
+  );
+}
+
+function displayNameFor(email: string): string {
+  const parts = email
+    .split("@")[0]
+    .split(/[._-]+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return "Team member";
+  }
+
+  return parts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+const ROLE_LABELS: Record<CollegeTeamMember["role"], UserRole> = {
+  COLLEGE_ADMIN: "Admin",
+  COLLEGE_STAFF: "Staff",
+};
 
 const initialState: CollegeSettingsState = {
   activeTab: "profile",
-
-  profile: {
-    legalInstitutionName: "Sinhgad Technical Education Society",
-    aicteCode: "1-4258963",
-    city: "Pune",
-    verified: true,
-    verifiedOn: "12 Aug 2026",
-  },
-
-  users: [
-    {
-      id: "user-1",
-      initials: "SK",
-      name: "Dr. S. Kulkarni",
-      email: "s.kulkarni@svit.edu.in",
-      role: "Owner",
-    },
-    {
-      id: "user-2",
-      initials: "AD",
-      name: "A. Deshpande",
-      email: "a.deshpande@svit.edu.in",
-      role: "Placement lead",
-    },
-    {
-      id: "user-3",
-      initials: "RM",
-      name: "R. Mane",
-      email: "r.mane@svit.edu.in",
-      role: "Viewer",
-    },
-  ],
-
-  seats: {
-    used: 248,
-    total: 300,
-    status: "Active",
-  },
-
-  invoices: [
-    {
-      id: "BP-INV-2026-114",
-      date: "01 Sep 2026",
-      amount: 180000,
-      status: "Paid",
-    },
-    {
-      id: "BP-INV-2026-092",
-      date: "01 Jun 2026",
-      amount: 180000,
-      status: "Paid",
-    },
-    {
-      id: "BP-INV-2026-061",
-      date: "01 Mar 2026",
-      amount: 90000,
-      status: "Paid",
-    },
-  ],
-
+  profile: null,
+  users: [],
+  seats: null,
   isSavingProfile: false,
   isInvitingUser: false,
-  isRequestingSeats: false,
-  error: null,
+  isRemovingUser: false,
+  saveProfileError: null,
+  inviteUserError: null,
 };
 
 const collegeSettingsSlice = createSlice({
@@ -87,23 +71,49 @@ const collegeSettingsSlice = createSlice({
       state.activeTab = action.payload;
     },
 
-    updateProfileField: (
-      state,
-      action: PayloadAction<{
-        field: keyof CollegeProfile;
-        value: string | boolean;
-      }>,
-    ) => {
-      const { field, value } = action.payload;
-
-      state.profile[field] = value as never;
-    },
-
-    setProfile: (
+    replaceProfile: (
       state,
       action: PayloadAction<CollegeProfile>,
     ) => {
       state.profile = action.payload;
+    },
+
+    updateProfileField: (
+      state,
+      action: PayloadAction<{
+        field: "name" | "institutionType";
+        value: string;
+      }>,
+    ) => {
+      if (!state.profile) {
+        return;
+      }
+
+      if (action.payload.field === "name") {
+        state.profile.name = action.payload.value;
+      } else {
+        state.profile.institutionType =
+          action.payload.value || null;
+      }
+    },
+
+    replaceUsers: (
+      state,
+      action: PayloadAction<CollegeTeamMember[]>,
+    ) => {
+      state.users = action.payload.map((member) => ({
+        ...member,
+        initials: initialsFor(member.email),
+        displayName: displayNameFor(member.email),
+        roleLabel: ROLE_LABELS[member.role],
+      }));
+    },
+
+    replaceSeats: (
+      state,
+      action: PayloadAction<CollegeSeats>,
+    ) => {
+      state.seats = action.payload;
     },
 
     setSavingProfile: (
@@ -113,22 +123,6 @@ const collegeSettingsSlice = createSlice({
       state.isSavingProfile = action.payload;
     },
 
-    addUser: (
-      state,
-      action: PayloadAction<CollegeUser>,
-    ) => {
-      state.users.push(action.payload);
-    },
-
-    removeUser: (
-      state,
-      action: PayloadAction<string>,
-    ) => {
-      state.users = state.users.filter(
-        (user) => user.id !== action.payload,
-      );
-    },
-
     setInvitingUser: (
       state,
       action: PayloadAction<boolean>,
@@ -136,37 +130,46 @@ const collegeSettingsSlice = createSlice({
       state.isInvitingUser = action.payload;
     },
 
-    setRequestingSeats: (
+    setRemovingUser: (
       state,
       action: PayloadAction<boolean>,
     ) => {
-      state.isRequestingSeats = action.payload;
+      state.isRemovingUser = action.payload;
     },
 
-    clearSettingsError: (state) => {
-      state.error = null;
-    },
-
-    setSettingsError: (
+    setSaveProfileError: (
       state,
-      action: PayloadAction<string>,
+      action: PayloadAction<string | null>,
     ) => {
-      state.error = action.payload;
+      state.saveProfileError = action.payload;
+    },
+
+    setInviteUserError: (
+      state,
+      action: PayloadAction<string | null>,
+    ) => {
+      state.inviteUserError = action.payload;
+    },
+
+    clearSettingsErrors: (state) => {
+      state.saveProfileError = null;
+      state.inviteUserError = null;
     },
   },
 });
 
 export const {
   setActiveTab,
+  replaceProfile,
   updateProfileField,
-  setProfile,
+  replaceUsers,
+  replaceSeats,
   setSavingProfile,
-  addUser,
-  removeUser,
   setInvitingUser,
-  setRequestingSeats,
-  clearSettingsError,
-  setSettingsError,
+  setRemovingUser,
+  setSaveProfileError,
+  setInviteUserError,
+  clearSettingsErrors,
 } = collegeSettingsSlice.actions;
 
 export default collegeSettingsSlice.reducer;

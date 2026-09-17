@@ -20,10 +20,6 @@ export const selectSeatInfo = (
   state: RootState,
 ) => state.collegeSettings.seats;
 
-export const selectInvoices = (
-  state: RootState,
-) => state.collegeSettings.invoices;
-
 export const selectIsSavingProfile = (
   state: RootState,
 ) => state.collegeSettings.isSavingProfile;
@@ -32,6 +28,14 @@ export const selectIsInvitingUser = (
   state: RootState,
 ) => state.collegeSettings.isInvitingUser;
 
-export const selectIsRequestingSeats = (
+export const selectIsRemovingUser = (
   state: RootState,
-) => state.collegeSettings.isRequestingSeats;
+) => state.collegeSettings.isRemovingUser;
+
+export const selectSaveProfileError = (
+  state: RootState,
+) => state.collegeSettings.saveProfileError;
+
+export const selectInviteUserError = (
+  state: RootState,
+) => state.collegeSettings.inviteUserError;

@@ -1,44 +1,49 @@
-export type SettingsTab = "profile" | "users" | "billing";
+import type {
+  CollegeOrganisation,
+  CollegeSeats,
+  CollegeTeamMember,
+} from "@/store/college/types";
 
-export type UserRole = "Owner" | "Placement lead" | "Viewer";
+export type SettingsTab =
+  | "profile"
+  | "users"
+  | "subscription";
 
-export interface CollegeProfile {
-  legalInstitutionName: string;
-  aicteCode: string;
-  city: string;
-  verified: boolean;
-  verifiedOn: string;
-}
+export type UserRole = "Admin" | "Staff";
 
-export interface CollegeUser {
-  id: string;
+export interface CollegeProfile
+  extends CollegeOrganisation {}
+
+export interface CollegeUser extends CollegeTeamMember {
   initials: string;
-  name: string;
-  email: string;
-  role: UserRole;
-}
-
-export interface SeatInfo {
-  used: number;
-  total: number;
-  status: "Active" | "Inactive";
-}
-
-export interface Invoice {
-  id: string;
-  date: string;
-  amount: number;
-  status: "Paid" | "Pending" | "Overdue";
+  displayName: string;
+  roleLabel: UserRole;
 }
 
 export interface CollegeSettingsState {
   activeTab: SettingsTab;
-  profile: CollegeProfile;
+  profile: CollegeProfile | null;
   users: CollegeUser[];
-  seats: SeatInfo;
-  invoices: Invoice[];
+  seats: CollegeSeats | null;
   isSavingProfile: boolean;
   isInvitingUser: boolean;
-  isRequestingSeats: boolean;
-  error: string | null;
+  isRemovingUser: boolean;
+  saveProfileError: string | null;
+  inviteUserError: string | null;
 }
+
+export const INSTITUTION_TYPE_OPTIONS: {
+  code: string;
+  label: string;
+}[] = [
+  { code: "UNIVERSITY", label: "University" },
+  { code: "DEEMED_UNIVERSITY", label: "Deemed university" },
+  { code: "AUTONOMOUS_COLLEGE", label: "Autonomous college" },
+  { code: "AFFILIATED_COLLEGE", label: "Affiliated college" },
+  { code: "ENGINEERING_COLLEGE", label: "Engineering college" },
+  { code: "MANAGEMENT_INSTITUTE", label: "Management institute" },
+  { code: "POLYTECHNIC", label: "Polytechnic" },
+  { code: "ITI", label: "Industrial Training Institute" },
+  { code: "TRAINING_INSTITUTE", label: "Private training institute" },
+  { code: "OTHER", label: "Other" },
+];
