@@ -15,7 +15,7 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 2018 on 2026-09-17 (Day 17), all green locally, not yet pushed. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Tests** | 2018 on 2026-09-17 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 85% |
 | **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17 complete · 3, 4, 6, 8, 9 partial |
 | **Next** | Day 18 — consent scopes, cohort analytics, invariant 9 |
@@ -56,7 +56,11 @@ states. Newest entries first.
 
 **1898 -> 2018 tests**, all passing locally as CI runs them. Local CI
 chain green: age, vocabulary, ruff, format, mypy, 9 import contracts, modules.
-Not yet pushed. **Rebuild with `reset_local_db.sh`** — new tables, four
+Pushed as PR #11. The first CI run failed
+`test_a_college_pays_as_its_organisation_and_only_its_admin_buys`: **CI never
+runs `seed_catalogue.py`**, and the only thing syncing plans was
+`test_payments.py`'s autouse fixture, which runs after `test_college.py`. A
+test that reads catalogue plans must call `sync_plans` itself. **Rebuild with `reset_local_db.sh`** — new tables, four
 candidate policies, nine functions and four triggers.
 
 Both decisions this day needed were already in hand: the seat model (Round 7.7,
