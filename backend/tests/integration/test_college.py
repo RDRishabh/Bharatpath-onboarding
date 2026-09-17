@@ -26,6 +26,7 @@ from sqlalchemy.exc import DBAPIError
 from app.core.errors import PermissionDeniedError
 from app.modules.college import service as college_service
 from app.modules.college.domain import CONSENT_VERSION, LINK_ATTEMPTS_PER_USER_PER_HOUR
+from app.modules.subscriptions import service as subscriptions_service
 from tests.conftest import _seed_url, sessions
 from tests.integration.test_payments import _candidate, _scalar, _settle
 
@@ -259,6 +260,9 @@ async def test_onboarding_saves_partially_and_submits_only_when_complete(
 async def test_a_college_pays_as_its_organisation_and_only_its_admin_buys(
     client: Any, mint_token: Any
 ) -> None:
+    # CI does not run seed_catalogue.py; nothing guarantees test_payments synced it first.
+    async with sessions(_seed_url())() as session, session.begin():
+        await subscriptions_service.sync_plans(session)
     college = await _college(client, mint_token, seats_paid=None)
     plans = (await client.get(f"{COLLEGE}/subscription/plans", headers=college["headers"])).json()
     assert plans and {p["audience"] for p in plans} == {"COLLEGE"}
