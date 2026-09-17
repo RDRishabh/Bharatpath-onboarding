@@ -15,7 +15,7 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 2079 on 2026-09-17 (Day 18), not yet pushed. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Tests** | 2079 on 2026-09-17 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 84% |
 | **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18 complete · 3, 4, 6, 8, 9 partial |
 | **Next** | Day 19 — admin queues, drill-downs, disputes, seats + suspension, notifications + nudges |
@@ -55,8 +55,9 @@ states. Newest entries first.
 ## 2026-09-17 (later) — Day 18: consent scopes, cohort analytics, invariant 9
 
 **2018 -> 2079 tests**, all passing locally as CI runs them. Local CI chain
-green: age, vocabulary, ruff, format, mypy, 9 import contracts, modules. Not
-yet pushed. **Rebuild with `reset_local_db.sh`** — a new CHECK on
+green: age, vocabulary, ruff, format, mypy, 9 import contracts, modules.
+Pushed to PR #11 as `e1f3a97`: **all five CI jobs green on the first push**.
+**Rebuild with `reset_local_db.sh`** — a new CHECK on
 `student_consents`, five policies, two triggers and seven functions.
 
 ### What landed
