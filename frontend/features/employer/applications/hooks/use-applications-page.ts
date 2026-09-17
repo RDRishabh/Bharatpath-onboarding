@@ -25,6 +25,7 @@ import {
 } from "@/store/employer/applications";
 import { useGetEmployerJobsQuery } from "@/store/employer/jobs";
 import type { EmployerJob } from "@/features/employer/jobs/types";
+import type { ApplicationColumnDefinition } from "../types";
 
 const EMPTY_JOBS: EmployerJob[] = [];
 
@@ -208,6 +209,41 @@ export function useApplicationsPage() {
     [dispatch, moveApplication, selectedApplication],
   );
 
+  const handleMoveToColumn = useCallback(
+    (applicationId: string, column: ApplicationColumnDefinition) => {
+      const application = applications.find(
+        (item) => item.id === applicationId,
+      );
+
+      if (!application || application.stage === 4) {
+        return;
+      }
+
+      let target: "VIEWED" | "SHORTLISTED" | "INTERVIEW" | "REJECTED" | undefined;
+
+      if (column.outcome === "rejected") {
+        target = "REJECTED";
+      } else if (column.stage === 1) {
+        target = "VIEWED";
+      } else if (column.stage === 2) {
+        target = "SHORTLISTED";
+      } else if (column.stage === 3) {
+        target = "INTERVIEW";
+      }
+
+      if (!target) {
+        return;
+      }
+
+      void moveApplication({ applicationId, stage: target })
+        .unwrap()
+        .then((updatedApplication) => {
+          dispatch(replaceApplication(updatedApplication));
+        });
+    },
+    [applications, dispatch, moveApplication],
+  );
+
   /*
    * ============================================================
    * MEETING LINK
@@ -267,6 +303,7 @@ export function useApplicationsPage() {
     handleOpenApplication,
     handleCloseApplication,
     handleMoveStage,
+    handleMoveToColumn,
     handleMeetingLinkChange,
     handleConfirmHire,
   };

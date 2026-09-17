@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 
 import type {
+  ApplicationColumnDefinition,
   EmployerApplication,
 } from "../types";
 
@@ -18,11 +19,17 @@ interface ApplicationPipelineProps {
   onApplicationClick: (
     id: string,
   ) => void;
+
+  onApplicationDrop: (
+    applicationId: string,
+    column: ApplicationColumnDefinition,
+  ) => void;
 }
 
 export function ApplicationPipeline({
   applications,
   onApplicationClick,
+  onApplicationDrop,
 }: ApplicationPipelineProps) {
   const columns = useMemo(() => {
     return APPLICATION_COLUMNS.map(
@@ -61,6 +68,7 @@ export function ApplicationPipeline({
   return (
     <div
       className="
+        h-full
         min-h-0
         flex-1
         overflow-x-auto
@@ -68,7 +76,7 @@ export function ApplicationPipeline({
         pb-2
       "
     >
-      <div className="flex min-w-max gap-3">
+      <div className="flex h-full min-w-max gap-3">
         {columns.map(
           ({
             column,
@@ -81,6 +89,7 @@ export function ApplicationPipeline({
               onApplicationClick={
                 onApplicationClick
               }
+              onApplicationDrop={onApplicationDrop}
             />
           ),
         )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useAppDispatch } from "@/store/hooks";
 import {
   closeInviteModal,
@@ -15,6 +16,7 @@ export function InviteMemberModal() {
   const dispatch = useAppDispatch();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<TeamRole>("Recruiter");
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -48,35 +50,69 @@ export function InviteMemberModal() {
           </button>
         </div>
 
-        <label className="mb-3 flex flex-col gap-1.5">
+        <div className="mb-3 flex flex-col gap-1.5">
           <span className="text-[11px] font-semibold leading-[15px] text-[#526074]">
             Work email
           </span>
           <input
             autoFocus
             type="email"
+            aria-label="Work email"
             placeholder="name@company.com"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             className={inputClass}
           />
-        </label>
+        </div>
 
-        <label className="mb-3 flex flex-col gap-1.5">
+        <div className="mb-3 flex flex-col gap-1.5">
           <span className="text-[11px] font-semibold leading-[15px] text-[#526074]">
             Role
           </span>
-          <select
-            value={role}
-            onChange={(event) =>
-              setRole(event.target.value as TeamRole)
-            }
-            className={inputClass}
-          >
-            <option value="Recruiter">Recruiter</option>
-            <option value="View only">View only</option>
-          </select>
-        </label>
+          <div className="relative">
+            <button
+              type="button"
+              aria-expanded={roleMenuOpen}
+              aria-haspopup="listbox"
+              className={`${inputClass} flex items-center justify-between text-left font-medium`}
+              onClick={() => setRoleMenuOpen((open) => !open)}
+            >
+              {role}
+              <ChevronDown
+                className={`h-4 w-4 text-[#526074] transition-transform ${roleMenuOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {roleMenuOpen && (
+              <div
+                role="listbox"
+                aria-label="Team member role"
+                className="absolute z-10 mt-1 w-full overflow-hidden rounded-[9px] border border-[#c9d2e2] bg-white p-1 shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
+              >
+                {(["Recruiter", "View only"] as TeamRole[]).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    role="option"
+                    aria-selected={role === option}
+                    className={[
+                      "block w-full cursor-pointer rounded-md px-3 py-2.5 text-left text-[13px] transition",
+                      role === option
+                        ? "bg-[#eef2ff] font-semibold text-[#4f43bd]"
+                        : "text-[#172033] hover:bg-[#f4f6f8]",
+                    ].join(" ")}
+                    onClick={() => {
+                      setRole(option);
+                      setRoleMenuOpen(false);
+                    }}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
 
         <div className="mt-[18px] flex justify-end gap-2">
           <button

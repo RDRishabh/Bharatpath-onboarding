@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo } from "react";
 
+import { Loader } from "@/components/common/loader";
 import { usePageHeader } from "@/components/layout/header-context";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -85,9 +86,15 @@ export function CandidatesPage() {
 
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
 
-          <div className="flex flex-col gap-3">
+          <div className="flex h-full flex-col gap-3">
 
-            {candidates.map((candidate) => (
+            {isLoading && (
+              <div className="flex flex-1 items-center justify-center">
+                <Loader label="Loading candidates…" />
+              </div>
+            )}
+
+            {!isLoading && candidates.map((candidate) => (
               <CandidateCard
                 key={candidate.candidateId}
                 candidate={candidate}

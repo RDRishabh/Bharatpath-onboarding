@@ -103,6 +103,11 @@ export function ApplicationCard({
   return (
     <button
       type="button"
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("application-id", application.id);
+      }}
       onClick={onClick}
       className="
         group
@@ -110,6 +115,7 @@ export function ApplicationCard({
         w-full
         flex-col
         cursor-pointer
+        active:cursor-grabbing
         rounded-[10px]
         border
         border-[#e1e5eb]

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import type {
   ApplicationColumnDefinition,
   EmployerApplication,
@@ -15,18 +17,48 @@ interface ApplicationColumnProps {
   onApplicationClick: (
     id: string,
   ) => void;
+
+  onApplicationDrop: (
+    applicationId: string,
+    column: ApplicationColumnDefinition,
+  ) => void;
 }
 
 export function ApplicationColumn({
   column,
   applications,
   onApplicationClick,
+  onApplicationDrop,
 }: ApplicationColumnProps) {
+  const [isDropTarget, setIsDropTarget] = useState(false);
+
+  const handleDrop = (event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setIsDropTarget(false);
+
+    const applicationId = event.dataTransfer.getData("application-id");
+    if (applicationId) {
+      onApplicationDrop(applicationId, column);
+    }
+  };
+
   return (
     <section
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      }}
+      onDragEnter={() => setIsDropTarget(true)}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          setIsDropTarget(false);
+        }
+      }}
+      onDrop={handleDrop}
       className="
         flex
-        min-h-[calc(100vh-190px)]
+        h-full
+        min-h-0
         w-[208px]
         shrink-0
         flex-col
@@ -35,7 +67,14 @@ export function ApplicationColumn({
         border
         border-[#e1e5eb]
         bg-[#f5f7f9]
+        transition-colors
       "
+      aria-label={`Drop application in ${column.label}`}
+      data-drop-target={isDropTarget || undefined}
+      style={isDropTarget ? {
+        borderColor: "#315f9b",
+        backgroundColor: "#eef4fc",
+      } : undefined}
     >
       {/* HEADER */}
       <div className="flex items-center gap-2 px-3 py-3">

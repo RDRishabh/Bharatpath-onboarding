@@ -1,50 +1,25 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import type { EmployerSettingsState, SettingsTab, TeamRole } from "./types";
+import type {
+  EmployerSettingsState,
+  SettingsTab,
+  TeamMember,
+  TeamRole,
+} from "./types";
 
 const initialState: EmployerSettingsState = {
   activeTab: "company",
 
   company: {
-    legalName: "Sterling Diagnostics Pvt Ltd",
+    legalName: "",
     gstin: "",
-    businessType: "Private Limited",
+    businessType: "",
+    industry: "",
+    kybStatus: "",
     address: "",
   },
 
-  team: [
-    {
-      id: "t1",
-      name: "You",
-      email: "",
-      role: "Owner",
-      status: "Active",
-      canRemove: false,
-    },
-    {
-      id: "t2",
-      name: "Priya Nair",
-      email: "priya@sterling.example",
-      role: "Recruiter",
-      status: "Active",
-      canRemove: true,
-    },
-    {
-      id: "t3",
-      name: "Arjun Rao",
-      email: "arjun@sterling.example",
-      role: "Recruiter",
-      status: "Invited",
-      canRemove: true,
-    },
-    {
-      id: "t4",
-      name: "Divya Menon",
-      email: "divya@sterling.example",
-      role: "View only",
-      status: "Active",
-      canRemove: true,
-    },
-  ],
+  // Team membership is loaded from GET /employer/team when the Team tab opens.
+  team: [],
 
   paymentMethods: [
     {
@@ -103,6 +78,20 @@ const settingsSlice = createSlice({
   name: "employerSettings",
   initialState,
   reducers: {
+    replaceCompanyProfile(
+      state,
+      action: PayloadAction<EmployerSettingsState["company"]>,
+    ) {
+      state.company = action.payload;
+    },
+
+    replaceTeamMembers(
+      state,
+      action: PayloadAction<TeamMember[]>,
+    ) {
+      state.team = action.payload;
+    },
+
     setActiveTab(state, action: PayloadAction<SettingsTab>) {
       state.activeTab = action.payload;
     },
@@ -277,6 +266,8 @@ const settingsSlice = createSlice({
 });
 
 export const {
+  replaceCompanyProfile,
+  replaceTeamMembers,
   setActiveTab,
   updateCompanyField,
   saveCompanyProfile,

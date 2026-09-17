@@ -44,6 +44,10 @@ export function PortalShell({
     `/${portal}/disputes`,
   );
 
+  const isApplicationsPage = pathname.startsWith(
+    `/${portal}/applications`,
+  );
+
   return (
     <HeaderProvider>
       <div className="flex h-full min-h-0 overflow-hidden bg-[#f8f9fb]">
@@ -86,7 +90,7 @@ export function PortalShell({
             className={[
               "min-h-0 min-w-0 flex-1 overflow-x-hidden bp-scrollbar",
 
-              isCandidatesPage
+              isCandidatesPage || isApplicationsPage
                 ? "overflow-hidden p-0"
                 : isSettingsPage ||
                     isQueuePage ||

@@ -13,6 +13,8 @@ export interface CompanyProfile {
   legalName: string;
   gstin: string;
   businessType: string;
+  industry: string;
+  kybStatus: string;
   address: string;
 }
 

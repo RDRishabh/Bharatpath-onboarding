@@ -49,6 +49,7 @@ export const baseApi = createApi({
     "Job",
     "Candidate",
     "Application",
+    "Team",
   ],
 
   endpoints: () => ({}),

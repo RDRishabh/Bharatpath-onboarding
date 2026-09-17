@@ -1,12 +1,16 @@
 "use client";
 
+import { useEffect } from "react";
+import { Loader } from "@/components/common/loader";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   askRemoveMember,
   openInviteModal,
+  replaceTeamMembers,
   resendInvite,
   selectTeamMembers,
   toggleMemberMenu,
+  useGetEmployerTeamQuery,
 } from "@/store/employer/settings";
 import { UserPlus } from "lucide-react";
 
@@ -23,12 +27,39 @@ function initials(name: string) {
 export function TeamTab() {
   const dispatch = useAppDispatch();
   const members = useAppSelector(selectTeamMembers);
+  const {
+    data: team,
+    isError,
+    isLoading,
+  } = useGetEmployerTeamQuery();
+
+  // Do not expose a stale in-memory value before this tab's API request resolves.
+  const displayedMembers = team ? members : [];
+
+  useEffect(() => {
+    if (team) {
+      dispatch(replaceTeamMembers(team));
+    }
+  }, [dispatch, team]);
 
   return (
     <>
       <div className="mb-2.5 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="m-0 text-[14px] font-semibold leading-[18px]">
+        <div className="relative">
+          {isLoading && (
+            <div className="absolute left-0 top-0 flex h-[18px] items-center gap-1.5">
+              <span className="text-[14px] font-semibold leading-[18px]">
+                Team members
+              </span>
+              <span className="text-[14px] font-semibold leading-[18px] text-[#718096]">
+                ·
+              </span>
+              <span className="h-4 w-5 animate-pulse rounded bg-[#e2e7ed]" />
+            </div>
+          )}
+          <h2
+            className={`m-0 text-[14px] font-semibold leading-[18px] ${isLoading ? "invisible" : ""}`}
+          >
             Team members · {members.length}
           </h2>
           <p className="mt-0.5 text-xs leading-4 text-[#718096]">
@@ -54,7 +85,19 @@ export function TeamTab() {
           <span />
         </div>
 
-        {members.map((member) => (
+        {isLoading ? (
+          <div className="flex min-h-[360px] items-center justify-center px-[18px] py-8">
+            <Loader label="Loading team members…" />
+          </div>
+        ) : isError ? (
+          <div className="px-[18px] py-5 text-xs text-[#c0392b]">
+            Unable to load team members. Please try again.
+          </div>
+        ) : displayedMembers.length === 0 ? (
+          <div className="px-[18px] py-5 text-xs text-[#718096]">
+            No team members found.
+          </div>
+        ) : displayedMembers.map((member) => (
           <div
             key={member.id}
             className="grid min-h-[57px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] border-t border-[#edf0f3] px-[18px] max-sm:grid-cols-[minmax(0,1fr)_90px_70px_22px] max-sm:gap-2 max-sm:px-2.5"

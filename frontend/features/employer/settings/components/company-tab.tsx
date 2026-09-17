@@ -1,11 +1,14 @@
 "use client";
 
-import type { ChangeEvent } from "react";
+import { useEffect, type ChangeEvent } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   saveCompanyProfile,
+  replaceCompanyProfile,
   selectCompanyProfile,
   updateCompanyField,
+  useGetEmployerOrganisationQuery,
+  useUpdateEmployerOrganisationMutation,
 } from "@/store/employer/settings";
 
 const inputClass =
@@ -28,9 +31,51 @@ function Field({
   );
 }
 
+function CompanyTabSkeleton() {
+  return (
+    <section
+      aria-label="Loading company profile"
+      aria-busy="true"
+      className="max-w-[600px] animate-pulse rounded-xl border border-[#e0e4e9] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.02)]"
+    >
+      <div className="mb-6 space-y-2">
+        <div className="h-4 w-28 rounded bg-[#e8ecf1]" />
+        <div className="h-3 w-72 rounded bg-[#eef1f4]" />
+      </div>
+      <div className="mb-3 space-y-1.5">
+        <div className="h-3 w-28 rounded bg-[#e8ecf1]" />
+        <div className="h-[43px] rounded-[9px] bg-[#eef1f4]" />
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {["gstin", "type", "industry", "status"].map((field) => (
+          <div key={field} className="space-y-1.5">
+            <div className="h-3 w-20 rounded bg-[#e8ecf1]" />
+            <div className="h-[43px] rounded-[9px] bg-[#eef1f4]" />
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 space-y-1.5">
+        <div className="h-3 w-32 rounded bg-[#e8ecf1]" />
+        <div className="h-[43px] rounded-[9px] bg-[#eef1f4]" />
+      </div>
+      <div className="mt-5 h-9 w-28 rounded-lg bg-[#e8ecf1]" />
+    </section>
+  );
+}
+
 export function CompanyTab() {
   const dispatch = useAppDispatch();
   const company = useAppSelector(selectCompanyProfile);
+  const { data: organisation, isError, isLoading } =
+    useGetEmployerOrganisationQuery();
+  const [updateOrganisation, { isLoading: isSaving }] =
+    useUpdateEmployerOrganisationMutation();
+
+  useEffect(() => {
+    if (organisation) {
+      dispatch(replaceCompanyProfile(organisation));
+    }
+  }, [dispatch, organisation]);
 
   const update =
     (field: keyof typeof company) => (event: ChangeEvent<HTMLInputElement>) =>
@@ -40,6 +85,23 @@ export function CompanyTab() {
           value: event.target.value,
         }),
       );
+
+  if (isLoading) {
+    return <CompanyTabSkeleton />;
+  }
+
+  const save = () => {
+    void updateOrganisation({
+      legalName: company.legalName,
+      businessType: company.businessType,
+      industry: company.industry,
+    })
+      .unwrap()
+      .then((updatedCompany) => {
+        dispatch(replaceCompanyProfile(updatedCompany));
+        dispatch(saveCompanyProfile());
+      });
+  };
 
   return (
     <section className="max-w-[600px] rounded-xl border border-[#e0e4e9] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.02)]">
@@ -51,6 +113,12 @@ export function CompanyTab() {
           Details used for verification and on your job listings
         </p>
       </div>
+
+      {isError && (
+        <p className="mb-3 text-xs text-[#c0392b]">
+          Unable to load company details. Please try again.
+        </p>
+      )}
 
       <Field label="Legal business name">
         <input
@@ -64,7 +132,9 @@ export function CompanyTab() {
         <Field label="GSTIN">
           <input
             value={company.gstin}
-            onChange={update("gstin")}
+            placeholder="Not returned by organisation API"
+            disabled
+            readOnly
             className={inputClass}
           />
         </Field>
@@ -72,6 +142,17 @@ export function CompanyTab() {
         <Field label="Business type">
           <input
             value={company.businessType}
+            placeholder="Not specified"
+            disabled
+            readOnly
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="Industry">
+          <input
+            value={company.industry}
+            placeholder="Not specified"
             disabled
             readOnly
             className={inputClass}
@@ -79,10 +160,22 @@ export function CompanyTab() {
         </Field>
       </div>
 
-      <Field label="Registered address">
+      <Field label="Verification status">
         <input
-          value={company.address}
-          onChange={update("address")}
+          value={company.kybStatus}
+          placeholder="Not specified"
+          disabled
+          readOnly
+          className={inputClass}
+        />
+      </Field>
+
+      <Field label="Registered address">
+          <input
+            value={company.address}
+            placeholder="Not returned by organisation API"
+            disabled
+            readOnly
           className={inputClass}
         />
       </Field>
@@ -90,9 +183,10 @@ export function CompanyTab() {
       <button
         type="button"
         className="min-h-9 cursor-pointer rounded-lg border border-[#5a4bd1] bg-[#5b4ed0] px-3.5 text-xs font-bold text-white hover:bg-[#4f43bd]"
-        onClick={() => dispatch(saveCompanyProfile())}
+        disabled={isSaving || !company.legalName.trim()}
+        onClick={save}
       >
-        Save changes
+        {isSaving ? "Saving…" : "Save changes"}
       </button>
     </section>
   );

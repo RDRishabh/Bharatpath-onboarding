@@ -19,6 +19,7 @@ export function ApplicationsPageContent() {
     handleOpenApplication,
     handleCloseApplication,
     handleMoveStage,
+    handleMoveToColumn,
     handleMeetingLinkChange,
     handleConfirmHire,
   } = useApplicationsPage();
@@ -31,6 +32,7 @@ export function ApplicationsPageContent() {
         min-h-0
         flex-col
         bg-[#f8f9fb]
+        p-4
       "
     >
       {/* =====================================================
@@ -68,6 +70,7 @@ export function ApplicationsPageContent() {
           onApplicationClick={
             handleOpenApplication
           }
+          onApplicationDrop={handleMoveToColumn}
         />
       </div>
 
