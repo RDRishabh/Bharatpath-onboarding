@@ -126,7 +126,10 @@ class CandidateSearchDocument(Base):
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     score_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("scores.id", ondelete="CASCADE"), nullable=False
+        PGUUID(as_uuid=True),
+        ForeignKey("scores.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     resume_version_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("resume_versions.id", ondelete="CASCADE"), nullable=False

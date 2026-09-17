@@ -381,12 +381,52 @@ the incomplete-profile sweep. **No SMS is sent without a DLT template id**
 today only the in-app inbox delivers; every skipped message is still recorded
 with its reason.
 
+## privacy — `/privacy` (Day 20)
+
+Every signed-in account, its own requests only. **Never paywalled** — a right
+of access that costs a subscription is not a right of access.
+
+| Method | Path | Body/Params | Response | Notes |
+|---|---|---|---|---|
+| POST | `/privacy/requests/export` | — | `DsrRequestResponse` (202) | One open export at a time (409 `dsr_request_already_open`). Built in the background |
+| POST | `/privacy/requests/deletion` | — | `DsrRequestResponse` (202) | **Candidates only**; a business account gets 403 `dsr_deletion_requires_support` |
+| GET | `/privacy/requests` | — | `DsrRequestList` | Newest first |
+| GET | `/privacy/requests/{id}` | path | `DsrRequestResponse` | 404 for someone else's. Poll `download_available` |
+| POST | `/privacy/requests/{id}/withdraw` | path | `DsrRequestResponse` | A deletion, while still RECEIVED. 409 `dsr_request_not_withdrawable` |
+| GET | `/privacy/requests/{id}/download` | path | `ExportDownloadResponse` | A 10-minute link, minted per call and audited. 409 `dsr_export_not_ready` / `dsr_export_expired` |
+
+`due_at` is when we have promised to answer (30 days). A deletion shows
+`erasable_at`: nothing is destroyed before it, and the request can be
+withdrawn until then. Afterwards the sweep erases the account in one
+transaction — personal data destroyed, payment and audit records kept under
+the legal carve-out, pointing at an account that identifies nobody. **A token
+issued before an erasure stops working immediately** (401 `account_inactive`),
+so a client holding one should sign the person out rather than retry.
+
+The export is a zip of JSON, one file per section. It carries the score and
+**not** how it was calculated — the platform never explains a score, and an
+export is not a way round that.
+
+## Rate limits (Day 20)
+
+Two tiers, both answering **429** with a `Retry-After` header in seconds:
+
+- **Global** — per IP, per user and per tenant, per minute. Generous: a guard
+  against a runaway client, not something a person clicking can reach. An
+  organisation's staff share one tenant budget.
+- **Specific** — tightest on OTP (per phone and per IP, hourly) and the
+  employer threshold preview (per organisation, hourly); the privacy routes
+  have their own, looser one.
+
+A client should back off by `Retry-After` rather than retrying immediately;
+retrying inside the window extends its own lockout, because the window counts
+refused requests too.
+
 ## Stub modules — registered, no routes yet
 
 | Module | Prefix | What's planned |
 |---|---|---|
 | integrity | `/integrity` | Nothing of its own: review routes live in `/admin/integrity` |
-| privacy | `/privacy` | Export/deletion requests, DSR tracking (Day 20) |
 
 ---
 

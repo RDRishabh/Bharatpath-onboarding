@@ -15,4 +15,7 @@ dist/
 build/
 *.egg-info/
 openapi.json
+# Generated from openapi.json by scripts/export_postman.py; published as a CI
+# artifact beside it, never committed, so it can never be stale in the repo.
+bharatpath.postman_collection.json
 .DS_Store

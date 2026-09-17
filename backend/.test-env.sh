@@ -5,3 +5,4 @@ export REDIS_URL="redis://localhost:6379/0"
 export ENVIRONMENT=local
 export AUTH_ALLOW_LOCAL_TOKENS=true
 export PAYMENTS_PROVIDER=stub
+export RATE_LIMIT_GLOBAL_ENABLED=false

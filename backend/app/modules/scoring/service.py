@@ -148,6 +148,7 @@ async def persist(
     raw_model_response: dict[str, Any] | None,
     model_id: str | None,
     addons: AddOnContributions | None = None,
+    extraction_cache_key: str | None = None,
 ) -> ScoreResult:
     """**The sole write path for a score.**
 
@@ -159,6 +160,11 @@ async def persist(
     `addon_value`, `raw_value`) rather than only the total, because
     `resume_version_id` stopped being sufficient to reproduce a score the
     moment the client made add-ons move it.
+
+    `extraction_cache_key` is optional only for callers holding an extraction
+    that never came from the cache (tests seeding a score directly). Both
+    production paths pass it, because a score without it is a score whose
+    cached reading an erasure cannot reach (Day 20).
     """
     addons = addons or AddOnContributions()
 
@@ -191,6 +197,7 @@ async def persist(
         extracted_features=extracted_features,
         taxonomy_version=TAXONOMY_VERSION,
         rubric_version=RUBRIC_VERSION,
+        extraction_cache_key=extraction_cache_key,
     )
 
     await emit(
@@ -246,7 +253,7 @@ async def score_confirmed_resume(
         )
 
     extractor = get_resume_extractor(settings)
-    raw_response, features, _key = await _extraction_for(
+    raw_response, features, cache_key = await _extraction_for(
         session, text=text[: settings.resume_max_text_chars], extractor=extractor
     )
 
@@ -257,6 +264,7 @@ async def score_confirmed_resume(
         extracted_features=features,
         raw_model_response=raw_response,
         model_id=extractor.model_id,
+        extraction_cache_key=cache_key,
         addons=addons,
     )
 
@@ -338,6 +346,7 @@ async def rescore_for_addons(session: AsyncSession, *, user_id: uuid.UUID) -> Sc
         extracted_features=latest.extracted_features,
         raw_model_response=latest.raw_model_response,
         model_id=latest.model_id,
+        extraction_cache_key=latest.extraction_cache_key,
         addons=addons,
     )
 

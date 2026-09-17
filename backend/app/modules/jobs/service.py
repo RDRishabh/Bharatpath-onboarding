@@ -44,7 +44,7 @@ from app.core.errors import (
 from app.core.logging import get_logger
 from app.core.outbox import emit
 from app.core.pagination import Page, clamp_limit, decode_cursor, encode_cursor
-from app.core.ratelimit import hit
+from app.core.ratelimit import STATIC_POLICIES, hit
 from app.core.tenant import TenantContext
 from app.modules.discovery import service as discovery_service
 from app.modules.employer import service as employer_service
@@ -63,7 +63,9 @@ logger = get_logger(__name__)
 
 #: Threshold previews per organisation per hour. Enough for someone composing
 #: several jobs and trying thresholds; far too few to binary-search a score.
-THRESHOLD_PREVIEWS_PER_HOUR: Final = 30
+#: The number lives in `app.core.ratelimit.STATIC_POLICIES` (Day 20), beside
+#: every other limit, so it can be held as one of the two tightest.
+THRESHOLD_PREVIEWS_PER_HOUR: Final = STATIC_POLICIES["jobs.threshold_preview"].limit
 MAX_JOB_LIST: Final = 100
 
 

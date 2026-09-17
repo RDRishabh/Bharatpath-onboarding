@@ -20,9 +20,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
+from app.core import ratelimit
 from app.core.auth import dispose_identity_provider
 from app.core.cache import dispose_redis
 from app.core.db import dispose_engines
+from app.core.deps import client_ip
 from app.core.errors import AppError, app_error_handler, unhandled_error_handler
 from app.core.logging import configure_logging, get_logger
 from app.core.metadata import load_all_models
@@ -87,6 +89,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         expose_headers=["X-Request-ID"],
         max_age=600,  # cache the preflight, so OPTIONS is not sent every call
     )
+
+    @app.middleware("http")
+    async def global_ip_limit(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """The per-IP tier of the global limit (Day 20), before authentication.
+
+        Before, so an unauthenticated flood is turned away without costing a
+        JWKS verification or a database lookup each. Fails open -- see
+        `app/core/ratelimit.py` for why the global tier does and the specific
+        limits do not. Answered here rather than raised, because an exception
+        from middleware does not reach the application's error handlers.
+        """
+        if get_settings().rate_limit_global_enabled and request.url.path != "/":
+            ip = client_ip(request)
+            if ip:
+                try:
+                    await ratelimit.enforce("global.ip", subject=ip)
+                except AppError as exc:
+                    return await app_error_handler(request, exc)
+        return await call_next(request)
 
     @app.middleware("http")
     async def correlation_id(

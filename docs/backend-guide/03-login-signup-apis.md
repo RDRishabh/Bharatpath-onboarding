@@ -343,38 +343,18 @@ address logs in** — there's no separate "accept invite" click.
 
 ### `PATCH /employer/team/{user_id}`
 
-**Auth required:** **Owner only**. `user_id` (path parameter) is the target
-member's id — from the `GET /employer/team` list, never guessable/sequential.
-
-**Request body** (`ChangeRoleRequest`):
-```json
-{ "role": "EMPLOYER_VIEWER" }
-```
-
-**Response** — `200 OK`, updated `TeamMemberResponse`:
-```json
-{ "user_id": "...", "email": "recruiter@acme.com", "role": "EMPLOYER_VIEWER", "added_at": "..." }
-```
-
-**Errors:**
-| Code | When |
-|---|---|
-| `404` | `user_id` isn't a member of *this* org — **never `403`**, so the existence of a row belonging to another tenant is never confirmed either way |
-| `409 identity_last_owner` | This would leave the org with zero owners |
+Requires: **Owner only**. Body: `{"role": "EMPLOYER_VIEWER"}`. `404` (not
+403) if `user_id` isn't a member of *this* org — existence of a row in
+another tenant is never confirmed. `409 identity_last_owner` if this would
+leave the org with zero owners.
 
 ### `DELETE /employer/team/{user_id}`
 
-**Auth required:** **Owner only**. `user_id` in the path, same as above.
-
-**Request:** no body.
-
-**Response** — `204 No Content` — empty body, nothing to parse.
-
-This **revokes**, never deletes, the membership row (it's kept as a record
-of who could see what, and when) — access ends on the *very next request*
-that user makes, because removing it also drops the 60-second Redis cache
-immediately rather than waiting it out. Same `409 identity_last_owner` guard
-as above.
+Requires: **Owner only**. `204 No Content`, no body. This **revokes**, never
+deletes, the membership row (it's kept as a record of who could see what,
+and when) — access ends on the *very next request* that user makes, because
+removing it also drops the 60-second Redis cache immediately rather than
+waiting it out. Same `identity_last_owner` guard as above.
 
 ---
 

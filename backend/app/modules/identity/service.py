@@ -19,10 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import membership as membership_lookup
 from app.core.errors import ConflictError, NotFoundError
 from app.core.logging import get_logger
-from app.core.ratelimit import hit
+from app.core.ratelimit import enforce
 from app.modules.identity import repository
 from app.modules.identity.domain import PLATFORM_ROLES, suspendable
-from app.settings import get_settings
 
 logger = get_logger(__name__)
 
@@ -45,21 +44,9 @@ async def start_otp_challenge(*, phone: str, client_ip: str | None) -> int:
     Returns the window length, so the client can render a resend timer that
     matches the server's actual behaviour rather than guessing.
     """
-    settings = get_settings()
-
-    await hit(
-        bucket="otp:phone",
-        subject=phone,
-        limit=settings.otp_start_per_phone_per_hour,
-        window_seconds=OTP_WINDOW_SECONDS,
-    )
+    await enforce("otp.phone", subject=phone)
     if client_ip:
-        await hit(
-            bucket="otp:ip",
-            subject=client_ip,
-            limit=settings.otp_start_per_ip_per_hour,
-            window_seconds=OTP_WINDOW_SECONDS,
-        )
+        await enforce("otp.ip", subject=client_ip)
 
     # Logged without the number. A phone number in an application log is
     # personal data sitting in a system with far broader access than the

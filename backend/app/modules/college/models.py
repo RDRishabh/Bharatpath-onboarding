@@ -162,6 +162,7 @@ class CollegeSeatAssignment(Base, UUIDPrimaryKey, TenantScoped):
         PGUUID(as_uuid=True),
         ForeignKey("student_consents.id", ondelete="RESTRICT"),
         nullable=False,
+        index=True,
     )
     assigned_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -180,6 +181,10 @@ class CollegeSeatAssignment(Base, UUIDPrimaryKey, TenantScoped):
             unique=True,
             postgresql_where=text("released_at IS NULL"),
         ),
+        # Every seat a candidate ever held, released ones included -- the
+        # erasure's predicate (Day 20 index review). The unique index above
+        # covers only the live one.
+        Index("ix_college_seat_assignments_candidate", "candidate_id"),
         Index(
             "ix_college_seat_assignments_live",
             "tenant_id",
@@ -346,10 +351,10 @@ class StudentConsent(Base, UUIDPrimaryKey, TenantScoped):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     granted_via: Mapped[str] = mapped_column(String(16), nullable=False)
     referral_code_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("referral_codes.id", ondelete="RESTRICT")
+        PGUUID(as_uuid=True), ForeignKey("referral_codes.id", ondelete="RESTRICT"), index=True
     )
     roster_entry_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("roster_entries.id", ondelete="RESTRICT")
+        PGUUID(as_uuid=True), ForeignKey("roster_entries.id", ondelete="RESTRICT"), index=True
     )
     # Consent must be stored with scope, timestamp, version and status
     # (SRS 1.15.3). The client's counsel owns the text of each version.

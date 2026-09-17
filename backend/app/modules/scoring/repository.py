@@ -96,6 +96,7 @@ async def insert_score(
     extracted_features: dict[str, Any] | None,
     taxonomy_version: str | None,
     rubric_version: str | None,
+    extraction_cache_key: str | None,
 ) -> Score:
     """Append one score. **The only write path to this table.**
 
@@ -125,6 +126,7 @@ async def insert_score(
         extracted_features=extracted_features,
         taxonomy_version=taxonomy_version,
         rubric_version=rubric_version,
+        extraction_cache_key=extraction_cache_key,
     )
     session.add(row)
     await session.flush()

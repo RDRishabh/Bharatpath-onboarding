@@ -183,21 +183,82 @@ E. DUPLICATE CV DETECTION — YOU MARKED THIS FOR RE-CONFIRMATION
   reversing costs little. Just let us know when you have confirmed it.
 
 
-F. DATA DELETION POLICY — WE NEED A DATE, NOT JUST AN ANSWER
+F. DATA DELETION — BUILT, AND NOW FOUR THINGS ONLY YOU AND YOUR LAWYER
+   CAN ANSWER
+   [updated 17 September 2026, once the deletion was actually built]
 
-  You said you will discuss and come back. That is fine, but this one has a
-  lawyer in the loop, and lawyers take weeks rather than days.
+  Deletion works. A candidate can ask to be forgotten, there is a one-day
+  cooling-off period in which they can change their mind, and after that
+  everything personal about them is destroyed in a single step: their CV, the
+  text we parsed out of it, their score, their applications, their mock
+  interview recordings, their profile, their notifications. What survives is
+  what you told us must survive (your "B3 correct", 15 September): payment
+  records and the audit log. Those keep pointing at an account that no longer
+  holds a name, a phone number, an email address or any link to the login —
+  they record that something happened, not who it happened to.
 
-  We need it by roughly week four of the build. Working backwards, that means
-  the conversation needs to start within the next week or so.
+  Four things are still yours to decide. Only the first is urgent.
 
-  Could you tell us when you expect to have it? A date is more useful to us than
-  the answer arriving early.
+  F1. HOW LONG DO THE KEPT RECORDS LIVE? (your lawyer)
 
-  As a reminder, the question is: when a candidate asks you to delete their data,
-  which parts are erased permanently, which are kept but anonymised, and how long
-  do payment records and audit records survive? These pull against each other and
-  it is a legal call, not an engineering one.
+      Payment records and audit records survive a deletion. They cannot
+      survive forever, and today they do, because nobody has told us a
+      period. We are not guessing one: a guessed retention period that is
+      too short destroys evidence you may need, and one that is too long is
+      the thing a regulator asks about.
+
+      We need one number per category — for example "payment records: eight
+      years; audit records: three years". Until it arrives, the code is
+      marked "placeholder" and a test in our build fails if anyone quietly
+      treats it as settled.
+
+  F2. A DELETION REMOVES THE CANDIDATE FROM THE EMPLOYER'S PIPELINE.
+      IS THAT RIGHT? (your lawyer)
+
+      If a candidate applied to three jobs and then asks to be forgotten,
+      those three applications disappear from those employers' screens,
+      along with the notes recruiters wrote. That follows from "delete
+      everything personal" — an application is about a person. But it does
+      take something out of a third party's workspace, and we would rather
+      you knew that than discovered it from an employer's complaint.
+
+      The alternative is to keep the application with the person removed
+      from it, which leaves an employer looking at an anonymous row they can
+      do nothing with. We think what we have built is right. We would like
+      it confirmed.
+
+  F3. THE SAME QUESTION ABOUT COMPLAINTS. (your lawyer)
+
+      If a candidate raised a dispute and then asks to be forgotten, we
+      delete the dispute — it is their words about their situation. It is
+      also our record of how we handled the case. If your lawyer would
+      rather we kept a de-identified record of the handling, say so and we
+      will treat disputes like the audit log instead.
+
+  F4. WHAT HAPPENS WHEN AN EMPLOYER'S OR COLLEGE'S LAST OWNER ASKS TO BE
+      FORGOTTEN? (you, not your lawyer)
+
+      Candidates can delete themselves today. Business accounts cannot, and
+      we stopped it deliberately rather than leaving it half-working:
+      erasing the last owner of an employer would leave the organisation,
+      its jobs, its staff and its subscription with nobody able to reach
+      them.
+
+      The options are roughly: the request goes to your support team, who
+      transfer ownership first; or the whole organisation closes with its
+      last owner. Tell us which and we will build it. Until then, a business
+      user asking to be deleted is told to contact support — export works
+      for them today.
+
+  ONE MORE THING WORTH KNOWING, NOT A QUESTION.
+
+      If a college uploaded a student's phone number to its roster, and that
+      student later asks us to delete their data, we cannot reach that
+      roster row. This is by design and you approved the design: a college
+      must never learn which of its students has an account with us, so
+      there is no link between the two. The roster is the college's own
+      record of its own student, and the college has to delete it. Your
+      lawyer may want that written into the college contract.
 
 
 G. STILL WITH YOU FROM THE PREVIOUS ROUND — THE SCORING ITEMS

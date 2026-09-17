@@ -32,6 +32,9 @@ os.environ.setdefault("AUTH_ALLOW_LOCAL_TOKENS", "true")
 # exercises verification rather than skipping it; Settings refuses it outside
 # local and dev.
 os.environ.setdefault("PAYMENTS_PROVIDER", "stub")
+# One test "IP" makes more requests a minute than any person could. The
+# global tier is switched on by `tests/integration/test_rate_limits.py`.
+os.environ.setdefault("RATE_LIMIT_GLOBAL_ENABLED", "false")
 
 # Complete `Base.metadata` for every test, not just the ones that happen to
 # build the app. A test that imports one module's models alone cannot resolve

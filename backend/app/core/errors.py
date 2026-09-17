@@ -149,7 +149,14 @@ async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
         body["params"] = exc.params
     if request_id := getattr(request.state, "request_id", None):
         body["request_id"] = request_id
-    return JSONResponse(status_code=exc.status_code, content=body, media_type=PROBLEM_JSON)
+    headers: dict[str, str] = {}
+    # RFC 9110. A client that honours this backs off by exactly the window
+    # rather than retrying in a loop and extending its own lockout.
+    if isinstance(exc, RateLimitedError) and "retry_after_seconds" in exc.params:
+        headers["Retry-After"] = str(exc.params["retry_after_seconds"])
+    return JSONResponse(
+        status_code=exc.status_code, content=body, media_type=PROBLEM_JSON, headers=headers
+    )
 
 
 async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:

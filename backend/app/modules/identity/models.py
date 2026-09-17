@@ -87,8 +87,18 @@ class User(Base, UUIDPrimaryKey, Timestamps):
         CheckConstraint(_in("status", ("ACTIVE", "SUSPENDED", "DELETED")), name="ck_users_status"),
         # A user must be reachable by something, or we can never contact them
         # and they can never sign in again.
+        #
+        # **Unless they asked to be forgotten** (Day 20). An erasure clears
+        # phone and email and hashes the Cognito subject -- that emptying *is*
+        # the pseudonymisation (the hash remains so a live token is refused
+        # rather than signed up again, `app/core/auth/users.py`), and the row
+        # stays only as the anchor every retained payment and audit row points
+        # at. Without this carve-out the CHECK would refuse the erasure, which
+        # is the constraint protecting a person's ability to sign in by
+        # preventing them from leaving.
         CheckConstraint(
-            "phone IS NOT NULL OR email IS NOT NULL OR cognito_sub IS NOT NULL",
+            "status = 'DELETED' "
+            "OR phone IS NOT NULL OR email IS NOT NULL OR cognito_sub IS NOT NULL",
             name="ck_users_has_identifier",
         ),
     )
