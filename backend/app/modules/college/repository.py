@@ -27,7 +27,14 @@ from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.college.domain import INVITE_PENDING, INVITE_SENT, ROSTER, RosterRow
+from app.modules.college.domain import (
+    GRANTED_VIA_DIRECT,
+    INDIVIDUAL,
+    INVITE_PENDING,
+    INVITE_SENT,
+    ROSTER,
+    RosterRow,
+)
 from app.modules.college.models import (
     College,
     CollegeSeat,
@@ -524,3 +531,162 @@ async def invitation_rows(
         )
     )
     return [(state, sent_at) for state, sent_at in result.tuples()]
+
+
+# --- consent: granting INDIVIDUAL and revoking (candidate transaction, Day 18) --
+async def live_consents(
+    session: AsyncSession, *, tenant_id: uuid.UUID, candidate_id: uuid.UUID
+) -> list[StudentConsent]:
+    result = await session.execute(
+        select(StudentConsent)
+        .where(
+            StudentConsent.tenant_id == tenant_id,
+            StudentConsent.candidate_id == candidate_id,
+            StudentConsent.revoked_at.is_(None),
+        )
+        .order_by(StudentConsent.granted_at)
+    )
+    return list(result.scalars())
+
+
+async def insert_individual_consent(
+    session: AsyncSession, *, tenant_id: uuid.UUID, candidate_id: uuid.UUID, consent_version: str
+) -> StudentConsent:
+    row = StudentConsent(
+        tenant_id=tenant_id,
+        candidate_id=candidate_id,
+        scope=INDIVIDUAL,
+        granted_via=GRANTED_VIA_DIRECT,
+        consent_version=consent_version,
+    )
+    session.add(row)
+    await session.flush()
+    await session.refresh(row)
+    return row
+
+
+async def revoke_consent(
+    session: AsyncSession, *, tenant_id: uuid.UUID, candidate_id: uuid.UUID, scope: str
+) -> datetime | None:
+    """Revoke the student's live consent of `scope` at that college, and
+    return when; None if there was none. `clock_timestamp()`, so a revocation
+    is stamped when it happened rather than when its transaction began. The
+    triggers release the seat and end INDIVIDUAL with ROSTER."""
+    result = await session.execute(
+        update(StudentConsent)
+        .where(
+            StudentConsent.tenant_id == tenant_id,
+            StudentConsent.candidate_id == candidate_id,
+            StudentConsent.scope == scope,
+            StudentConsent.revoked_at.is_(None),
+        )
+        .values(revoked_at=func.clock_timestamp())
+        .returning(StudentConsent.revoked_at)
+    )
+    return result.scalar_one_or_none()
+
+
+async def has_any_consent(
+    session: AsyncSession, *, tenant_id: uuid.UUID, candidate_id: uuid.UUID
+) -> bool:
+    result = await session.execute(
+        select(func.count())
+        .select_from(StudentConsent)
+        .where(
+            StudentConsent.tenant_id == tenant_id,
+            StudentConsent.candidate_id == candidate_id,
+        )
+    )
+    return bool(result.scalar_one())
+
+
+# --- students who let their college see them (college transaction, Day 18) ----
+@dataclass(frozen=True, slots=True)
+class VisibleStudentRow:
+    candidate_id: uuid.UUID
+    consent_id: uuid.UUID
+    visible_since: datetime
+    full_name: str | None
+    score_resume_version_id: uuid.UUID | None
+
+
+async def visible_students(
+    session: AsyncSession, *, limit: int, after: tuple[datetime, uuid.UUID] | None
+) -> list[VisibleStudentRow]:
+    """Through `college_visible_students`, which INNER JOINs live INDIVIDUAL
+    and ROSTER consent for the bound college. Never a table read."""
+    result = await session.execute(
+        text(
+            "SELECT candidate_id, consent_id, visible_since, full_name, score_resume_version_id "
+            "FROM college_visible_students(:limit, :since, :after_id)"
+        ),
+        {
+            "limit": limit,
+            "since": after[0] if after else None,
+            "after_id": str(after[1]) if after else None,
+        },
+    )
+    return [
+        VisibleStudentRow(
+            r.candidate_id, r.consent_id, r.visible_since, r.full_name, r.score_resume_version_id
+        )
+        for r in result
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class StudentProfileRow:
+    candidate_id: uuid.UUID
+    consent_id: uuid.UUID
+    visible_since: datetime
+    full_name: str | None
+    stored_score: int | None
+    scored_at: datetime | None
+    score_resume_version_id: uuid.UUID | None
+    applications: int
+    interviews: int
+    hires: int
+
+
+async def student_profile(
+    session: AsyncSession, *, candidate_id: uuid.UUID
+) -> StudentProfileRow | None:
+    row = (
+        await session.execute(
+            text(
+                "SELECT candidate_id, consent_id, visible_since, full_name, stored_score, "
+                "scored_at, score_resume_version_id, applications, interviews, hires "
+                "FROM college_student_profile(:c)"
+            ),
+            {"c": str(candidate_id)},
+        )
+    ).first()
+    if row is None:
+        return None
+    return StudentProfileRow(
+        row.candidate_id,
+        row.consent_id,
+        row.visible_since,
+        row.full_name,
+        row.stored_score,
+        row.scored_at,
+        row.score_resume_version_id,
+        int(row.applications),
+        int(row.interviews),
+        int(row.hires),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class StudentHireRow:
+    job_title: str
+    employer_name: str
+    hired_at: datetime
+
+
+async def student_hires(session: AsyncSession, *, candidate_id: uuid.UUID) -> list[StudentHireRow]:
+    result = await session.execute(
+        text("SELECT job_title, employer_name, hired_at FROM college_student_hires(:c)"),
+        {"c": str(candidate_id)},
+    )
+    return [StudentHireRow(r.job_title, r.employer_name, r.hired_at) for r in result]

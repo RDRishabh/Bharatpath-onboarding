@@ -358,8 +358,15 @@ class StudentConsent(Base, UUIDPrimaryKey, TenantScoped):
     __table_args__ = (
         CheckConstraint("scope IN ('ROSTER', 'INDIVIDUAL')", name="ck_student_consents_scope"),
         CheckConstraint(
-            "granted_via IN ('INVITE', 'REFERRAL_CODE')",
+            "granted_via IN ('INVITE', 'REFERRAL_CODE', 'DIRECT')",
             name="ck_student_consents_granted_via",
+        ),
+        # **A code or an invitation confers ROSTER; only the student's own,
+        # separate act confers INDIVIDUAL** (PRD 3.8). Held here for every
+        # writer, not only in the policy the student writes through.
+        CheckConstraint(
+            "(scope = 'INDIVIDUAL') = (granted_via = 'DIRECT')",
+            name="ck_student_consents_scope_via",
         ),
         CheckConstraint(
             "((granted_via = 'REFERRAL_CODE') = (referral_code_id IS NOT NULL)) "

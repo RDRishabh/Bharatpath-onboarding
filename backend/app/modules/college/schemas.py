@@ -11,6 +11,12 @@ invitation counts, and the rows of its own uploaded files. Which of those
 students have accounts, who they are once linked, and anything about their
 score is absent here by construction: ROSTER consent is counting, not seeing
 (PRD 3.8), and INDIVIDUAL visibility is Day 18's separate grant.
+
+**The one exception is `CollegeStudentResponse`**, and it exists only behind a
+live INDIVIDUAL consent, read on every request and audited on every open. It
+has no field for a phone number, an email, a CV, a raw score, a breakdown, or
+anything an employer wrote: `tests/invariants/test_invariant_09_consent.py`
+holds its field list.
 """
 
 from __future__ import annotations
@@ -186,7 +192,7 @@ class InvitationsSentResponse(_Base):
 # --- the student's side ----------------------------------------------------------
 class ConsentTermsResponse(_Base):
     consent_version: str
-    scope: Literal["ROSTER"]
+    scope: Literal["ROSTER", "INDIVIDUAL"]
     key: str = Field(description="Translation key. `text` is the English source.")
     text: str
 
@@ -211,7 +217,7 @@ class CollegeLinkResponse(_Base):
     college_id: uuid.UUID
     college_name: str | None
     scope: Literal["ROSTER", "INDIVIDUAL"]
-    granted_via: Literal["REFERRAL_CODE", "INVITE"]
+    granted_via: Literal["REFERRAL_CODE", "INVITE", "DIRECT"]
     granted_at: datetime
     revoked_at: datetime | None
     seat_held: bool
@@ -222,3 +228,69 @@ class CandidateInvitationResponse(_Base):
     college_name: str
     sent_at: datetime
     expires_at: datetime
+
+
+# --- consent after linking (Day 18) -----------------------------------------------
+class GrantIndividualVisibilityRequest(_Base):
+    consent_version: str = Field(
+        min_length=1,
+        max_length=32,
+        description="The version of the INDIVIDUAL terms the app showed. A stale one is refused.",
+    )
+
+
+class RevokeConsentRequest(_Base):
+    scope: Literal["ROSTER", "INDIVIDUAL"] = Field(
+        description=(
+            "`INDIVIDUAL` stops the college seeing you as a person and keeps the link. "
+            "`ROSTER` disconnects: the college stops counting you, your seat there is "
+            "released, and individual visibility ends with it."
+        )
+    )
+
+
+class RevokeConsentResponse(_Base):
+    college_id: uuid.UUID
+    revoked: list[Literal["ROSTER", "INDIVIDUAL"]] = Field(
+        description="What this request ended. Empty if it had already ended."
+    )
+    revoked_at: datetime | None
+
+
+# --- students who let their college see them (Day 18) ------------------------------
+class VisibleStudentResponse(_Base):
+    candidate_id: uuid.UUID
+    full_name: str | None = Field(description="None when the student has not given one.")
+    visible_since: datetime
+
+
+class VisibleStudentsPage(_Base):
+    items: list[VisibleStudentResponse]
+    next_cursor: str | None = None
+
+
+class StudentHireResponse(_Base):
+    job_title: str
+    employer_name: str
+    hired_at: datetime
+    source: Literal["PLATFORM"] = Field(
+        default="PLATFORM",
+        description=(
+            "Always PLATFORM: a hire both sides confirmed on BharatPath. Placements "
+            "made elsewhere are never attributed to BharatPath."
+        ),
+    )
+
+
+class CollegeStudentResponse(_Base):
+    """One student, shown only while they allow it. Every open is audited."""
+
+    candidate_id: uuid.UUID
+    full_name: str | None
+    visible_since: datetime
+    score: int | None = Field(description="The score as the student sees it. None until scored.")
+    band: Literal["ENTRY", "DEVELOPING", "SOLID", "STRONG"] | None
+    scored_at: datetime | None
+    applications: int
+    interviews: int = Field(description="Applications that reached an interview.")
+    hires: list[StudentHireResponse]

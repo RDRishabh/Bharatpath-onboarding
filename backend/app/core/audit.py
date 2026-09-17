@@ -89,7 +89,11 @@ class AuditAction(StrEnum):
     # Consent - PRD rule 8
     CONSENT_GRANTED = "consent_granted"
     CONSENT_REVOKED = "consent_revoked"
+    #: One consenting student's details opened by college staff (Day 18).
     COLLEGE_STUDENT_VIEWED = "college_student_viewed"
+    #: The list of students who let their college see them was read. It
+    #: names people, so it is a reveal too; metadata holds the ids shown.
+    COLLEGE_STUDENTS_LISTED = "college_students_listed"
 
     # Privacy
     DSR_EXPORT_REQUESTED = "dsr_export_requested"

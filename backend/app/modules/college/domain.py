@@ -52,10 +52,50 @@ ROSTER_CONSENT_TEXT: Final = (
     "to that. You can disconnect at any time."
 )
 
+#: What seeing a student as a person means (Day 18). **A separate grant, made
+#: separately** (PRD 3.8): nothing on the linking path offers it, and it is
+#: versioned apart from the roster text because the two change independently.
+#: Placeholder words, ours, not counsel's, like the roster text above.
+INDIVIDUAL_CONSENT_VERSION: Final = "placeholder-1-2026-09-17"
+INDIVIDUAL_CONSENT_KEY: Final = "college.consent.individual"
+INDIVIDUAL_CONSENT_TEXT: Final = (
+    "Your college will be able to see you by name: your current BharatPath "
+    "score and band, how many jobs you have applied to and been interviewed "
+    "for, and the jobs you were hired into through BharatPath. It will not see "
+    "your phone number, your email, your CV, or anything an employer wrote "
+    "about you. Every time someone at your college opens your details it is "
+    "recorded. You can turn this off at any time, and your college loses this "
+    "view at once."
+)
+
 ROSTER: Final = "ROSTER"
 INDIVIDUAL: Final = "INDIVIDUAL"
+SCOPES: Final = (ROSTER, INDIVIDUAL)
 GRANTED_VIA_REFERRAL_CODE: Final = "REFERRAL_CODE"
 GRANTED_VIA_INVITE: Final = "INVITE"
+#: INDIVIDUAL scope, granted by the student from their own settings. **The
+#: only way INDIVIDUAL is ever granted, and the only thing granted this way**
+#: (`ck_student_consents_scope_via`): a code or an invitation confers ROSTER,
+#: and nothing but the student's separate act confers INDIVIDUAL.
+GRANTED_VIA_DIRECT: Final = "DIRECT"
+GRANTED_VIA: Final = (GRANTED_VIA_INVITE, GRANTED_VIA_REFERRAL_CODE, GRANTED_VIA_DIRECT)
+
+
+def consent_terms(scope: str) -> tuple[str, str, str]:
+    """`(version, key, text)` of the words a student agrees to for `scope`."""
+    if scope == INDIVIDUAL:
+        return INDIVIDUAL_CONSENT_VERSION, INDIVIDUAL_CONSENT_KEY, INDIVIDUAL_CONSENT_TEXT
+    if scope == ROSTER:
+        return CONSENT_VERSION, ROSTER_CONSENT_KEY, ROSTER_CONSENT_TEXT
+    raise ValueError(f"unknown consent scope: {scope}")
+
+
+def scopes_revoked_with(scope: str) -> tuple[str, ...]:
+    """What revoking `scope` ends. **Disconnecting ends individual visibility
+    too**: a college cannot see as a person someone it may no longer even
+    count. Revoking INDIVIDUAL leaves the link, and the seat, alone.
+    `revoke_individual_with_roster` is the database's copy of this rule."""
+    return (ROSTER, INDIVIDUAL) if scope == ROSTER else (INDIVIDUAL,)
 
 
 # ---------------------------------------------------------------------------

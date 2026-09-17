@@ -24,6 +24,15 @@ STUDENT_LINKED: Final = f"{MODULE}.student_linked"
 
 ROSTER_IMPORT_COMMITTED: Final = f"{MODULE}.roster_import_committed"
 
+#: A student let their college see them as a person (INDIVIDUAL scope).
+INDIVIDUAL_VISIBILITY_GRANTED: Final = f"{MODULE}.individual_visibility_granted"
+
+#: A student revoked consent (SRS 1.19.2: "Institution is notified of the
+#: changed access state"). `scopes` lists what ended. **For a ROSTER
+#: revocation the college-facing message must not name the student**: a
+#: named "X disconnected" beside a dashboard that just changed is X's band.
+CONSENT_REVOKED: Final = f"{MODULE}.consent_revoked"
+
 #: One invitation to send. For notifications (Day 19), which read the contact
 #: from the roster row; routed to nothing until then.
 INVITATION_SENT: Final = f"{MODULE}.invitation_sent"

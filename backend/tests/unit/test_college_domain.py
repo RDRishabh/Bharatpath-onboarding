@@ -250,13 +250,20 @@ def test_every_option_source_the_form_names_is_supplied() -> None:
 
 def test_no_college_facing_schema_names_a_score() -> None:
     """ROSTER consent is counting, not seeing. Nothing about a student's score
-    has a field on this surface (invariant 7 walks OpenAPI for the raw one)."""
+    has a field on this surface (invariant 7 walks OpenAPI for the raw one).
+
+    **One exception, by name** (Day 18): `CollegeStudentResponse`, served only
+    behind a live INDIVIDUAL consent whose words name the score, with its field
+    list fixed by `tests/invariants/test_invariant_09_consent.py`."""
     import inspect
 
     from pydantic import BaseModel
 
     from app.modules.college import schemas
 
-    for _, model in inspect.getmembers(schemas, inspect.isclass):
+    individually_consented = {"CollegeStudentResponse"}
+    for name, model in inspect.getmembers(schemas, inspect.isclass):
+        if name in individually_consented:
+            continue
         if issubclass(model, BaseModel) and model.__module__ == schemas.__name__:
             assert not [n for n in model.model_fields if "score" in n or "band" in n], model

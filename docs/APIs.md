@@ -279,6 +279,55 @@ independent by import-linter.
 | POST | `/candidate/streak/me/check-in` | CANDIDATE | — | `{counted, streak, changes[]}` | Idempotent per IST calendar day; call on every app open/foreground |
 | GET | `/candidate/streak/me/points` | CANDIDATE | `limit` (1–200, default 50) | `list[StreakPointsChangeResponse]` | Newest first |
 
+## college — `/college` (+ extra router at `/candidate/colleges`)
+
+A college's organisation, seats, referral codes and rosters (Day 17), and the
+consent a student gives it (Day 18). **Pay-first** gates issuing codes,
+importing, committing, sending, and the student view; organisation, team,
+onboarding, seats, revoking a code and discarding a preview stay open.
+
+| Method | Path | Auth | Body/Params | Response | Notes |
+|---|---|---|---|---|---|
+| POST | `/college/organisation` | business account, no org needed | `{name, institution_type}` | `CollegeResponse` (201) | Caller becomes COLLEGE_ADMIN |
+| GET / PATCH | `/college/organisation` | any college role / ADMIN | `{name?, institution_type?}` | `CollegeResponse` | |
+| GET / POST | `/college/team` | any college role / ADMIN | `{email, role}` | `TeamMemberResponse` | |
+| PATCH / DELETE | `/college/team/{user_id}` | ADMIN | `{role}` | `TeamMemberResponse` / 204 | 409 if it would leave no admin |
+| GET | `/college/onboarding` | any college role | — | `OnboardingResponse` | Versioned form + saved answers |
+| PUT | `/college/onboarding/answers` | ADMIN | `{answers}` | `OnboardingResponse` | Merge-save |
+| POST | `/college/onboarding/submit` | ADMIN | — | `OnboardingResponse` | 422 lists what is missing |
+| GET | `/college/seats` | any college role | — | `SeatsResponse` | Counts only. The allowance is set by our staff (no route yet, E10) |
+| POST | `/college/referral-codes` | ADMIN + paid | `{expires_in_days, max_uses?}` | `ReferralCodeResponse` (201) | A credential: 60 bits, always expiring |
+| GET | `/college/referral-codes` | any college role | — | `list[ReferralCodeResponse]` | |
+| POST | `/college/referral-codes/{code_id}/revoke` | ADMIN | path | `ReferralCodeResponse` | Not paywalled. Linked students stay linked |
+| POST | `/college/roster-imports` | any college role + paid | `{file_name, csv}` | `RosterImportResponse` (201; 200 same file) | Preview only: malformed and duplicate rows identified, nobody invited |
+| GET | `/college/roster-imports`, `/{import_id}`, `/{import_id}/rows` | any college role | `row_state`, `cursor`, `limit` | imports / rows | Invitation tracking counts per import |
+| POST | `/college/roster-imports/{import_id}/commit` | any college role + paid | path | `RosterImportResponse` | Duplicates re-checked; rows never invited are deleted |
+| POST | `/college/roster-imports/{import_id}/discard` | any college role | path | `RosterImportResponse` | Not paywalled |
+| POST | `/college/roster-imports/{import_id}/invitations/send` | any college role + paid | path | `{sent, invitations}` | Outbox event per invitation; delivery not live (DLT, SES) |
+| GET | `/college/students` | any college role + paid | `cursor`, `limit` | `VisibleStudentsPage` | **Only students with live INDIVIDUAL consent.** Every page read writes an audit row (`college_students_listed`, ids only) |
+| GET | `/college/students/{candidate_id}` | any college role + paid | path | `CollegeStudentResponse` | Name, display score and band, application/interview counts, platform hires. **404 unless the consent is live right now**; every open audited (`college_student_viewed`), re-opens included |
+| GET | `/candidate/colleges/consent-terms` | CANDIDATE | `scope` = `ROSTER` (default) or `INDIVIDUAL` | `ConsentTermsResponse` | Send `consent_version` back with the act |
+| GET | `/candidate/colleges` | CANDIDATE | — | `list[CollegeLinkResponse]` | Every grant, revoked ones included |
+| POST | `/candidate/colleges/link` | CANDIDATE | `{code, consent_version}` | `CollegeLinkResponse` (201; 200 if linked) | Entering the code **is** ROSTER consent, nothing more |
+| GET | `/candidate/colleges/invitations` | CANDIDATE | — | `list[CandidateInvitationResponse]` | Matched on the student's own verified contact |
+| POST | `/candidate/colleges/invitations/{id}/accept` / `decline` | CANDIDATE | `{consent_version}` / — | `CollegeLinkResponse` / 204 | Accepting is ROSTER consent |
+| POST | `/candidate/colleges/{college_id}/individual-visibility` | CANDIDATE | `{consent_version}` | `CollegeLinkResponse` (201; 200 if granted) | **A separate grant** (PRD 3.8). 404 `college_link_not_found` without a live link; 409 stale terms |
+| POST | `/candidate/colleges/{college_id}/revoke` | CANDIDATE | `{scope: ROSTER\|INDIVIDUAL}` | `{college_id, revoked, revoked_at}` | **Immediate.** `INDIVIDUAL` keeps the link; `ROSTER` disconnects and ends the seat and INDIVIDUAL in the same statement. Never paywalled. Idempotent; 404 for a college never linked |
+
+## analytics — `/college/analytics`
+
+Aggregates over the students linked to the college **right now**, read through
+database functions that INNER JOIN live consent (invariant 9). Never cached, so
+a revocation leaves every figure on the next request. Floors are config
+(`analytics.privacy`): under `min_cohort_size` (default 10) connected students
+only the counts show; a band or month under `min_cell_size` (default 5) is
+`null`, and so is its complement.
+
+| Method | Path | Auth | Response | Notes |
+|---|---|---|---|---|
+| GET | `/college/analytics/overview` | any college role + paid | `CohortOverviewResponse` | Connected, individually visible, score distribution by band, median (rounded to 10), applicants, applications, interviews, platform hires. 500 `analytics_floors_invalid` on a bad config row |
+| GET | `/college/analytics/placements` | any college role + paid | `PlacementReportResponse` | `source: PLATFORM` always. Hires both sides confirmed, by IST month (12) and job location (`OTHER` pools small ones). Disputed hires and outside placements never count |
+
 ## Stub modules — registered, no routes yet
 
 These are in `ALL_MODULES` (so they show up in the OpenAPI schema) but have
@@ -287,8 +336,6 @@ zero callable routes today:
 | Module | Prefix | What's planned |
 |---|---|---|
 | integrity | `/integrity` | Signal review actions — blocked on a platform-staff account (blockers E10) |
-| college | `/college` | Institution tenant, roster, invites, consent, referral codes |
-| analytics | `/college/analytics` | Cohort aggregates, placement tracking |
 | admin | `/admin` | Queues, drill-downs, disputes, suspensions |
 | notifications | `/notifications` | Event→channel fan-out; templates exist (`notifications/templates.py`) but every `dlt_template_id` is still `None`, so nothing can send |
 | privacy | `/privacy` | Export/deletion requests, DSR tracking |
@@ -408,14 +455,27 @@ POST /candidate/courses/{course_id}/checkout
   → courses.service.record_completion (internal only) → scoring.rescore_for_addons
 ```
 
+### 7. College → linked students → analytics
+
+```
+POST /college/organisation → pay (/college/subscription) → seats allocated by our staff
+POST /college/referral-codes            or   POST /college/roster-imports → commit → invitations/send
+POST /candidate/colleges/link                 POST /candidate/colleges/invitations/{id}/accept
+  → ROSTER consent: counted in /college/analytics/*, seat taken if free
+POST /candidate/colleges/{college_id}/individual-visibility   (separate, optional)
+  → INDIVIDUAL consent: named in /college/students, every read audited
+POST /candidate/colleges/{college_id}/revoke {scope}
+  → gone from both on the very next request
+```
+
 ---
 
 ## Implementation status
 
 Fully implemented with routes: identity, candidate, resume, scoring,
 questionnaire, interview, courses, employer, kyb, jobs, applications,
-discovery, billing, subscriptions, engagement.
+discovery, billing, subscriptions, engagement, college, analytics.
 
-Registered but empty (`router = APIRouter()`, no routes): admin, analytics,
-college, integrity, notifications, privacy. See `docs/blockers.md` and
+Registered but empty (`router = APIRouter()`, no routes): admin, integrity,
+notifications, privacy. See `docs/blockers.md` and
 `docs/plan.md` §14 for what's gating each.

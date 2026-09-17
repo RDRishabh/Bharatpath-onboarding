@@ -56,8 +56,11 @@ from app.modules.college import repository
 from app.modules.college.domain import (
     CODE_RANDOM_BYTES,
     CONSENT_VERSION,
+    GRANTED_VIA_DIRECT,
     GRANTED_VIA_INVITE,
     GRANTED_VIA_REFERRAL_CODE,
+    INDIVIDUAL,
+    INDIVIDUAL_CONSENT_VERSION,
     INVITATION_VALID_FOR,
     INVITE_ACCEPTED,
     INVITE_DECLINED,
@@ -67,6 +70,7 @@ from app.modules.college.domain import (
     ISSUE_ALREADY_ON_ROSTER,
     LINK_ATTEMPTS_PER_IP_PER_HOUR,
     LINK_ATTEMPTS_PER_USER_PER_HOUR,
+    ROSTER,
     RosterFileInvalid,
     allocation_refusal,
     code_from_bytes,
@@ -76,9 +80,12 @@ from app.modules.college.domain import (
     normalise_code,
     parse_roster_csv,
     roster_fingerprint,
+    scopes_revoked_with,
     seats_available,
 )
 from app.modules.college.events import (
+    CONSENT_REVOKED,
+    INDIVIDUAL_VISIBILITY_GRANTED,
     INVITATION_SENT,
     ORGANISATION_CREATED,
     ROSTER_IMPORT_COMMITTED,
@@ -89,6 +96,8 @@ from app.modules.college.forms import COLLEGE_FORM, FORM_VERSION, INSTITUTION_TY
 from app.modules.college.models import College, ReferralCode, RosterEntry, RosterImport
 from app.modules.college.schemas import CreateCollegeRequest, UpdateCollegeRequest
 from app.modules.identity import service as identity_service
+from app.modules.resume import service as resume_service
+from app.modules.scoring.domain import band_for, display_value
 from app.modules.subscriptions import service as subscriptions_service
 
 logger = get_logger(__name__)
@@ -1105,3 +1114,320 @@ async def send_invitations(
             metadata={"sent": len(sent)},
         )
     return len(sent), await _view(session, record, now=now)
+
+
+# ---------------------------------------------------------------------------
+# 5. Consent after linking -- the student's side (Day 18)
+# ---------------------------------------------------------------------------
+class CollegeLinkNotFoundError(NotFoundError):
+    """The student has no live link to that college, or never had one."""
+
+    code = "college_link_not_found"
+    title = "You are not linked to that college"
+
+
+async def _live_by_scope(
+    session: AsyncSession, *, tenant_id: uuid.UUID, candidate_id: uuid.UUID
+) -> dict[str, Any]:
+    consents = await repository.live_consents(
+        session, tenant_id=tenant_id, candidate_id=candidate_id
+    )
+    return {c.scope: c for c in consents}
+
+
+async def grant_individual_visibility(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    college_id: uuid.UUID,
+    consent_version: str,
+    request_id: str | None = None,
+) -> Link:
+    """Let a linked college see the student as a person (PRD 3.8).
+
+    **A separate act, never a side effect of linking**, against its own
+    versioned words. Needs a live ROSTER link to that college (404 without);
+    `guard_student_consent_insert` holds the same rule for every writer.
+    Idempotent: granted already, the existing grant is returned.
+    """
+    if consent_version != INDIVIDUAL_CONSENT_VERSION:
+        raise ConsentVersionOutdatedError(params={"consent_version": INDIVIDUAL_CONSENT_VERSION})
+    user_id = await _bind_student(session, ctx)
+    live = await _live_by_scope(session, tenant_id=college_id, candidate_id=user_id)
+    if ROSTER not in live:
+        raise CollegeLinkNotFoundError()
+    existing = live.get(INDIVIDUAL)
+    consent = existing or await repository.insert_individual_consent(
+        session,
+        tenant_id=college_id,
+        candidate_id=user_id,
+        consent_version=INDIVIDUAL_CONSENT_VERSION,
+    )
+    if existing is None:
+        await audit_event(
+            session,
+            action=AuditAction.CONSENT_GRANTED,
+            actor_id=user_id,
+            actor_role=CANDIDATE,
+            target_type="student_consent",
+            target_id=consent.id,
+            tenant_id=college_id,
+            request_id=request_id,
+            metadata={
+                "scope": INDIVIDUAL,
+                "granted_via": GRANTED_VIA_DIRECT,
+                "consent_version": INDIVIDUAL_CONSENT_VERSION,
+            },
+        )
+        await emit(
+            session,
+            event_type=INDIVIDUAL_VISIBILITY_GRANTED,
+            aggregate_type="student_consent",
+            aggregate_id=consent.id,
+            payload={"tenant_id": str(college_id)},
+        )
+    names = await repository.college_names(session, tenant_ids=[college_id])
+    return Link(
+        college_id=college_id,
+        college_name=names.get(college_id),
+        scope=INDIVIDUAL,
+        granted_via=GRANTED_VIA_DIRECT,
+        granted_at=consent.granted_at,
+        revoked_at=None,
+        seat_held=False,
+        created=existing is None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Revocation:
+    college_id: uuid.UUID
+    #: What this call ended: `ROSTER` then `INDIVIDUAL`, or just `INDIVIDUAL`.
+    #: Empty on a retry.
+    revoked: tuple[str, ...]
+    revoked_at: datetime | None
+
+
+async def revoke_consent(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    college_id: uuid.UUID,
+    scope: str,
+    request_id: str | None = None,
+) -> Revocation:
+    """The student withdraws consent. **Effective on the next statement.**
+
+    Revoking ROSTER disconnects: the college stops counting the student, the
+    seat it paid for is released (`release_seat_on_consent_revoke`) and any
+    INDIVIDUAL grant ends with it (`revoke_individual_with_roster`), all in
+    this one UPDATE. Revoking INDIVIDUAL leaves the link and the seat.
+
+    Never deleted: the rows keep saying what was visible, to whom, until when.
+    Not paywalled -- withdrawing consent never waits on a payment.
+    Idempotent: nothing live to revoke is a 200 with nothing revoked, and a
+    college the student never linked to is a 404.
+    """
+    user_id = await _bind_student(session, ctx)
+    live = await _live_by_scope(session, tenant_id=college_id, candidate_id=user_id)
+    ended = tuple(s for s in scopes_revoked_with(scope) if s in live)
+    revoked_at = await repository.revoke_consent(
+        session, tenant_id=college_id, candidate_id=user_id, scope=scope
+    )
+    if revoked_at is None:
+        if not await repository.has_any_consent(
+            session, tenant_id=college_id, candidate_id=user_id
+        ):
+            raise CollegeLinkNotFoundError()
+        return Revocation(college_id=college_id, revoked=(), revoked_at=None)
+
+    for ended_scope in ended:
+        await audit_event(
+            session,
+            action=AuditAction.CONSENT_REVOKED,
+            actor_id=user_id,
+            actor_role=CANDIDATE,
+            target_type="student_consent",
+            target_id=live[ended_scope].id,
+            tenant_id=college_id,
+            request_id=request_id,
+            metadata={"scope": ended_scope, "requested_scope": scope},
+        )
+    await emit(
+        session,
+        event_type=CONSENT_REVOKED,
+        aggregate_type="student_consent",
+        aggregate_id=live[scope].id,
+        payload={"tenant_id": str(college_id), "scopes": list(ended)},
+    )
+    logger.info("college_consent_revoked", scopes=list(ended))
+    return Revocation(college_id=college_id, revoked=ended, revoked_at=revoked_at)
+
+
+# ---------------------------------------------------------------------------
+# 6. Students who let their college see them -- the college's side (Day 18)
+# ---------------------------------------------------------------------------
+class CollegeStudentNotFoundError(NotFoundError):
+    """No live INDIVIDUAL consent to this college: never given, revoked, or
+    not this college's student. One answer for all three, so the route cannot
+    be used to learn whether someone linked."""
+
+    code = "college_student_not_found"
+    title = "Student not found"
+
+
+async def _name(
+    session: AsyncSession,
+    *,
+    candidate_id: uuid.UUID,
+    full_name: str | None,
+    resume_version_id: uuid.UUID | None,
+) -> str | None:
+    """The name given at sign-up, else the one typed on the structured CV
+    form, else none. Never guessed from a CV, as for an employer (Day 14)."""
+    if full_name or resume_version_id is None:
+        return full_name
+    return await resume_service.declared_name(
+        session, user_id=candidate_id, resume_version_id=resume_version_id
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class VisibleStudent:
+    candidate_id: uuid.UUID
+    full_name: str | None
+    visible_since: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class VisibleStudentsPage:
+    items: list[VisibleStudent]
+    next_cursor: str | None
+
+
+async def list_visible_students(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    cursor: str | None,
+    limit: int | None,
+    request_id: str | None = None,
+) -> VisibleStudentsPage:
+    """Students with live INDIVIDUAL consent to this college, oldest grant
+    first. **It names people, so it is audited**: one row per page, the ids
+    shown in its metadata, in the same transaction as the read."""
+    tenant_id = await _bind(session, ctx)
+    size = clamp_limit(limit)
+    after: tuple[datetime, uuid.UUID] | None = None
+    if cursor:
+        decoded = decode_cursor(cursor)
+        try:
+            after = (datetime.fromisoformat(str(decoded["since"])), uuid.UUID(str(decoded["id"])))
+        except (KeyError, ValueError) as exc:
+            raise AppValidationError(code="invalid_cursor") from exc
+    rows = await repository.visible_students(session, limit=size + 1, after=after)
+    page = rows[:size]
+    items = [
+        VisibleStudent(
+            candidate_id=r.candidate_id,
+            full_name=await _name(
+                session,
+                candidate_id=r.candidate_id,
+                full_name=r.full_name,
+                resume_version_id=r.score_resume_version_id,
+            ),
+            visible_since=r.visible_since,
+        )
+        for r in page
+    ]
+    if items:
+        await audit_event(
+            session,
+            action=AuditAction.COLLEGE_STUDENTS_LISTED,
+            actor_id=ctx.user_id,
+            actor_role=ctx.role,
+            target_type="tenant",
+            target_id=tenant_id,
+            tenant_id=tenant_id,
+            request_id=request_id,
+            metadata={"candidate_ids": [str(i.candidate_id) for i in items]},
+        )
+    next_cursor = None
+    if len(rows) > size:
+        last = page[-1]
+        next_cursor = encode_cursor(
+            {"since": last.visible_since.isoformat(), "id": str(last.candidate_id)}
+        )
+    return VisibleStudentsPage(items=items, next_cursor=next_cursor)
+
+
+@dataclass(frozen=True, slots=True)
+class StudentHire:
+    job_title: str
+    employer_name: str
+    hired_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StudentView:
+    candidate_id: uuid.UUID
+    full_name: str | None
+    visible_since: datetime
+    #: The number a person is shown (`scoring.domain.display_value`), and its
+    #: band. None until the student has a score.
+    score: int | None
+    band: str | None
+    scored_at: datetime | None
+    applications: int
+    interviews: int
+    hires: list[StudentHire]
+
+
+async def open_student(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    candidate_id: uuid.UUID,
+    request_id: str | None = None,
+) -> StudentView:
+    """One student, **only while their INDIVIDUAL consent is live** (SRS
+    1.16.2), checked by the query itself on every read and never cached: a
+    consent revoked a moment ago is a 404 now.
+
+    **Audited on every open, re-opens included**, in the same transaction as
+    the read, ids only -- and written before anything is returned, so a read
+    whose audit failed never reaches the caller.
+    """
+    tenant_id = await _bind(session, ctx)
+    row = await repository.student_profile(session, candidate_id=candidate_id)
+    if row is None:
+        raise CollegeStudentNotFoundError()
+    hires = await repository.student_hires(session, candidate_id=candidate_id)
+    await audit_event(
+        session,
+        action=AuditAction.COLLEGE_STUDENT_VIEWED,
+        actor_id=ctx.user_id,
+        actor_role=ctx.role,
+        target_type="user",
+        target_id=candidate_id,
+        tenant_id=tenant_id,
+        request_id=request_id,
+        metadata={"consent_id": str(row.consent_id)},
+    )
+    score = display_value(row.stored_score) if row.stored_score is not None else None
+    return StudentView(
+        candidate_id=row.candidate_id,
+        full_name=await _name(
+            session,
+            candidate_id=row.candidate_id,
+            full_name=row.full_name,
+            resume_version_id=row.score_resume_version_id,
+        ),
+        visible_since=row.visible_since,
+        score=score,
+        band=band_for(score) if score is not None else None,
+        scored_at=row.scored_at,
+        applications=row.applications,
+        interviews=row.interviews,
+        hires=[StudentHire(h.job_title, h.employer_name, h.hired_at) for h in hires],
+    )

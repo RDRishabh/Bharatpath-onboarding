@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 2018 tests
+.venv/Scripts/pytest.exe                # 2079 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -168,6 +168,8 @@ test asserts**, so a placeholder cannot quietly become the product:
 | `kyb/forms.py`, `college/forms.py` | `FORM_VERSION` |
 | `app/core/i18n/locales/*.json` | non-English bundles still need a native-speaker pass |
 | `college/domain.py` | `CONSENT_VERSION` starts `placeholder-` — the words a student agrees to when linking to a college are ours, not counsel's |
+| `college/domain.py` | `INDIVIDUAL_CONSENT_VERSION` starts `placeholder-` — the words for letting a college see a student by name, and the field list they name (blockers E27) |
+| `analytics/domain.py` | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3 |
 
 Flipping one of these is a client decision, not a tidy-up.
 
@@ -471,6 +473,36 @@ is where a third one would have to be argued for.
 - Revoking a code and discarding a preview are **not paywalled**; issuing,
   importing, committing and sending are. A student's `/candidate/colleges`
   routes are never paywalled — linking is how a seated student gets access.
+
+## Consent and college analytics — Day 18
+
+- **Two scopes, two acts.** ROSTER (counted) comes only from a code or an
+  accepted invitation; INDIVIDUAL (seen by name) only from the student's own
+  `individual-visibility` grant, `granted_via = DIRECT`. A CHECK holds the
+  pairing and `guard_student_consent_insert` requires a live ROSTER link, for
+  every writer. **Trigger before CHECK**: a test of the CHECK must link first.
+- **Only the student grants or revokes.** The permissive tenant policy would
+  let a college's transaction INSERT or revoke a consent; the RESTRICTIVE
+  policies `student_consents_only_the_student_*` stop it. Keep them.
+- **Revoking ROSTER ends INDIVIDUAL and the seat in the same statement**
+  (`revoke_individual_with_roster`, `release_seat_on_consent_revoke`).
+  Revocation is never paywalled.
+- **A college reads a student only through `COLLEGE_STUDENT_READS`** — six
+  SECURITY DEFINER functions that INNER JOIN live consent for
+  `bound_college_tenant()` and take no tenant id. A new `college_*` function
+  must be added there with the CTE it joins, or invariant 9 fails; the college
+  and analytics repositories may not name a student table.
+- **Aggregates carry no identifier and are floored in `analytics.domain`**:
+  under `min_cohort_size` only counts; a cell under `min_cell_size` is `null`
+  and so is a partner (a zero cell if nothing else), so the total cannot give
+  it back. Config `analytics.privacy`, strict: a bad row is a 500. Not audited
+  — an aggregate is not a reveal. Never cache it.
+- **Every list page and every open of `/college/students` is audited in the
+  transaction**, ids only; `CollegeStudentResponse`'s field list is an
+  invariant, and it is named in the INDIVIDUAL consent words. Widening one
+  means changing the other and bumping its version.
+- A ROSTER revocation notice to a college (Day 19) **must not name the
+  student**: beside a dashboard that just moved, it names their band (E28).
 
 ## Streak points are not the score
 

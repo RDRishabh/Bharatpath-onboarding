@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 2018 on 2026-09-17 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
-| **Coverage** | 85% |
-| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 18 — consent scopes, cohort analytics, invariant 9 |
+| **Tests** | 2079 on 2026-09-17 (Day 18), not yet pushed. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Coverage** | 84% |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 19 — admin queues, drill-downs, disputes, seats + suspension, notifications + nudges |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -49,6 +49,92 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-17 (later) — Day 18: consent scopes, cohort analytics, invariant 9
+
+**2018 -> 2079 tests**, all passing locally as CI runs them. Local CI chain
+green: age, vocabulary, ruff, format, mypy, 9 import contracts, modules. Not
+yet pushed. **Rebuild with `reset_local_db.sh`** — a new CHECK on
+`student_consents`, five policies, two triggers and seven functions.
+
+### What landed
+
+| | |
+|---|---|
+| **INDIVIDUAL consent** | `POST /candidate/colleges/{college_id}/individual-visibility` with the INDIVIDUAL terms' version (`GET .../consent-terms?scope=INDIVIDUAL`, versioned apart from the roster words). Needs a live link (404 `college_link_not_found`); idempotent; audited; `college.individual_visibility_granted`. `granted_via = DIRECT`. |
+| **Revocation** | `POST /candidate/colleges/{college_id}/revoke {scope}`. INDIVIDUAL keeps the link and the seat. **ROSTER disconnects**: the seat is released and INDIVIDUAL revoked by trigger, in the same UPDATE, at the same instant. Never paywalled; idempotent; 404 for a college never linked. One audit row per scope ended and one `college.consent_revoked` event (consent id, tenant, scopes — no student id). |
+| **The database's copy** | `ck_student_consents_scope_via` (INDIVIDUAL ⇔ DIRECT); `guard_student_consent_insert` (INDIVIDUAL needs a live ROSTER link, locked FOR SHARE against a racing disconnect; a consent starts live); `revoke_individual_with_roster`; a candidate UPDATE policy for revoking their own live rows; and **two RESTRICTIVE policies** so only the student a consent names can insert or revoke it. |
+| **Analytics** | `GET /college/analytics/overview`: connected and individually visible counts, score distribution by band, median, applicants, applications, interviews, platform hires. `GET /college/analytics/placements`: confirmed platform hires by IST month (12) and by job location, `source: PLATFORM`. Both for admin and staff, behind payment, never cached. |
+| **Floors** | `analytics.domain`, config `analytics.privacy` (strict; bad row = 500 `analytics_floors_invalid`). Under 10 connected students only the counts show. A band or month under 5 is `null`, with a complementary cell withheld beside it. Median rounded to 10. Locations under 5 hires pooled as `OTHER`. A row may raise a floor, never set one below 5 / 3. |
+| **Reads** | Six SECURITY DEFINER functions (`COLLEGE_STUDENT_READS`) over two consent CTEs, keyed on `bound_college_tenant()` — the tenant bound from the membership, which must be an ACTIVE COLLEGE. No tenant parameter. The three aggregate functions return no identifier. |
+| **Individual view** | `GET /college/students` (keyset page) and `GET /college/students/{candidate_id}`: name (sign-up, else structured form), display score and band, application and interview counts, confirmed platform hires with job title and employer. **404 unless the INDIVIDUAL consent is live now.** Every page and every open writes an audit row in the transaction (`college_students_listed` with the ids shown; `college_student_viewed` with the consent id). |
+| **Invariant 9** | `tests/invariants/test_invariant_09_consent.py` — see *Guarantees* below. Plus a cross-tenant case for `/college/students/{candidate_id}`. |
+
+### Guarantees and where they live
+
+- **Analytics inner-joins consent in the query**: `pg_proc` is read back, and
+  every `college_*` function must be listed with the consent CTE it joins,
+  be SECURITY DEFINER, take no tenant and read the bound college. The college
+  and analytics repositories are scanned for any student table.
+- **Removing consent makes rows disappear on the next read** — from the
+  overview (10 connected → 9, below the floor), from `college_cohort_scores()`,
+  and from the individual view.
+- **ROSTER never implies INDIVIDUAL**; a college cannot write or revoke a
+  consent, one student cannot revoke another's, INDIVIDUAL cannot exist
+  without a live link — for the migrator too.
+- **Every reveal audited**; a failed audit write returns nothing.
+- **Shapes**: `CollegeStudentResponse`'s field list is fixed, and the
+  INDIVIDUAL words must name what it shows (content-placeholder test); no
+  analytics schema has a field that could name a person.
+
+### Decisions worth knowing
+
+- **One Day 17 test was narrowed, by name.** `test_no_college_facing_schema_names_a_score`
+  said no college schema may carry a score, which was true while ROSTER was the
+  only scope. `CollegeStudentResponse` now does, deliberately, behind INDIVIDUAL
+  consent; it alone is exempted, and invariant 9 fixes its field list.
+
+- **Found and closed: a college could write a student's consent.** Permissive
+  RLS policies OR together, so the tenant policy on `student_consents` let a
+  college-bound transaction INSERT a consent naming any student (with the
+  college's own code) or revoke one. Only the service stood in the way. SRS
+  1.15.3 prohibits institution-side bypass, so it is now RESTRICTIVE policy.
+- **Disconnecting ends individual visibility.** A college cannot see as a
+  person someone it may not even count. Revoking only INDIVIDUAL keeps the link
+  and the seat — the student's access is not the price of their privacy.
+- **Cross-tenant reads by function, not by widened policy.** Applications live
+  under each employer's tenant. Rather than teach the application policies
+  about colleges, the college reads six narrow functions, each joining consent.
+- **Aggregates are not audited; the individual view is, list included.** A
+  masked card was not a reveal on Day 13 and an aggregate over the floor is
+  not one now. A list of names is.
+- **Suppression found its own bug.** The exhaustive test over every
+  four-cell combination of 0–7 caught the case the first version missed: one
+  small cell and every other cell zero, which had no partner to withhold. The
+  partner is now a zero cell when nothing else is available.
+- **Interviews** means applications that reached INTERVIEW (from
+  `application_events`), not mock interviews. **Hires** means HIRED, both
+  confirmations; a disputed hire counts as none (E12).
+- **What the college sees of a named student is ours** (E27): no contact
+  details — the college has the roster it uploaded, and contacts collected by
+  us are not ours to pass on — no CV, no integrity signal, no employer notes.
+- **Residual risk, recorded rather than hidden** (E28): reading the overview
+  before and after one named student links shows their band unless the cell
+  is suppressed. A daily snapshot for additions would close it at the cost of
+  freshness; not built.
+
+### Owed
+
+- **Cohort filters** (course, branch, graduation year) — no data holds them,
+  and each is a new subtraction surface (E26).
+- **Counsel's INDIVIDUAL words; the client's field list and floors** (E27).
+- **REVOKED state on roster rows** (SRS 2.10.3): an accepted invitation whose
+  consent was later revoked still reads ACCEPTED.
+- **The college-facing notice of a revocation** (Day 19) — without the
+  student's name for ROSTER (E28).
+- A rate limit on analytics reads (Day 20's pass).
 
 ---
 

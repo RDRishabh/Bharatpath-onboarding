@@ -283,6 +283,19 @@ def _roster_case(method: str, suffix: str) -> Case:
     return case
 
 
+async def _open_other_colleges_student(client: Any, attacker: dict, victim: dict) -> Any:
+    """Day 18. College B's student lets B see them; college A asks by id."""
+    from tests.integration.test_college_consent import _seed_student
+
+    college_a, college_b = await _college_pair(client, victim["mint_token"])
+    code = await client.post(f"{API}/college/referral-codes", json={}, headers=college_b["headers"])
+    student = await _seed_student(college_b, code.json()["id"], individual=True, name="B only")
+    response = await client.get(f"{API}/college/students/{student}", headers=college_a["headers"])
+    theirs = await client.get(f"{API}/college/students/{student}", headers=college_b["headers"])
+    assert theirs.status_code == 200, "the student's own college lost its view"
+    return response
+
+
 _TOMORROW = (datetime.now(UTC) + timedelta(days=1)).isoformat()
 
 
@@ -323,6 +336,7 @@ CROSS_TENANT_CASES: dict[tuple[str, str], Case] = {
     ("POST", f"{API}/college/roster-imports/{{import_id}}/invitations/send"): _roster_case(
         "POST", "/invitations/send"
     ),
+    ("GET", f"{API}/college/students/{{candidate_id}}"): _open_other_colleges_student,
 }
 
 

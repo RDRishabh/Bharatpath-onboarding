@@ -20,7 +20,12 @@ wait on a payment.
 
 **A student's routes are not paywalled, deliberately.** Linking to a college
 is how a seated student gets access at all; putting it behind a subscription
-would ask them to pay for the thing their college has paid for.
+would ask them to pay for the thing their college has paid for. Granting and
+revoking consent are the student's, and never wait on anyone's payment.
+
+**Day 18.** A college sees a student as a person only through `/college/students`,
+behind a live INDIVIDUAL consent read on every request, audited on every
+read, and behind payment like the analytics beside it.
 """
 
 from __future__ import annotations
@@ -43,13 +48,8 @@ from app.core.deps import (
     require_role,
 )
 from app.modules.college import service
-from app.modules.college.domain import (
-    CONSENT_VERSION,
-    ROSTER,
-    ROSTER_CONSENT_KEY,
-    ROSTER_CONSENT_TEXT,
-    format_code,
-)
+from app.modules.college.domain import consent_terms as terms_for
+from app.modules.college.domain import format_code
 from app.modules.college.models import ReferralCode
 from app.modules.college.schemas import (
     AddTeamMemberRequest,
@@ -58,23 +58,30 @@ from app.modules.college.schemas import (
     ChangeRoleRequest,
     CollegeLinkResponse,
     CollegeResponse,
+    CollegeStudentResponse,
     ConsentTermsResponse,
     CreateCollegeRequest,
     FormOption,
+    GrantIndividualVisibilityRequest,
     InvitationCounts,
     InvitationsSentResponse,
     IssueCodeRequest,
     LinkByCodeRequest,
     OnboardingResponse,
     ReferralCodeResponse,
+    RevokeConsentRequest,
+    RevokeConsentResponse,
     RosterImportResponse,
     RosterRowResponse,
     RosterRowsPage,
     RosterUploadRequest,
     SaveOnboardingRequest,
     SeatsResponse,
+    StudentHireResponse,
     TeamMemberResponse,
     UpdateCollegeRequest,
+    VisibleStudentResponse,
+    VisibleStudentsPage,
 )
 
 router = APIRouter()
@@ -487,14 +494,14 @@ async def send_invitations(
     dependencies=[Student],
     summary="What linking to a college means, to show before linking",
 )
-async def consent_terms() -> ConsentTermsResponse:
-    """Send `consent_version` back when linking or accepting."""
-    return ConsentTermsResponse(
-        consent_version=CONSENT_VERSION,
-        scope=ROSTER,
-        key=ROSTER_CONSENT_KEY,
-        text=ROSTER_CONSENT_TEXT,
-    )
+async def consent_terms(
+    scope: Literal["ROSTER", "INDIVIDUAL"] = "ROSTER",
+) -> ConsentTermsResponse:
+    """`ROSTER` (the default) is what linking means; `INDIVIDUAL` is what
+    letting the college see you by name means. Send `consent_version` back
+    with the act it describes."""
+    version, key, text = terms_for(scope)
+    return ConsentTermsResponse(consent_version=version, scope=scope, key=key, text=text)
 
 
 @candidate_router.get(
@@ -595,3 +602,126 @@ async def decline_invitation(
         session, ctx=user, entry_id=invitation_id, accept=False, consent_version=None
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@candidate_router.post(
+    "/{college_id}/individual-visibility",
+    response_model=CollegeLinkResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Student],
+    summary="Let a linked college see the student by name",
+)
+async def grant_individual_visibility(
+    college_id: uuid.UUID,
+    payload: GrantIndividualVisibilityRequest,
+    request: Request,
+    response: Response,
+    user: CurrentUser,
+    session: DbSession,
+) -> CollegeLinkResponse:
+    """A separate choice from linking. Show `GET /consent-terms?scope=INDIVIDUAL`
+    first. 200 if already granted; 404 `college_link_not_found` without a live
+    link; 409 `consent_version_outdated`."""
+    link = await service.grant_individual_visibility(
+        session,
+        ctx=user,
+        college_id=college_id,
+        consent_version=payload.consent_version,
+        request_id=get_request_id(request),
+    )
+    if not link.created:
+        response.status_code = status.HTTP_200_OK
+    return _link(link)
+
+
+@candidate_router.post(
+    "/{college_id}/revoke",
+    response_model=RevokeConsentResponse,
+    dependencies=[Student],
+    summary="Withdraw consent from a college, at once",
+)
+async def revoke_consent(
+    college_id: uuid.UUID,
+    payload: RevokeConsentRequest,
+    request: Request,
+    user: CurrentUser,
+    session: DbSession,
+) -> RevokeConsentResponse:
+    """Takes effect on the next request anyone makes. Idempotent; 404
+    `college_link_not_found` for a college the student never linked to."""
+    revocation = await service.revoke_consent(
+        session,
+        ctx=user,
+        college_id=college_id,
+        scope=payload.scope,
+        request_id=get_request_id(request),
+    )
+    return RevokeConsentResponse(
+        college_id=revocation.college_id,
+        revoked=list(revocation.revoked),
+        revoked_at=revocation.revoked_at,
+    )
+
+
+# ===========================================================================
+# The college's view of students who allow it (Day 18)
+# ===========================================================================
+@router.get(
+    "/students",
+    response_model=VisibleStudentsPage,
+    dependencies=[AnyCollegeRole, Paid],
+    summary="Students who let the college see them by name",
+)
+async def list_students(
+    request: Request,
+    user: CurrentUser,
+    session: DbSession,
+    cursor: str | None = None,
+    limit: int | None = Query(default=None, ge=1, le=100),
+) -> VisibleStudentsPage:
+    """Only students with a live individual-visibility consent; everyone else
+    is counted in analytics and never named. Every page read is audited."""
+    page = await service.list_visible_students(
+        session, ctx=user, cursor=cursor, limit=limit, request_id=get_request_id(request)
+    )
+    return VisibleStudentsPage(
+        items=[
+            VisibleStudentResponse(
+                candidate_id=s.candidate_id, full_name=s.full_name, visible_since=s.visible_since
+            )
+            for s in page.items
+        ],
+        next_cursor=page.next_cursor,
+    )
+
+
+@router.get(
+    "/students/{candidate_id}",
+    response_model=CollegeStudentResponse,
+    dependencies=[AnyCollegeRole, Paid],
+    summary="One student who lets the college see them",
+)
+async def get_student(
+    candidate_id: uuid.UUID, request: Request, user: CurrentUser, session: DbSession
+) -> CollegeStudentResponse:
+    """404 `college_student_not_found` unless the student's consent is live
+    right now. Every open is audited, re-opens included."""
+    view = await service.open_student(
+        session, ctx=user, candidate_id=candidate_id, request_id=get_request_id(request)
+    )
+    return CollegeStudentResponse(
+        candidate_id=view.candidate_id,
+        full_name=view.full_name,
+        visible_since=view.visible_since,
+        score=view.score,
+        band=view.band,
+        scored_at=view.scored_at,
+        applications=view.applications,
+        interviews=view.interviews,
+        hires=[
+            StudentHireResponse(
+                job_title=h.job_title, employer_name=h.employer_name, hired_at=h.hired_at
+            )
+            for h in view.hires
+        ],
+    )

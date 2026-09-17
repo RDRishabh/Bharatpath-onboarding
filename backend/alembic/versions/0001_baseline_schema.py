@@ -98,6 +98,7 @@ def upgrade() -> None:
     _create_payment_guards()
     _create_interview_guards()
     _create_college_access()
+    _create_college_student_reads()
 
 
 def downgrade() -> None:
@@ -1295,6 +1296,9 @@ def _create_interview_guards() -> None:
 COLLEGE_CANDIDATE_POLICIES = (
     "student_consents_candidate_read",
     "student_consents_candidate_grant",
+    "student_consents_candidate_revoke",
+    "student_consents_only_the_student_grants",
+    "student_consents_only_the_student_revokes",
     "college_seat_assignments_candidate_read",
     "colleges_candidate_linked",
 )
@@ -1493,19 +1497,55 @@ def _create_college_access() -> None:
           USING (candidate_id = (SELECT current_candidate_id()))
         """
     )
+    # ROSTER needs the code or invitation it names to admit this student to
+    # this college. INDIVIDUAL is the student's own separate act, DIRECT, and
+    # `guard_student_consent_insert` requires a live ROSTER link beside it.
     op.execute(
         """
         CREATE POLICY student_consents_candidate_grant ON student_consents FOR INSERT
           WITH CHECK (
             candidate_id = (SELECT current_candidate_id())
-            AND scope = 'ROSTER'
             AND revoked_at IS NULL
-            AND CASE granted_via
-                  WHEN 'REFERRAL_CODE' THEN referral_code_admits(referral_code_id, tenant_id)
-                  WHEN 'INVITE' THEN invitation_admits(roster_entry_id, tenant_id)
+            AND CASE scope
+                  WHEN 'ROSTER' THEN CASE granted_via
+                      WHEN 'REFERRAL_CODE' THEN referral_code_admits(referral_code_id, tenant_id)
+                      WHEN 'INVITE' THEN invitation_admits(roster_entry_id, tenant_id)
+                      ELSE false
+                    END
+                  WHEN 'INDIVIDUAL' THEN granted_via = 'DIRECT'
                   ELSE false
                 END
           )
+        """
+    )
+    # Day 18. Revocation is the student's: their own live rows, to revoked.
+    op.execute(
+        """
+        CREATE POLICY student_consents_candidate_revoke ON student_consents FOR UPDATE
+          USING (candidate_id = (SELECT current_candidate_id()) AND revoked_at IS NULL)
+          WITH CHECK (candidate_id = (SELECT current_candidate_id()) AND revoked_at IS NOT NULL)
+        """
+    )
+    # **Institution-side bypass of student consent is prohibited** (SRS
+    # 1.15.3). Permissive policies OR together, so the tenant policy alone
+    # would let a college's own transaction INSERT a consent naming any
+    # student, or revoke one. These RESTRICTIVE policies AND with everything
+    # else: whatever the tenant policy allows, a consent is granted and
+    # revoked only by the student it names. The cascade and seat triggers are
+    # SECURITY DEFINER and are not subject to them.
+    op.execute(
+        """
+        CREATE POLICY student_consents_only_the_student_grants ON student_consents
+          AS RESTRICTIVE FOR INSERT
+          WITH CHECK (candidate_id = (SELECT current_candidate_id()))
+        """
+    )
+    op.execute(
+        """
+        CREATE POLICY student_consents_only_the_student_revokes ON student_consents
+          AS RESTRICTIVE FOR UPDATE
+          USING (candidate_id = (SELECT current_candidate_id()))
+          WITH CHECK (candidate_id = (SELECT current_candidate_id()))
         """
     )
     op.execute(
@@ -1756,6 +1796,76 @@ def _create_college_access() -> None:
           FOR EACH ROW EXECUTE FUNCTION release_seat_on_consent_revoke();
         """
     )
+    # Day 18. INDIVIDUAL sits on a live ROSTER link, for every writer. The
+    # link row is locked FOR SHARE, so a disconnect racing this grant either
+    # commits first (and this refuses) or waits and then revokes the grant
+    # through the cascade below -- never an INDIVIDUAL left without a link.
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_student_consent_insert()
+        RETURNS TRIGGER
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF NEW.revoked_at IS NOT NULL THEN
+            RAISE EXCEPTION 'CONSENT_GUARD: a consent starts live'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF NEW.scope = 'INDIVIDUAL' THEN
+            PERFORM 1 FROM student_consents sc
+             WHERE sc.tenant_id = NEW.tenant_id
+               AND sc.candidate_id = NEW.candidate_id
+               AND sc.scope = 'ROSTER'
+               AND sc.revoked_at IS NULL
+               FOR SHARE;
+            IF NOT FOUND THEN
+              RAISE EXCEPTION 'CONSENT_GUARD: individual visibility needs a live link to that college'
+                USING ERRCODE = 'check_violation';
+            END IF;
+          END IF;
+          RETURN NEW;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_student_consent_insert
+          BEFORE INSERT ON student_consents
+          FOR EACH ROW EXECUTE FUNCTION guard_student_consent_insert();
+        """
+    )
+    # Disconnecting ends individual visibility in the same statement
+    # (`college.domain.scopes_revoked_with`), at the same instant.
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION revoke_individual_with_roster()
+        RETURNS TRIGGER
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL AND NEW.scope = 'ROSTER' THEN
+            UPDATE student_consents
+               SET revoked_at = NEW.revoked_at
+             WHERE tenant_id = NEW.tenant_id
+               AND candidate_id = NEW.candidate_id
+               AND scope = 'INDIVIDUAL'
+               AND revoked_at IS NULL;
+          END IF;
+          RETURN NEW;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_revoke_individual_with_roster
+          AFTER UPDATE OF revoked_at ON student_consents
+          FOR EACH ROW EXECUTE FUNCTION revoke_individual_with_roster();
+        """
+    )
 
     # Roster rows.
     op.execute(
@@ -1807,5 +1917,238 @@ def _create_college_access() -> None:
         CREATE TRIGGER trg_guard_roster_entry_write
           BEFORE UPDATE OR DELETE ON roster_entries
           FOR EACH ROW EXECUTE FUNCTION guard_roster_entry_write();
+        """
+    )
+
+
+# ---------------------------------------------------------------------------
+# Day 18 -- invariant 9: what a college reads about its students
+# ---------------------------------------------------------------------------
+#: A college's live, ROSTER-consented students: the only set a college may
+#: count. **An INNER JOIN on the consent row, not a filter applied later**, so
+#: a revoked consent is absent from the query itself (plan.md section 1, rule 9).
+#: The tenant is the one bound from the caller's membership, never a parameter.
+_ROSTER_COHORT_CTE = """
+roster_cohort AS (
+  SELECT sc.candidate_id
+    FROM student_consents sc
+    JOIN users u
+      ON u.id = sc.candidate_id AND u.status = 'ACTIVE' AND u.pool = 'CANDIDATE'
+   WHERE sc.tenant_id = (SELECT bound_college_tenant())
+     AND sc.scope = 'ROSTER'
+     AND sc.revoked_at IS NULL
+)"""
+
+#: Students a college may see as people: live INDIVIDUAL **and** live ROSTER
+#: consent, both joined. The cascade keeps the two together; joining both
+#: means a gap in the cascade would still show nobody.
+_INDIVIDUALLY_VISIBLE_CTE = """
+individually_visible AS (
+  SELECT i.candidate_id, i.id AS consent_id, i.granted_at AS visible_since
+    FROM student_consents i
+    JOIN student_consents r
+      ON r.tenant_id = i.tenant_id
+     AND r.candidate_id = i.candidate_id
+     AND r.scope = 'ROSTER'
+     AND r.revoked_at IS NULL
+    JOIN users u
+      ON u.id = i.candidate_id AND u.status = 'ACTIVE' AND u.pool = 'CANDIDATE'
+   WHERE i.tenant_id = (SELECT bound_college_tenant())
+     AND i.scope = 'INDIVIDUAL'
+     AND i.revoked_at IS NULL
+)"""
+
+#: Reached an interview: the application moved to INTERVIEW at some point.
+_REACHED_INTERVIEW = """EXISTS (
+    SELECT 1 FROM application_events e
+     WHERE e.application_id = a.id AND e.to_stage = 'INTERVIEW'
+  )"""
+
+#: The newest score, for the INDIVIDUAL reads.
+_LATEST_SCORE = """LEFT JOIN LATERAL (
+              SELECT s.raw_value, s.computed_at, s.resume_version_id
+                FROM scores s
+               WHERE s.user_id = v.candidate_id
+               ORDER BY s.computed_at DESC, s.id DESC
+               LIMIT 1
+            ) AS ls ON true"""
+
+#: Every function a college reads a student through, and the consent CTE
+#: each must join. `tests/invariants/test_invariant_09_consent.py` reads the
+#: definitions back from `pg_proc` and fails on one that does not.
+COLLEGE_STUDENT_READS: dict[str, str] = {
+    "college_cohort_summary": "roster_cohort",
+    "college_cohort_scores": "roster_cohort",
+    "college_cohort_hires": "roster_cohort",
+    "college_visible_students": "individually_visible",
+    "college_student_profile": "individually_visible",
+    "college_student_hires": "individually_visible",
+}
+
+
+def _create_college_student_reads() -> None:
+    """Invariant 9: a college reads a student only through consent.
+
+    Applications live under each *employer's* tenant, and a college's
+    transaction binds the college's, so the tenant policies correctly show a
+    college none of them. Rather than widen those policies, a college reads
+    through these SECURITY DEFINER functions, each of which answers one
+    question and **INNER JOINs live consent** for the college bound from the
+    membership (`bound_college_tenant`). None takes a tenant id. Bound to an
+    employer, a candidate, or nothing, they return no rows.
+
+    **Aggregates return no identifiers.** `college_cohort_scores` and
+    `college_cohort_hires` return one row per student or hire with nothing
+    saying whose, so the cohort floor and cell suppression (`analytics.domain`)
+    are applied to values that cannot be joined back to a person. Only the
+    three INDIVIDUAL functions return a candidate id or a name.
+    """
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION bound_college_tenant()
+        RETURNS uuid
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT t.id
+            FROM tenants t
+           WHERE t.id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+             AND t.type = 'COLLEGE'
+             AND t.status = 'ACTIVE'
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_cohort_summary()
+        RETURNS TABLE (
+          connected bigint, individually_visible bigint, scored bigint,
+          applicants bigint, applications bigint, interviews bigint, hires bigint
+        )
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_ROSTER_COHORT_CTE}, {_INDIVIDUALLY_VISIBLE_CTE},
+          cohort_applications AS (
+            SELECT a.id, a.candidate_id, a.stage
+              FROM applications a
+              JOIN roster_cohort c ON c.candidate_id = a.candidate_id
+          )
+          SELECT
+            (SELECT count(*) FROM roster_cohort),
+            (SELECT count(*) FROM individually_visible),
+            (SELECT count(DISTINCT s.user_id)
+               FROM scores s JOIN roster_cohort c ON c.candidate_id = s.user_id),
+            (SELECT count(DISTINCT candidate_id) FROM cohort_applications),
+            (SELECT count(*) FROM cohort_applications),
+            (SELECT count(*) FROM cohort_applications a WHERE {_REACHED_INTERVIEW}),
+            (SELECT count(*) FROM cohort_applications WHERE stage = 'HIRED')
+           WHERE (SELECT bound_college_tenant()) IS NOT NULL
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_cohort_scores()
+        RETURNS TABLE (stored_score integer)
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_ROSTER_COHORT_CTE}
+          SELECT latest.raw_value
+            FROM (
+                  SELECT DISTINCT ON (s.user_id) s.user_id, s.raw_value
+                    FROM scores s
+                    JOIN roster_cohort c ON c.candidate_id = s.user_id
+                   ORDER BY s.user_id, s.computed_at DESC, s.id DESC
+                 ) AS latest
+        $$;
+        """
+    )
+    # A hire is platform-sourced by construction: an application on this
+    # platform that both sides confirmed (SRS 1.13.3). A disputed or
+    # unconfirmed hire is not HIRED and is not counted (blockers E12).
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_cohort_hires()
+        RETURNS TABLE (hired_at timestamptz, job_location text)
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_ROSTER_COHORT_CTE}
+          SELECT a.candidate_confirmed_at, j.location
+            FROM applications a
+            JOIN roster_cohort c ON c.candidate_id = a.candidate_id
+            JOIN jobs j ON j.id = a.job_id
+           WHERE a.stage = 'HIRED'
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_visible_students(
+          p_limit integer, p_after_since timestamptz, p_after_id uuid
+        )
+        RETURNS TABLE (
+          candidate_id uuid, consent_id uuid, visible_since timestamptz,
+          full_name text, score_resume_version_id uuid
+        )
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_INDIVIDUALLY_VISIBLE_CTE}
+          SELECT v.candidate_id, v.consent_id, v.visible_since, p.full_name, ls.resume_version_id
+            FROM individually_visible v
+            LEFT JOIN candidate_profiles p ON p.user_id = v.candidate_id
+            {_LATEST_SCORE}
+           WHERE p_after_since IS NULL
+              OR (v.visible_since, v.candidate_id) > (p_after_since, p_after_id)
+           ORDER BY v.visible_since, v.candidate_id
+           LIMIT LEAST(GREATEST(p_limit, 1), 101)
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_student_profile(p_candidate_id uuid)
+        RETURNS TABLE (
+          candidate_id uuid, consent_id uuid, visible_since timestamptz, full_name text,
+          stored_score integer, scored_at timestamptz, score_resume_version_id uuid,
+          applications bigint, interviews bigint, hires bigint
+        )
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_INDIVIDUALLY_VISIBLE_CTE}
+          SELECT v.candidate_id, v.consent_id, v.visible_since, p.full_name,
+                 ls.raw_value, ls.computed_at, ls.resume_version_id,
+                 (SELECT count(*) FROM applications a WHERE a.candidate_id = v.candidate_id),
+                 (SELECT count(*) FROM applications a
+                   WHERE a.candidate_id = v.candidate_id AND {_REACHED_INTERVIEW}),
+                 (SELECT count(*) FROM applications a
+                   WHERE a.candidate_id = v.candidate_id AND a.stage = 'HIRED')
+            FROM individually_visible v
+            LEFT JOIN candidate_profiles p ON p.user_id = v.candidate_id
+            {_LATEST_SCORE}
+           WHERE v.candidate_id = p_candidate_id
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_student_hires(p_candidate_id uuid)
+        RETURNS TABLE (job_title text, employer_name text, hired_at timestamptz)
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_INDIVIDUALLY_VISIBLE_CTE}
+          SELECT j.title, e.legal_name, a.candidate_confirmed_at
+            FROM individually_visible v
+            JOIN applications a ON a.candidate_id = v.candidate_id AND a.stage = 'HIRED'
+            JOIN jobs j ON j.id = a.job_id
+            JOIN employers e ON e.tenant_id = a.tenant_id
+           WHERE v.candidate_id = p_candidate_id
+           ORDER BY a.candidate_confirmed_at DESC
+        $$;
         """
     )
