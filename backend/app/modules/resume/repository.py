@@ -227,3 +227,16 @@ async def confirm_version(
         .returning(ResumeVersion)
     )
     return result.scalar_one_or_none()
+
+
+async def users_with_any_resume(
+    session: AsyncSession, *, user_ids: list[uuid.UUID]
+) -> set[uuid.UUID]:
+    """Which of these people have uploaded a file or written a version, of any
+    state. Existence only: nothing about what the CV says."""
+    if not user_ids:
+        return set()
+    files = select(ResumeFile.user_id).where(ResumeFile.user_id.in_(user_ids))
+    versions = select(ResumeVersion.user_id).where(ResumeVersion.user_id.in_(user_ids))
+    result = await session.execute(files.union(versions))
+    return set(result.scalars().all())

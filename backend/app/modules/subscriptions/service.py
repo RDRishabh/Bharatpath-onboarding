@@ -28,7 +28,14 @@ from typing import Final
 from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import CANDIDATE, EMPLOYER_OWNER, EMPLOYER_RECRUITER, EMPLOYER_VIEWER
+from app.core.deps import (
+    CANDIDATE,
+    COLLEGE_ADMIN,
+    COLLEGE_STAFF,
+    EMPLOYER_OWNER,
+    EMPLOYER_RECRUITER,
+    EMPLOYER_VIEWER,
+)
 from app.core.entitlements import has_active_subscription
 from app.core.errors import AppError, ConflictError, NotFoundError, PermissionDeniedError
 from app.core.errors import ValidationError as AppValidationError
@@ -61,6 +68,9 @@ logger = get_logger(__name__)
 RENEWAL_CONFIG_KEY: Final = "subscriptions.renewal"
 
 EMPLOYER_ROLES: Final = frozenset({EMPLOYER_OWNER, EMPLOYER_RECRUITER, EMPLOYER_VIEWER})
+COLLEGE_ROLES: Final = frozenset({COLLEGE_ADMIN, COLLEGE_STAFF})
+#: Who spends an organisation's money: its owner, or a college's admin.
+BUYER_ROLES: Final = frozenset({EMPLOYER_OWNER, COLLEGE_ADMIN})
 
 #: Most rows one renewal sweep considers. The next run takes the rest.
 SWEEP_BATCH: Final = 500
@@ -111,14 +121,16 @@ class Subscriber:
 
 def subscriber_for(ctx: TenantContext) -> Subscriber:
     """Who a caller subscribes as. A candidate as themselves; employer staff
-    as their organisation, from the resolved membership and never a request.
-    Colleges join on Day 17."""
+    and college staff as their organisation, from the resolved membership and
+    never a request."""
     if ctx.tenant_id is None:
         if ctx.role != CANDIDATE:
             raise PermissionDeniedError()
         return Subscriber("USER", ctx.user_id, "CANDIDATE")
     if ctx.role in EMPLOYER_ROLES:
         return Subscriber("TENANT", ctx.tenant_id, "EMPLOYER")
+    if ctx.role in COLLEGE_ROLES:
+        return Subscriber("TENANT", ctx.tenant_id, "COLLEGE")
     raise PermissionDeniedError()
 
 

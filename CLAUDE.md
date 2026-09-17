@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1898 tests
+.venv/Scripts/pytest.exe                # 2079 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -163,10 +163,13 @@ test asserts**, so a placeholder cannot quietly become the product:
 |---|---|
 | `subscriptions/catalogue.py` | `PLACEHOLDER_PRICING` |
 | `courses/catalogue.py` | `HAS_MEDIA`, every `asset_key is None` |
-| `notifications/templates.py` | every `dlt_template_id is None` — **an SMS cannot be sent without one**, and an unregistered body is dropped silently by the operator |
+| `notifications/templates.py` | every `dlt_template_id is None` — **an SMS cannot be sent without one**, and an unregistered body is dropped silently by the operator. `delivery_decision` enforces it |
 | `questionnaire/bank.py`, `interview/bank.py` | `BANK_VERSION` |
 | `kyb/forms.py`, `college/forms.py` | `FORM_VERSION` |
 | `app/core/i18n/locales/*.json` | non-English bundles still need a native-speaker pass |
+| `college/domain.py` | `CONSENT_VERSION` starts `placeholder-` — the words a student agrees to when linking to a college are ours, not counsel's |
+| `college/domain.py` | `INDIVIDUAL_CONSENT_VERSION` starts `placeholder-` — the words for letting a college see a student by name, and the field list they name (blockers E27) |
+| `analytics/domain.py` | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3 |
 
 Flipping one of these is a client decision, not a tidy-up.
 
@@ -197,7 +200,8 @@ is where a third one would have to be argued for.
 - **`current_business_identity` admits a business account with no
   membership.** It exists so an account can create its organisation, and it
   returns `BusinessIdentity`, not a `TenantContext`. Every route added to it is
-  a way in that skips the membership check; keep it to the two it has.
+  a way in that skips the membership check; keep it to the three it has
+  (employer reference, employer organisation, college organisation — Day 17).
 - **Who an employer can see is `VISIBLE_CANDIDATES_CTE`, and nothing else.**
   Every discovery query is built on it, and a test enforces that. It fails
   closed: a candidate needs a score, an `integrity_checks` row for that version,
@@ -224,8 +228,8 @@ is where a third one would have to be argued for.
   organisation. Don't make it more precise.
 - **Config rows are global in tests.** Insert with a past `effective_from`, and
   delete the row in a `finally`.
-- **Review actions (KYB and integrity) exist only in the services.** No
-  platform-staff account can exist yet (`docs/blockers.md` E10).
+- **Review actions (KYB and integrity) are routed by the admin console**
+  (Day 19), which calls these services.
 
 ## Candidate marketplace — Day 11
 
@@ -420,6 +424,141 @@ is where a third one would have to be argued for.
   `tests/integration/test_interview.py`.
 - **POST /candidate/interview/sessions returns the open session** if there is
   one. That is the recovery path, not a bug; there is no abandon (E20).
+
+## Interview evaluation — Day 17
+
+- **Evaluation is feedback and never moves a score.** It runs after
+  completion (`interview.evaluate_session`, beside the re-score); the +20 was
+  frozen before it, and the guard refuses EVALUATED/FAILED without an
+  `interview_evaluations` row. **The report carries no number about the
+  candidate** — ratings are stored, levels (STRONG / DEVELOPING / FOCUS_AREA)
+  are shown. `test_questionnaire_never_scores.py` walks the interview schemas.
+- **No provider by default, and no fallback.** `INTERVIEW_EVALUATION_PROVIDER`
+  is `none` (session stays COMPLETED, report PENDING) or `stub` (refused in
+  staging/prod). Tests pass providers to `transcribe_session` /
+  `evaluate_session` explicitly rather than setting the env. The stub hears
+  audio of ≤2 KB as silence — that is how tests reach `no_speech`.
+- Evaluator output that does not fit the rubric exactly is FAILED
+  `evaluation_invalid`, never repaired. The evaluator is given the question,
+  `looking_for` and the transcript — nothing about the person.
+
+## Colleges, seats, referral codes, rosters — Day 17
+
+- **A student never binds a college's tenant.** A code or invitation names a
+  tenant; binding it would be a tenant id from a request body. Student routes
+  bind `app.user_id` and reach college tables through nine narrow SECURITY
+  DEFINER functions (`referral_code_tenant`, `consume_referral_code`,
+  `claim_college_seat`, `invitations_for_candidate`, `answer_invitation`, ...)
+  and four candidate policies. **The consent INSERT policy re-checks** that the
+  code or accepted invitation is live and this college's — keep it that way.
+- **A code or an invitation confers ROSTER scope and nothing else** (R16).
+  `INDIVIDUAL` is Day 18's separate grant. Every bad code is one
+  `referral_code_invalid`; the code itself never enters the audit log.
+- **`seats_used` is the seat guard's, not the app's.** The app role has no
+  UPDATE on it; `guard_college_seat_assignment` counts on insert and release.
+  **One live seat per student, platform-wide.** Revoking ROSTER consent
+  releases the seat by trigger. The seat limb of `require_active_subscription`
+  is `candidate_has_college_seat` — seat, consent, ACTIVE college, college
+  subscription in period — read live.
+- **`allocate_seats` has no route** (E10/E23) and refuses above the live
+  plan's `seat_allowance`. Tests call it as PLATFORM_ADMIN on the app role;
+  seed a COLLEGE subscription with `_subscribe_college` (`test_college.py`).
+- **A college never learns who has an account.** No roster column says a
+  contact matched; a student finds invitations from their own verified phone
+  or email. Don't add a "matched" field to anything college-facing.
+- **Committed roster rows are held by `guard_roster_entry_write`**: contact
+  immutable, transitions generated from `college.domain.INVITE_TRANSITIONS`,
+  only uncommitted rows deletable, `sent_at` fixed. A test that ages an
+  invitation disables that trigger as the migrator for the one UPDATE.
+- Revoking a code and discarding a preview are **not paywalled**; issuing,
+  importing, committing and sending are. A student's `/candidate/colleges`
+  routes are never paywalled — linking is how a seated student gets access.
+
+## Consent and college analytics — Day 18
+
+- **Two scopes, two acts.** ROSTER (counted) comes only from a code or an
+  accepted invitation; INDIVIDUAL (seen by name) only from the student's own
+  `individual-visibility` grant, `granted_via = DIRECT`. A CHECK holds the
+  pairing and `guard_student_consent_insert` requires a live ROSTER link, for
+  every writer. **Trigger before CHECK**: a test of the CHECK must link first.
+- **Only the student grants or revokes.** The permissive tenant policy would
+  let a college's transaction INSERT or revoke a consent; the RESTRICTIVE
+  policies `student_consents_only_the_student_*` stop it. Keep them.
+- **Revoking ROSTER ends INDIVIDUAL and the seat in the same statement**
+  (`revoke_individual_with_roster`, `release_seat_on_consent_revoke`).
+  Revocation is never paywalled.
+- **A college reads a student only through `COLLEGE_STUDENT_READS`** — six
+  SECURITY DEFINER functions that INNER JOIN live consent for
+  `bound_college_tenant()` and take no tenant id. A new `college_*` function
+  must be added there with the CTE it joins, or invariant 9 fails; the college
+  and analytics repositories may not name a student table.
+- **Aggregates carry no identifier and are floored in `analytics.domain`**:
+  under `min_cohort_size` only counts; a cell under `min_cell_size` is `null`
+  and so is a partner (a zero cell if nothing else), so the total cannot give
+  it back. Config `analytics.privacy`, strict: a bad row is a 500. Not audited
+  — an aggregate is not a reveal. Never cache it.
+- **Every list page and every open of `/college/students` is audited in the
+  transaction**, ids only; `CollegeStudentResponse`'s field list is an
+  invariant, and it is named in the INDIVIDUAL consent words. Widening one
+  means changing the other and bumping its version.
+- A ROSTER revocation notice to a college (Day 19) **must not name the
+  student**: beside a dashboard that just moved, it names their band (E28).
+
+## Admin console, suspension, disputes — Day 19
+
+- **Staff are members of the one PLATFORM tenant** (E10). Provision with
+  `scripts/create_platform_staff.py` (or `identity.service.provision_platform_staff`
+  as the migrator in tests -- `_staff` in `tests/integration/test_admin_console.py`);
+  there is no route. `guard_membership_tenant_type` refuses a staff role in any
+  other tenant and a customer role in ours, **generated from
+  `identity.domain.ROLE_TENANT_TYPE`**.
+- **Who may call what is `admin.domain.CONSOLE_ROLES`.** A new console route
+  needs its endpoint in `ROUTE_CAPABILITY` in `tests/invariants/test_admin_console.py`,
+  which drives every route with every staff role and every outsider. `/admin`
+  is no longer a cross-tenant surface; that test replaces it.
+- **Every cross-tenant read goes through `admin.service._reveal`**: audit row on
+  the request's session first, then the read-only bypass session
+  (`DATABASE_ADMIN_URL`, `SET TRANSACTION READ ONLY`). Writes stay in the owning
+  module's service (`kyb.review`, `integrity.resolve_signal`,
+  `college.allocate_seats`, `identity.suspend_tenant`).
+- **A drill-down never shows the stored score, a whole contact or a CV**:
+  display value and band, `phone_masked`, counts.
+- **Suspension is a row and `tenants.status` follows it**, both ways, by trigger
+  (`guard_tenant_suspension_write`, `guard_tenant_status`). Never set a tenant
+  SUSPENDED by hand -- the guard refuses. It bites on the member's **next
+  request** despite the 60s membership cache: `membership.mark_tenant_changed`
+  flags the tenant so cached rows are distrusted. Jobs of a suspended employer
+  leave the board and refuse applications; a suspended college's seats stop
+  (E29). The PLATFORM tenant cannot be suspended.
+- **Disputes** (`/disputes` to raise, `/admin/disputes` to work): RLS by tenant,
+  candidate and `platform_tenant_bound()`; `guard_dispute_write` lets only a
+  PLATFORM-bound transaction change state. Resolving records words and **moves
+  nothing else**. A candidate's hire dispute is filed by `admin.open_hire_dispute`.
+
+## Notifications and the relay — Day 19
+
+- **The relay now enqueues** (`celery_app.send_task`) with arguments from
+  `routing.TASK_ARGUMENTS`; a routed task needs an entry whose keys match its
+  signature (`tests/unit/test_outbox_relay.py`). New task modules go in
+  `routing.TASK_MODULES` -- the worker includes exactly those.
+- **Which event tells whom is `notifications.domain.plan_for`**, and
+  `NOTIFYING_EVENTS` is what routing subscribes. Payloads carry ids only; names
+  and contacts are resolved at dispatch and **contacts are never stored**.
+- **Every message decided is a row, sent or not**, with `skip_reason`, keyed by
+  `dedupe_key` so a redelivered event writes nothing new. Decide in one
+  transaction, send each in its own (`app/tasks/notify.py`).
+- **No SMS without a `dlt_template_id`** -- all `None`, so today SMS rows are
+  SKIPPED `DLT_UNREGISTERED`. Providers default to `none`; tests use the
+  `stub_sms` fixture (`test_notifications.py`), which also pretends DLT is done.
+  Only the UPI pre-debit notice ignores an opt-out.
+- **No template may carry the score**: no variable for it, and
+  `notifications-never-import-scoring` in `.importlinter`.
+- **A message to a college about a revocation never names the student** (E28).
+- **Nudges** (`notifications.nudge_page`): config `notifications.nudges`, strict,
+  floors in `domain` (no more than daily, at most 6, IST sending hours). The
+  nudge number is claimed first (`uq_profile_nudges_sequence`) -- that is the
+  cap and the concurrency guard. Tests inject `now` and page with
+  `after_id = uuid - 1, limit = 1` to examine one person in a shared database.
 
 ## Streak points are not the score
 

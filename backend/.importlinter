@@ -47,6 +47,25 @@ forbidden_modules =
     app.modules.scoring
 
 ; ---------------------------------------------------------------------------
+; A message never carries the score (Day 19).
+;
+; An SMS is readable by anyone holding the phone, and the score sits behind a
+; subscription (R5/R13): "your score is 842" on a lock screen defeats both the
+; paywall and the privacy. `notifications/templates.py` has no variable for
+; it; this stops the module reaching for one. Direct imports only -- the
+; module reads colleges and identities through their services, and those are
+; not how a number gets into a message body.
+; ---------------------------------------------------------------------------
+[importlinter:contract:notifications-never-import-scoring]
+name = Notifications never import scoring (a message never carries the score)
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    app.modules.notifications
+forbidden_modules =
+    app.modules.scoring
+
+; ---------------------------------------------------------------------------
 ; Streak points never move the score, and the score never reads streaks.
 ;
 ; The client asked for streak points (2026-09-13): -10 for a missed day, +10 /

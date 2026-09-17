@@ -101,19 +101,24 @@ async def _relay_batch() -> dict[str, int]:
 
 
 def _publish(event: dict[str, Any]) -> None:
-    """Hand the event to the broker.
+    """Enqueue every task the event triggers (Day 19; blockers E15).
 
-    TODO(Day 19): publish to SQS/EventBridge and enqueue `subscribers`. Until
-    the queues exist this logs, which is a deliberate no-op rather than a
-    silent drop - the row stays unpublished only if this raises.
+    **Raises if any enqueue fails**, and then the row stays unpublished and
+    its attempt is counted, so the whole event is retried. A subscriber that
+    was enqueued on the first attempt is enqueued again on the second, which
+    is why every consumer is idempotent by what it acts on -- the callback,
+    the resume version, the dispute's application, the notification's
+    `dedupe_key`.
 
-    The subscriber list is resolved here rather than at enqueue time so that
-    an event routed to a task nobody wired is visible in the log today, before
-    the broker hop exists to hide it.
+    An event nobody subscribes to is published by being marked, and logged
+    with no subscribers, which is ordinary: most events exist for readers
+    that have not been built.
     """
-    from app.tasks.routing import tasks_for
+    from app.tasks.routing import task_arguments, tasks_for
 
     subscribers = tasks_for(event["event_type"])
+    for task_name in subscribers:
+        celery_app.send_task(task_name, kwargs=task_arguments(task_name, event))
     logger.info(
         "outbox_event_published",
         event_type=event["event_type"],

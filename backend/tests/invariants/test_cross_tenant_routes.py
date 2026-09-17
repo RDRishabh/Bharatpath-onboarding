@@ -34,7 +34,15 @@ pytestmark = [pytest.mark.invariant, pytest.mark.integration]
 
 API = "/api/v1"
 #: The surfaces whose routes act on one tenant's data.
-TENANT_SURFACES = (f"{API}/employer", f"{API}/college", f"{API}/admin")
+#:
+#: **`/admin` left this list on Day 19, and was not dropped from coverage.**
+#: A console route crosses tenants by design -- reading any organisation is
+#: what a member of staff is for -- so "tenant A asking for tenant B's
+#: resource is a 404" has no tenant A to ask. The guarantee that replaces it is
+#: stronger and enumerated the same way: no employer, college or candidate
+#: reaches any `/admin` route at all, whatever the id
+#: (`tests/invariants/test_admin_console.py`).
+TENANT_SURFACES = (f"{API}/employer", f"{API}/college")
 ORG = {"legal_name": "Isolation Test Pvt Ltd", "industry": "IT_SOFTWARE"}
 JOB = {
     "title": "Isolation test job",
@@ -211,6 +219,91 @@ async def _reveal_other_member(client: Any, attacker: dict, victim: dict) -> Any
     )
 
 
+# ---------------------------------------------------------------------------
+# Colleges (Day 17). The employer organisations the runner builds cannot name
+# a college's resources, so each case builds a college on each side.
+# ---------------------------------------------------------------------------
+async def _college_pair(client: Any, mint_token: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    from tests.integration.test_college import _college
+
+    return await _college(client, mint_token), await _college(client, mint_token)
+
+
+def _college_member_case(method: str) -> Case:
+    async def case(client: Any, attacker: dict, victim: dict) -> Any:
+        mint_token = victim["mint_token"]
+        college_a, college_b = await _college_pair(client, mint_token)
+        member = await client.post(
+            f"{API}/college/team",
+            json={"email": _email(), "role": "COLLEGE_STAFF"},
+            headers=college_b["headers"],
+        )
+        assert member.status_code == 201, member.text
+        member_id = member.json()["user_id"]
+        response = await client.request(
+            method,
+            f"{API}/college/team/{member_id}",
+            json={"role": "COLLEGE_ADMIN"} if method == "PATCH" else None,
+            headers=college_a["headers"],
+        )
+        team = (await client.get(f"{API}/college/team", headers=college_b["headers"])).json()
+        assert {"user_id": member_id, "role": "COLLEGE_STAFF"}.items() <= next(
+            m for m in team if m["user_id"] == member_id
+        ).items(), "the other college's team changed"
+        return response
+
+    return case
+
+
+async def _revoke_other_colleges_code(client: Any, attacker: dict, victim: dict) -> Any:
+    college_a, college_b = await _college_pair(client, victim["mint_token"])
+    code = await client.post(f"{API}/college/referral-codes", json={}, headers=college_b["headers"])
+    assert code.status_code == 201, code.text
+    response = await client.post(
+        f"{API}/college/referral-codes/{code.json()['id']}/revoke", headers=college_a["headers"]
+    )
+    codes = (await client.get(f"{API}/college/referral-codes", headers=college_b["headers"])).json()
+    assert codes[0]["state"] == "ACTIVE", "the other college's code was revoked"
+    return response
+
+
+def _roster_case(method: str, suffix: str) -> Case:
+    async def case(client: Any, attacker: dict, victim: dict) -> Any:
+        college_a, college_b = await _college_pair(client, victim["mint_token"])
+        upload = await client.post(
+            f"{API}/college/roster-imports",
+            json={"file_name": "r.csv", "csv": f"phone\n9{uuid.uuid4().int % 10**9:09d}\n"},
+            headers=college_b["headers"],
+        )
+        assert upload.status_code == 201, upload.text
+        import_id = upload.json()["id"]
+        response = await client.request(
+            method,
+            f"{API}/college/roster-imports/{import_id}{suffix}",
+            headers=college_a["headers"],
+        )
+        mine = await client.get(
+            f"{API}/college/roster-imports/{import_id}", headers=college_b["headers"]
+        )
+        assert mine.json()["state"] == "PREVIEW", "the other college's import changed"
+        return response
+
+    return case
+
+
+async def _open_other_colleges_student(client: Any, attacker: dict, victim: dict) -> Any:
+    """Day 18. College B's student lets B see them; college A asks by id."""
+    from tests.integration.test_college_consent import _seed_student
+
+    college_a, college_b = await _college_pair(client, victim["mint_token"])
+    code = await client.post(f"{API}/college/referral-codes", json={}, headers=college_b["headers"])
+    student = await _seed_student(college_b, code.json()["id"], individual=True, name="B only")
+    response = await client.get(f"{API}/college/students/{student}", headers=college_a["headers"])
+    theirs = await client.get(f"{API}/college/students/{student}", headers=college_b["headers"])
+    assert theirs.status_code == 200, "the student's own college lost its view"
+    return response
+
+
 _TOMORROW = (datetime.now(UTC) + timedelta(days=1)).isoformat()
 
 
@@ -239,6 +332,19 @@ CROSS_TENANT_CASES: dict[tuple[str, str], Case] = {
         "POST", "/hire"
     ),
     ("GET", f"{API}/employer/discovery/candidates/{{candidate_id}}"): _reveal_other_member,
+    ("PATCH", f"{API}/college/team/{{user_id}}"): _college_member_case("PATCH"),
+    ("DELETE", f"{API}/college/team/{{user_id}}"): _college_member_case("DELETE"),
+    ("POST", f"{API}/college/referral-codes/{{code_id}}/revoke"): _revoke_other_colleges_code,
+    ("GET", f"{API}/college/roster-imports/{{import_id}}"): _roster_case("GET", ""),
+    ("GET", f"{API}/college/roster-imports/{{import_id}}/rows"): _roster_case("GET", "/rows"),
+    ("POST", f"{API}/college/roster-imports/{{import_id}}/commit"): _roster_case("POST", "/commit"),
+    ("POST", f"{API}/college/roster-imports/{{import_id}}/discard"): _roster_case(
+        "POST", "/discard"
+    ),
+    ("POST", f"{API}/college/roster-imports/{{import_id}}/invitations/send"): _roster_case(
+        "POST", "/invitations/send"
+    ),
+    ("GET", f"{API}/college/students/{{candidate_id}}"): _open_other_colleges_student,
 }
 
 
@@ -274,6 +380,7 @@ async def test_another_tenants_resource_is_a_404(
     attacker = await _organisation(client, mint_token)
     victim = await _organisation(client, mint_token)
     victim["fake_s3"] = fake_s3
+    victim["mint_token"] = mint_token
 
     response = await CROSS_TENANT_CASES[route](client, attacker, victim)
     assert response.status_code == 404, (
@@ -351,3 +458,31 @@ async def test_another_tenants_job_has_no_pipeline_to_list(client: Any, mint_tok
     assert response.status_code == 404
     assert response.json()["code"] == "job_not_found"
     assert application not in response.text
+
+
+async def test_college_routes_without_an_id_only_ever_return_the_callers_own(
+    client: Any, mint_token: Any
+) -> None:
+    """Day 17. A college's organisation, team, codes and imports are its own."""
+    college_a, college_b = await _college_pair(client, mint_token)
+    for college in (college_a, college_b):
+        await client.post(f"{API}/college/referral-codes", json={}, headers=college["headers"])
+        await client.post(
+            f"{API}/college/roster-imports",
+            json={"file_name": "r.csv", "csv": f"phone\n9{uuid.uuid4().int % 10**9:09d}\n"},
+            headers=college["headers"],
+        )
+
+    def ids(response: Any) -> set[str]:
+        return {item["id"] for item in response.json()}
+
+    a, b = college_a["headers"], college_b["headers"]
+    org = (await client.get(f"{API}/college/organisation", headers=a)).json()
+    assert org["tenant_id"] == college_a["tenant_id"]
+    for path in ("referral-codes", "roster-imports"):
+        mine = ids(await client.get(f"{API}/college/{path}", headers=a))
+        theirs = ids(await client.get(f"{API}/college/{path}", headers=b))
+        assert len(mine) == 1 and len(theirs) == 1 and not mine & theirs, path
+    team_a = {m["user_id"] for m in (await client.get(f"{API}/college/team", headers=a)).json()}
+    team_b = {m["user_id"] for m in (await client.get(f"{API}/college/team", headers=b)).json()}
+    assert not team_a & team_b

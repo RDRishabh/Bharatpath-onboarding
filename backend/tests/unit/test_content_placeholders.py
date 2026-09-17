@@ -685,6 +685,33 @@ def test_the_college_form_records_that_consent_is_the_students_to_give() -> None
     assert "undertaking_student_consent" in COLLEGE_FORM.required_codes()
 
 
+def test_the_student_consent_text_is_still_ours_rather_than_counsels() -> None:
+    """Day 17. The words a student agrees to when linking to a college are a
+    placeholder, versioned so that replacing them re-asks rather than silently
+    rebinding consent given to other words. Flipping this is counsel's call."""
+    from app.modules.college.domain import CONSENT_VERSION, ROSTER_CONSENT_TEXT
+
+    assert CONSENT_VERSION.startswith("placeholder-")
+    text = ROSTER_CONSENT_TEXT.lower()
+    assert "count" in text and "disconnect" in text
+    assert "score" in text, "the terms must say the college does not see the score"
+
+
+def test_the_individual_visibility_text_is_ours_and_names_what_the_college_sees() -> None:
+    """Day 18. Versioned separately from the roster text, and a placeholder
+    like it. The words must name every field the college's view returns, so
+    widening the view without changing them fails here and in invariant 9."""
+    from app.modules.college.domain import INDIVIDUAL_CONSENT_TEXT, INDIVIDUAL_CONSENT_VERSION
+
+    assert INDIVIDUAL_CONSENT_VERSION.startswith("placeholder-")
+    text = INDIVIDUAL_CONSENT_TEXT.lower()
+    for shown in ("by name", "score", "band", "applied", "interviewed", "hired"):
+        assert shown in text, shown
+    for withheld in ("phone", "email", "cv"):
+        assert withheld in text, f"the terms must say the college does not see the {withheld}"
+    assert "recorded" in text and "turn this off" in text
+
+
 def test_the_college_form_asks_for_a_second_contact() -> None:
     """Placement officers change between academic years, and an account whose
     only contact has left cannot be recovered without a judgment call about who

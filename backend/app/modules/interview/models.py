@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
@@ -298,4 +299,99 @@ class InterviewAnswer(Base, UUIDPrimaryKey):
         ),
         # Idempotent retry: re-uploading question 3 must not create a second row.
         UniqueConstraint("session_id", "question_index", name="uq_interview_answer_slot"),
+    )
+
+
+class InterviewTranscript(Base, UUIDPrimaryKey):
+    """What a speech model heard in one stored answer (Day 17).
+
+    **Insert-only, one per answer.** Transcription is paid per minute, so a
+    re-run of the evaluation reads this rather than transcribing again, and a
+    dispute about feedback can see exactly the text the evaluator was given.
+    `provider` and `provider_version` are stored for the same reason
+    `resume_extractions` stores its parser: a different engine hears different
+    words, and the report was built from these.
+
+    A candidate's own words: personal data, never shown to an employer or a
+    college, and kept no longer than the audio it came from (blockers E22).
+    """
+
+    __tablename__ = "interview_transcripts"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("interview_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    answer_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("interview_answers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    question_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: BCP 47, as the provider detected it. Informational: the rubric is
+    #: judged in whichever language the candidate chose (`bank.py`).
+    language: Mapped[str | None] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(String(20_000), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("answer_id", name="uq_interview_transcript_answer"),
+        Index("ix_interview_transcripts_session", "session_id", "question_index"),
+    )
+
+
+class InterviewEvaluation(Base, UUIDPrimaryKey):
+    """The outcome of evaluating one completed session (Day 17). Insert-only.
+
+    **Feedback, not a contribution.** Nothing here reaches `scoring`, and the
+    session's +20 was frozen at completion; `guard_interview_session_write`
+    refuses any change to it, so an evaluation cannot move a score by any path.
+
+    `ratings` holds the evaluator's 0-4 per question and dimension, validated
+    against the rubric (`domain.parse_evaluation`), and **never leaves the
+    service**: the candidate reads levels in words. `raw_response` is kept
+    verbatim so a report can be re-assembled, and disputed, from what the
+    evaluator actually said.
+
+    One row per session. The session moves to `outcome` in the same
+    transaction, and the guard refuses EVALUATED or FAILED without this row.
+    """
+
+    __tablename__ = "interview_evaluations"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("interview_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    failure_reason: Mapped[str | None] = mapped_column(String(64))
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    rubric_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    report_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    ratings: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
+    )
+    raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('EVALUATED', 'FAILED')", name="ck_interview_evaluations_outcome"
+        ),
+        # A failure says why; a success has nothing to explain.
+        CheckConstraint(
+            "(outcome = 'FAILED') = (failure_reason IS NOT NULL)",
+            name="ck_interview_evaluations_failure_reason",
+        ),
+        UniqueConstraint("session_id", name="uq_interview_evaluation_session"),
     )

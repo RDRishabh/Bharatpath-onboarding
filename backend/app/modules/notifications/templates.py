@@ -52,7 +52,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final, Literal
 
-TEMPLATES_VERSION: Final = "placeholder-1-2026-09-11"
+TEMPLATES_VERSION: Final = "placeholder-2-2026-09-17"
 
 #: GSM-7 single segment.
 MAX_GSM_SEGMENT: Final = 160
@@ -202,6 +202,31 @@ CANDIDATE_TEMPLATES: Final[tuple[MessageTemplate, ...]] = (
         (),
         "SERVICE_IMPLICIT",
     ),
+    # Day 19. An invitation from a roster import goes to a contact who may
+    # have no account yet, so it names no code: the student accepts from the
+    # app, signed in with the number or address the college uploaded.
+    MessageTemplate(
+        "SMS_COLLEGE_INVITATION",
+        "SMS",
+        "sms.college_invitation",
+        "{college} has invited you to link your profile on BharatPath. "
+        "Sign in with this number to accept.",
+        ("college",),
+        "SERVICE_IMPLICIT",
+    ),
+    # Day 19, R9. **SERVICE_EXPLICIT, not IMPLICIT**: a reminder to someone
+    # who has not used the service yet is only deliverable to a DND number
+    # with their recorded consent, and registering it as implicit to get
+    # round that is the compliance breach the category exists to catch.
+    MessageTemplate(
+        "SMS_PROFILE_INCOMPLETE",
+        "SMS",
+        "sms.profile_incomplete",
+        "Your BharatPath profile is not finished. Upload your CV or type your details "
+        "in the app to build it.",
+        (),
+        "SERVICE_EXPLICIT",
+    ),
     MessageTemplate(
         "SMS_COLLEGE_INVITE",
         "SMS",
@@ -342,10 +367,129 @@ EMAIL_TEMPLATES: Final[tuple[MessageTemplate, ...]] = (
         ("hours",),
         subject="Your BharatPath data is ready",
     ),
+    MessageTemplate(
+        "EMAIL_PROFILE_INCOMPLETE",
+        "EMAIL",
+        "email.profile_incomplete",
+        "Your BharatPath profile is not finished yet. Upload a CV or type your details "
+        "in, and we will build it for you.",
+        (),
+        subject="Finish your BharatPath profile",
+    ),
+    MessageTemplate(
+        "EMAIL_COLLEGE_INVITATION",
+        "EMAIL",
+        "email.college_invitation",
+        "{college} has invited you to link your profile on BharatPath. Sign in with "
+        "this email address to accept.",
+        ("college",),
+        subject="An invitation from your college",
+    ),
 )
 
+# ---------------------------------------------------------------------------
+# In-app (Day 19)
+# ---------------------------------------------------------------------------
+# The inbox. No DLT, no provider and nothing leaves our database, so this is
+# the channel that always works -- which is exactly why it must obey the same
+# rules as the others: no score, no amount, and nobody named who is not the
+# reader's to know about.
+
+IN_APP_TEMPLATES: Final[tuple[MessageTemplate, ...]] = (
+    MessageTemplate(
+        "IN_APP_APPLICATION_SENT",
+        "IN_APP",
+        "in_app.application_sent",
+        "Your application to {employer} has been sent.",
+        ("employer",),
+    ),
+    MessageTemplate(
+        "IN_APP_APPLICATION_UPDATE",
+        "IN_APP",
+        "in_app.application_update",
+        "There is an update on your application to {employer}.",
+        ("employer",),
+    ),
+    MessageTemplate(
+        "IN_APP_PAYMENT_RECEIVED",
+        "IN_APP",
+        "in_app.payment_received",
+        "We have received your payment. Thank you.",
+    ),
+    MessageTemplate(
+        "IN_APP_PAYMENT_FAILED",
+        "IN_APP",
+        "in_app.payment_failed",
+        "Your payment did not go through. You can try again.",
+    ),
+    MessageTemplate(
+        "IN_APP_ACCESS_ENDED",
+        "IN_APP",
+        "in_app.access_ended",
+        "Your access has ended. Everything you saved is still here.",
+    ),
+    MessageTemplate(
+        "IN_APP_PRE_DEBIT",
+        "IN_APP",
+        "in_app.pre_debit",
+        "{amount} will be debited on {date} to continue your access.",
+        ("amount", "date"),
+    ),
+    MessageTemplate(
+        "IN_APP_KYB_APPROVED",
+        "IN_APP",
+        "in_app.kyb_approved",
+        "Your organisation has been verified.",
+    ),
+    MessageTemplate(
+        "IN_APP_KYB_NEEDS_INFO",
+        "IN_APP",
+        "in_app.kyb_needs_info",
+        "Your organisation's verification needs more information.",
+    ),
+    MessageTemplate(
+        "IN_APP_INTERVIEW_FEEDBACK_READY",
+        "IN_APP",
+        "in_app.interview_feedback_ready",
+        "The feedback on your practice interview is ready.",
+    ),
+    # **Neither college message names the student** (blockers E28). A college
+    # can read its dashboard before and after this arrives; a name beside
+    # that would tell it whose band just left the distribution.
+    MessageTemplate(
+        "IN_APP_COLLEGE_STUDENT_DISCONNECTED",
+        "IN_APP",
+        "in_app.college_student_disconnected",
+        "A student has disconnected their profile from your college.",
+    ),
+    MessageTemplate(
+        "IN_APP_COLLEGE_STUDENT_STOPPED_SHARING",
+        "IN_APP",
+        "in_app.college_student_stopped_sharing",
+        "A student has stopped sharing their details with your college.",
+    ),
+    MessageTemplate(
+        "IN_APP_DISPUTE_ANSWERED",
+        "IN_APP",
+        "in_app.dispute_answered",
+        "We have answered your dispute. Open it to read our reply.",
+    ),
+    MessageTemplate(
+        "IN_APP_PROFILE_INCOMPLETE",
+        "IN_APP",
+        "in_app.profile_incomplete",
+        "Upload your CV or type your details in to build your profile.",
+    ),
+)
+
+
 TEMPLATES: Final[tuple[MessageTemplate, ...]] = (
-    AUTH_TEMPLATES + CANDIDATE_TEMPLATES + ACCESS_TEMPLATES + BUSINESS_TEMPLATES + EMAIL_TEMPLATES
+    AUTH_TEMPLATES
+    + CANDIDATE_TEMPLATES
+    + ACCESS_TEMPLATES
+    + BUSINESS_TEMPLATES
+    + EMAIL_TEMPLATES
+    + IN_APP_TEMPLATES
 )
 
 TEMPLATE_CODES: Final[frozenset[str]] = frozenset(t.code for t in TEMPLATES)

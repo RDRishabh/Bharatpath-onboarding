@@ -50,6 +50,10 @@ TENANT_SCOPED_TABLES = (
     "roster_entries",
     "student_consents",
     "referral_codes",
+    "college_seat_assignments",
+    # Day 19. NULL for a candidate's dispute, which the policy then never
+    # matches; the candidate and staff policies are added beside it.
+    "disputes",
 )
 
 # Tables that carry a tenant_id but must NOT get the policy. Each exemption is
@@ -85,6 +89,7 @@ def upgrade() -> None:
     _create_employer_tables()
     _create_billing_tables()
     _create_college_tables()
+    _create_platform_tables()
 
     _enable_row_level_security()
     _apply_append_only_grants()
@@ -96,6 +101,9 @@ def upgrade() -> None:
     _create_candidate_search_projection()
     _create_payment_guards()
     _create_interview_guards()
+    _create_college_access()
+    _create_college_student_reads()
+    _create_platform_access()
 
 
 def downgrade() -> None:
@@ -286,6 +294,19 @@ def _create_billing_tables() -> None:
         "interview_purchases",
         "interview_sessions",
         "interview_answers",
+        "interview_transcripts",
+        "interview_evaluations",
+    )
+
+
+def _create_platform_tables() -> None:
+    """Day 19: the dispute queue and notifications."""
+    _create_from_metadata(
+        "disputes",
+        "notifications",
+        "notification_preferences",
+        "notification_suppressions",
+        "profile_nudges",
     )
 
 
@@ -297,6 +318,7 @@ def _create_college_tables() -> None:
         "roster_entries",
         "student_consents",
         "referral_codes",
+        "college_seat_assignments",
     )
 
 
@@ -376,11 +398,35 @@ def _apply_append_only_grants() -> None:
     # update may change; a stored answer is held by its own guard.
     for table in ("device_checks", "interview_checkout_notices", "interview_purchases"):
         op.execute(f"REVOKE UPDATE, DELETE ON {table} FROM {APP_ROLE}")
+    # Day 17. A transcript is what the evaluator was given and an evaluation
+    # is what it said; either rewritten afterwards makes a dispute about
+    # feedback unanswerable.
+    for table in ("interview_transcripts", "interview_evaluations"):
+        op.execute(f"REVOKE UPDATE, DELETE ON {table} FROM {APP_ROLE}")
     for table in ("interview_products", "interview_sessions", "interview_answers"):
         op.execute(f"REVOKE DELETE ON {table} FROM {APP_ROLE}")
     # Lapsing loses access, not history (R13).
     for table in ("plans", "subscriptions", "upi_mandates", "mandate_debit_notices"):
         op.execute(f"REVOKE DELETE ON {table} FROM {APP_ROLE}")
+
+    # Day 17 -- colleges. A seat count is moved by the seat guard alone, so
+    # the app may set the allowance and never the count. A consent is revoked,
+    # never rewritten or deleted (invariant 9). A referral code's use count is
+    # moved only by `consume_referral_code`; the college may revoke it. A seat
+    # is released, never deleted -- it is who the college was paying for.
+    op.execute(f"REVOKE UPDATE, DELETE ON college_seats FROM {APP_ROLE}")
+    op.execute(
+        f"GRANT UPDATE (seats_allocated, allocated_by, updated_at) ON college_seats TO {APP_ROLE}"
+    )
+    op.execute(f"REVOKE UPDATE, DELETE ON student_consents FROM {APP_ROLE}")
+    op.execute(f"GRANT UPDATE (revoked_at) ON student_consents TO {APP_ROLE}")
+    op.execute(f"REVOKE UPDATE, DELETE ON referral_codes FROM {APP_ROLE}")
+    op.execute(f"GRANT UPDATE (revoked_at, revoked_by, updated_at) ON referral_codes TO {APP_ROLE}")
+    op.execute(f"REVOKE UPDATE, DELETE ON college_seat_assignments FROM {APP_ROLE}")
+    op.execute(
+        f"GRANT UPDATE (released_at, release_reason) ON college_seat_assignments TO {APP_ROLE}"
+    )
+    op.execute(f"REVOKE DELETE ON roster_imports FROM {APP_ROLE}")
 
     # The engagement-points ledger. Not a score, but it is a balance a
     # candidate sees, and one that could be rewritten would explain nothing.
@@ -645,7 +691,8 @@ def _create_candidate_marketplace_access() -> None:
         SET search_path = public, pg_temp
         AS $$
           SELECT EXISTS (
-            SELECT 1 FROM jobs WHERE id = p_job_id AND status = 'PUBLISHED'
+            SELECT 1 FROM jobs j JOIN tenants t ON t.id = j.tenant_id
+             WHERE j.id = p_job_id AND j.status = 'PUBLISHED' AND t.status = 'ACTIVE'
           )
         $$;
         """
@@ -658,13 +705,22 @@ def _create_candidate_marketplace_access() -> None:
     # to -- otherwise an application to a job that later closed would lose
     # its title on the candidate's own Application Board. Board queries still
     # filter on status explicitly for that reason.
+    #
+    # A suspended employer's jobs leave the board (Day 19): stopping an
+    # organisation that keeps recruiting is not stopping it. Jobs already
+    # applied to stay readable to the candidate who applied.
     op.execute(
         """
         CREATE POLICY jobs_candidate_board ON jobs FOR SELECT
           USING (
             (SELECT current_candidate_id()) IS NOT NULL
             AND (
-              status = 'PUBLISHED'
+              (
+                status = 'PUBLISHED'
+                AND EXISTS (
+                  SELECT 1 FROM tenants t WHERE t.id = jobs.tenant_id AND t.status = 'ACTIVE'
+                )
+              )
               OR EXISTS (
                 SELECT 1 FROM applications a
                  WHERE a.job_id = jobs.id
@@ -1109,7 +1165,8 @@ def _create_interview_guards() -> None:
         along `interview.domain.SESSION_TRANSITIONS` (generated); completion is
         a latch; and COMPLETED needs every answer STORED, counted in SQL
         against `QUESTIONS_PER_SESSION`. So +20 cannot be reached by an UPDATE
-        that skips the recording, from any path.
+        that skips the recording, from any path. EVALUATED and FAILED (Day 17)
+        need the `interview_evaluations` row that says so.
       * **`guard_interview_answer_write`** -- a STORED answer never changes,
         and nothing is written to a session no longer being recorded.
 
@@ -1197,6 +1254,14 @@ def _create_interview_guards() -> None:
               OLD.state, NEW.state USING ERRCODE = 'check_violation';
           END IF;
 
+          IF NEW.state IN ('EVALUATED', 'FAILED') AND NEW.state <> OLD.state AND NOT EXISTS (
+               SELECT 1 FROM interview_evaluations e
+                WHERE e.session_id = NEW.id AND e.outcome = NEW.state
+             ) THEN
+            RAISE EXCEPTION 'INTERVIEW_SESSION_GUARD: % needs the evaluation that records it', NEW.state
+              USING ERRCODE = 'check_violation';
+          END IF;
+
           IF NEW.state = 'COMPLETED' AND OLD.state <> 'COMPLETED' AND (
                SELECT count(*) FROM interview_answers a
                 WHERE a.session_id = NEW.id AND a.upload_state = 'STORED'
@@ -1247,3 +1312,1158 @@ def _create_interview_guards() -> None:
           FOR EACH ROW EXECUTE FUNCTION guard_interview_answer_write();
         """
     )
+
+
+# ---------------------------------------------------------------------------
+# Day 17 -- colleges: seats, referral codes, invitations, held below the service
+# ---------------------------------------------------------------------------
+#: Policies added so a candidate, who belongs to no tenant, can link to a
+#: college and read their own links. Listed beside `CANDIDATE_POLICIES`.
+COLLEGE_CANDIDATE_POLICIES = (
+    "student_consents_candidate_read",
+    "student_consents_candidate_grant",
+    "student_consents_candidate_revoke",
+    "student_consents_only_the_student_grants",
+    "student_consents_only_the_student_revokes",
+    "college_seat_assignments_candidate_read",
+    "colleges_candidate_linked",
+)
+
+
+def _create_college_access() -> None:
+    """What a student may do about a college, and what holds a seat's count.
+
+    A student has no tenant, and the college tables are all tenant-scoped.
+    Binding `app.tenant_id` to the college named by a code the student typed
+    would be a tenant id taken from a request body, which SRS 2.24.7 forbids --
+    and it would open every row of that college to the transaction. So, as on
+    Day 11, the candidate binds `app.user_id` and reaches the college tables
+    through policies and **narrow SECURITY DEFINER functions** that each answer
+    one question and return no more than it needs:
+
+      * `referral_code_tenant(code)` -- which college a live code belongs to.
+        Candidates only, so an employer cannot use it to test codes.
+      * `consume_referral_code(id)` -- one use, only while the code is live and
+        under `max_uses`, as one conditional UPDATE.
+      * `referral_code_admits(id, tenant)` / `invitation_admits(entry, tenant)`
+        -- read by the INSERT policy on `student_consents`, so a consent row
+        must name a live code of that college, or an invitation this student
+        accepted. A student cannot attach themselves to a roster by writing one.
+      * `invitations_for_candidate()` / `answer_invitation(entry, accept)` --
+        invitations **matched on the student's own verified phone or email**,
+        never on anything they send.
+      * `claim_college_seat(tenant)` -- a seat for this student at a college
+        they are linked to, if one is free; NULL otherwise, never an error.
+      * `candidate_has_college_seat(user)` -- the seat limb of
+        `require_active_subscription`: a live seat, a live ROSTER consent, an
+        ACTIVE college, and that college's subscription in period, read live.
+
+    And for every writer, the migrator included:
+
+      * `guard_college_seat_assignment` -- a seat needs its student's live
+        ROSTER consent at that college and a free place in the allowance; it
+        moves `college_seats.seats_used` itself, so the count cannot drift;
+        release is a latch.
+      * `release_seat_on_consent_revoke` -- revoking ROSTER consent releases
+        the seat it paid for, in the same statement (Day 18 builds revocation;
+        this makes it correct the day it lands).
+      * `guard_student_consent_write` -- revocation is a latch, and nothing
+        else about a consent changes.
+      * `guard_roster_entry_write` -- a committed row's contact never changes,
+        invitations move only along `college.domain.INVITE_TRANSITIONS`
+        (generated), and only an uncommitted row may be deleted.
+    """
+    from app.modules.college.domain import INVITATION_VALID_FOR, INVITE_TRANSITIONS
+
+    valid_days = INVITATION_VALID_FOR.days
+    invite_pairs = ", ".join(f"('{a}', '{b}')" for a, b in sorted(INVITE_TRANSITIONS))
+    #: The student's own contact, as `users` holds it, against a roster row.
+    matches = """(
+               (u.phone IS NOT NULL AND e.phone = u.phone)
+            OR (u.email IS NOT NULL AND e.email = lower(u.email))
+          )"""
+
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION referral_code_tenant(p_code text)
+        RETURNS TABLE (code_id uuid, tenant_id uuid)
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT rc.id, rc.tenant_id
+            FROM referral_codes rc
+            JOIN tenants t ON t.id = rc.tenant_id
+           WHERE (SELECT current_candidate_id()) IS NOT NULL
+             AND rc.code = p_code
+             AND rc.revoked_at IS NULL
+             AND rc.expires_at > now()
+             AND (rc.max_uses IS NULL OR rc.uses < rc.max_uses)
+             AND t.type = 'COLLEGE'
+             AND t.status = 'ACTIVE'
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION consume_referral_code(p_code_id uuid)
+        RETURNS boolean
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF (SELECT current_candidate_id()) IS NULL THEN
+            RETURN false;
+          END IF;
+          UPDATE referral_codes
+             SET uses = uses + 1, updated_at = now()
+           WHERE id = p_code_id
+             AND revoked_at IS NULL
+             AND expires_at > now()
+             AND (max_uses IS NULL OR uses < max_uses);
+          RETURN FOUND;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION referral_code_admits(p_code_id uuid, p_tenant_id uuid)
+        RETURNS boolean
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT EXISTS (
+            SELECT 1 FROM referral_codes rc
+             WHERE rc.id = p_code_id
+               AND rc.tenant_id = p_tenant_id
+               AND rc.revoked_at IS NULL
+               AND rc.expires_at > now()
+          )
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION invitations_for_candidate()
+        RETURNS TABLE (entry_id uuid, tenant_id uuid, college_name text, sent_at timestamptz)
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT e.id, e.tenant_id, c.name, e.sent_at
+            FROM users u
+            JOIN roster_entries e ON {matches}
+            JOIN colleges c ON c.tenant_id = e.tenant_id
+            JOIN tenants t ON t.id = e.tenant_id
+           WHERE u.id = (SELECT current_candidate_id())
+             AND e.invite_state = 'SENT'
+             AND e.sent_at > now() - interval '{valid_days} days'
+             AND t.status = 'ACTIVE'
+           ORDER BY e.sent_at DESC
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION answer_invitation(p_entry_id uuid, p_accept boolean)
+        RETURNS uuid
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          v_tenant uuid;
+        BEGIN
+          UPDATE roster_entries e
+             SET invite_state = CASE WHEN p_accept THEN 'ACCEPTED' ELSE 'DECLINED' END,
+                 responded_at = now()
+            FROM users u
+           WHERE u.id = (SELECT current_candidate_id())
+             AND e.id = p_entry_id
+             AND e.invite_state = 'SENT'
+             AND e.sent_at > now() - interval '{valid_days} days'
+             AND {matches}
+          RETURNING e.tenant_id INTO v_tenant;
+          IF v_tenant IS NOT NULL THEN
+            RETURN v_tenant;
+          END IF;
+          -- Answering the same way twice is a retry, not a new answer.
+          SELECT e.tenant_id INTO v_tenant
+            FROM roster_entries e, users u
+           WHERE u.id = (SELECT current_candidate_id())
+             AND e.id = p_entry_id
+             AND e.invite_state = CASE WHEN p_accept THEN 'ACCEPTED' ELSE 'DECLINED' END
+             AND {matches};
+          RETURN v_tenant;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION invitation_admits(p_entry_id uuid, p_tenant_id uuid)
+        RETURNS boolean
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT EXISTS (
+            SELECT 1 FROM roster_entries e, users u
+             WHERE u.id = (SELECT current_candidate_id())
+               AND e.id = p_entry_id
+               AND e.tenant_id = p_tenant_id
+               AND e.invite_state = 'ACCEPTED'
+               AND {matches}
+          )
+        $$;
+        """
+    )
+
+    # Policies. `(SELECT current_candidate_id())` for the InitPlan, as on Day 11.
+    op.execute(
+        """
+        CREATE POLICY student_consents_candidate_read ON student_consents FOR SELECT
+          USING (candidate_id = (SELECT current_candidate_id()))
+        """
+    )
+    # ROSTER needs the code or invitation it names to admit this student to
+    # this college. INDIVIDUAL is the student's own separate act, DIRECT, and
+    # `guard_student_consent_insert` requires a live ROSTER link beside it.
+    op.execute(
+        """
+        CREATE POLICY student_consents_candidate_grant ON student_consents FOR INSERT
+          WITH CHECK (
+            candidate_id = (SELECT current_candidate_id())
+            AND revoked_at IS NULL
+            AND CASE scope
+                  WHEN 'ROSTER' THEN CASE granted_via
+                      WHEN 'REFERRAL_CODE' THEN referral_code_admits(referral_code_id, tenant_id)
+                      WHEN 'INVITE' THEN invitation_admits(roster_entry_id, tenant_id)
+                      ELSE false
+                    END
+                  WHEN 'INDIVIDUAL' THEN granted_via = 'DIRECT'
+                  ELSE false
+                END
+          )
+        """
+    )
+    # Day 18. Revocation is the student's: their own live rows, to revoked.
+    op.execute(
+        """
+        CREATE POLICY student_consents_candidate_revoke ON student_consents FOR UPDATE
+          USING (candidate_id = (SELECT current_candidate_id()) AND revoked_at IS NULL)
+          WITH CHECK (candidate_id = (SELECT current_candidate_id()) AND revoked_at IS NOT NULL)
+        """
+    )
+    # **Institution-side bypass of student consent is prohibited** (SRS
+    # 1.15.3). Permissive policies OR together, so the tenant policy alone
+    # would let a college's own transaction INSERT a consent naming any
+    # student, or revoke one. These RESTRICTIVE policies AND with everything
+    # else: whatever the tenant policy allows, a consent is granted and
+    # revoked only by the student it names. The cascade and seat triggers are
+    # SECURITY DEFINER and are not subject to them.
+    op.execute(
+        """
+        CREATE POLICY student_consents_only_the_student_grants ON student_consents
+          AS RESTRICTIVE FOR INSERT
+          WITH CHECK (candidate_id = (SELECT current_candidate_id()))
+        """
+    )
+    op.execute(
+        """
+        CREATE POLICY student_consents_only_the_student_revokes ON student_consents
+          AS RESTRICTIVE FOR UPDATE
+          USING (candidate_id = (SELECT current_candidate_id()))
+          WITH CHECK (candidate_id = (SELECT current_candidate_id()))
+        """
+    )
+    op.execute(
+        """
+        CREATE POLICY college_seat_assignments_candidate_read ON college_seat_assignments
+          FOR SELECT USING (candidate_id = (SELECT current_candidate_id()))
+        """
+    )
+    op.execute(
+        """
+        CREATE POLICY colleges_candidate_linked ON colleges FOR SELECT
+          USING (
+            (SELECT current_candidate_id()) IS NOT NULL
+            AND EXISTS (
+              SELECT 1 FROM student_consents sc WHERE sc.tenant_id = colleges.tenant_id
+            )
+          )
+        """
+    )
+
+    # Seats.
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_college_seat_assignment()
+        RETURNS TRIGGER
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          v_seats college_seats%ROWTYPE;
+        BEGIN
+          IF TG_OP = 'INSERT' THEN
+            IF NEW.released_at IS NOT NULL OR NEW.release_reason IS NOT NULL THEN
+              RAISE EXCEPTION 'COLLEGE_SEAT_GUARD: a seat starts held'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM student_consents sc
+               WHERE sc.id = NEW.consent_id
+                 AND sc.tenant_id = NEW.tenant_id
+                 AND sc.candidate_id = NEW.candidate_id
+                 AND sc.scope = 'ROSTER'
+                 AND sc.revoked_at IS NULL
+            ) THEN
+              RAISE EXCEPTION 'COLLEGE_SEAT_GUARD: a seat needs the student''s live roster consent'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            SELECT * INTO v_seats FROM college_seats WHERE tenant_id = NEW.tenant_id FOR UPDATE;
+            IF NOT FOUND OR v_seats.seats_used >= v_seats.seats_allocated THEN
+              RAISE EXCEPTION 'COLLEGE_SEAT_GUARD: no seat is free'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            UPDATE college_seats SET seats_used = seats_used + 1, updated_at = now()
+             WHERE tenant_id = NEW.tenant_id;
+            RETURN NEW;
+          END IF;
+
+          IF NEW.tenant_id <> OLD.tenant_id OR NEW.candidate_id <> OLD.candidate_id
+             OR NEW.consent_id <> OLD.consent_id OR NEW.assigned_at <> OLD.assigned_at THEN
+            RAISE EXCEPTION 'COLLEGE_SEAT_GUARD: whose seat it is never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF OLD.released_at IS NOT NULL THEN
+            RAISE EXCEPTION 'COLLEGE_SEAT_GUARD: a released seat stays released'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF NEW.released_at IS NOT NULL THEN
+            UPDATE college_seats SET seats_used = seats_used - 1, updated_at = now()
+             WHERE tenant_id = NEW.tenant_id;
+          END IF;
+          RETURN NEW;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_college_seat_assignment
+          BEFORE INSERT OR UPDATE ON college_seat_assignments
+          FOR EACH ROW EXECUTE FUNCTION guard_college_seat_assignment();
+        """
+    )
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION claim_college_seat(p_tenant_id uuid)
+        RETURNS uuid
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          v_candidate uuid := (SELECT current_candidate_id());
+          v_consent uuid;
+          v_seat uuid;
+          v_seats college_seats%ROWTYPE;
+        BEGIN
+          IF v_candidate IS NULL THEN
+            RETURN NULL;
+          END IF;
+          SELECT id INTO v_seat FROM college_seat_assignments
+           WHERE candidate_id = v_candidate AND released_at IS NULL;
+          IF FOUND THEN
+            -- One live seat per student. Theirs already, or another college's.
+            RETURN (SELECT id FROM college_seat_assignments
+                     WHERE id = v_seat AND tenant_id = p_tenant_id);
+          END IF;
+          SELECT id INTO v_consent FROM student_consents
+           WHERE tenant_id = p_tenant_id AND candidate_id = v_candidate
+             AND scope = 'ROSTER' AND revoked_at IS NULL;
+          IF NOT FOUND THEN
+            RETURN NULL;
+          END IF;
+          SELECT * INTO v_seats FROM college_seats WHERE tenant_id = p_tenant_id FOR UPDATE;
+          IF NOT FOUND OR v_seats.seats_used >= v_seats.seats_allocated THEN
+            RETURN NULL;
+          END IF;
+          INSERT INTO college_seat_assignments (id, tenant_id, candidate_id, consent_id)
+          VALUES (gen_random_uuid(), p_tenant_id, v_candidate, v_consent)
+          RETURNING id INTO v_seat;
+          RETURN v_seat;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION fill_college_seats(p_tenant_id uuid)
+        RETURNS integer
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          v_free integer;
+          v_filled integer := 0;
+          r record;
+        BEGIN
+          SELECT seats_allocated - seats_used INTO v_free
+            FROM college_seats WHERE tenant_id = p_tenant_id FOR UPDATE;
+          IF NOT FOUND OR v_free <= 0 THEN
+            RETURN 0;
+          END IF;
+          -- Linked longest first: the fairest order, and the one a student
+          -- can predict.
+          FOR r IN
+            SELECT sc.id, sc.candidate_id
+              FROM student_consents sc
+              JOIN users u ON u.id = sc.candidate_id AND u.status = 'ACTIVE'
+             WHERE sc.tenant_id = p_tenant_id
+               AND sc.scope = 'ROSTER'
+               AND sc.revoked_at IS NULL
+               AND NOT EXISTS (
+                 SELECT 1 FROM college_seat_assignments a
+                  WHERE a.candidate_id = sc.candidate_id AND a.released_at IS NULL
+               )
+             ORDER BY sc.granted_at, sc.id
+             LIMIT v_free
+          LOOP
+            INSERT INTO college_seat_assignments (id, tenant_id, candidate_id, consent_id)
+            VALUES (gen_random_uuid(), p_tenant_id, r.candidate_id, r.id);
+            v_filled := v_filled + 1;
+          END LOOP;
+          RETURN v_filled;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION candidate_has_college_seat(p_user_id uuid)
+        RETURNS boolean
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT EXISTS (
+            SELECT 1
+              FROM college_seat_assignments a
+              JOIN student_consents sc
+                ON sc.id = a.consent_id AND sc.revoked_at IS NULL AND sc.scope = 'ROSTER'
+              JOIN tenants t ON t.id = a.tenant_id AND t.status = 'ACTIVE'
+              JOIN subscriptions s
+                ON s.subscriber_type = 'TENANT'
+               AND s.subscriber_id = a.tenant_id
+               AND s.state IN ('ACTIVE', 'GRACE')
+               AND s.current_period_start <= now()
+               AND s.current_period_end > now()
+             WHERE a.candidate_id = p_user_id
+               AND a.released_at IS NULL
+          )
+        $$;
+        """
+    )
+
+    # Consents.
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_student_consent_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF OLD.revoked_at IS NOT NULL THEN
+            RAISE EXCEPTION 'CONSENT_GUARD: a revoked consent stays revoked'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF (NEW.id, NEW.tenant_id, NEW.candidate_id, NEW.scope, NEW.granted_at,
+              NEW.granted_via, NEW.consent_version)
+             IS DISTINCT FROM
+             (OLD.id, OLD.tenant_id, OLD.candidate_id, OLD.scope, OLD.granted_at,
+              OLD.granted_via, OLD.consent_version)
+             OR NEW.referral_code_id IS DISTINCT FROM OLD.referral_code_id
+             OR NEW.roster_entry_id IS DISTINCT FROM OLD.roster_entry_id THEN
+            RAISE EXCEPTION 'CONSENT_GUARD: a consent is revoked, never rewritten'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_student_consent_write
+          BEFORE UPDATE ON student_consents
+          FOR EACH ROW EXECUTE FUNCTION guard_student_consent_write();
+        """
+    )
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION release_seat_on_consent_revoke()
+        RETURNS TRIGGER
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL AND NEW.scope = 'ROSTER' THEN
+            UPDATE college_seat_assignments
+               SET released_at = NEW.revoked_at, release_reason = 'CONSENT_REVOKED'
+             WHERE consent_id = NEW.id AND released_at IS NULL;
+          END IF;
+          RETURN NEW;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_release_seat_on_consent_revoke
+          AFTER UPDATE OF revoked_at ON student_consents
+          FOR EACH ROW EXECUTE FUNCTION release_seat_on_consent_revoke();
+        """
+    )
+    # Day 18. INDIVIDUAL sits on a live ROSTER link, for every writer. The
+    # link row is locked FOR SHARE, so a disconnect racing this grant either
+    # commits first (and this refuses) or waits and then revokes the grant
+    # through the cascade below -- never an INDIVIDUAL left without a link.
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_student_consent_insert()
+        RETURNS TRIGGER
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF NEW.revoked_at IS NOT NULL THEN
+            RAISE EXCEPTION 'CONSENT_GUARD: a consent starts live'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF NEW.scope = 'INDIVIDUAL' THEN
+            PERFORM 1 FROM student_consents sc
+             WHERE sc.tenant_id = NEW.tenant_id
+               AND sc.candidate_id = NEW.candidate_id
+               AND sc.scope = 'ROSTER'
+               AND sc.revoked_at IS NULL
+               FOR SHARE;
+            IF NOT FOUND THEN
+              RAISE EXCEPTION 'CONSENT_GUARD: individual visibility needs a live link to that college'
+                USING ERRCODE = 'check_violation';
+            END IF;
+          END IF;
+          RETURN NEW;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_student_consent_insert
+          BEFORE INSERT ON student_consents
+          FOR EACH ROW EXECUTE FUNCTION guard_student_consent_insert();
+        """
+    )
+    # Disconnecting ends individual visibility in the same statement
+    # (`college.domain.scopes_revoked_with`), at the same instant.
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION revoke_individual_with_roster()
+        RETURNS TRIGGER
+        LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL AND NEW.scope = 'ROSTER' THEN
+            UPDATE student_consents
+               SET revoked_at = NEW.revoked_at
+             WHERE tenant_id = NEW.tenant_id
+               AND candidate_id = NEW.candidate_id
+               AND scope = 'INDIVIDUAL'
+               AND revoked_at IS NULL;
+          END IF;
+          RETURN NEW;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_revoke_individual_with_roster
+          AFTER UPDATE OF revoked_at ON student_consents
+          FOR EACH ROW EXECUTE FUNCTION revoke_individual_with_roster();
+        """
+    )
+
+    # Roster rows.
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION guard_roster_entry_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF TG_OP = 'DELETE' THEN
+            IF OLD.invite_state IS NOT NULL THEN
+              RAISE EXCEPTION 'ROSTER_GUARD: a committed roster row is never deleted'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            RETURN OLD;
+          END IF;
+
+          IF NEW.tenant_id <> OLD.tenant_id OR NEW.import_id <> OLD.import_id
+             OR NEW.row_number <> OLD.row_number THEN
+            RAISE EXCEPTION 'ROSTER_GUARD: a row stays where it was uploaded'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF OLD.invite_state IS NOT NULL AND (
+               NEW.phone IS DISTINCT FROM OLD.phone OR NEW.email IS DISTINCT FROM OLD.email
+               OR NEW.full_name IS DISTINCT FROM OLD.full_name
+               OR NEW.student_ref IS DISTINCT FROM OLD.student_ref
+               OR NEW.row_state IS DISTINCT FROM OLD.row_state
+               OR NEW.issues IS DISTINCT FROM OLD.issues) THEN
+            RAISE EXCEPTION 'ROSTER_GUARD: a committed row is not edited'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF NEW.invite_state IS DISTINCT FROM OLD.invite_state
+             AND (COALESCE(OLD.invite_state, 'NONE'), COALESCE(NEW.invite_state, 'NONE'))
+                 NOT IN ({invite_pairs}) THEN
+            RAISE EXCEPTION 'ROSTER_GUARD: % -> % is not an invitation transition',
+              OLD.invite_state, NEW.invite_state USING ERRCODE = 'check_violation';
+          END IF;
+          IF OLD.sent_at IS NOT NULL AND NEW.sent_at IS DISTINCT FROM OLD.sent_at THEN
+            RAISE EXCEPTION 'ROSTER_GUARD: when an invitation was sent never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_roster_entry_write
+          BEFORE UPDATE OR DELETE ON roster_entries
+          FOR EACH ROW EXECUTE FUNCTION guard_roster_entry_write();
+        """
+    )
+
+
+# ---------------------------------------------------------------------------
+# Day 18 -- invariant 9: what a college reads about its students
+# ---------------------------------------------------------------------------
+#: A college's live, ROSTER-consented students: the only set a college may
+#: count. **An INNER JOIN on the consent row, not a filter applied later**, so
+#: a revoked consent is absent from the query itself (plan.md section 1, rule 9).
+#: The tenant is the one bound from the caller's membership, never a parameter.
+_ROSTER_COHORT_CTE = """
+roster_cohort AS (
+  SELECT sc.candidate_id
+    FROM student_consents sc
+    JOIN users u
+      ON u.id = sc.candidate_id AND u.status = 'ACTIVE' AND u.pool = 'CANDIDATE'
+   WHERE sc.tenant_id = (SELECT bound_college_tenant())
+     AND sc.scope = 'ROSTER'
+     AND sc.revoked_at IS NULL
+)"""
+
+#: Students a college may see as people: live INDIVIDUAL **and** live ROSTER
+#: consent, both joined. The cascade keeps the two together; joining both
+#: means a gap in the cascade would still show nobody.
+_INDIVIDUALLY_VISIBLE_CTE = """
+individually_visible AS (
+  SELECT i.candidate_id, i.id AS consent_id, i.granted_at AS visible_since
+    FROM student_consents i
+    JOIN student_consents r
+      ON r.tenant_id = i.tenant_id
+     AND r.candidate_id = i.candidate_id
+     AND r.scope = 'ROSTER'
+     AND r.revoked_at IS NULL
+    JOIN users u
+      ON u.id = i.candidate_id AND u.status = 'ACTIVE' AND u.pool = 'CANDIDATE'
+   WHERE i.tenant_id = (SELECT bound_college_tenant())
+     AND i.scope = 'INDIVIDUAL'
+     AND i.revoked_at IS NULL
+)"""
+
+#: Reached an interview: the application moved to INTERVIEW at some point.
+_REACHED_INTERVIEW = """EXISTS (
+    SELECT 1 FROM application_events e
+     WHERE e.application_id = a.id AND e.to_stage = 'INTERVIEW'
+  )"""
+
+#: The newest score, for the INDIVIDUAL reads.
+_LATEST_SCORE = """LEFT JOIN LATERAL (
+              SELECT s.raw_value, s.computed_at, s.resume_version_id
+                FROM scores s
+               WHERE s.user_id = v.candidate_id
+               ORDER BY s.computed_at DESC, s.id DESC
+               LIMIT 1
+            ) AS ls ON true"""
+
+#: Every function a college reads a student through, and the consent CTE
+#: each must join. `tests/invariants/test_invariant_09_consent.py` reads the
+#: definitions back from `pg_proc` and fails on one that does not.
+COLLEGE_STUDENT_READS: dict[str, str] = {
+    "college_cohort_summary": "roster_cohort",
+    "college_cohort_scores": "roster_cohort",
+    "college_cohort_hires": "roster_cohort",
+    "college_visible_students": "individually_visible",
+    "college_student_profile": "individually_visible",
+    "college_student_hires": "individually_visible",
+}
+
+
+def _create_college_student_reads() -> None:
+    """Invariant 9: a college reads a student only through consent.
+
+    Applications live under each *employer's* tenant, and a college's
+    transaction binds the college's, so the tenant policies correctly show a
+    college none of them. Rather than widen those policies, a college reads
+    through these SECURITY DEFINER functions, each of which answers one
+    question and **INNER JOINs live consent** for the college bound from the
+    membership (`bound_college_tenant`). None takes a tenant id. Bound to an
+    employer, a candidate, or nothing, they return no rows.
+
+    **Aggregates return no identifiers.** `college_cohort_scores` and
+    `college_cohort_hires` return one row per student or hire with nothing
+    saying whose, so the cohort floor and cell suppression (`analytics.domain`)
+    are applied to values that cannot be joined back to a person. Only the
+    three INDIVIDUAL functions return a candidate id or a name.
+    """
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION bound_college_tenant()
+        RETURNS uuid
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT t.id
+            FROM tenants t
+           WHERE t.id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+             AND t.type = 'COLLEGE'
+             AND t.status = 'ACTIVE'
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_cohort_summary()
+        RETURNS TABLE (
+          connected bigint, individually_visible bigint, scored bigint,
+          applicants bigint, applications bigint, interviews bigint, hires bigint
+        )
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_ROSTER_COHORT_CTE}, {_INDIVIDUALLY_VISIBLE_CTE},
+          cohort_applications AS (
+            SELECT a.id, a.candidate_id, a.stage
+              FROM applications a
+              JOIN roster_cohort c ON c.candidate_id = a.candidate_id
+          )
+          SELECT
+            (SELECT count(*) FROM roster_cohort),
+            (SELECT count(*) FROM individually_visible),
+            (SELECT count(DISTINCT s.user_id)
+               FROM scores s JOIN roster_cohort c ON c.candidate_id = s.user_id),
+            (SELECT count(DISTINCT candidate_id) FROM cohort_applications),
+            (SELECT count(*) FROM cohort_applications),
+            (SELECT count(*) FROM cohort_applications a WHERE {_REACHED_INTERVIEW}),
+            (SELECT count(*) FROM cohort_applications WHERE stage = 'HIRED')
+           WHERE (SELECT bound_college_tenant()) IS NOT NULL
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_cohort_scores()
+        RETURNS TABLE (stored_score integer)
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_ROSTER_COHORT_CTE}
+          SELECT latest.raw_value
+            FROM (
+                  SELECT DISTINCT ON (s.user_id) s.user_id, s.raw_value
+                    FROM scores s
+                    JOIN roster_cohort c ON c.candidate_id = s.user_id
+                   ORDER BY s.user_id, s.computed_at DESC, s.id DESC
+                 ) AS latest
+        $$;
+        """
+    )
+    # A hire is platform-sourced by construction: an application on this
+    # platform that both sides confirmed (SRS 1.13.3). A disputed or
+    # unconfirmed hire is not HIRED and is not counted (blockers E12).
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_cohort_hires()
+        RETURNS TABLE (hired_at timestamptz, job_location text)
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_ROSTER_COHORT_CTE}
+          SELECT a.candidate_confirmed_at, j.location
+            FROM applications a
+            JOIN roster_cohort c ON c.candidate_id = a.candidate_id
+            JOIN jobs j ON j.id = a.job_id
+           WHERE a.stage = 'HIRED'
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_visible_students(
+          p_limit integer, p_after_since timestamptz, p_after_id uuid
+        )
+        RETURNS TABLE (
+          candidate_id uuid, consent_id uuid, visible_since timestamptz,
+          full_name text, score_resume_version_id uuid
+        )
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_INDIVIDUALLY_VISIBLE_CTE}
+          SELECT v.candidate_id, v.consent_id, v.visible_since, p.full_name, ls.resume_version_id
+            FROM individually_visible v
+            LEFT JOIN candidate_profiles p ON p.user_id = v.candidate_id
+            {_LATEST_SCORE}
+           WHERE p_after_since IS NULL
+              OR (v.visible_since, v.candidate_id) > (p_after_since, p_after_id)
+           ORDER BY v.visible_since, v.candidate_id
+           LIMIT LEAST(GREATEST(p_limit, 1), 101)
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_student_profile(p_candidate_id uuid)
+        RETURNS TABLE (
+          candidate_id uuid, consent_id uuid, visible_since timestamptz, full_name text,
+          stored_score integer, scored_at timestamptz, score_resume_version_id uuid,
+          applications bigint, interviews bigint, hires bigint
+        )
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_INDIVIDUALLY_VISIBLE_CTE}
+          SELECT v.candidate_id, v.consent_id, v.visible_since, p.full_name,
+                 ls.raw_value, ls.computed_at, ls.resume_version_id,
+                 (SELECT count(*) FROM applications a WHERE a.candidate_id = v.candidate_id),
+                 (SELECT count(*) FROM applications a
+                   WHERE a.candidate_id = v.candidate_id AND {_REACHED_INTERVIEW}),
+                 (SELECT count(*) FROM applications a
+                   WHERE a.candidate_id = v.candidate_id AND a.stage = 'HIRED')
+            FROM individually_visible v
+            LEFT JOIN candidate_profiles p ON p.user_id = v.candidate_id
+            {_LATEST_SCORE}
+           WHERE v.candidate_id = p_candidate_id
+        $$;
+        """
+    )
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION college_student_hires(p_candidate_id uuid)
+        RETURNS TABLE (job_title text, employer_name text, hired_at timestamptz)
+        LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path = public, pg_temp
+        AS $$
+          WITH {_INDIVIDUALLY_VISIBLE_CTE}
+          SELECT j.title, e.legal_name, a.candidate_confirmed_at
+            FROM individually_visible v
+            JOIN applications a ON a.candidate_id = v.candidate_id AND a.stage = 'HIRED'
+            JOIN jobs j ON j.id = a.job_id
+            JOIN employers e ON e.tenant_id = a.tenant_id
+           WHERE v.candidate_id = p_candidate_id
+           ORDER BY a.candidate_confirmed_at DESC
+        $$;
+        """
+    )
+
+
+# ---------------------------------------------------------------------------
+# Day 19 -- platform staff, suspension, disputes
+# ---------------------------------------------------------------------------
+def _create_platform_access() -> None:
+    """Our own staff, stopping an organisation, and the dispute queue.
+
+    **Staff are members of the one PLATFORM tenant** (blockers E10). That kept
+    `memberships.tenant_id` NOT NULL and the single-membership rule intact,
+    and it makes one new thing dangerous: a staff role in any other tenant,
+    or an employer role in ours. `guard_membership_tenant_type` refuses both,
+    for every writer, generated from `identity.domain.ROLE_TENANT_TYPE`.
+
+    **A suspension is a row, and the tenant's status follows it.**
+    `guard_tenant_suspension_write` refuses a suspension of anything but an
+    employer or a college, keeps what was suspended and why immutable, makes
+    lifting a latch, and mirrors the open row onto `tenants.status` in the
+    same statement. `guard_tenant_status` holds the other direction: no writer
+    marks a tenant SUSPENDED without an open suspension, or ACTIVE with one.
+    Every check that already reads `tenants.status = 'ACTIVE'` -- the college
+    functions, the seat limb -- therefore stops with the suspension, and so
+    now do the job board and applying.
+
+    **`platform_tenant_bound()`** is the staff equivalent of
+    `current_candidate_id()`: true only when the transaction's bound tenant
+    is the PLATFORM tenant, which only a staff membership can bind. The
+    dispute policy for staff reads it.
+    """
+    from app.modules.admin.domain import DISPUTE_TRANSITIONS
+    from app.modules.identity.domain import ROLE_TENANT_TYPE
+
+    role_pairs = ", ".join(f"('{r}', '{t}')" for r, t in sorted(ROLE_TENANT_TYPE.items()))
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION guard_membership_tenant_type()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          t_type text;
+        BEGIN
+          SELECT type INTO t_type FROM tenants WHERE id = NEW.tenant_id;
+          IF (NEW.role, t_type) NOT IN ({role_pairs}) THEN
+            RAISE EXCEPTION 'MEMBERSHIP_GUARD: % cannot be held in a % tenant',
+              NEW.role, t_type USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_membership_tenant_type
+          BEFORE INSERT OR UPDATE OF role, tenant_id ON memberships
+          FOR EACH ROW EXECUTE FUNCTION guard_membership_tenant_type()
+        """
+    )
+
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_tenant_status()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          open_suspension boolean;
+        BEGIN
+          IF TG_OP = 'UPDATE' AND NEW.type <> OLD.type THEN
+            RAISE EXCEPTION 'TENANT_GUARD: a tenant never changes type'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF TG_OP = 'UPDATE' AND NEW.status IS NOT DISTINCT FROM OLD.status THEN
+            RETURN NEW;
+          END IF;
+          SELECT EXISTS (
+            SELECT 1 FROM tenant_suspensions s
+             WHERE s.tenant_id = NEW.id AND s.lifted_at IS NULL
+          ) INTO open_suspension;
+          IF (NEW.status = 'SUSPENDED') <> open_suspension THEN
+            RAISE EXCEPTION 'TENANT_GUARD: status SUSPENDED follows an open suspension, and only one'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_tenant_status
+          BEFORE INSERT OR UPDATE ON tenants
+          FOR EACH ROW EXECUTE FUNCTION guard_tenant_status()
+        """
+    )
+
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_tenant_suspension_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          t_type text;
+        BEGIN
+          IF TG_OP = 'DELETE' THEN
+            -- The app role holds no DELETE; this is a migrator's repair.
+            IF OLD.lifted_at IS NULL THEN
+              UPDATE tenants SET status = 'ACTIVE', updated_at = now()
+               WHERE id = OLD.tenant_id AND status = 'SUSPENDED';
+            END IF;
+            RETURN OLD;
+          END IF;
+
+          IF TG_OP = 'INSERT' THEN
+            SELECT type INTO t_type FROM tenants WHERE id = NEW.tenant_id;
+            IF t_type IS DISTINCT FROM 'EMPLOYER' AND t_type IS DISTINCT FROM 'COLLEGE' THEN
+              RAISE EXCEPTION 'SUSPENSION_GUARD: only an employer or a college can be suspended'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            IF NEW.lifted_at IS NOT NULL THEN
+              RAISE EXCEPTION 'SUSPENSION_GUARD: a suspension starts open'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            UPDATE tenants SET status = 'SUSPENDED', updated_at = now()
+             WHERE id = NEW.tenant_id AND status <> 'SUSPENDED';
+            RETURN NEW;
+          END IF;
+
+          IF NEW.tenant_id <> OLD.tenant_id OR NEW.reason <> OLD.reason
+             OR NEW.suspended_by <> OLD.suspended_by
+             OR NEW.suspended_at <> OLD.suspended_at THEN
+            RAISE EXCEPTION 'SUSPENSION_GUARD: what was suspended, why and by whom never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF OLD.lifted_at IS NOT NULL
+             AND (NEW.lifted_at IS DISTINCT FROM OLD.lifted_at
+                  OR NEW.lifted_by IS DISTINCT FROM OLD.lifted_by) THEN
+            RAISE EXCEPTION 'SUSPENSION_GUARD: lifting a suspension is a latch'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF OLD.lifted_at IS NULL AND NEW.lifted_at IS NOT NULL THEN
+            UPDATE tenants SET status = 'ACTIVE', updated_at = now()
+             WHERE id = NEW.tenant_id AND status = 'SUSPENDED';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    # AFTER, so the suspension row is visible to `guard_tenant_status` when
+    # the tenant is marked, and so an ON CONFLICT DO NOTHING that skips the
+    # insert marks nothing.
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_tenant_suspension_write
+          AFTER INSERT OR UPDATE OR DELETE ON tenant_suspensions
+          FOR EACH ROW EXECUTE FUNCTION guard_tenant_suspension_write()
+        """
+    )
+    op.execute(f"REVOKE DELETE ON tenant_suspensions FROM {APP_ROLE}")
+    op.execute(f"REVOKE UPDATE ON tenant_suspensions FROM {APP_ROLE}")
+    op.execute(f"GRANT UPDATE (lifted_at, lifted_by) ON tenant_suspensions TO {APP_ROLE}")
+
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION platform_tenant_bound()
+        RETURNS boolean
+        LANGUAGE sql STABLE
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT EXISTS (
+            SELECT 1 FROM tenants t
+             WHERE t.id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+               AND t.type = 'PLATFORM'
+               AND t.status = 'ACTIVE'
+          )
+        $$;
+        """
+    )
+
+    # Disputes. The tenant policy (TENANT_SCOPED_TABLES) lets an employer or a
+    # college read and raise its own; these add the candidate and our staff.
+    op.execute(
+        """
+        CREATE POLICY disputes_candidate_read ON disputes FOR SELECT
+          USING (tenant_id IS NULL AND raised_by = (SELECT current_candidate_id()))
+        """
+    )
+    op.execute(
+        """
+        CREATE POLICY disputes_candidate_raise ON disputes FOR INSERT
+          WITH CHECK (
+            tenant_id IS NULL
+            AND party = 'CANDIDATE'
+            AND raised_by = (SELECT current_candidate_id())
+          )
+        """
+    )
+    op.execute(
+        """
+        CREATE POLICY disputes_platform_staff ON disputes FOR ALL
+          USING ((SELECT platform_tenant_bound()))
+          WITH CHECK ((SELECT platform_tenant_bound()))
+        """
+    )
+
+    pairs = ", ".join(f"('{a}', '{b}')" for a, b in sorted(DISPUTE_TRANSITIONS))
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION guard_dispute_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF TG_OP = 'INSERT' THEN
+            IF NEW.state <> 'OPEN' OR NEW.assigned_to IS NOT NULL
+               OR NEW.resolved_at IS NOT NULL THEN
+              RAISE EXCEPTION 'DISPUTE_GUARD: a dispute starts OPEN and unassigned'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            -- Read under the writer's own row-level security: a candidate
+            -- sees their applications, an employer its tenant's, and nobody
+            -- can name one they cannot see.
+            IF NEW.application_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM applications WHERE id = NEW.application_id) THEN
+              RAISE EXCEPTION 'DISPUTE_GUARD: the application is not the raiser''s'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            IF NEW.party <> 'CANDIDATE' AND NOT EXISTS (
+                 SELECT 1 FROM memberships m JOIN tenants t ON t.id = m.tenant_id
+                  WHERE m.user_id = NEW.raised_by AND m.tenant_id = NEW.tenant_id
+                    AND m.status = 'ACTIVE' AND t.type = NEW.party) THEN
+              RAISE EXCEPTION 'DISPUTE_GUARD: the raiser is not a member of that organisation'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            RETURN NEW;
+          END IF;
+
+          IF OLD.state IN ('RESOLVED', 'REJECTED') THEN
+            RAISE EXCEPTION 'DISPUTE_GUARD: a closed dispute never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF NEW.kind <> OLD.kind OR NEW.party <> OLD.party OR NEW.source <> OLD.source
+             OR NEW.raised_by <> OLD.raised_by
+             OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+             OR NEW.application_id IS DISTINCT FROM OLD.application_id
+             OR NEW.description <> OLD.description OR NEW.created_at <> OLD.created_at THEN
+            RAISE EXCEPTION 'DISPUTE_GUARD: what was raised, and by whom, never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          -- Only our staff work a dispute. The permissive tenant policy lets
+          -- an organisation UPDATE its own rows; this is what stops it
+          -- closing them.
+          IF NOT platform_tenant_bound() THEN
+            RAISE EXCEPTION 'DISPUTE_GUARD: only platform staff work a dispute'
+              USING ERRCODE = 'insufficient_privilege';
+          END IF;
+          IF NEW.state <> OLD.state AND (OLD.state, NEW.state) NOT IN ({pairs}) THEN
+            RAISE EXCEPTION 'DISPUTE_GUARD: % -> % is not a dispute transition',
+              OLD.state, NEW.state USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_dispute_write
+          BEFORE INSERT OR UPDATE ON disputes
+          FOR EACH ROW EXECUTE FUNCTION guard_dispute_write()
+        """
+    )
+    op.execute(f"REVOKE DELETE ON disputes FROM {APP_ROLE}")
+
+    # Notifications. "Were they told?" must stay answerable: a message row is
+    # never deleted, and after it is written only its delivery can change --
+    # never who it was for or what it said. A nudge is a count the cadence cap
+    # reads, so it is insert-only; a suppression is lifted, never removed.
+    op.execute(f"REVOKE UPDATE, DELETE ON notifications FROM {APP_ROLE}")
+    op.execute(
+        "GRANT UPDATE (state, skip_reason, failure_code, provider, provider_ref, sent_at, "
+        f"read_at) ON notifications TO {APP_ROLE}"
+    )
+    op.execute(f"REVOKE UPDATE, DELETE ON profile_nudges FROM {APP_ROLE}")
+    op.execute(f"REVOKE UPDATE, DELETE ON notification_suppressions FROM {APP_ROLE}")
+    op.execute(f"GRANT UPDATE (lifted_at) ON notification_suppressions TO {APP_ROLE}")

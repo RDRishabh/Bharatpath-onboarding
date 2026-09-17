@@ -34,10 +34,15 @@ from app.settings import get_settings
 logger = get_logger(__name__)
 
 _KEY_PREFIX = "membership:v1:"
+_TENANT_CHANGED_PREFIX = "tenant-changed:v1:"
 
 
 def cache_key(user_id: uuid.UUID) -> str:
     return f"{_KEY_PREFIX}{user_id}"
+
+
+def tenant_changed_key(tenant_id: uuid.UUID) -> str:
+    return f"{_TENANT_CHANGED_PREFIX}{tenant_id}"
 
 
 async def resolve(session: AsyncSession, user_id: uuid.UUID) -> Membership | None:
@@ -45,14 +50,74 @@ async def resolve(session: AsyncSession, user_id: uuid.UUID) -> Membership | Non
 
     A candidate has no membership row -- they belong to no tenant -- so None
     is the ordinary answer for the largest class of user, not an error.
+
+    **A tenant under change is never answered from the cache** (Day 19). See
+    `mark_tenant_changed` for why deleting the cached rows is not enough on
+    its own.
     """
     cached = await _read_cache(user_id)
-    if cached is not None:
+    if cached is not None and (
+        cached.membership is None or not await _tenant_changed(cached.membership.tenant_id)
+    ):
         return cached.membership
 
     membership = await _read_database(session, user_id)
-    await _write_cache(user_id, membership)
+    if membership is None or not await _tenant_changed(membership.tenant_id):
+        await _write_cache(user_id, membership)
     return membership
+
+
+async def mark_tenant_changed(tenant_id: uuid.UUID, member_ids: list[uuid.UUID]) -> None:
+    """A tenant was suspended or reinstated: stop trusting cached memberships.
+
+    Called by the service **before its transaction commits**, which is the
+    whole difficulty. Deleting the members' cached rows alone leaves a gap: a
+    request landing between the delete and the commit reads the database,
+    still sees the tenant active, and caches that for another 60 seconds --
+    so the suspension bites a minute late, which is what "immediately" rules
+    out.
+
+    So a flag is set on the tenant for one cache lifetime. While it is set,
+    `resolve` reads the database on every request for that tenant and writes
+    nothing back, so no stale row can be created after this call. Once it
+    expires, every row cached before it was deleted here, and every row
+    written since reflects the committed state. If the transaction rolls
+    back instead, the database still says active and the flag costs a minute
+    of uncached reads -- the database, not the flag, is the answer.
+    """
+    ttl = get_settings().membership_cache_ttl_seconds
+    try:
+        redis = get_redis()
+        await redis.set(tenant_changed_key(tenant_id), "1", ex=ttl)
+        if member_ids:
+            await redis.delete(*(cache_key(user_id) for user_id in member_ids))
+    except Exception:  # pragma: no cover - degraded: the TTL still bounds the lag
+        logger.warning("tenant_change_mark_failed", tenant_id=str(tenant_id))
+
+
+async def in_suspended_tenant(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    """Whether this account's membership is held in a suspended tenant.
+
+    Read only on the refusal path, so a suspended member is told why
+    (`tenant_suspended`) rather than that they belong nowhere. Not a leak:
+    the member knows which organisation they work for.
+    """
+    return bool(
+        await session.scalar(
+            text(
+                """
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM memberships m
+                    JOIN tenant_suspensions s
+                      ON s.tenant_id = m.tenant_id AND s.lifted_at IS NULL
+                   WHERE m.user_id = :uid AND m.status = 'ACTIVE'
+                )
+                """
+            ),
+            {"uid": str(user_id)},
+        )
+    )
 
 
 async def invalidate(user_id: uuid.UUID) -> None:
@@ -108,6 +173,15 @@ async def _read_cache(user_id: uuid.UUID) -> _Cached | None:
             status=payload["status"],
         )
     )
+
+
+async def _tenant_changed(tenant_id: uuid.UUID) -> bool:
+    try:
+        return bool(await get_redis().exists(tenant_changed_key(tenant_id)))
+    except Exception:
+        # An unreachable cache cannot be trusted to hold the flag either, so
+        # the answer is "read the database" -- which is what a miss does.
+        return True
 
 
 async def _write_cache(user_id: uuid.UUID, membership: Membership | None) -> None:

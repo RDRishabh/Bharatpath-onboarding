@@ -17,7 +17,8 @@ Each is written *before* the feature it guards, on the day that feature lands.
 | 8 | No publish before KYB | Day 10 | _pending_ |
 | 7 | Masked without an active access window; raw score never revealed | Day 14 | _pending_ |
 | 7' | Every PII reveal audited, under blanket access | Day 14 | _pending_ |
-| 9 | Consent and audit | Day 18 | _pending_ |
+| 9 | Consent and audit | Day 18 | `test_invariant_09_consent.py` |
+| 7' | Console reads audited first; no outsider reaches `/admin` | Day 19 | `test_admin_console.py` |
 
 **Ten invariants, not nine.** 4' replaced the rescinded rule 4 and 7' was added
 in v6 when blanket employer access destroyed the one-row-per-unlock audit trail.

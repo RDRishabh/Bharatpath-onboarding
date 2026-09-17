@@ -25,10 +25,10 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1898 on 2026-09-16 (Day 16), all green locally, not yet pushed. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
-| **Coverage** | 85% |
-| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 17 — evaluation stubs, college tenant, seats and referral codes |
+| **Tests** | 2247 on 2026-09-17 (Day 19), not yet pushed. 2079 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Coverage** | 84% |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 20 — privacy (DSR export and deletion), rate limits, index review, handover — Week 4 gate |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -59,6 +59,268 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-17 (evening) — Day 19: admin console, suspension, disputes, notifications, nudges
+
+**2079 -> 2247 tests**, all passing locally as CI runs them. Local CI chain
+green: age, vocabulary, ruff, format, mypy, **10** import contracts, modules.
+Not yet pushed. **Rebuild with `reset_local_db.sh`** — five new tables, four
+triggers, three policies on `disputes`, `platform_tenant_bound()`, and a changed
+job-board policy and `job_accepts_applications`.
+
+### What landed
+
+| | |
+|---|---|
+| **Staff tenancy (E10 closed)** | One PLATFORM tenant (`uq_tenants_one_platform`). `guard_membership_tenant_type`, generated from `identity.domain.ROLE_TENANT_TYPE`, keeps staff roles in it and customer roles out of it, for every writer. `scripts/create_platform_staff.py`; no route. |
+| **Console** (`/admin`) | KYB submissions (a record while approval is automatic; open with answers, decide), integrity queue (open with evidence, clear or confirm), organisations, suspend / reinstate / history, college seats (E23 closed), candidate / employer / college drill-downs, notification suppression, dispute queue (open, assign, resolve), audit search by actor, action, target, tenant and time. Permission table `admin.domain.CONSOLE_ROLES`. |
+| **Every look recorded** | `admin.service._reveal`: the audit row is written on the request's transaction, then the **read-only** bypass session is opened. A failed audit write opens nothing (tested). Drill-downs show the display score and band, masked contacts, and counts — never a CV. |
+| **Suspension** | A `tenant_suspensions` row, one open per tenant, lifted by latch, never deleted. `guard_tenant_suspension_write` mirrors it onto `tenants.status`; `guard_tenant_status` refuses the reverse. **Bites on the next request** despite the 60s membership cache (`membership.mark_tenant_changed`), answered 403 `tenant_suspended`. Jobs leave the board and refuse applications; a college's seats stop (E29). PLATFORM cannot be suspended. |
+| **Disputes** | `POST/GET /disputes` for candidates, employers and colleges (HIRE needs a visible application; colleges cannot dispute a hire; 5/day). Staff work them in `/admin/disputes`, cross-linked to the application's two sides and the candidate's live integrity signals. `guard_dispute_write`: what was raised never changes, and only a PLATFORM-bound transaction moves state. A candidate's hire dispute is filed automatically (E12 now has a queue, still no remedy). |
+| **Relay (E15, in code)** | `_publish` enqueues every subscribed task with `routing.TASK_ARGUMENTS`, raising on a broker failure. |
+| **Notifications** | `plan_for` (15 events), `delivery_decision` (account, opt-out, suppression, contact, DLT, provider — in that order), one row per message **including every skipped one**, deduplicated, decide-then-send in separate transactions. Inbox, read, preferences (language and channels). SMS via Twilio Messaging, email via SES, both `none` by default with a stub for tests. 17 new templates (13 in-app). |
+| **Nudges (R9)** | `notifications.nudge_incomplete_profiles`: candidates older than 24h with no upload, paste or form; every 72h, three at most, 09:00–21:00 IST; `nudges_enabled` stops them; config `notifications.nudges` (strict, cannot go daily or past six). The nudge number is the cap and the concurrency guard. |
+
+### One failure seen once and not reproduced
+
+`test_with_approval_on_a_reviewer_opens_and_decides_a_submission` failed once,
+in a full run that took 68 minutes instead of the usual 8 (the machine was
+very likely asleep partway through), and the traceback was lost to a `tail`.
+It passed in isolation, after `test_kyb.py`, twice alone, and in the next full
+run. A likely cause is a one-hour local token expiring during the pause, but
+that is a guess. **If it recurs in CI, capture the traceback before changing
+anything.**
+
+### Found and fixed on the way
+
+- **The worker registered no tasks.** `include=["app.tasks"]` imports the
+  package, whose `__init__` imports nothing, so a real worker would have
+  received every event the relay sends and known none of them. Invisible until
+  today because `_publish` only logged. The worker now includes
+  `routing.TASK_MODULES`, and a test checks every routed task is registered and
+  takes exactly the arguments it is sent.
+- **KYB built its event names in an f-string expression**
+  (`f"{MODULE}.{'approved' if approved else 'submitted'}"`), so no search for
+  `kyb.approved` found the emitter. The new drift test (every notifying event
+  must be emitted somewhere) caught it; KYB now has named constants.
+- **FastAPI nests included routers in `app.routes`**, so enumerating console
+  endpoints from it finds none. The console invariant reads operation ids from
+  the schema instead.
+
+### Decisions worth knowing
+
+- **`/admin` left `TENANT_SURFACES`** in `test_cross_tenant_routes.py`, with the
+  reason beside it. A console route crosses tenants by design; the replacement
+  (`tests/invariants/test_admin_console.py`) asserts no candidate, employer or
+  college reaches any console route and each staff role reaches exactly its
+  capabilities.
+- **Staff writes go through the owning module.** The bypass role stays
+  SELECT-only, as `init_db_roles.sql` asked Day 19 to confirm.
+- **A resolved dispute changes nothing else.** Confirming or voiding a hire,
+  or refunding, is a rule in another module and a client decision (E12, E18).
+- **The college revocation notice names nobody** (E28), and says only which
+  scope ended.
+- **The nudge SMS is registered as SERVICE_EXPLICIT**, which needs recorded
+  consent at sign-up (E31).
+- **VIEWED does not notify.** A message for every glance at an application
+  teaches people to ignore the ones that matter.
+
+### Owed
+
+- Schedules for the relay and the nudge sweep (E4); an orphaned-PENDING sweep,
+  bounce feeds, email unsubscribe links, translations of the new keys (E30).
+- Client: seats during a college's suspension (E29); what a resolved hire
+  dispute may do (E12).
+- REVOKED state on roster rows (Day 18, still owed).
+- DLT registration of the two new SMS bodies (D1).
+
+---
+
+## 2026-09-17 (later) — Day 18: consent scopes, cohort analytics, invariant 9
+
+**2018 -> 2079 tests**, all passing locally as CI runs them. Local CI chain
+green: age, vocabulary, ruff, format, mypy, 9 import contracts, modules.
+Pushed to PR #11 as `e1f3a97`: **all five CI jobs green on the first push**.
+**Rebuild with `reset_local_db.sh`** — a new CHECK on
+`student_consents`, five policies, two triggers and seven functions.
+
+### What landed
+
+| | |
+|---|---|
+| **INDIVIDUAL consent** | `POST /candidate/colleges/{college_id}/individual-visibility` with the INDIVIDUAL terms' version (`GET .../consent-terms?scope=INDIVIDUAL`, versioned apart from the roster words). Needs a live link (404 `college_link_not_found`); idempotent; audited; `college.individual_visibility_granted`. `granted_via = DIRECT`. |
+| **Revocation** | `POST /candidate/colleges/{college_id}/revoke {scope}`. INDIVIDUAL keeps the link and the seat. **ROSTER disconnects**: the seat is released and INDIVIDUAL revoked by trigger, in the same UPDATE, at the same instant. Never paywalled; idempotent; 404 for a college never linked. One audit row per scope ended and one `college.consent_revoked` event (consent id, tenant, scopes — no student id). |
+| **The database's copy** | `ck_student_consents_scope_via` (INDIVIDUAL ⇔ DIRECT); `guard_student_consent_insert` (INDIVIDUAL needs a live ROSTER link, locked FOR SHARE against a racing disconnect; a consent starts live); `revoke_individual_with_roster`; a candidate UPDATE policy for revoking their own live rows; and **two RESTRICTIVE policies** so only the student a consent names can insert or revoke it. |
+| **Analytics** | `GET /college/analytics/overview`: connected and individually visible counts, score distribution by band, median, applicants, applications, interviews, platform hires. `GET /college/analytics/placements`: confirmed platform hires by IST month (12) and by job location, `source: PLATFORM`. Both for admin and staff, behind payment, never cached. |
+| **Floors** | `analytics.domain`, config `analytics.privacy` (strict; bad row = 500 `analytics_floors_invalid`). Under 10 connected students only the counts show. A band or month under 5 is `null`, with a complementary cell withheld beside it. Median rounded to 10. Locations under 5 hires pooled as `OTHER`. A row may raise a floor, never set one below 5 / 3. |
+| **Reads** | Six SECURITY DEFINER functions (`COLLEGE_STUDENT_READS`) over two consent CTEs, keyed on `bound_college_tenant()` — the tenant bound from the membership, which must be an ACTIVE COLLEGE. No tenant parameter. The three aggregate functions return no identifier. |
+| **Individual view** | `GET /college/students` (keyset page) and `GET /college/students/{candidate_id}`: name (sign-up, else structured form), display score and band, application and interview counts, confirmed platform hires with job title and employer. **404 unless the INDIVIDUAL consent is live now.** Every page and every open writes an audit row in the transaction (`college_students_listed` with the ids shown; `college_student_viewed` with the consent id). |
+| **Invariant 9** | `tests/invariants/test_invariant_09_consent.py` — see *Guarantees* below. Plus a cross-tenant case for `/college/students/{candidate_id}`. |
+
+### Guarantees and where they live
+
+- **Analytics inner-joins consent in the query**: `pg_proc` is read back, and
+  every `college_*` function must be listed with the consent CTE it joins,
+  be SECURITY DEFINER, take no tenant and read the bound college. The college
+  and analytics repositories are scanned for any student table.
+- **Removing consent makes rows disappear on the next read** — from the
+  overview (10 connected → 9, below the floor), from `college_cohort_scores()`,
+  and from the individual view.
+- **ROSTER never implies INDIVIDUAL**; a college cannot write or revoke a
+  consent, one student cannot revoke another's, INDIVIDUAL cannot exist
+  without a live link — for the migrator too.
+- **Every reveal audited**; a failed audit write returns nothing.
+- **Shapes**: `CollegeStudentResponse`'s field list is fixed, and the
+  INDIVIDUAL words must name what it shows (content-placeholder test); no
+  analytics schema has a field that could name a person.
+
+### Decisions worth knowing
+
+- **One Day 17 test was narrowed, by name.** `test_no_college_facing_schema_names_a_score`
+  said no college schema may carry a score, which was true while ROSTER was the
+  only scope. `CollegeStudentResponse` now does, deliberately, behind INDIVIDUAL
+  consent; it alone is exempted, and invariant 9 fixes its field list.
+
+- **Found and closed: a college could write a student's consent.** Permissive
+  RLS policies OR together, so the tenant policy on `student_consents` let a
+  college-bound transaction INSERT a consent naming any student (with the
+  college's own code) or revoke one. Only the service stood in the way. SRS
+  1.15.3 prohibits institution-side bypass, so it is now RESTRICTIVE policy.
+- **Disconnecting ends individual visibility.** A college cannot see as a
+  person someone it may not even count. Revoking only INDIVIDUAL keeps the link
+  and the seat — the student's access is not the price of their privacy.
+- **Cross-tenant reads by function, not by widened policy.** Applications live
+  under each employer's tenant. Rather than teach the application policies
+  about colleges, the college reads six narrow functions, each joining consent.
+- **Aggregates are not audited; the individual view is, list included.** A
+  masked card was not a reveal on Day 13 and an aggregate over the floor is
+  not one now. A list of names is.
+- **Suppression found its own bug.** The exhaustive test over every
+  four-cell combination of 0–7 caught the case the first version missed: one
+  small cell and every other cell zero, which had no partner to withhold. The
+  partner is now a zero cell when nothing else is available.
+- **Interviews** means applications that reached INTERVIEW (from
+  `application_events`), not mock interviews. **Hires** means HIRED, both
+  confirmations; a disputed hire counts as none (E12).
+- **What the college sees of a named student is ours** (E27): no contact
+  details — the college has the roster it uploaded, and contacts collected by
+  us are not ours to pass on — no CV, no integrity signal, no employer notes.
+- **Residual risk, recorded rather than hidden** (E28): reading the overview
+  before and after one named student links shows their band unless the cell
+  is suppressed. A daily snapshot for additions would close it at the cost of
+  freshness; not built.
+
+### Owed
+
+- **Cohort filters** (course, branch, graduation year) — no data holds them,
+  and each is a new subtraction surface (E26).
+- **Counsel's INDIVIDUAL words; the client's field list and floors** (E27).
+- **REVOKED state on roster rows** (SRS 2.10.3): an accepted invitation whose
+  consent was later revoked still reads ACCEPTED.
+- **The college-facing notice of a revocation** (Day 19) — without the
+  student's name for ROSTER (E28).
+- A rate limit on analytics reads (Day 20's pass).
+
+---
+
+## 2026-09-17 — Day 17: interview evaluation, colleges, seats, referral codes, rosters
+
+**1898 -> 2018 tests**, all passing locally as CI runs them. Local CI
+chain green: age, vocabulary, ruff, format, mypy, 9 import contracts, modules.
+Pushed as PR #11. The first CI run failed
+`test_a_college_pays_as_its_organisation_and_only_its_admin_buys`: **CI never
+runs `seed_catalogue.py`**, and the only thing syncing plans was
+`test_payments.py`'s autouse fixture, which runs after `test_college.py`. A
+test that reads catalogue plans must call `sync_plans` itself. **Rebuild with `reset_local_db.sh`** — new tables, four
+candidate policies, nine functions and four triggers.
+
+Both decisions this day needed were already in hand: the seat model (Round 7.7,
+*"yes"*) and the typed referral code as consent (Round 7.9, *"do it"*). The
+plan's §14 still listed Q10 and N6 as open; it no longer does.
+
+### What landed
+
+| | |
+|---|---|
+| **Evaluation interfaces** | `interview/evaluation.py`: `TranscriptionProvider` and `EvaluationProvider`, each with an **unconfigured default that raises** and a stub (`INTERVIEW_EVALUATION_PROVIDER=stub`, refused in staging/prod). The module docstring is the contract a real implementation must meet. |
+| **Evaluation** | `interview.evaluate_session` task on `interview.session_completed`, beside the re-score. Transcribes each stored answer once (`interview_transcripts`, idempotent by answer, own transaction because it is paid per minute), then rates spoken answers against the rubric (`interview_evaluations`: ratings, raw response, provider, model, prompt and rubric versions). Session → EVALUATED, or FAILED with `no_speech` / `evaluation_invalid`. Both tables insert-only. |
+| **Report** | `GET /candidate/interview/sessions/{id}/report`: PENDING / READY / FAILED. Per dimension a **level in words** (STRONG, DEVELOPING, FOCUS_AREA) and what good looks like; per question the transcript, `looking_for` and the evaluator's comment. Assembled from stored rows on every read. |
+| **College tenant** | `POST /college/organisation` (business identity), `GET/PATCH` it, team under `/college/team` with COLLEGE_ADMIN / COLLEGE_STAFF (identity's team functions now take the role set). Onboarding against the versioned form: `GET /college/onboarding`, `PUT .../answers`, `POST .../submit`. |
+| **College subscription** | `/college/subscription` (plans, current, checkout, cancel, mandate) — the same five routes as employers; the admin buys, staff read. |
+| **Seats** | `college_seat_assignments`, one live seat per student platform-wide. `guard_college_seat_assignment` holds the cap and **moves `seats_used` itself** (the app role cannot write it). `allocate_seats` (PLATFORM_ADMIN / SYSTEM, audited, **no route** — E10): never below seats in use, never above the live plan's allowance, and growing it seats waiting students, longest-linked first. `GET /college/seats` shows counts only. |
+| **The seat limb** | `require_active_subscription` for a candidate is now **personal subscription OR `candidate_has_college_seat`**: a live seat, live ROSTER consent, ACTIVE college, college subscription in period — read live. |
+| **Referral codes** | `POST/GET /college/referral-codes`, `POST .../{id}/revoke`. 12 characters of Crockford base32 (60 bits, CSPRNG), always expiring (default 90 days, max 365), optional use cap, printed `ABCD-EFGH-JKMN`. The code never enters the audit log. |
+| **Linking** | `/candidate/colleges`: `GET /consent-terms`, `POST /link`, `GET` (links), invitations. **Entering the code is the consent, ROSTER scope only** (`student_consents`, `granted_via = REFERRAL_CODE`, the code named). Every bad code is one `referral_code_invalid`; 10 attempts an hour per student and 30 per address; a stale `consent_version` is refused. A free seat is taken at once. |
+| **Roster import** | `POST /college/roster-imports` (CSV in the body, ≤1 MB / 5,000 rows) previews every row with its issues — malformed phone or email, no contact, duplicate in the file, already on the roster — and invites nobody. Same file again returns the same import. `GET .../{id}`, `.../rows` (keyset), `.../commit` (duplicates re-checked under a roster lock; rows that will never be invited are deleted), `.../discard` (rows deleted). |
+| **Invitations** | `POST .../invitations/send` marks pending rows SENT and emits one `college.invitation_sent` per row, ids only. A student sees invitations **matched on their own verified phone or email** and accepts (INVITE consent, ROSTER only, seat taken) or declines; 30 days, expiry read from the clock. Tracking counts per import. |
+
+### Decisions worth knowing
+
+- **Evaluation is feedback and cannot move a score.** The +20 was frozen at
+  completion and the guard refuses any change to it; the guard now also refuses
+  EVALUATED or FAILED without the evaluation row that records it. The report has
+  **no number about the candidate** — ratings are stored for disputes and turned
+  into words before they leave the service, because a 0–4 average beside a
+  three-digit score is a second, unexplained score (R11).
+- **No fallback evaluator**, for the reason there is no fallback CV extractor:
+  invented feedback is feedback nobody gave. Unconfigured, a session stays
+  COMPLETED and the report PENDING. Evaluator output that does not fit the
+  rubric exactly — including a dimension the rubric forbids, such as accent — is
+  recorded FAILED, never repaired. The evaluator is given the question, what a
+  good answer contains and the transcript, and nothing about the person.
+- **Silence is now visible (E19), and still earns its +20.** All-silent sessions
+  are FAILED `no_speech` without calling the evaluator. Whether that should cost
+  the points remains the client's decision.
+- **A student never binds a college's tenant.** Codes and invitations name a
+  tenant, and binding it would be a tenant id from a request body (SRS 2.24.7)
+  that opens every row of that college to the transaction. Instead the candidate
+  binds `app.user_id`, and nine narrow SECURITY DEFINER functions each answer
+  one question. The consent INSERT policy re-checks that the code or invitation
+  named is live and this college's, so a direct write cannot put a student on a
+  roster, confer INDIVIDUAL scope, or use a revoked code.
+- **A college never learns who has an account.** No roster column says whether a
+  contact matched a user; a student finds their invitation from their own
+  verified contact. A college sees counts: seats used, codes' uses, invitations
+  by state.
+- **Seats follow consent.** Revoking ROSTER consent releases the seat in the same
+  statement (trigger), so Day 18's revocation route is correct the day it lands.
+  A student linked while the college was full is seated when the allowance grows,
+  or on retrying the link.
+- **The 501st student is linked, not seated** — blocking, as recommended, is the
+  only option that cannot surprise anyone with an invoice.
+- **A college that stops paying locks its students out on the next request**,
+  with seats and links kept. No grace period — that is Round 8's open question 2.
+  A student who already paid keeps their own subscription alongside a seat
+  (Round 8 question 1, built as "no money moves"). A seat covers the subscription
+  gate only; courses and interviews are still bought (Round 8 question 3).
+- **Two deviations from the plan's wording, deliberately.** The roster preview is
+  synchronous rather than a 202 job: bounded at 5,000 rows it takes milliseconds,
+  and a job with no broker (E15) would never run in a running API. Delivery is the
+  asynchronous part. And the CSV is sent in the request body and never stored in
+  S3: staged rows hold exactly what is needed, rows the college discards or will
+  never invite are deleted, and there is no roster bucket to provision.
+- **Revoking a code and discarding a preview are not paywalled.** Stopping
+  something must never wait on a payment. Issuing, importing, committing and
+  sending are.
+- **A student's college routes are not paywalled**: linking is how a seated
+  student gets access at all.
+
+### Owed
+
+- **A speech model and an evaluator** — the interfaces and the contract are in
+  `interview/evaluation.py`; the choice, the prompt, and testing it on each
+  supported language are not. Until then no feedback exists outside tests.
+- **Seat allocation has no route** (E10, Day 19's console) — so in a running API
+  no college has seats yet. Neither does releasing one student's seat by hand.
+- **Consent revocation** (Day 18) — the database side is built; the route is not.
+- **Invitation delivery**: SMS is DLT-gated (D1), email waits on SES production
+  access, and the events need the relay's broker (E15). The evaluation task needs
+  the broker too.
+- **Round 8 follow-ons**: grace for students when a college lapses; confirming a
+  seat excludes add-ons; what happens to a student who paid before being seated.
+- Counsel's consent text (`college/domain.py`, flagged placeholder).
 
 ---
 

@@ -38,7 +38,6 @@ from typing import Final
 from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import EMPLOYER_OWNER
 from app.core.errors import AppError, NotFoundError, PermissionDeniedError, UnauthenticatedError
 from app.core.errors import ValidationError as AppValidationError
 from app.core.logging import get_logger
@@ -158,9 +157,10 @@ async def _open_checkout(
 
 
 def _require_buyer(ctx: TenantContext, subscriber: subscriptions_service.Subscriber) -> None:
-    """An organisation's money is its owner's to spend. Recruiters and viewers
-    can see the subscription and cannot buy, cancel or set up auto-renew."""
-    if subscriber.type == "TENANT" and ctx.role != EMPLOYER_OWNER:
+    """An organisation's money is its owner's to spend -- a college's admin's.
+    Recruiters, viewers and college staff can see the subscription and cannot
+    buy, cancel or set up auto-renew."""
+    if subscriber.type == "TENANT" and ctx.role not in subscriptions_service.BUYER_ROLES:
         raise PermissionDeniedError()
 
 

@@ -25,6 +25,9 @@ transaction closes.
      queue cannot double anything.
   6. **Completion** (`complete_session`) -- every answer stored. A score-moving
      write: audited, and announced to scoring through the outbox.
+  7. **Evaluation** (`transcribe_session`, `evaluate_session`) -- a task after
+     completion, and **feedback only**: the +20 was frozen at step 6 and the
+     database refuses to change it. `get_report` reads it back in words.
 
 **This module imports nothing from `scoring`** (invariant 4'). Scoring reads
 `contributions_for` and applies the +60 cap itself.
@@ -35,7 +38,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,27 +50,52 @@ from app.core.errors import ValidationError as AppValidationError
 from app.core.logging import get_logger
 from app.core.outbox import emit
 from app.modules.interview import repository
-from app.modules.interview.bank import BANK_VERSION, QuestionSet, set_for_session
+from app.modules.interview.bank import (
+    BANK_VERSION,
+    DIMENSION_CODES,
+    QUESTIONS_PER_SESSION,
+    RUBRIC_VERSION,
+    QuestionSet,
+    set_for_session,
+)
 from app.modules.interview.domain import (
     ACCEPTED_AUDIO_TYPES,
     COMPLETED_STATES,
     CONTRIBUTION_VERSION,
     DEVICE_CHECK_VALID_FOR,
+    EVALUATION_OUTCOMES,
+    FAILURE_EVALUATION_INVALID,
+    FAILURE_NO_SPEECH,
     MAX_ANSWER_BYTES,
     MAX_ANSWER_MS,
     OPEN_STATES,
     POINTS_PER_SESSION,
+    REPORT_VERSION,
     DeviceReadings,
+    EvaluationInvalid,
+    InterviewReport,
+    QuestionEvaluation,
     answer_key,
+    assemble_report,
     can_complete,
     device_check_is_fresh,
     evaluate_device_check,
+    is_spoken,
+    parse_evaluation,
     purchase_earns_points,
     sniff_audio,
     valid_question_index,
     validate_answer,
 )
-from app.modules.interview.events import ANSWER_STORED, SESSION_COMPLETED
+from app.modules.interview.evaluation import (
+    AnswerForEvaluation,
+    EvaluationProvider,
+    EvaluationUnavailableError,
+    TranscriptionProvider,
+    get_evaluation_provider,
+    get_transcription_provider,
+)
+from app.modules.interview.events import ANSWER_STORED, SESSION_COMPLETED, SESSION_EVALUATED
 from app.modules.interview.models import (
     DeviceCheck,
     InterviewAnswer,
@@ -141,6 +169,11 @@ class InterviewAnswerRejectedError(AppValidationError):
 
     code = "interview_answer_rejected"
     title = "The recording could not be accepted"
+
+
+class InterviewSessionNotCompletedError(ConflictError):
+    code = "interview_session_not_completed"
+    title = "Feedback exists only for a completed session"
 
 
 class InterviewAnswersMissingError(ConflictError):
@@ -616,6 +649,208 @@ async def contributions_for(
         )
         for row in await repository.completed_sessions(session, user_id=user_id)
     ]
+
+
+# ---------------------------------------------------------------------------
+# 7. Evaluation -- feedback, and never a score-moving write
+# ---------------------------------------------------------------------------
+async def transcribe_session(
+    session: AsyncSession,
+    *,
+    session_id: uuid.UUID,
+    provider: TranscriptionProvider | None = None,
+    settings: Settings | None = None,
+) -> int:
+    """Transcribe every stored answer of a completed session not yet
+    transcribed. Returns how many were written.
+
+    **System use** (the evaluation task). Idempotent by answer, so a retried
+    task pays for no answer twice. A session that is not COMPLETED is left
+    alone: an open one is not finished, and an evaluated one needs nothing.
+    """
+    settings = settings or get_settings()
+    provider = provider or get_transcription_provider()
+    row = await repository.get_session_by_id(session, session_id=session_id)
+    if row is None or row.state != "COMPLETED":
+        return 0
+    if provider.name == "none":
+        # Before reading any audio: with nothing to hear it, a GET per answer
+        # on every retry is spend for nothing.
+        raise EvaluationUnavailableError()
+
+    done = {t.answer_id for t in await repository.transcripts_for(session, session_id=row.id)}
+    written = 0
+    for answer in await repository.answers_for(session, session_id=row.id):
+        if answer.upload_state != "STORED" or answer.id in done or answer.s3_key is None:
+            continue
+        audio = await storage.read_whole_object(
+            bucket=settings.s3_bucket_interview_audio, key=answer.s3_key
+        )
+        if not audio:
+            # The completion guard proved it was stored. Missing now means S3
+            # is unreachable or the object was removed; neither is the
+            # candidate's silence, so it must not become a `no_speech`.
+            raise EvaluationUnavailableError()
+        heard = await provider.transcribe(audio=audio, mime=answer.mime or "")
+        await repository.insert_transcript(
+            session,
+            session_id=row.id,
+            answer_id=answer.id,
+            question_index=answer.question_index,
+            provider=provider.name,
+            provider_version=provider.version,
+            language=heard.language,
+            text_value=heard.text,
+        )
+        written += 1
+    logger.info("interview_session_transcribed", written=written)
+    return written
+
+
+async def evaluate_session(
+    session: AsyncSession,
+    *,
+    session_id: uuid.UUID,
+    provider: EvaluationProvider | None = None,
+) -> str:
+    """Rate a transcribed session against the rubric and record the outcome.
+
+    Returns the session's state. **Idempotent**: an evaluated or failed
+    session is returned as it is. Three ways out:
+
+      * **EVALUATED** -- the evaluator's ratings fit the rubric exactly.
+      * **FAILED** `no_speech` -- nothing was said in any answer. The evaluator
+        is not called; there is nothing to rate. **The +20 stays** (E19).
+      * **FAILED** `evaluation_invalid` -- the evaluator answered, and not in
+        the rubric's shape. Recorded, never repaired.
+
+    A provider that is missing or failing transiently raises
+    `EvaluationUnavailableError` and records nothing, so the task retries.
+
+    **Points are never touched here.** The session's contribution was frozen
+    at completion and `guard_interview_session_write` refuses to change it.
+    """
+    provider = provider or get_evaluation_provider()
+    row = await repository.get_session_by_id(session, session_id=session_id, lock=True)
+    if row is None:
+        raise InterviewSessionNotFoundError()
+    if row.state in EVALUATION_OUTCOMES:
+        return row.state
+    if row.state != "COMPLETED":
+        raise InterviewSessionNotCompletedError()
+
+    question_set = set_for_session(row.session_number)
+    transcripts = await repository.transcripts_for(session, session_id=row.id)
+    heard = {t.question_index: t.text for t in transcripts}
+    if len(heard) < QUESTIONS_PER_SESSION:
+        # Not transcribed yet. Retry after `transcribe_session`.
+        raise EvaluationUnavailableError()
+    spoken = [
+        (index, question)
+        for index, question in enumerate(question_set.questions)
+        if is_spoken(heard.get(index))
+    ]
+
+    raw: dict[str, Any] | None = None
+    ratings: list[dict[str, Any]] = []
+    failure: str | None = None
+    if not spoken:
+        failure = FAILURE_NO_SPEECH
+    else:
+        if provider.name == "none":
+            raise EvaluationUnavailableError()
+        response = await provider.evaluate(
+            answers=[
+                AnswerForEvaluation(
+                    question_code=question.code,
+                    prompt=question.prompt,
+                    looking_for=question.looking_for,
+                    transcript=heard[index].strip(),
+                )
+                for index, question in spoken
+            ]
+        )
+        raw = response if isinstance(response, dict) else None
+        try:
+            evaluations = parse_evaluation(
+                response,
+                question_codes=tuple(question.code for _, question in spoken),
+                dimension_codes=DIMENSION_CODES,
+            )
+        except EvaluationInvalid as exc:
+            logger.warning("interview_evaluation_invalid", error=str(exc))
+            failure = FAILURE_EVALUATION_INVALID
+        else:
+            ratings = [
+                {"question_code": e.question_code, "ratings": e.ratings, "comment": e.comment}
+                for e in evaluations
+            ]
+
+    outcome = "FAILED" if failure else "EVALUATED"
+    await repository.insert_evaluation(
+        session,
+        session_id=row.id,
+        outcome=outcome,
+        failure_reason=failure,
+        provider=provider.name,
+        model_id=provider.model_id,
+        prompt_version=provider.prompt_version,
+        rubric_version=RUBRIC_VERSION,
+        report_version=REPORT_VERSION,
+        ratings=ratings,
+        raw_response=raw,
+    )
+    row.state = outcome
+    row = await repository.save_session(session, row)
+    await emit(
+        session,
+        event_type=SESSION_EVALUATED,
+        aggregate_type="interview_session",
+        aggregate_id=row.id,
+        payload={"user_id": str(row.user_id), "session_id": str(row.id), "outcome": outcome},
+    )
+    logger.info("interview_session_evaluated", outcome=outcome, failure_reason=failure)
+    return outcome
+
+
+@dataclass(frozen=True, slots=True)
+class ReportView:
+    #: PENDING until evaluated; READY with a report; FAILED with a reason.
+    status: str
+    failure_reason: str | None
+    report: InterviewReport | None
+    evaluated_at: datetime | None
+
+
+async def get_report(
+    session: AsyncSession, *, user_id: uuid.UUID, session_id: uuid.UUID
+) -> ReportView:
+    """The candidate's feedback on their own session, assembled from the
+    stored transcripts and ratings on every read. Someone else's is a 404."""
+    row = await repository.get_session(session, user_id=user_id, session_id=session_id)
+    if row is None:
+        raise InterviewSessionNotFoundError()
+    if row.state not in COMPLETED_STATES:
+        raise InterviewSessionNotCompletedError()
+    evaluation = await repository.get_evaluation(session, session_id=row.id)
+    if evaluation is None:
+        return ReportView("PENDING", None, None, None)
+    if evaluation.outcome == "FAILED":
+        return ReportView("FAILED", evaluation.failure_reason, None, evaluation.created_at)
+    transcripts = await repository.transcripts_for(session, session_id=row.id)
+    report = assemble_report(
+        question_set_code=row.question_set_code,
+        transcripts={t.question_index: t.text for t in transcripts},
+        evaluations=tuple(
+            QuestionEvaluation(
+                question_code=str(item["question_code"]),
+                ratings={str(k): int(v) for k, v in dict(item["ratings"]).items()},
+                comment=str(item.get("comment") or ""),
+            )
+            for item in evaluation.ratings
+        ),
+    )
+    return ReportView("READY", None, report, evaluation.created_at)
 
 
 # ---------------------------------------------------------------------------

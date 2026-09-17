@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,7 @@ from app.core.errors import ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.core.ratelimit import hit
 from app.modules.identity import repository
+from app.modules.identity.domain import PLATFORM_ROLES, suspendable
 from app.settings import get_settings
 
 logger = get_logger(__name__)
@@ -104,6 +106,10 @@ EMPLOYER_OWNER_ROLE = "EMPLOYER_OWNER"
 EMPLOYER_TEAM_ROLES: frozenset[str] = frozenset(
     {"EMPLOYER_OWNER", "EMPLOYER_RECRUITER", "EMPLOYER_VIEWER"}
 )
+#: A college's team (Day 17). The admin plays the owner's part: it runs the
+#: team, the subscription and the referral codes; staff import rosters.
+COLLEGE_ADMIN_ROLE = "COLLEGE_ADMIN"
+COLLEGE_TEAM_ROLES: frozenset[str] = frozenset({"COLLEGE_ADMIN", "COLLEGE_STAFF"})
 
 
 class AlreadyInOrganisationError(ConflictError):
@@ -213,7 +219,12 @@ async def list_team(session: AsyncSession, *, tenant_id: uuid.UUID) -> list[Team
 
 
 async def add_team_member(
-    session: AsyncSession, *, tenant_id: uuid.UUID, email: str, role: str
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    email: str,
+    role: str,
+    team_roles: frozenset[str] = EMPLOYER_TEAM_ROLES,
 ) -> TeamMember:
     """Invite by email. The person gets access the first time they sign in.
 
@@ -221,7 +232,7 @@ async def add_team_member(
     Cognito pool is admin-create-only), so an address with no account yet gets
     one here and waits to be claimed.
     """
-    if role not in EMPLOYER_TEAM_ROLES:
+    if role not in team_roles:
         raise CannotAddMemberError()
 
     address = normalise_email(email)
@@ -248,10 +259,10 @@ async def add_team_member(
 
 
 async def _ensure_another_owner(
-    session: AsyncSession, *, tenant_id: uuid.UUID, leaving_user_id: uuid.UUID
+    session: AsyncSession, *, tenant_id: uuid.UUID, leaving_user_id: uuid.UUID, owner_role: str
 ) -> None:
     owners = await repository.lock_active_holders_of_role(
-        session, tenant_id=tenant_id, role=EMPLOYER_OWNER_ROLE
+        session, tenant_id=tenant_id, role=owner_role
     )
     if not any(owner != leaving_user_id for owner in owners):
         raise LastOwnerError()
@@ -270,15 +281,23 @@ async def _active_member(
 
 
 async def change_member_role(
-    session: AsyncSession, *, tenant_id: uuid.UUID, user_id: uuid.UUID, role: str
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    role: str,
+    team_roles: frozenset[str] = EMPLOYER_TEAM_ROLES,
+    owner_role: str = EMPLOYER_OWNER_ROLE,
 ) -> TeamMember:
-    if role not in EMPLOYER_TEAM_ROLES:
+    if role not in team_roles:
         raise MemberNotFoundError()
     membership = await repository.get_membership(session, user_id=user_id, tenant_id=tenant_id)
     if membership is None or membership.status != "ACTIVE":
         raise MemberNotFoundError()
-    if membership.role == EMPLOYER_OWNER_ROLE and role != EMPLOYER_OWNER_ROLE:
-        await _ensure_another_owner(session, tenant_id=tenant_id, leaving_user_id=user_id)
+    if membership.role == owner_role and role != owner_role:
+        await _ensure_another_owner(
+            session, tenant_id=tenant_id, leaving_user_id=user_id, owner_role=owner_role
+        )
 
     await grant_membership(session, user_id=user_id, tenant_id=tenant_id, role=role)
     user = await repository.get_user(session, user_id)
@@ -291,7 +310,11 @@ async def change_member_role(
 
 
 async def remove_team_member(
-    session: AsyncSession, *, tenant_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    owner_role: str = EMPLOYER_OWNER_ROLE,
 ) -> None:
     """Revoke, never delete -- the row is the evidence of who could see what,
     and when. The cached membership is dropped so access ends on the next
@@ -299,6 +322,237 @@ async def remove_team_member(
     membership = await repository.get_membership(session, user_id=user_id, tenant_id=tenant_id)
     if membership is None or membership.status != "ACTIVE":
         raise MemberNotFoundError()
-    if membership.role == EMPLOYER_OWNER_ROLE:
-        await _ensure_another_owner(session, tenant_id=tenant_id, leaving_user_id=user_id)
+    if membership.role == owner_role:
+        await _ensure_another_owner(
+            session, tenant_id=tenant_id, leaving_user_id=user_id, owner_role=owner_role
+        )
     await revoke_membership(session, user_id=user_id, tenant_id=tenant_id)
+
+
+# ---------------------------------------------------------------------------
+# Day 19 -- platform staff, tenants for the console, suspension
+# ---------------------------------------------------------------------------
+class TenantNotFoundError(NotFoundError):
+    code = "identity_tenant_not_found"
+    title = "Organisation not found"
+
+
+class TenantNotSuspendableError(ConflictError):
+    """Our own staff tenant. See `domain.suspendable`."""
+
+    code = "identity_tenant_not_suspendable"
+    title = "This organisation cannot be suspended"
+
+
+class TenantAlreadySuspendedError(ConflictError):
+    code = "identity_tenant_already_suspended"
+    title = "This organisation is already suspended"
+
+
+class TenantNotSuspendedError(ConflictError):
+    code = "identity_tenant_not_suspended"
+    title = "This organisation is not suspended"
+
+
+@dataclass(frozen=True, slots=True)
+class TenantView:
+    id: uuid.UUID
+    type: str
+    name: str
+    status: str
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class SuspensionView:
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    reason: str
+    suspended_by: uuid.UUID
+    suspended_at: datetime
+    lifted_by: uuid.UUID | None
+    lifted_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class Contact:
+    """How to reach one account. No response schema carries one."""
+
+    user_id: uuid.UUID
+    pool: str
+    status: str
+    phone: str | None
+    email: str | None
+    locale: str
+
+
+def _tenant(row: Any) -> TenantView:
+    return TenantView(
+        id=row.id, type=row.type, name=row.name, status=row.status, created_at=row.created_at
+    )
+
+
+def _suspension(row: Any) -> SuspensionView:
+    return SuspensionView(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        reason=row.reason,
+        suspended_by=row.suspended_by,
+        suspended_at=row.suspended_at,
+        lifted_by=row.lifted_by,
+        lifted_at=row.lifted_at,
+    )
+
+
+async def get_tenant(session: AsyncSession, *, tenant_id: uuid.UUID) -> TenantView:
+    row = await repository.get_tenant(session, tenant_id=tenant_id)
+    if row is None:
+        raise TenantNotFoundError()
+    return _tenant(row)
+
+
+async def list_tenants(
+    session: AsyncSession,
+    *,
+    tenant_type: str | None,
+    status: str | None,
+    name_contains: str | None,
+    after: tuple[str, uuid.UUID] | None,
+    limit: int,
+) -> list[TenantView]:
+    rows = await repository.list_tenants(
+        session,
+        tenant_type=tenant_type,
+        status=status,
+        name_contains=name_contains,
+        after=after,
+        limit=limit,
+    )
+    return [_tenant(row) for row in rows]
+
+
+async def member_ids(
+    session: AsyncSession, *, tenant_id: uuid.UUID, roles: frozenset[str] | None = None
+) -> list[uuid.UUID]:
+    """Active members of a tenant, optionally only those holding `roles`.
+    Identifiers only: a notification resolves the contact separately."""
+    return await repository.active_member_ids(session, tenant_id=tenant_id, roles=roles)
+
+
+async def member_role_counts(session: AsyncSession, *, tenant_id: uuid.UUID) -> dict[str, int]:
+    return await repository.member_role_counts(session, tenant_id=tenant_id)
+
+
+async def provision_platform_staff(
+    session: AsyncSession, *, email: str, role: str
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """Make an address a member of our staff. **Has no route, deliberately.**
+
+    Run by `scripts/create_platform_staff.py` as the migrator. A route that
+    grants staff roles would be the one endpoint worth attacking, and nobody
+    adds a colleague so often that a script is a burden. The Cognito user is
+    created in the business pool separately (admin-create-only); on first
+    sign-in it adopts this row by email, as an invited recruiter does.
+
+    Returns `(tenant_id, user_id)`.
+    """
+    if role not in PLATFORM_ROLES:
+        raise ValueError(f"{role} is not a platform role: {sorted(PLATFORM_ROLES)}")
+    tenant_id = await repository.create_platform_tenant(session)
+    address = normalise_email(email)
+    user = await repository.user_by_email(session, email=address)
+    if user is None:
+        user = await repository.create_business_user(session, email=address)
+    if user.pool != "BUSINESS":
+        raise CannotAddMemberError()
+    await repository.lock_user(session, user_id=user.id)
+    current = await repository.active_membership(session, user_id=user.id)
+    if current is not None and current.tenant_id != tenant_id:
+        raise AlreadyInOrganisationError()
+    await grant_membership(session, user_id=user.id, tenant_id=tenant_id, role=role)
+    return tenant_id, user.id
+
+
+async def suspend_tenant(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    reason: str,
+    suspended_by: uuid.UUID,
+    now: datetime,
+) -> SuspensionView:
+    """Stop an organisation operating. Deletes nothing.
+
+    The row is the switch: `membership.resolve` refuses every member of a
+    tenant with an open suspension, and `guard_tenant_suspension_write` marks
+    the tenant SUSPENDED in the same statement. The members' cached
+    memberships are distrusted before this returns, so the next request of
+    any of them is refused (`membership.mark_tenant_changed`).
+    """
+    tenant = await repository.get_tenant(session, tenant_id=tenant_id)
+    if tenant is None:
+        raise TenantNotFoundError()
+    if not suspendable(tenant.type):
+        raise TenantNotSuspendableError()
+    row = await repository.insert_suspension(
+        session, tenant_id=tenant_id, reason=reason, suspended_by=suspended_by, now=now
+    )
+    if row is None:
+        raise TenantAlreadySuspendedError()
+    await membership_lookup.mark_tenant_changed(
+        tenant_id, await repository.active_member_ids(session, tenant_id=tenant_id)
+    )
+    logger.info("tenant_suspended", tenant_id=str(tenant_id), tenant_type=tenant.type)
+    return _suspension(row)
+
+
+async def reinstate_tenant(
+    session: AsyncSession, *, tenant_id: uuid.UUID, lifted_by: uuid.UUID, now: datetime
+) -> SuspensionView:
+    if await repository.get_tenant(session, tenant_id=tenant_id) is None:
+        raise TenantNotFoundError()
+    row = await repository.lift_suspension(
+        session, tenant_id=tenant_id, lifted_by=lifted_by, now=now
+    )
+    if row is None:
+        raise TenantNotSuspendedError()
+    await membership_lookup.mark_tenant_changed(
+        tenant_id, await repository.active_member_ids(session, tenant_id=tenant_id)
+    )
+    logger.info("tenant_reinstated", tenant_id=str(tenant_id))
+    return _suspension(row)
+
+
+async def suspensions_for(session: AsyncSession, *, tenant_id: uuid.UUID) -> list[SuspensionView]:
+    rows = await repository.suspensions_for(session, tenant_id=tenant_id)
+    return [_suspension(row) for row in rows]
+
+
+async def contacts(session: AsyncSession, *, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, Contact]:
+    """Phone, email and language for delivering a message. **For notifications
+    only**; no response schema carries a `Contact`."""
+    return {
+        user.id: Contact(
+            user_id=user.id,
+            pool=user.pool,
+            status=user.status,
+            phone=user.phone,
+            email=user.email,
+            locale=user.locale,
+        )
+        for user in await repository.users_by_ids(session, user_ids=user_ids)
+    }
+
+
+async def set_locale(session: AsyncSession, *, user_id: uuid.UUID, locale: str) -> None:
+    """The caller's language, already validated against the shipped locales."""
+    await repository.set_locale(session, user_id=user_id, locale=locale)
+
+
+async def candidates_signed_up_before(
+    session: AsyncSession, *, before: datetime, after_id: uuid.UUID | None, limit: int
+) -> list[uuid.UUID]:
+    """Candidate accounts older than `before`, for the incomplete-profile sweep."""
+    return await repository.candidates_signed_up_before(
+        session, before=before, after_id=after_id, limit=limit
+    )

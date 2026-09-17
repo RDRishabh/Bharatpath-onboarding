@@ -55,6 +55,16 @@ class AuditAction(StrEnum):
     ADMIN_EMPLOYER_DRILLDOWN = "admin_employer_drilldown"
     ADMIN_COLLEGE_DRILLDOWN = "admin_college_drilldown"
     ADMIN_BYPASS_SESSION_OPENED = "admin_bypass_session_opened"
+    #: A KYB submission's answers opened by a reviewer (Day 19).
+    ADMIN_KYB_SUBMISSION_OPENED = "admin_kyb_submission_opened"
+    #: A signal's evidence opened (Day 19). Evidence can quote the CV.
+    ADMIN_INTEGRITY_SIGNAL_OPENED = "admin_integrity_signal_opened"
+    #: A dispute opened in the console: its description is the raiser's words.
+    ADMIN_DISPUTE_OPENED = "admin_dispute_opened"
+    #: Who read the audit trail is part of the audit trail.
+    ADMIN_AUDIT_LOG_SEARCHED = "admin_audit_log_searched"
+    DISPUTE_ASSIGNED = "dispute_assigned"
+    DISPUTE_RESOLVED = "dispute_resolved"
 
     # Score-moving writes - invariant 3's blast radius.
     # Now that add-ons move the score (R1), writing a completion row moves a
@@ -77,10 +87,27 @@ class AuditAction(StrEnum):
     TEAM_MEMBER_ROLE_CHANGED = "team_member_role_changed"
     TEAM_MEMBER_REMOVED = "team_member_removed"
 
+    # Colleges (Day 17). A seat is a student's paid access, and a referral
+    # code is a credential that attaches students to a roster: issuing,
+    # revoking and allocating are all privileged.
+    COLLEGE_SEATS_ALLOCATED = "college_seats_allocated"
+    REFERRAL_CODE_ISSUED = "referral_code_issued"
+    REFERRAL_CODE_REVOKED = "referral_code_revoked"
+    ROSTER_IMPORT_COMMITTED = "roster_import_committed"
+    ROSTER_INVITATIONS_SENT = "roster_invitations_sent"
+
     # Consent - PRD rule 8
     CONSENT_GRANTED = "consent_granted"
     CONSENT_REVOKED = "consent_revoked"
+    #: One consenting student's details opened by college staff (Day 18).
     COLLEGE_STUDENT_VIEWED = "college_student_viewed"
+    #: The list of students who let their college see them was read. It
+    #: names people, so it is a reveal too; metadata holds the ids shown.
+    COLLEGE_STUDENTS_LISTED = "college_students_listed"
+
+    # Notifications (Day 19). Stopping messages to a person is our decision
+    # about them, so it is recorded like one.
+    NOTIFICATIONS_SUPPRESSED = "notifications_suppressed"
 
     # Privacy
     DSR_EXPORT_REQUESTED = "dsr_export_requested"

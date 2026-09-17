@@ -52,6 +52,23 @@ INSTITUTION_TYPES: Final[tuple[tuple[str, str], ...]] = (
     ("OTHER", "Other"),
 )
 
+#: For `placement_season_start`. Codes, not names: every client renders its own
+#: language.
+MONTHS: Final[tuple[tuple[str, str], ...]] = (
+    ("JANUARY", "January"),
+    ("FEBRUARY", "February"),
+    ("MARCH", "March"),
+    ("APRIL", "April"),
+    ("MAY", "May"),
+    ("JUNE", "June"),
+    ("JULY", "July"),
+    ("AUGUST", "August"),
+    ("SEPTEMBER", "September"),
+    ("OCTOBER", "October"),
+    ("NOVEMBER", "November"),
+    ("DECEMBER", "December"),
+)
+
 INSTITUTION = FormSection(
     "institution",
     "About your institution",

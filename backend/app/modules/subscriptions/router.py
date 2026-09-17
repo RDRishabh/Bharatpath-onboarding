@@ -7,7 +7,7 @@ import-linter enforces the second half of that sentence.
 
 **Mounted on each audience's surface, not under `/subscriptions`.** A
 subscription is always somebody's: a candidate's own (`/candidate/subscription`)
-or their organisation's (`/employer/subscription`). Colleges join on Day 17.
+or their organisation's (`/employer/subscription`, `/college/subscription`).
 
 **None of these routes need a subscription**, obviously: they are how one is
 bought. Everyone in an employer organisation can see its subscription; only
@@ -22,6 +22,8 @@ from fastapi import APIRouter, Depends, status
 
 from app.core.deps import (
     CANDIDATE,
+    COLLEGE_ADMIN,
+    COLLEGE_STAFF,
     EMPLOYER_OWNER,
     EMPLOYER_RECRUITER,
     EMPLOYER_VIEWER,
@@ -42,6 +44,7 @@ from app.modules.subscriptions.schemas import (
 
 candidate_router = APIRouter()
 employer_router = APIRouter()
+college_router = APIRouter()
 
 
 def _plan_response(plan: Any) -> PlanResponse:
@@ -148,4 +151,10 @@ _mount(
     audience="EMPLOYER",
     readers=Depends(require_role(EMPLOYER_OWNER, EMPLOYER_RECRUITER, EMPLOYER_VIEWER)),
     buyers=Depends(require_role(EMPLOYER_OWNER)),
+)
+_mount(
+    college_router,
+    audience="COLLEGE",
+    readers=Depends(require_role(COLLEGE_ADMIN, COLLEGE_STAFF)),
+    buyers=Depends(require_role(COLLEGE_ADMIN)),
 )

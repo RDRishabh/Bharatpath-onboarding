@@ -2,7 +2,8 @@
 
 Pay-first applies to all three audiences (R13): sign-up grants an account, and
 everything else needs an active subscription. `require_active_subscription` in
-`app.core.deps` is the only caller.
+`app.core.deps` is the only caller, and for a candidate it asks both questions
+here: a personal subscription, or a college seat.
 
 Raw SQL rather than `subscriptions.service`, for the same reason `app/core/auth`
 reads memberships with SQL: core may not import modules
@@ -52,4 +53,18 @@ async def has_active_subscription(
     result = await session.execute(
         _ACTIVE_SUBSCRIPTION, {"kind": subscriber_type, "subscriber": str(subscriber_id)}
     )
+    return bool(result.scalar_one())
+
+
+_ACTIVE_COLLEGE_SEAT: Final = text("SELECT candidate_has_college_seat(:user)")
+
+
+async def has_active_college_seat(session: AsyncSession, *, user_id: UUID) -> bool:
+    """A live seat at an ACTIVE college whose own subscription is in period,
+    held on a live ROSTER consent (C12). One SECURITY DEFINER function in the
+    baseline, because the seat tables are under the colleges' Row-Level
+    Security and this runs before anything is bound. Read live, like the
+    subscription: a college lapsing must lock its students out on the next
+    request, not the next cache expiry."""
+    result = await session.execute(_ACTIVE_COLLEGE_SEAT, {"user": str(user_id)})
     return bool(result.scalar_one())

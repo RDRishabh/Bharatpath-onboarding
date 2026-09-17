@@ -20,4 +20,5 @@ def get_extra_routers() -> tuple[tuple[str, APIRouter], ...]:
     return (
         ("/candidate/subscription", _router.candidate_router),
         ("/employer/subscription", _router.employer_router),
+        ("/college/subscription", _router.college_router),
     )
