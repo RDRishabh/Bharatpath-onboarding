@@ -1,0 +1,1 @@
+export { adminNavigation } from "../navigation";
