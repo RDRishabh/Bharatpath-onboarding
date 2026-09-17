@@ -13,3 +13,11 @@ def get_router() -> APIRouter | None:
     from . import router as _router
 
     return getattr(_router, "router", None)
+
+
+def get_extra_routers() -> tuple[tuple[str, APIRouter], ...]:
+    """`/disputes`: where the three external groups raise what the console
+    works. Mounted here so the dispute's two sides share one module."""
+    from . import router as _router
+
+    return (("/disputes", _router.raiser_router),)

@@ -12,6 +12,7 @@ from celery import Celery
 
 from app.core.metadata import load_all_models
 from app.settings import get_settings
+from app.tasks.routing import TASK_MODULES
 
 
 def create_celery() -> Celery:
@@ -20,7 +21,11 @@ def create_celery() -> Celery:
         "bharatpath",
         broker=settings.celery_broker_url,
         backend=settings.celery_result_backend,
-        include=["app.tasks"],
+        # Every task module, by name. `include=["app.tasks"]` imported the
+        # package and none of its modules, so a worker started that way
+        # registered no task at all -- invisible until the relay had a broker
+        # to send through (Day 19). The list lives beside the routing table.
+        include=list(TASK_MODULES),
     )
     celery.conf.update(
         task_serializer="json",

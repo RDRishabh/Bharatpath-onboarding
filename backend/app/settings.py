@@ -193,6 +193,20 @@ class Settings(BaseSettings):
     # outside local and dev, because it would show candidates made-up feedback.
     interview_evaluation_provider: Literal["none", "stub"] = "none"
 
+    # -- notifications (Day 19) -----------------------------------------------
+    # Nothing is wired by default: SMS and email are recorded as SKIPPED
+    # `PROVIDER_UNCONFIGURED` and the in-app inbox still works. `stub` records
+    # what would have been sent and is refused in staging and production.
+    # **A provider does not make an SMS deliverable**: a template with no DLT
+    # registration is never handed to one (blockers D1).
+    notifications_sms_provider: Literal["none", "stub", "twilio"] = "none"
+    notifications_email_provider: Literal["none", "stub", "ses"] = "none"
+    twilio_account_sid: str | None = None
+    twilio_auth_token: SecretStr | None = None
+    #: The Messaging Service the India DLT sender header is attached to.
+    twilio_messaging_service_sid: str | None = None
+    notifications_email_from: str | None = None
+
     # -- celery ------------------------------------------------------------
     celery_broker_url: str = "sqs://"
     celery_result_backend: str | None = None
@@ -305,6 +319,27 @@ class Settings(BaseSettings):
                 "INTERVIEW_EVALUATION_PROVIDER=stub must not be set in staging or "
                 "production: it shows candidates feedback nobody gave."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _notification_providers_are_real_or_local(self) -> Settings:
+        """A stub provider tells us a message was sent when nobody received it,
+        and a real one with no credentials fails every send at runtime."""
+        stubbed = "stub" in (self.notifications_sms_provider, self.notifications_email_provider)
+        if stubbed and self.environment in ("staging", "prod"):
+            raise ValueError(
+                "NOTIFICATIONS_*_PROVIDER=stub must not be set in staging or production: "
+                "it records messages as sent that nobody received."
+            )
+        if self.notifications_sms_provider == "twilio" and not (
+            self.twilio_account_sid and self.twilio_auth_token and self.twilio_messaging_service_sid
+        ):
+            raise ValueError(
+                "NOTIFICATIONS_SMS_PROVIDER=twilio needs TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN "
+                "and TWILIO_MESSAGING_SERVICE_SID."
+            )
+        if self.notifications_email_provider == "ses" and not self.notifications_email_from:
+            raise ValueError("NOTIFICATIONS_EMAIL_PROVIDER=ses needs NOTIFICATIONS_EMAIL_FROM.")
         return self
 
     @model_validator(mode="after")

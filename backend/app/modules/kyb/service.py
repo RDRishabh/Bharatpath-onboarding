@@ -58,7 +58,7 @@ from app.modules.kyb.domain import (
     sniff_document,
     state_on_submit,
 )
-from app.modules.kyb.events import MODULE
+from app.modules.kyb.events import APPROVED, REVIEWED, SUBMITTED
 from app.modules.kyb.forms import EMPLOYEE_COUNT_BANDS, FORM_VERSION, KYB_FORM
 from app.modules.kyb.schemas import (
     DocumentTicketResponse,
@@ -411,12 +411,30 @@ async def submit(session: AsyncSession, *, ctx: TenantContext) -> KybSubmissionR
         )
     await emit(
         session,
-        event_type=f"{MODULE}.{'approved' if approved else 'submitted'}",
+        event_type=APPROVED if approved else SUBMITTED,
         aggregate_type="kyb_submission",
         aggregate_id=submission.id,
         payload={"tenant_id": str(tenant_id), "auto_approved": approved},
     )
     logger.info("kyb_submitted", tenant_id=str(tenant_id), state=target)
+    return await _response(session, submission)
+
+
+async def submission_for_review(
+    session: AsyncSession, *, tenant_id: uuid.UUID, submission_id: uuid.UUID
+) -> KybSubmissionResponse:
+    """One submission, answers and documents included, for a reviewer (Day 19).
+
+    Like `review`, takes the tenant explicitly: the console found it from the
+    submission, and a reviewer belongs to no employer. The caller audits the
+    read -- the answers carry the PAN and the signatory's details.
+    """
+    await set_transaction_tenant(session, tenant_id)
+    submission = await repository.get_submission(
+        session, tenant_id=tenant_id, submission_id=submission_id
+    )
+    if submission is None:
+        raise KybSubmissionNotFoundError()
     return await _response(session, submission)
 
 
@@ -430,11 +448,11 @@ async def review(
     decision: str,
     reason: str | None = None,
 ) -> KybSubmissionResponse:
-    """A human decision, used when the switch is on. **No route yet.**
+    """A human decision, used when the switch is on. Routed by the admin
+    console (Day 19): `POST /admin/kyb/submissions/{id}/decision`.
 
     Takes the tenant id explicitly because a reviewer belongs to no employer:
-    it comes from the review queue, never from a request. Exposing this needs a
-    `KYB_REVIEWER` account, and platform-staff tenancy is an open decision.
+    the console reads it from the submission, never from a request body.
     """
     if decision not in REVIEW_DECISIONS | {"UNDER_REVIEW"}:
         raise KybTransitionError(params={"to": decision})
@@ -478,7 +496,7 @@ async def review(
     )
     await emit(
         session,
-        event_type=f"{MODULE}.reviewed",
+        event_type=REVIEWED,
         aggregate_type="kyb_submission",
         aggregate_id=submission.id,
         payload={"tenant_id": str(tenant_id), "decision": decision},

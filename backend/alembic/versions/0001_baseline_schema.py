@@ -51,6 +51,9 @@ TENANT_SCOPED_TABLES = (
     "student_consents",
     "referral_codes",
     "college_seat_assignments",
+    # Day 19. NULL for a candidate's dispute, which the policy then never
+    # matches; the candidate and staff policies are added beside it.
+    "disputes",
 )
 
 # Tables that carry a tenant_id but must NOT get the policy. Each exemption is
@@ -86,6 +89,7 @@ def upgrade() -> None:
     _create_employer_tables()
     _create_billing_tables()
     _create_college_tables()
+    _create_platform_tables()
 
     _enable_row_level_security()
     _apply_append_only_grants()
@@ -99,6 +103,7 @@ def upgrade() -> None:
     _create_interview_guards()
     _create_college_access()
     _create_college_student_reads()
+    _create_platform_access()
 
 
 def downgrade() -> None:
@@ -291,6 +296,17 @@ def _create_billing_tables() -> None:
         "interview_answers",
         "interview_transcripts",
         "interview_evaluations",
+    )
+
+
+def _create_platform_tables() -> None:
+    """Day 19: the dispute queue and notifications."""
+    _create_from_metadata(
+        "disputes",
+        "notifications",
+        "notification_preferences",
+        "notification_suppressions",
+        "profile_nudges",
     )
 
 
@@ -675,7 +691,8 @@ def _create_candidate_marketplace_access() -> None:
         SET search_path = public, pg_temp
         AS $$
           SELECT EXISTS (
-            SELECT 1 FROM jobs WHERE id = p_job_id AND status = 'PUBLISHED'
+            SELECT 1 FROM jobs j JOIN tenants t ON t.id = j.tenant_id
+             WHERE j.id = p_job_id AND j.status = 'PUBLISHED' AND t.status = 'ACTIVE'
           )
         $$;
         """
@@ -688,13 +705,22 @@ def _create_candidate_marketplace_access() -> None:
     # to -- otherwise an application to a job that later closed would lose
     # its title on the candidate's own Application Board. Board queries still
     # filter on status explicitly for that reason.
+    #
+    # A suspended employer's jobs leave the board (Day 19): stopping an
+    # organisation that keeps recruiting is not stopping it. Jobs already
+    # applied to stay readable to the candidate who applied.
     op.execute(
         """
         CREATE POLICY jobs_candidate_board ON jobs FOR SELECT
           USING (
             (SELECT current_candidate_id()) IS NOT NULL
             AND (
-              status = 'PUBLISHED'
+              (
+                status = 'PUBLISHED'
+                AND EXISTS (
+                  SELECT 1 FROM tenants t WHERE t.id = jobs.tenant_id AND t.status = 'ACTIVE'
+                )
+              )
               OR EXISTS (
                 SELECT 1 FROM applications a
                  WHERE a.job_id = jobs.id
@@ -2152,3 +2178,292 @@ def _create_college_student_reads() -> None:
         $$;
         """
     )
+
+
+# ---------------------------------------------------------------------------
+# Day 19 -- platform staff, suspension, disputes
+# ---------------------------------------------------------------------------
+def _create_platform_access() -> None:
+    """Our own staff, stopping an organisation, and the dispute queue.
+
+    **Staff are members of the one PLATFORM tenant** (blockers E10). That kept
+    `memberships.tenant_id` NOT NULL and the single-membership rule intact,
+    and it makes one new thing dangerous: a staff role in any other tenant,
+    or an employer role in ours. `guard_membership_tenant_type` refuses both,
+    for every writer, generated from `identity.domain.ROLE_TENANT_TYPE`.
+
+    **A suspension is a row, and the tenant's status follows it.**
+    `guard_tenant_suspension_write` refuses a suspension of anything but an
+    employer or a college, keeps what was suspended and why immutable, makes
+    lifting a latch, and mirrors the open row onto `tenants.status` in the
+    same statement. `guard_tenant_status` holds the other direction: no writer
+    marks a tenant SUSPENDED without an open suspension, or ACTIVE with one.
+    Every check that already reads `tenants.status = 'ACTIVE'` -- the college
+    functions, the seat limb -- therefore stops with the suspension, and so
+    now do the job board and applying.
+
+    **`platform_tenant_bound()`** is the staff equivalent of
+    `current_candidate_id()`: true only when the transaction's bound tenant
+    is the PLATFORM tenant, which only a staff membership can bind. The
+    dispute policy for staff reads it.
+    """
+    from app.modules.admin.domain import DISPUTE_TRANSITIONS
+    from app.modules.identity.domain import ROLE_TENANT_TYPE
+
+    role_pairs = ", ".join(f"('{r}', '{t}')" for r, t in sorted(ROLE_TENANT_TYPE.items()))
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION guard_membership_tenant_type()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          t_type text;
+        BEGIN
+          SELECT type INTO t_type FROM tenants WHERE id = NEW.tenant_id;
+          IF (NEW.role, t_type) NOT IN ({role_pairs}) THEN
+            RAISE EXCEPTION 'MEMBERSHIP_GUARD: % cannot be held in a % tenant',
+              NEW.role, t_type USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_membership_tenant_type
+          BEFORE INSERT OR UPDATE OF role, tenant_id ON memberships
+          FOR EACH ROW EXECUTE FUNCTION guard_membership_tenant_type()
+        """
+    )
+
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_tenant_status()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          open_suspension boolean;
+        BEGIN
+          IF TG_OP = 'UPDATE' AND NEW.type <> OLD.type THEN
+            RAISE EXCEPTION 'TENANT_GUARD: a tenant never changes type'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF TG_OP = 'UPDATE' AND NEW.status IS NOT DISTINCT FROM OLD.status THEN
+            RETURN NEW;
+          END IF;
+          SELECT EXISTS (
+            SELECT 1 FROM tenant_suspensions s
+             WHERE s.tenant_id = NEW.id AND s.lifted_at IS NULL
+          ) INTO open_suspension;
+          IF (NEW.status = 'SUSPENDED') <> open_suspension THEN
+            RAISE EXCEPTION 'TENANT_GUARD: status SUSPENDED follows an open suspension, and only one'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_tenant_status
+          BEFORE INSERT OR UPDATE ON tenants
+          FOR EACH ROW EXECUTE FUNCTION guard_tenant_status()
+        """
+    )
+
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_tenant_suspension_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        DECLARE
+          t_type text;
+        BEGIN
+          IF TG_OP = 'DELETE' THEN
+            -- The app role holds no DELETE; this is a migrator's repair.
+            IF OLD.lifted_at IS NULL THEN
+              UPDATE tenants SET status = 'ACTIVE', updated_at = now()
+               WHERE id = OLD.tenant_id AND status = 'SUSPENDED';
+            END IF;
+            RETURN OLD;
+          END IF;
+
+          IF TG_OP = 'INSERT' THEN
+            SELECT type INTO t_type FROM tenants WHERE id = NEW.tenant_id;
+            IF t_type IS DISTINCT FROM 'EMPLOYER' AND t_type IS DISTINCT FROM 'COLLEGE' THEN
+              RAISE EXCEPTION 'SUSPENSION_GUARD: only an employer or a college can be suspended'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            IF NEW.lifted_at IS NOT NULL THEN
+              RAISE EXCEPTION 'SUSPENSION_GUARD: a suspension starts open'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            UPDATE tenants SET status = 'SUSPENDED', updated_at = now()
+             WHERE id = NEW.tenant_id AND status <> 'SUSPENDED';
+            RETURN NEW;
+          END IF;
+
+          IF NEW.tenant_id <> OLD.tenant_id OR NEW.reason <> OLD.reason
+             OR NEW.suspended_by <> OLD.suspended_by
+             OR NEW.suspended_at <> OLD.suspended_at THEN
+            RAISE EXCEPTION 'SUSPENSION_GUARD: what was suspended, why and by whom never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF OLD.lifted_at IS NOT NULL
+             AND (NEW.lifted_at IS DISTINCT FROM OLD.lifted_at
+                  OR NEW.lifted_by IS DISTINCT FROM OLD.lifted_by) THEN
+            RAISE EXCEPTION 'SUSPENSION_GUARD: lifting a suspension is a latch'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF OLD.lifted_at IS NULL AND NEW.lifted_at IS NOT NULL THEN
+            UPDATE tenants SET status = 'ACTIVE', updated_at = now()
+             WHERE id = NEW.tenant_id AND status = 'SUSPENDED';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    # AFTER, so the suspension row is visible to `guard_tenant_status` when
+    # the tenant is marked, and so an ON CONFLICT DO NOTHING that skips the
+    # insert marks nothing.
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_tenant_suspension_write
+          AFTER INSERT OR UPDATE OR DELETE ON tenant_suspensions
+          FOR EACH ROW EXECUTE FUNCTION guard_tenant_suspension_write()
+        """
+    )
+    op.execute(f"REVOKE DELETE ON tenant_suspensions FROM {APP_ROLE}")
+    op.execute(f"REVOKE UPDATE ON tenant_suspensions FROM {APP_ROLE}")
+    op.execute(f"GRANT UPDATE (lifted_at, lifted_by) ON tenant_suspensions TO {APP_ROLE}")
+
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION platform_tenant_bound()
+        RETURNS boolean
+        LANGUAGE sql STABLE
+        SET search_path = public, pg_temp
+        AS $$
+          SELECT EXISTS (
+            SELECT 1 FROM tenants t
+             WHERE t.id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+               AND t.type = 'PLATFORM'
+               AND t.status = 'ACTIVE'
+          )
+        $$;
+        """
+    )
+
+    # Disputes. The tenant policy (TENANT_SCOPED_TABLES) lets an employer or a
+    # college read and raise its own; these add the candidate and our staff.
+    op.execute(
+        """
+        CREATE POLICY disputes_candidate_read ON disputes FOR SELECT
+          USING (tenant_id IS NULL AND raised_by = (SELECT current_candidate_id()))
+        """
+    )
+    op.execute(
+        """
+        CREATE POLICY disputes_candidate_raise ON disputes FOR INSERT
+          WITH CHECK (
+            tenant_id IS NULL
+            AND party = 'CANDIDATE'
+            AND raised_by = (SELECT current_candidate_id())
+          )
+        """
+    )
+    op.execute(
+        """
+        CREATE POLICY disputes_platform_staff ON disputes FOR ALL
+          USING ((SELECT platform_tenant_bound()))
+          WITH CHECK ((SELECT platform_tenant_bound()))
+        """
+    )
+
+    pairs = ", ".join(f"('{a}', '{b}')" for a, b in sorted(DISPUTE_TRANSITIONS))
+    op.execute(
+        f"""
+        CREATE OR REPLACE FUNCTION guard_dispute_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF TG_OP = 'INSERT' THEN
+            IF NEW.state <> 'OPEN' OR NEW.assigned_to IS NOT NULL
+               OR NEW.resolved_at IS NOT NULL THEN
+              RAISE EXCEPTION 'DISPUTE_GUARD: a dispute starts OPEN and unassigned'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            -- Read under the writer's own row-level security: a candidate
+            -- sees their applications, an employer its tenant's, and nobody
+            -- can name one they cannot see.
+            IF NEW.application_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM applications WHERE id = NEW.application_id) THEN
+              RAISE EXCEPTION 'DISPUTE_GUARD: the application is not the raiser''s'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            IF NEW.party <> 'CANDIDATE' AND NOT EXISTS (
+                 SELECT 1 FROM memberships m JOIN tenants t ON t.id = m.tenant_id
+                  WHERE m.user_id = NEW.raised_by AND m.tenant_id = NEW.tenant_id
+                    AND m.status = 'ACTIVE' AND t.type = NEW.party) THEN
+              RAISE EXCEPTION 'DISPUTE_GUARD: the raiser is not a member of that organisation'
+                USING ERRCODE = 'check_violation';
+            END IF;
+            RETURN NEW;
+          END IF;
+
+          IF OLD.state IN ('RESOLVED', 'REJECTED') THEN
+            RAISE EXCEPTION 'DISPUTE_GUARD: a closed dispute never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF NEW.kind <> OLD.kind OR NEW.party <> OLD.party OR NEW.source <> OLD.source
+             OR NEW.raised_by <> OLD.raised_by
+             OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+             OR NEW.application_id IS DISTINCT FROM OLD.application_id
+             OR NEW.description <> OLD.description OR NEW.created_at <> OLD.created_at THEN
+            RAISE EXCEPTION 'DISPUTE_GUARD: what was raised, and by whom, never changes'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          -- Only our staff work a dispute. The permissive tenant policy lets
+          -- an organisation UPDATE its own rows; this is what stops it
+          -- closing them.
+          IF NOT platform_tenant_bound() THEN
+            RAISE EXCEPTION 'DISPUTE_GUARD: only platform staff work a dispute'
+              USING ERRCODE = 'insufficient_privilege';
+          END IF;
+          IF NEW.state <> OLD.state AND (OLD.state, NEW.state) NOT IN ({pairs}) THEN
+            RAISE EXCEPTION 'DISPUTE_GUARD: % -> % is not a dispute transition',
+              OLD.state, NEW.state USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_dispute_write
+          BEFORE INSERT OR UPDATE ON disputes
+          FOR EACH ROW EXECUTE FUNCTION guard_dispute_write()
+        """
+    )
+    op.execute(f"REVOKE DELETE ON disputes FROM {APP_ROLE}")
+
+    # Notifications. "Were they told?" must stay answerable: a message row is
+    # never deleted, and after it is written only its delivery can change --
+    # never who it was for or what it said. A nudge is a count the cadence cap
+    # reads, so it is insert-only; a suppression is lifted, never removed.
+    op.execute(f"REVOKE UPDATE, DELETE ON notifications FROM {APP_ROLE}")
+    op.execute(
+        "GRANT UPDATE (state, skip_reason, failure_code, provider, provider_ref, sent_at, "
+        f"read_at) ON notifications TO {APP_ROLE}"
+    )
+    op.execute(f"REVOKE UPDATE, DELETE ON profile_nudges FROM {APP_ROLE}")
+    op.execute(f"REVOKE UPDATE, DELETE ON notification_suppressions FROM {APP_ROLE}")
+    op.execute(f"GRANT UPDATE (lifted_at) ON notification_suppressions TO {APP_ROLE}")

@@ -19,7 +19,10 @@ route nowhere near it.
 
 from __future__ import annotations
 
-from typing import Final
+from collections.abc import Callable
+from typing import Any, Final
+
+from app.modules.notifications.domain import NOTIFYING_EVENTS
 
 #: Celery task names. Strings rather than imports, deliberately: the relay
 #: enqueues by name and must not drag every module's dependencies into the
@@ -29,13 +32,17 @@ RESCORE_FOR_ADDONS_TASK: Final = "scoring.rescore_for_addons"
 DETECT_INTEGRITY_TASK: Final = "integrity.detect"
 PROCESS_PAYMENT_CALLBACK_TASK: Final = "billing.process_callback"
 EVALUATE_INTERVIEW_TASK: Final = "interview.evaluate_session"
+#: Day 19. Notifications consume every event in `NOTIFYING_EVENTS`, and a
+#: disputed hire is filed in the console's queue.
+NOTIFY_TASK: Final = "notifications.dispatch"
+OPEN_HIRE_DISPUTE_TASK: Final = "admin.open_hire_dispute"
 
 #: `event_type -> the tasks it triggers`.
 #:
 #: An event with no entry is published and consumed by nobody, which is
 #: ordinary — most events exist for analytics and notifications that arrive on
 #: later days. Absence here is not a bug; a *wrong* entry is.
-EVENT_SUBSCRIPTIONS: Final[dict[str, tuple[str, ...]]] = {
+_SUBSCRIPTIONS: Final[dict[str, tuple[str, ...]]] = {
     # The confirm gate. See the module docstring for why this is the confirmed
     # event and not the created one.
     "resume.version_confirmed": (SCORE_RESUME_TASK,),
@@ -67,9 +74,71 @@ EVENT_SUBSCRIPTIONS: Final[dict[str, tuple[str, ...]]] = {
     # extraction to read, and an integrity check against nothing would record
     # a clean result for a CV nobody has read.
     "scoring.score_computed": (DETECT_INTEGRITY_TASK,),
+    # Day 12 recorded a disputed hire and nobody read it (blockers E12). It is
+    # now filed as the candidate's dispute, for our staff to work.
+    "applications.hire_disputed": (OPEN_HIRE_DISPUTE_TASK,),
 }
+
+
+def _with_notifications(
+    subscriptions: dict[str, tuple[str, ...]],
+) -> dict[str, tuple[str, ...]]:
+    """Add the notification task to every event notifications consumes. Built
+    from `NOTIFYING_EVENTS` so the fan-out table and the routing cannot name
+    different events. **Nothing here reaches a score**: the dispatch task
+    imports no scoring module, and a message has no variable for one."""
+    merged = dict(subscriptions)
+    for event in sorted(NOTIFYING_EVENTS):
+        merged[event] = (*merged.get(event, ()), NOTIFY_TASK)
+    return merged
+
+
+EVENT_SUBSCRIPTIONS: Final[dict[str, tuple[str, ...]]] = _with_notifications(_SUBSCRIPTIONS)
+
+#: How the relay turns a published event into each task's arguments. Every
+#: routed task needs an entry, and its keyword names must be the task's own
+#: parameters -- `tests/unit/test_outbox_relay.py` checks both against the
+#: registered tasks, because a name mismatch fails only inside a worker.
+Event = dict[str, Any]
+TASK_ARGUMENTS: Final[dict[str, Callable[[Event], dict[str, str]]]] = {
+    SCORE_RESUME_TASK: lambda e: {
+        "user_id": str(e["payload"]["user_id"]),
+        "resume_version_id": str(e["aggregate_id"]),
+    },
+    RESCORE_FOR_ADDONS_TASK: lambda e: {"user_id": str(e["payload"]["user_id"])},
+    DETECT_INTEGRITY_TASK: lambda e: {"score_id": str(e["aggregate_id"])},
+    PROCESS_PAYMENT_CALLBACK_TASK: lambda e: {"callback_id": str(e["aggregate_id"])},
+    EVALUATE_INTERVIEW_TASK: lambda e: {"session_id": str(e["payload"]["session_id"])},
+    NOTIFY_TASK: lambda e: {"event_id": str(e["id"])},
+    OPEN_HIRE_DISPUTE_TASK: lambda e: {
+        "application_id": str(e["aggregate_id"]),
+        "candidate_id": str(e["payload"]["candidate_id"]),
+    },
+}
+
+#: Every module that registers a task. The worker imports exactly these.
+TASK_MODULES: Final = (
+    "app.tasks.detect_integrity",
+    "app.tasks.evaluate_interview",
+    "app.tasks.expire_applications",
+    "app.tasks.notify",
+    "app.tasks.open_hire_dispute",
+    "app.tasks.outbox_relay",
+    "app.tasks.parse_resume",
+    "app.tasks.process_payment_callback",
+    "app.tasks.profile_nudges",
+    "app.tasks.rescore_addons",
+    "app.tasks.score_resume",
+    "app.tasks.subscription_renewals",
+    "app.tasks.view_event_partitions",
+)
 
 
 def tasks_for(event_type: str) -> tuple[str, ...]:
     """The tasks an event triggers. Empty when nothing subscribes."""
     return EVENT_SUBSCRIPTIONS.get(event_type, ())
+
+
+def task_arguments(task_name: str, event: Event) -> dict[str, str]:
+    """The keyword arguments `task_name` is enqueued with for `event`."""
+    return TASK_ARGUMENTS[task_name](event)

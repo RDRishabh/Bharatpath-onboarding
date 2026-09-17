@@ -460,3 +460,13 @@ async def get_scorable_version(session: AsyncSession, *, user_id: uuid.UUID) -> 
     if row is None:
         raise ResumeNotConfirmedError()
     return row
+
+
+async def users_with_any_resume(
+    session: AsyncSession, *, user_ids: list[uuid.UUID]
+) -> set[uuid.UUID]:
+    """For the incomplete-profile sweep (Day 19): who has started a profile at
+    all -- an upload, a paste or the form, confirmed or not. **Not a scoring
+    read**: it says whether a version exists, never what one holds, so it does
+    not go near the confirm gate."""
+    return await repository.users_with_any_resume(session, user_ids=user_ids)

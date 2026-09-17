@@ -34,7 +34,15 @@ pytestmark = [pytest.mark.invariant, pytest.mark.integration]
 
 API = "/api/v1"
 #: The surfaces whose routes act on one tenant's data.
-TENANT_SURFACES = (f"{API}/employer", f"{API}/college", f"{API}/admin")
+#:
+#: **`/admin` left this list on Day 19, and was not dropped from coverage.**
+#: A console route crosses tenants by design -- reading any organisation is
+#: what a member of staff is for -- so "tenant A asking for tenant B's
+#: resource is a 404" has no tenant A to ask. The guarantee that replaces it is
+#: stronger and enumerated the same way: no employer, college or candidate
+#: reaches any `/admin` route at all, whatever the id
+#: (`tests/invariants/test_admin_console.py`).
+TENANT_SURFACES = (f"{API}/employer", f"{API}/college")
 ORG = {"legal_name": "Isolation Test Pvt Ltd", "industry": "IT_SOFTWARE"}
 JOB = {
     "title": "Isolation test job",

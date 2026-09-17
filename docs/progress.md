@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 2079 on 2026-09-17 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Tests** | 2247 on 2026-09-17 (Day 19), not yet pushed. 2079 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 84% |
-| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 19 — admin queues, drill-downs, disputes, seats + suspension, notifications + nudges |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 20 — privacy (DSR export and deletion), rate limits, index review, handover — Week 4 gate |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -49,6 +49,82 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-17 (evening) — Day 19: admin console, suspension, disputes, notifications, nudges
+
+**2079 -> 2247 tests**, all passing locally as CI runs them. Local CI chain
+green: age, vocabulary, ruff, format, mypy, **10** import contracts, modules.
+Not yet pushed. **Rebuild with `reset_local_db.sh`** — five new tables, four
+triggers, three policies on `disputes`, `platform_tenant_bound()`, and a changed
+job-board policy and `job_accepts_applications`.
+
+### What landed
+
+| | |
+|---|---|
+| **Staff tenancy (E10 closed)** | One PLATFORM tenant (`uq_tenants_one_platform`). `guard_membership_tenant_type`, generated from `identity.domain.ROLE_TENANT_TYPE`, keeps staff roles in it and customer roles out of it, for every writer. `scripts/create_platform_staff.py`; no route. |
+| **Console** (`/admin`) | KYB submissions (a record while approval is automatic; open with answers, decide), integrity queue (open with evidence, clear or confirm), organisations, suspend / reinstate / history, college seats (E23 closed), candidate / employer / college drill-downs, notification suppression, dispute queue (open, assign, resolve), audit search by actor, action, target, tenant and time. Permission table `admin.domain.CONSOLE_ROLES`. |
+| **Every look recorded** | `admin.service._reveal`: the audit row is written on the request's transaction, then the **read-only** bypass session is opened. A failed audit write opens nothing (tested). Drill-downs show the display score and band, masked contacts, and counts — never a CV. |
+| **Suspension** | A `tenant_suspensions` row, one open per tenant, lifted by latch, never deleted. `guard_tenant_suspension_write` mirrors it onto `tenants.status`; `guard_tenant_status` refuses the reverse. **Bites on the next request** despite the 60s membership cache (`membership.mark_tenant_changed`), answered 403 `tenant_suspended`. Jobs leave the board and refuse applications; a college's seats stop (E29). PLATFORM cannot be suspended. |
+| **Disputes** | `POST/GET /disputes` for candidates, employers and colleges (HIRE needs a visible application; colleges cannot dispute a hire; 5/day). Staff work them in `/admin/disputes`, cross-linked to the application's two sides and the candidate's live integrity signals. `guard_dispute_write`: what was raised never changes, and only a PLATFORM-bound transaction moves state. A candidate's hire dispute is filed automatically (E12 now has a queue, still no remedy). |
+| **Relay (E15, in code)** | `_publish` enqueues every subscribed task with `routing.TASK_ARGUMENTS`, raising on a broker failure. |
+| **Notifications** | `plan_for` (15 events), `delivery_decision` (account, opt-out, suppression, contact, DLT, provider — in that order), one row per message **including every skipped one**, deduplicated, decide-then-send in separate transactions. Inbox, read, preferences (language and channels). SMS via Twilio Messaging, email via SES, both `none` by default with a stub for tests. 17 new templates (13 in-app). |
+| **Nudges (R9)** | `notifications.nudge_incomplete_profiles`: candidates older than 24h with no upload, paste or form; every 72h, three at most, 09:00–21:00 IST; `nudges_enabled` stops them; config `notifications.nudges` (strict, cannot go daily or past six). The nudge number is the cap and the concurrency guard. |
+
+### One failure seen once and not reproduced
+
+`test_with_approval_on_a_reviewer_opens_and_decides_a_submission` failed once,
+in a full run that took 68 minutes instead of the usual 8 (the machine was
+very likely asleep partway through), and the traceback was lost to a `tail`.
+It passed in isolation, after `test_kyb.py`, twice alone, and in the next full
+run. A likely cause is a one-hour local token expiring during the pause, but
+that is a guess. **If it recurs in CI, capture the traceback before changing
+anything.**
+
+### Found and fixed on the way
+
+- **The worker registered no tasks.** `include=["app.tasks"]` imports the
+  package, whose `__init__` imports nothing, so a real worker would have
+  received every event the relay sends and known none of them. Invisible until
+  today because `_publish` only logged. The worker now includes
+  `routing.TASK_MODULES`, and a test checks every routed task is registered and
+  takes exactly the arguments it is sent.
+- **KYB built its event names in an f-string expression**
+  (`f"{MODULE}.{'approved' if approved else 'submitted'}"`), so no search for
+  `kyb.approved` found the emitter. The new drift test (every notifying event
+  must be emitted somewhere) caught it; KYB now has named constants.
+- **FastAPI nests included routers in `app.routes`**, so enumerating console
+  endpoints from it finds none. The console invariant reads operation ids from
+  the schema instead.
+
+### Decisions worth knowing
+
+- **`/admin` left `TENANT_SURFACES`** in `test_cross_tenant_routes.py`, with the
+  reason beside it. A console route crosses tenants by design; the replacement
+  (`tests/invariants/test_admin_console.py`) asserts no candidate, employer or
+  college reaches any console route and each staff role reaches exactly its
+  capabilities.
+- **Staff writes go through the owning module.** The bypass role stays
+  SELECT-only, as `init_db_roles.sql` asked Day 19 to confirm.
+- **A resolved dispute changes nothing else.** Confirming or voiding a hire,
+  or refunding, is a rule in another module and a client decision (E12, E18).
+- **The college revocation notice names nobody** (E28), and says only which
+  scope ended.
+- **The nudge SMS is registered as SERVICE_EXPLICIT**, which needs recorded
+  consent at sign-up (E31).
+- **VIEWED does not notify.** A message for every glance at an application
+  teaches people to ignore the ones that matter.
+
+### Owed
+
+- Schedules for the relay and the nudge sweep (E4); an orphaned-PENDING sweep,
+  bounce feeds, email unsubscribe links, translations of the new keys (E30).
+- Client: seats during a college's suspension (E29); what a resolved hire
+  dispute may do (E12).
+- REVOKED state on roster rows (Day 18, still owed).
+- DLT registration of the two new SMS bodies (D1).
 
 ---
 

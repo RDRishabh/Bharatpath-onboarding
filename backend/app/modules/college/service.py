@@ -1116,6 +1116,32 @@ async def send_invitations(
     return len(sent), await _view(session, record, now=now)
 
 
+@dataclass(frozen=True, slots=True)
+class InvitationRecipient:
+    phone: str | None
+    email: str | None
+    college_name: str
+
+
+async def invitation_recipient(
+    session: AsyncSession, *, tenant_id: uuid.UUID, entry_id: uuid.UUID
+) -> InvitationRecipient | None:
+    """Where to deliver one sent invitation (Day 19). **System only.**
+
+    The tenant comes from the `college.invitation_sent` event our own service
+    wrote, not from a request -- the same footing as the expiry sweep binding
+    each tenant from `tenants`. None when the row is no longer a sent
+    invitation (answered, or the import discarded), so a late delivery sends
+    nothing.
+    """
+    await set_transaction_tenant(session, tenant_id)
+    entry = await repository.sent_invitation(session, tenant_id=tenant_id, entry_id=entry_id)
+    college = await repository.get_college(session, tenant_id=tenant_id)
+    if entry is None or college is None:
+        return None
+    return InvitationRecipient(phone=entry.phone, email=entry.email, college_name=college.name)
+
+
 # ---------------------------------------------------------------------------
 # 5. Consent after linking -- the student's side (Day 18)
 # ---------------------------------------------------------------------------

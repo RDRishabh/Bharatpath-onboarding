@@ -136,8 +136,11 @@ async def current_user(
 
     if membership is None:
         # A verified business identity with no active membership: invited but
-        # not yet added, or just revoked. Authenticated, authorised for
-        # nothing.
+        # not yet added, just revoked, or a member of a suspended organisation
+        # (Day 19) -- who is told so, because "you belong nowhere" would send
+        # them to their owner rather than to us.
+        if await membership_lookup.in_suspended_tenant(session, user.id):
+            raise PermissionDeniedError(code="tenant_suspended")
         raise PermissionDeniedError(code="no_active_membership")
     if membership.role == CANDIDATE:
         raise PermissionDeniedError(code="pool_role_mismatch")

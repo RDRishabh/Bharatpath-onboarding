@@ -37,6 +37,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.mixins import Timestamps, UUIDPrimaryKey
+from app.modules.identity.domain import TENANT_TYPES
 
 # SRS 1.2 names nine roles across the four surfaces. CANDIDATE is the tenth,
 # and the only one that is not tenant-scoped.
@@ -94,12 +95,18 @@ class User(Base, UUIDPrimaryKey, Timestamps):
 
 
 class Tenant(Base, UUIDPrimaryKey, Timestamps):
-    """An employer or a college. The unit of isolation.
+    """An employer, a college, or us. The unit of isolation.
 
     Deliberately one table rather than two, so `memberships`, RLS policies,
     suspensions and audit all have a single foreign key to point at. The
     employer- and college-specific columns live in their own tables keyed on
     `tenant_id`.
+
+    **PLATFORM is our own staff** (Day 19, blockers E10), and there is exactly
+    one: `uq_tenants_one_platform`. It holds no employer or college data, so
+    binding it reads nothing through a tenant policy. Staff reach across
+    tenants by the read-only bypass engine, and write through services that
+    bind the target tenant explicitly -- as a KYB decision always has.
     """
 
     __tablename__ = "tenants"
@@ -109,8 +116,14 @@ class Tenant(Base, UUIDPrimaryKey, Timestamps):
     status: Mapped[str] = mapped_column(String(16), default="ACTIVE", nullable=False)
 
     __table_args__ = (
-        CheckConstraint(_in("type", ("EMPLOYER", "COLLEGE")), name="ck_tenants_type"),
+        CheckConstraint(_in("type", TENANT_TYPES), name="ck_tenants_type"),
         CheckConstraint(_in("status", ("ACTIVE", "SUSPENDED", "CLOSED")), name="ck_tenants_status"),
+        Index(
+            "uq_tenants_one_platform",
+            "type",
+            unique=True,
+            postgresql_where="type = 'PLATFORM'",
+        ),
     )
 
 
@@ -155,6 +168,13 @@ class TenantSuspension(Base, UUIDPrimaryKey):
 
     Suspension blocks sign-in and API access immediately. It deletes nothing -
     you must be able to prove what was visible to whom on a given date.
+
+    **Day 19.** One open suspension per tenant (`uq_tenant_suspension_open`);
+    lifting is a latch, the row is never deleted, and
+    `guard_tenant_suspension_write` mirrors the open row onto
+    `tenants.status`, so every check that already reads `status = 'ACTIVE'`
+    -- the job board, the seat limb, a college's invitations -- stops with it.
+    The PLATFORM tenant cannot be suspended.
     """
 
     __tablename__ = "tenant_suspensions"
@@ -177,8 +197,12 @@ class TenantSuspension(Base, UUIDPrimaryKey):
 
     __table_args__ = (
         Index(
-            "ix_tenant_suspension_active",
+            "uq_tenant_suspension_open",
             "tenant_id",
+            unique=True,
             postgresql_where="lifted_at IS NULL",
+        ),
+        CheckConstraint(
+            "(lifted_at IS NULL) = (lifted_by IS NULL)", name="ck_tenant_suspension_lifted_by"
         ),
     )

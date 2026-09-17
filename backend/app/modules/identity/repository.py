@@ -9,12 +9,13 @@ no other module may import it (import-linter contract `module-privacy`).
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import select, text, update
+from sqlalchemy import literal, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.identity.models import Membership, Tenant, User
+from app.modules.identity.models import Membership, Tenant, TenantSuspension, User
 
 
 async def get_user(session: AsyncSession, user_id: uuid.UUID) -> User | None:
@@ -188,3 +189,159 @@ async def create_business_user(session: AsyncSession, *, email: str) -> User:
     if user is None:  # pragma: no cover - only on a genuine constraint failure
         raise RuntimeError("could not create or read the invited business user")
     return user
+
+
+# ---------------------------------------------------------------------------
+# Day 19 -- platform staff, suspension, contacts
+# ---------------------------------------------------------------------------
+async def get_tenant(session: AsyncSession, *, tenant_id: uuid.UUID) -> Tenant | None:
+    result = await session.execute(select(Tenant).where(Tenant.id == tenant_id))
+    return result.scalar_one_or_none()
+
+
+async def platform_tenant(session: AsyncSession) -> Tenant | None:
+    result = await session.execute(select(Tenant).where(Tenant.type == "PLATFORM"))
+    return result.scalar_one_or_none()
+
+
+async def create_platform_tenant(session: AsyncSession) -> uuid.UUID:
+    """Insert-if-absent against `uq_tenants_one_platform`, then a read: two
+    provisioning runs at once must still end with one tenant."""
+    await session.execute(
+        pg_insert(Tenant)
+        .values(id=uuid.uuid4(), type="PLATFORM", name="BharatPath", status="ACTIVE")
+        .on_conflict_do_nothing()
+    )
+    tenant = await platform_tenant(session)
+    if tenant is None:  # pragma: no cover - only on a genuine constraint failure
+        raise RuntimeError("could not create or read the platform tenant")
+    return tenant.id
+
+
+async def list_tenants(
+    session: AsyncSession,
+    *,
+    tenant_type: str | None,
+    status: str | None,
+    name_contains: str | None,
+    after: tuple[str, uuid.UUID] | None,
+    limit: int,
+) -> list[Tenant]:
+    """Keyset by (name, id). The PLATFORM tenant is never listed: it is not a
+    customer, and it cannot be suspended."""
+    stmt = select(Tenant).where(Tenant.type != "PLATFORM")
+    if tenant_type is not None:
+        stmt = stmt.where(Tenant.type == tenant_type)
+    if status is not None:
+        stmt = stmt.where(Tenant.status == status)
+    if name_contains:
+        escaped = name_contains.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        stmt = stmt.where(Tenant.name.ilike(f"%{escaped}%", escape="\\"))
+    if after is not None:
+        stmt = stmt.where(
+            tuple_(Tenant.name, Tenant.id) > tuple_(literal(after[0]), literal(after[1]))
+        )
+    stmt = stmt.order_by(Tenant.name, Tenant.id).limit(limit)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def active_member_ids(
+    session: AsyncSession, *, tenant_id: uuid.UUID, roles: frozenset[str] | None = None
+) -> list[uuid.UUID]:
+    stmt = select(Membership.user_id).where(
+        Membership.tenant_id == tenant_id, Membership.status == "ACTIVE"
+    )
+    if roles is not None:
+        stmt = stmt.where(Membership.role.in_(sorted(roles)))
+    return list((await session.execute(stmt.order_by(Membership.user_id))).scalars().all())
+
+
+async def member_role_counts(session: AsyncSession, *, tenant_id: uuid.UUID) -> dict[str, int]:
+    result = await session.execute(
+        text(
+            "SELECT role, count(*) FROM memberships "
+            "WHERE tenant_id = :t AND status = 'ACTIVE' GROUP BY role"
+        ),
+        {"t": str(tenant_id)},
+    )
+    return {role: int(n) for role, n in result.all()}
+
+
+async def insert_suspension(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    reason: str,
+    suspended_by: uuid.UUID,
+    now: datetime,
+) -> TenantSuspension | None:
+    """None when an open suspension already exists (`uq_tenant_suspension_open`):
+    two admins pressing the button at once is one suspension, not a 500."""
+    row_id = await session.scalar(
+        pg_insert(TenantSuspension)
+        .values(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            reason=reason,
+            suspended_by=suspended_by,
+            suspended_at=now,
+        )
+        .on_conflict_do_nothing(index_elements=["tenant_id"], index_where=text("lifted_at IS NULL"))
+        .returning(TenantSuspension.id)
+    )
+    if row_id is None:
+        return None
+    result = await session.execute(select(TenantSuspension).where(TenantSuspension.id == row_id))
+    return result.scalar_one()
+
+
+async def lift_suspension(
+    session: AsyncSession, *, tenant_id: uuid.UUID, lifted_by: uuid.UUID, now: datetime
+) -> TenantSuspension | None:
+    """The latch: only an open row is lifted, so a second lift finds nothing."""
+    row_id = await session.scalar(
+        update(TenantSuspension)
+        .where(TenantSuspension.tenant_id == tenant_id, TenantSuspension.lifted_at.is_(None))
+        .values(lifted_at=now, lifted_by=lifted_by)
+        .returning(TenantSuspension.id)
+    )
+    if row_id is None:
+        return None
+    result = await session.execute(
+        select(TenantSuspension)
+        .where(TenantSuspension.id == row_id)
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one()
+
+
+async def suspensions_for(session: AsyncSession, *, tenant_id: uuid.UUID) -> list[TenantSuspension]:
+    result = await session.execute(
+        select(TenantSuspension)
+        .where(TenantSuspension.tenant_id == tenant_id)
+        .order_by(TenantSuspension.suspended_at.desc(), TenantSuspension.id)
+    )
+    return list(result.scalars().all())
+
+
+async def users_by_ids(session: AsyncSession, *, user_ids: list[uuid.UUID]) -> list[User]:
+    if not user_ids:
+        return []
+    result = await session.execute(select(User).where(User.id.in_(user_ids)))
+    return list(result.scalars().all())
+
+
+async def set_locale(session: AsyncSession, *, user_id: uuid.UUID, locale: str) -> None:
+    await session.execute(update(User).where(User.id == user_id).values(locale=locale))
+
+
+async def candidates_signed_up_before(
+    session: AsyncSession, *, before: datetime, after_id: uuid.UUID | None, limit: int
+) -> list[uuid.UUID]:
+    """ACTIVE candidate accounts created no later than `before`, keyset by id."""
+    stmt = select(User.id).where(
+        User.pool == "CANDIDATE", User.status == "ACTIVE", User.created_at <= before
+    )
+    if after_id is not None:
+        stmt = stmt.where(User.id > after_id)
+    return list((await session.execute(stmt.order_by(User.id).limit(limit))).scalars().all())

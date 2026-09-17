@@ -163,7 +163,7 @@ test asserts**, so a placeholder cannot quietly become the product:
 |---|---|
 | `subscriptions/catalogue.py` | `PLACEHOLDER_PRICING` |
 | `courses/catalogue.py` | `HAS_MEDIA`, every `asset_key is None` |
-| `notifications/templates.py` | every `dlt_template_id is None` — **an SMS cannot be sent without one**, and an unregistered body is dropped silently by the operator |
+| `notifications/templates.py` | every `dlt_template_id is None` — **an SMS cannot be sent without one**, and an unregistered body is dropped silently by the operator. `delivery_decision` enforces it |
 | `questionnaire/bank.py`, `interview/bank.py` | `BANK_VERSION` |
 | `kyb/forms.py`, `college/forms.py` | `FORM_VERSION` |
 | `app/core/i18n/locales/*.json` | non-English bundles still need a native-speaker pass |
@@ -228,8 +228,8 @@ is where a third one would have to be argued for.
   organisation. Don't make it more precise.
 - **Config rows are global in tests.** Insert with a past `effective_from`, and
   delete the row in a `finally`.
-- **Review actions (KYB and integrity) exist only in the services.** No
-  platform-staff account can exist yet (`docs/blockers.md` E10).
+- **Review actions (KYB and integrity) are routed by the admin console**
+  (Day 19), which calls these services.
 
 ## Candidate marketplace — Day 11
 
@@ -503,6 +503,62 @@ is where a third one would have to be argued for.
   means changing the other and bumping its version.
 - A ROSTER revocation notice to a college (Day 19) **must not name the
   student**: beside a dashboard that just moved, it names their band (E28).
+
+## Admin console, suspension, disputes — Day 19
+
+- **Staff are members of the one PLATFORM tenant** (E10). Provision with
+  `scripts/create_platform_staff.py` (or `identity.service.provision_platform_staff`
+  as the migrator in tests -- `_staff` in `tests/integration/test_admin_console.py`);
+  there is no route. `guard_membership_tenant_type` refuses a staff role in any
+  other tenant and a customer role in ours, **generated from
+  `identity.domain.ROLE_TENANT_TYPE`**.
+- **Who may call what is `admin.domain.CONSOLE_ROLES`.** A new console route
+  needs its endpoint in `ROUTE_CAPABILITY` in `tests/invariants/test_admin_console.py`,
+  which drives every route with every staff role and every outsider. `/admin`
+  is no longer a cross-tenant surface; that test replaces it.
+- **Every cross-tenant read goes through `admin.service._reveal`**: audit row on
+  the request's session first, then the read-only bypass session
+  (`DATABASE_ADMIN_URL`, `SET TRANSACTION READ ONLY`). Writes stay in the owning
+  module's service (`kyb.review`, `integrity.resolve_signal`,
+  `college.allocate_seats`, `identity.suspend_tenant`).
+- **A drill-down never shows the stored score, a whole contact or a CV**:
+  display value and band, `phone_masked`, counts.
+- **Suspension is a row and `tenants.status` follows it**, both ways, by trigger
+  (`guard_tenant_suspension_write`, `guard_tenant_status`). Never set a tenant
+  SUSPENDED by hand -- the guard refuses. It bites on the member's **next
+  request** despite the 60s membership cache: `membership.mark_tenant_changed`
+  flags the tenant so cached rows are distrusted. Jobs of a suspended employer
+  leave the board and refuse applications; a suspended college's seats stop
+  (E29). The PLATFORM tenant cannot be suspended.
+- **Disputes** (`/disputes` to raise, `/admin/disputes` to work): RLS by tenant,
+  candidate and `platform_tenant_bound()`; `guard_dispute_write` lets only a
+  PLATFORM-bound transaction change state. Resolving records words and **moves
+  nothing else**. A candidate's hire dispute is filed by `admin.open_hire_dispute`.
+
+## Notifications and the relay — Day 19
+
+- **The relay now enqueues** (`celery_app.send_task`) with arguments from
+  `routing.TASK_ARGUMENTS`; a routed task needs an entry whose keys match its
+  signature (`tests/unit/test_outbox_relay.py`). New task modules go in
+  `routing.TASK_MODULES` -- the worker includes exactly those.
+- **Which event tells whom is `notifications.domain.plan_for`**, and
+  `NOTIFYING_EVENTS` is what routing subscribes. Payloads carry ids only; names
+  and contacts are resolved at dispatch and **contacts are never stored**.
+- **Every message decided is a row, sent or not**, with `skip_reason`, keyed by
+  `dedupe_key` so a redelivered event writes nothing new. Decide in one
+  transaction, send each in its own (`app/tasks/notify.py`).
+- **No SMS without a `dlt_template_id`** -- all `None`, so today SMS rows are
+  SKIPPED `DLT_UNREGISTERED`. Providers default to `none`; tests use the
+  `stub_sms` fixture (`test_notifications.py`), which also pretends DLT is done.
+  Only the UPI pre-debit notice ignores an opt-out.
+- **No template may carry the score**: no variable for it, and
+  `notifications-never-import-scoring` in `.importlinter`.
+- **A message to a college about a revocation never names the student** (E28).
+- **Nudges** (`notifications.nudge_page`): config `notifications.nudges`, strict,
+  floors in `domain` (no more than daily, at most 6, IST sending hours). The
+  nudge number is claimed first (`uq_profile_nudges_sequence`) -- that is the
+  cap and the concurrency guard. Tests inject `now` and page with
+  `after_id = uuid - 1, limit = 1` to examine one person in a shared database.
 
 ## Streak points are not the score
 

@@ -690,3 +690,16 @@ async def student_hires(session: AsyncSession, *, candidate_id: uuid.UUID) -> li
         {"c": str(candidate_id)},
     )
     return [StudentHireRow(r.job_title, r.employer_name, r.hired_at) for r in result]
+
+
+async def sent_invitation(
+    session: AsyncSession, *, tenant_id: uuid.UUID, entry_id: uuid.UUID
+) -> RosterEntry | None:
+    result = await session.execute(
+        select(RosterEntry).where(
+            RosterEntry.tenant_id == tenant_id,
+            RosterEntry.id == entry_id,
+            RosterEntry.invite_state == INVITE_SENT,
+        )
+    )
+    return result.scalar_one_or_none()

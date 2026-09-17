@@ -295,7 +295,7 @@ onboarding, seats, revoking a code and discarding a preview stay open.
 | GET | `/college/onboarding` | any college role | — | `OnboardingResponse` | Versioned form + saved answers |
 | PUT | `/college/onboarding/answers` | ADMIN | `{answers}` | `OnboardingResponse` | Merge-save |
 | POST | `/college/onboarding/submit` | ADMIN | — | `OnboardingResponse` | 422 lists what is missing |
-| GET | `/college/seats` | any college role | — | `SeatsResponse` | Counts only. The allowance is set by our staff (no route yet, E10) |
+| GET | `/college/seats` | any college role | — | `SeatsResponse` | Counts only. The allowance is set by our staff: `PUT /admin/colleges/{tenant_id}/seats` |
 | POST | `/college/referral-codes` | ADMIN + paid | `{expires_in_days, max_uses?}` | `ReferralCodeResponse` (201) | A credential: 60 bits, always expiring |
 | GET | `/college/referral-codes` | any college role | — | `list[ReferralCodeResponse]` | |
 | POST | `/college/referral-codes/{code_id}/revoke` | ADMIN | path | `ReferralCodeResponse` | Not paywalled. Linked students stay linked |
@@ -328,17 +328,65 @@ only the counts show; a band or month under `min_cell_size` (default 5) is
 | GET | `/college/analytics/overview` | any college role + paid | `CohortOverviewResponse` | Connected, individually visible, score distribution by band, median (rounded to 10), applicants, applications, interviews, platform hires. 500 `analytics_floors_invalid` on a bad config row |
 | GET | `/college/analytics/placements` | any college role + paid | `PlacementReportResponse` | `source: PLATFORM` always. Hires both sides confirmed, by IST month (12) and job location (`OTHER` pools small ones). Disputed hires and outside placements never count |
 
-## Stub modules — registered, no routes yet
+## admin — `/admin` (+ extra router at `/disputes`)
 
-These are in `ALL_MODULES` (so they show up in the OpenAPI schema) but have
-zero callable routes today:
+Our own staff, who belong to the one **PLATFORM** tenant (Day 19, closing
+blockers E10). Staff are provisioned by `scripts/create_platform_staff.py`,
+never by a route. Who may call what is `admin.domain.CONSOLE_ROLES`;
+`tests/invariants/test_admin_console.py` drives every route with every role.
+**Every cross-tenant read writes its audit row before the read-only bypass
+session opens**; a read whose audit cannot be written returns nothing.
+
+| Method | Path | Roles | Body/Params | Response | Notes |
+|---|---|---|---|---|---|
+| GET | `/admin/kyb/submissions` | PLATFORM_ADMIN, KYB_REVIEWER | `state`, `cursor`, `limit` | `KybSubmissionsPage` | No answers. `review_required` shows `kyb.require_approval`: while false this is a record, not a queue |
+| GET | `/admin/kyb/submissions/{submission_id}` | same | path | `KybSubmissionResponse` | Answers and documents. Audited (`admin_kyb_submission_opened`) |
+| POST | `/admin/kyb/submissions/{submission_id}/decision` | same | `{decision, reason?}` | `KybSubmissionResponse` | `kyb.service.review`; reason required to reject or ask for more |
+| GET | `/admin/integrity/signals` | PLATFORM_ADMIN, INTEGRITY_REVIEWER | `state` (OPEN), `severity`, `cursor` | `IntegritySignalsPage` | Oldest first, no evidence. Audited as a bypass read |
+| GET | `/admin/integrity/signals/{signal_id}` | same | path | `IntegritySignalDetail` | Evidence can quote the CV. Audited |
+| POST | `/admin/integrity/signals/{signal_id}/resolve` | same | `{outcome: CLEARED\|CONFIRMED, note?}` | `IntegritySignalDetail` | Only CLEARED restores search visibility. Final (409 twice). Never moves a score |
+| GET | `/admin/tenants` | PLATFORM_ADMIN, KYB_REVIEWER, SUPPORT_AGENT | `type`, `status`, `q`, `cursor` | `TenantsPage` | Employers and colleges; never the PLATFORM tenant. Not audited (names no person) |
+| POST | `/admin/tenants/{tenant_id}/suspend` | PLATFORM_ADMIN | `{reason}` | `SuspensionResponse` (201) | **Immediate**: every member's next request is 403 `tenant_suspended`; jobs leave the board; a college's seat access stops (E29). Deletes nothing. 409 if already suspended or PLATFORM |
+| POST | `/admin/tenants/{tenant_id}/reinstate` | PLATFORM_ADMIN | — | `SuspensionResponse` | Lifting is a latch; 409 if not suspended |
+| GET | `/admin/tenants/{tenant_id}/suspensions` | as `/admin/tenants` | path | `list[SuspensionResponse]` | Newest first |
+| PUT | `/admin/colleges/{tenant_id}/seats` | PLATFORM_ADMIN | `{seats}` | `{allocated, used, filled}` | `college.service.allocate_seats`: never below used, never above the live plan (409 `college_seats_*`). Seats waiting students. Audited |
+| GET | `/admin/candidates/{user_id}` | PLATFORM_ADMIN, SUPPORT_AGENT, INTEGRITY_REVIEWER | path | `CandidateDrilldown` | Masked phone/email, display score and band, resume counts (never content), signals, applications, subscription, college links, disputes. Audited every open |
+| GET | `/admin/employers/{tenant_id}` | PLATFORM_ADMIN, SUPPORT_AGENT, KYB_REVIEWER | path | `EmployerDrilldown` | KYB, members, jobs, pipeline, subscription, suspension, distinct candidates viewed (1d/30d), anomaly flags. Audited |
+| GET | `/admin/colleges/{tenant_id}` | PLATFORM_ADMIN, SUPPORT_AGENT | path | `CollegeDrilldown` | Counts only: seats, codes, consents by scope, imports, invitations. Audited |
+| POST | `/admin/users/{user_id}/notification-suppressions` | PLATFORM_ADMIN, SUPPORT_AGENT | `{channel, reason}` | `{user_id, channel, created}` | Our stop (bounce, complaint, support request), apart from the person's preferences. Audited |
+| GET | `/admin/disputes` | PLATFORM_ADMIN, SUPPORT_AGENT | `state`, `kind`, `party`, `cursor` | `DisputesPage` | Default OPEN + IN_REVIEW, oldest first, all three groups |
+| GET | `/admin/disputes/{dispute_id}` | same | path | `DisputeDetail` | Description, cross-links (application's two sides, live integrity signals). Audited |
+| POST | `/admin/disputes/{dispute_id}/assign` | same | — | `DisputeDetail` | Caller takes it; IN_REVIEW |
+| POST | `/admin/disputes/{dispute_id}/resolve` | same | `{outcome: RESOLVED\|REJECTED, resolution}` | `DisputeDetail` | The raiser reads `resolution`. Changes nothing else. Closed is final |
+| GET | `/admin/audit-events` | PLATFORM_ADMIN | `actor_id`, `action`, `target_type`, `target_id`, `tenant_id`, `from`, `to`, `cursor` | `AuditEventsPage` | Newest first, keyset. The search is itself audited with its filters |
+| POST | `/disputes` | CANDIDATE, EMPLOYER_OWNER/RECRUITER, COLLEGE_ADMIN/STAFF | `{kind, application_id?, description}` | `MyDisputeResponse` (201) | HIRE needs an application the caller can see (else 404); colleges cannot dispute a hire (422). 5/day per person |
+| GET | `/disputes` | same | — | `list[MyDisputeResponse]` | A candidate's own; an organisation's. No staff identities |
+
+A candidate's `POST /candidate/applications/{id}/hire/dispute` also files a
+HIRE dispute in the queue, as the candidate's (`admin.open_hire_dispute` task).
+
+## notifications — `/notifications`
+
+Every signed-in account, only its own messages. Never paywalled.
+
+| Method | Path | Body/Params | Response | Notes |
+|---|---|---|---|---|
+| GET | `/notifications` | `cursor`, `limit` | `InboxPage` | In-app messages, newest first, with `unread` |
+| POST | `/notifications/{notification_id}/read` | path | `InboxItem` | 404 for someone else's |
+| GET / PATCH | `/notifications/preferences` | `{locale?, sms_enabled?, email_enabled?, push_enabled?, nudges_enabled?}` | `PreferencesResponse` | In-app cannot be turned off. The UPI pre-debit notice ignores an SMS opt-out |
+
+Messages are caused by outbox events (`notifications.domain.plan_for`) and by
+the incomplete-profile sweep. **No SMS is sent without a DLT template id**
+(every one is `None` today) and no provider is configured by default, so
+today only the in-app inbox delivers; every skipped message is still recorded
+with its reason.
+
+## Stub modules — registered, no routes yet
 
 | Module | Prefix | What's planned |
 |---|---|---|
-| integrity | `/integrity` | Signal review actions — blocked on a platform-staff account (blockers E10) |
-| admin | `/admin` | Queues, drill-downs, disputes, suspensions |
-| notifications | `/notifications` | Event→channel fan-out; templates exist (`notifications/templates.py`) but every `dlt_template_id` is still `None`, so nothing can send |
-| privacy | `/privacy` | Export/deletion requests, DSR tracking |
+| integrity | `/integrity` | Nothing of its own: review routes live in `/admin/integrity` |
+| privacy | `/privacy` | Export/deletion requests, DSR tracking (Day 20) |
 
 ---
 
@@ -474,8 +522,9 @@ POST /candidate/colleges/{college_id}/revoke {scope}
 
 Fully implemented with routes: identity, candidate, resume, scoring,
 questionnaire, interview, courses, employer, kyb, jobs, applications,
-discovery, billing, subscriptions, engagement, college, analytics.
+discovery, billing, subscriptions, engagement, college, analytics, admin,
+notifications.
 
-Registered but empty (`router = APIRouter()`, no routes): admin, integrity,
-notifications, privacy. See `docs/blockers.md` and
+Registered but empty (`router = APIRouter()`, no routes): integrity (its
+review routes are under `/admin`), privacy. See `docs/blockers.md` and
 `docs/plan.md` §14 for what's gating each.
