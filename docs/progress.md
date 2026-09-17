@@ -9,6 +9,16 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-17 — Applicant API Redux integration
+
+Connected the existing employer applications pipeline to the backend employer
+application resource. The page now loads published jobs and their applications,
+opens application details, moves stages, and proposes hires through RTK Query;
+the API adapter lives under `fontend/store/employer/applications` and hydrates
+the existing Redux slice. The separate applicant store module was removed.
+
+Validation: `npx tsc --noEmit` and focused ESLint both pass.
+
 ## State at a glance
 
 | | |
