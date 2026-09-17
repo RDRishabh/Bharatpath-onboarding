@@ -131,3 +131,43 @@ class CompleteAnswerRequest(_Base):
 
 class AnswerResponse(AnswerSchema):
     looking_for: str | None = None
+
+
+class DimensionFeedbackSchema(_Base):
+    code: str
+    key: str = Field(description="Translation key. `label` is the English fallback.")
+    label: str
+    level: Literal["STRONG", "DEVELOPING", "FOCUS_AREA"] = Field(
+        description="In words, deliberately. No number about the candidate is shown."
+    )
+    what_good_looks_like: str
+
+
+class QuestionFeedbackSchema(_Base):
+    index: int = Field(ge=0)
+    code: str
+    prompt: str
+    looking_for: str
+    transcript: str = Field(description="What the speech model heard. Empty when nothing was.")
+    spoken: bool
+    comment: str | None = None
+
+
+class InterviewReportResponse(_Base):
+    """Feedback on one completed session.
+
+    **Nothing here moves or describes the score.** The session's contribution
+    was fixed when it was completed, whatever this says. PENDING until an
+    evaluator has run; FAILED with `failure_reason` (`no_speech`,
+    `evaluation_invalid`) when it could not produce feedback.
+    """
+
+    session_id: uuid.UUID
+    status: Literal["PENDING", "READY", "FAILED"]
+    failure_reason: str | None = None
+    evaluated_at: datetime | None = None
+    report_version: str | None = None
+    dimensions: list[DimensionFeedbackSchema] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list, description="Dimension codes.")
+    focus_areas: list[str] = Field(default_factory=list, description="Dimension codes.")
+    questions: list[QuestionFeedbackSchema] = Field(default_factory=list)

@@ -14,7 +14,8 @@ Institution tenant, roster, invites, consent, referral codes.
 
 **Referral codes are new since 2026-08-27** and run *alongside* the invite
 flow, not instead of it - invites still cover students with no account yet.
-Three decisions we took, all in the schema:
+Three decisions we took, all in the schema, and approved by the client in
+Round 7.9 (*"do it"*):
 
   1. Entering a code **is** the consent act (`granted_via = REFERRAL_CODE`).
      It is arguably better consent than invite-accept, because the student
@@ -24,12 +25,18 @@ Three decisions we took, all in the schema:
   3. **Codes are credentials** - non-guessable, rate-limited on entry,
      revocable, expiring. A guessable code lets anyone attach themselves to a
      roster, or lets a college harvest students who never agreed to anything.
+
+**Seats are held per student** (Day 17). `college_seats` is the allowance and
+the count; `college_seat_assignments` says which student each counted seat is
+paying for. `guard_college_seat_assignment` (baseline migration) keeps the two
+equal and refuses a seat past the allowance, for every writer.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
@@ -40,16 +47,31 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     func,
+    text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.mixins import TenantScoped, Timestamps, UUIDPrimaryKey
+from app.modules.college.domain import CODE_LENGTH
+from app.modules.college.forms import INSTITUTION_TYPES
+
+
+def _in(column: str, values: tuple[str, ...]) -> str:
+    return f"{column} IN ({', '.join(repr(v) for v in values)})"
 
 
 class College(Base, Timestamps):
-    """College-specific columns, keyed on the shared tenant row."""
+    """College-specific columns, keyed on the shared tenant row.
+
+    The onboarding answers are kept whole, as a KYB submission's are, because
+    the form is data (`college/forms.py`) and will change; the row must keep
+    saying what was asked and answered. **No review follows submission**: a
+    college is a B2B deal somebody has already spoken to, and `verified_at` is
+    set by our staff, not by filling in a form.
+    """
 
     __tablename__ = "colleges"
 
@@ -59,33 +81,42 @@ class College(Base, Timestamps):
         primary_key=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    institution_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    onboarding_answers: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
+    )
+    form_version: Mapped[str | None] = mapped_column(String(64))
+    onboarding_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            _in("institution_type", tuple(code for code, _ in INSTITUTION_TYPES)),
+            name="ck_colleges_institution_type",
+        ),
+    )
 
 
 class CollegeSeat(Base, Timestamps):
     """Admin-assigned seat allowance (client: "No of Seats ... from the admin").
 
     One payment per period covering up to N students - mirroring the employer
-    model rather than the tiers the employer side rejected.
+    model rather than the tiers the employer side rejected (Q10, approved in
+    Round 7.7).
 
     **A seat replaces the student's own subscription entirely** (client,
     2026-09-12, closing C12): *"Student does not pay if the college has paid
-    for it."* Two things follow, and neither is optional.
+    for it."* So this row is an entitlement, and withdrawing a seat is an
+    access change rather than an administrative one.
 
-    First, `seats_used` is not bookkeeping. It is the count of students whose
-    access this row is paying for, so an off-by-one here is either a student
-    locked out of something bought for them or a student we are carrying free.
+    `seats_used` is **not written by the application**. The app role holds no
+    UPDATE on it; `guard_college_seat_assignment` moves it as seats are taken
+    and released, so it cannot drift from the assignments it counts.
 
-    Second, **this row is an entitlement**, which makes withdrawing a seat an
-    access change rather than an administrative one. A student whose seat goes
-    away loses access unless they buy their own - see `require_active_-
-    subscription`, whose second limb this is.
-
-    OPEN: what happens at the 501st student on a 500-seat plan? We recommend
-    blocking, because it is the only option that cannot produce a surprise
-    invoice. Awaiting the client (docs/questions.txt section 2C). **C12 raises
-    the stakes on it**: over-allocating no longer just over-serves a seat, it
-    gives away a full subscription.
+    **The 501st student on a 500-seat allowance is refused a seat** -- we
+    recommended blocking because it is the only option that cannot produce a
+    surprise invoice. They are still linked to the college; they are simply not
+    paid for, and are seated when the allowance grows.
     """
 
     __tablename__ = "college_seats"
@@ -104,33 +135,118 @@ class CollegeSeat(Base, Timestamps):
     __table_args__ = (
         CheckConstraint("seats_allocated >= 0", name="ck_college_seats_non_negative"),
         CheckConstraint("seats_used >= 0", name="ck_college_seats_used_non_negative"),
+        # The cap, as a constraint: no allocation below what is in use, and no
+        # seat taken past the allocation, whichever write attempts it.
+        CheckConstraint("seats_used <= seats_allocated", name="ck_college_seats_within_allocation"),
     )
 
 
-class RosterImport(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
-    """Bulk CSV/XLSX upload. Async, with a preview before commit.
+class CollegeSeatAssignment(Base, UUIDPrimaryKey, TenantScoped):
+    """One student's seat. **Access, paid for by the college** (C12).
 
-    The preview identifies malformed and duplicate rows *before* anything is
-    written (SRS 2.25.3), and the import is idempotent.
+    A seat follows a live ROSTER consent and ends with it: revoking consent
+    releases the seat in the same statement (`release_seat_on_consent_revoke`).
+    Released, never deleted -- who the college was paying for, and when, is a
+    billing record.
+
+    **One live seat per student, platform-wide.** Two colleges paying for the
+    same student is money taken twice for one access.
     """
 
-    __tablename__ = "roster_imports"
+    __tablename__ = "college_seat_assignments"
 
-    file_s3_key: Mapped[str] = mapped_column(String(512), nullable=False)
-    total_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    valid_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    state: Mapped[str] = mapped_column(String(16), default="PENDING", nullable=False)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    consent_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("student_consents.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    release_reason: Mapped[str | None] = mapped_column(String(32))
 
     __table_args__ = (
         CheckConstraint(
-            "state IN ('PENDING', 'PREVIEW', 'PROCESSING', 'COMPLETED', 'FAILED')",
-            name="ck_roster_imports_state",
+            "(released_at IS NULL) = (release_reason IS NULL)",
+            name="ck_college_seat_assignments_release",
+        ),
+        Index(
+            "uq_college_seat_one_live_per_candidate",
+            "candidate_id",
+            unique=True,
+            postgresql_where=text("released_at IS NULL"),
+        ),
+        Index(
+            "ix_college_seat_assignments_live",
+            "tenant_id",
+            postgresql_where=text("released_at IS NULL"),
         ),
     )
 
 
+class RosterImport(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
+    """One uploaded roster file: previewed, then committed or discarded.
+
+    The preview identifies malformed and duplicate rows *before* anything is
+    invited (SRS 2.25.3). **Idempotent by content**: uploading the same file
+    again returns this import rather than a second one, so a double tap or a
+    retried request cannot stage every student twice.
+
+    Discarding deletes the staged rows. Contact details the college decided
+    not to use are not ours to keep.
+    """
+
+    __tablename__ = "roster_imports"
+
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    total_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    valid_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    invalid_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    duplicate_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Header names that were not read, so the college knows what was dropped.
+    ignored_columns: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
+    )
+    state: Mapped[str] = mapped_column(String(16), default="PREVIEW", nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    committed_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('PREVIEW', 'COMMITTED', 'DISCARDED')",
+            name="ck_roster_imports_state",
+        ),
+        CheckConstraint(
+            "(state = 'COMMITTED') = (committed_at IS NOT NULL)",
+            name="ck_roster_imports_committed",
+        ),
+        UniqueConstraint("tenant_id", "source_sha256", name="uq_roster_import_source"),
+    )
+
+
 class RosterEntry(Base, UUIDPrimaryKey, TenantScoped):
-    """One row of an uploaded roster, before or after matching to a user."""
+    """One row of an uploaded roster, and then one invitation.
+
+    `invite_state` is NULL while the row is only previewed; committing moves
+    every VALID row to PENDING, sending moves it to SENT, and the student's
+    answer to ACCEPTED or DECLINED. EXPIRED is measured at read
+    (`domain.invitation_state`).
+
+    **There is no column saying whether this contact has an account.** A
+    college that could see which of its students are registered would have an
+    enumeration oracle, and a way to single out the ones who have not linked.
+    The student finds the invitation from their own verified contact instead.
+    """
 
     __tablename__ = "roster_entries"
 
@@ -140,21 +256,65 @@ class RosterEntry(Base, UUIDPrimaryKey, TenantScoped):
         nullable=False,
         index=True,
     )
+    row_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    full_name: Mapped[str | None] = mapped_column(String(200))
     phone: Mapped[str | None] = mapped_column(String(20))
     email: Mapped[str | None] = mapped_column(String(320))
-    match_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    student_ref: Mapped[str | None] = mapped_column(String(64))
+    row_state: Mapped[str] = mapped_column(String(16), nullable=False)
+    issues: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
     )
-    invite_state: Mapped[str] = mapped_column(String(16), default="PENDING", nullable=False)
+    invite_state: Mapped[str | None] = mapped_column(String(16))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint(
-            "invite_state IN ('PENDING', 'SENT', 'ACCEPTED', 'DECLINED', 'EXPIRED')",
-            name="ck_roster_entries_invite_state",
+            "row_state IN ('VALID', 'INVALID', 'DUPLICATE')", name="ck_roster_entries_row_state"
         ),
         CheckConstraint(
-            "phone IS NOT NULL OR email IS NOT NULL",
-            name="ck_roster_entries_has_contact",
+            "invite_state IS NULL OR invite_state IN "
+            "('PENDING', 'SENT', 'ACCEPTED', 'DECLINED', 'EXPIRED')",
+            name="ck_roster_entries_invite_state",
+        ),
+        # Only a valid row is ever invited.
+        CheckConstraint(
+            "invite_state IS NULL OR row_state = 'VALID'",
+            name="ck_roster_entries_only_valid_invited",
+        ),
+        CheckConstraint(
+            "invite_state IS NULL OR invite_state = 'PENDING' OR sent_at IS NOT NULL",
+            name="ck_roster_entries_sent_at",
+        ),
+        UniqueConstraint("import_id", "row_number", name="uq_roster_entry_row"),
+        # **A committed roster holds each contact once**, whichever file it
+        # came from. The preview marks these as `already_on_roster`; this is
+        # what makes a race between two commits unable to invite anyone twice.
+        Index(
+            "uq_roster_committed_phone",
+            "tenant_id",
+            "phone",
+            unique=True,
+            postgresql_where=text("invite_state IS NOT NULL AND phone IS NOT NULL"),
+        ),
+        Index(
+            "uq_roster_committed_email",
+            "tenant_id",
+            "email",
+            unique=True,
+            postgresql_where=text("invite_state IS NOT NULL AND email IS NOT NULL"),
+        ),
+        # A student looks their invitations up by their own contact.
+        Index(
+            "ix_roster_entries_sent_phone",
+            "phone",
+            postgresql_where=text("invite_state = 'SENT'"),
+        ),
+        Index(
+            "ix_roster_entries_sent_email",
+            "email",
+            postgresql_where=text("invite_state = 'SENT'"),
         ),
     )
 
@@ -165,6 +325,11 @@ class StudentConsent(Base, UUIDPrimaryKey, TenantScoped):
     Analytics INNER JOINs this table. Revoking sets `revoked_at`; the row is
     never deleted, because proving what was visible on a past date is a
     requirement, not a nicety.
+
+    **Every grant names what the student acted on**: the referral code they
+    typed or the invitation they accepted. `student_consents_candidate_grant`
+    (baseline migration) checks it is live and this college's, so a candidate
+    cannot attach themselves to a roster by writing a row.
     """
 
     __tablename__ = "student_consents"
@@ -180,6 +345,12 @@ class StudentConsent(Base, UUIDPrimaryKey, TenantScoped):
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     granted_via: Mapped[str] = mapped_column(String(16), nullable=False)
+    referral_code_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("referral_codes.id", ondelete="RESTRICT")
+    )
+    roster_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("roster_entries.id", ondelete="RESTRICT")
+    )
     # Consent must be stored with scope, timestamp, version and status
     # (SRS 1.15.3). The client's counsel owns the text of each version.
     consent_version: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -189,6 +360,11 @@ class StudentConsent(Base, UUIDPrimaryKey, TenantScoped):
         CheckConstraint(
             "granted_via IN ('INVITE', 'REFERRAL_CODE')",
             name="ck_student_consents_granted_via",
+        ),
+        CheckConstraint(
+            "((granted_via = 'REFERRAL_CODE') = (referral_code_id IS NOT NULL)) "
+            "AND ((granted_via = 'INVITE') = (roster_entry_id IS NOT NULL))",
+            name="ck_student_consents_provenance",
         ),
         # One live grant per (tenant, candidate, scope). A second active row
         # would make "does consent exist?" depend on row order.
@@ -207,10 +383,14 @@ class StudentConsent(Base, UUIDPrimaryKey, TenantScoped):
 class ReferralCode(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
     """A credential, not an identifier.
 
-    Non-guessable (generated from a CSPRNG, not sequential and not short),
-    rate-limited on entry, revocable and expiring. The uniqueness constraint
-    is global rather than per-tenant so a code can be resolved to its college
-    without the student having to say which college they mean.
+    Non-guessable (60 bits from a CSPRNG, `domain.code_from_bytes`), rate-
+    limited on entry, revocable and **always expiring**. The uniqueness
+    constraint is global rather than per-tenant so a code can be resolved to
+    its college without the student having to say which college they mean.
+
+    `uses` counts students linked by it, moved only by `consume_referral_code`
+    under the conditions that make the code live, so `max_uses` holds against
+    two students entering the last use at once.
     """
 
     __tablename__ = "referral_codes"
@@ -221,12 +401,17 @@ class ReferralCode(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
     )
     max_uses: Mapped[int | None] = mapped_column(Integer)
     uses: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     __table_args__ = (
         UniqueConstraint("code", name="uq_referral_code"),
+        CheckConstraint(f"length(code) = {CODE_LENGTH}", name="ck_referral_code_length"),
         CheckConstraint("uses >= 0", name="ck_referral_uses_non_negative"),
+        CheckConstraint("max_uses IS NULL OR max_uses > 0", name="ck_referral_max_uses_positive"),
         CheckConstraint("max_uses IS NULL OR uses <= max_uses", name="ck_referral_uses_within_max"),
         Index(
             "ix_referral_codes_live",

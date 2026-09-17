@@ -15,10 +15,10 @@ states. Newest entries first.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 1898 on 2026-09-16 (Day 16), all green locally, not yet pushed. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Tests** | 2018 on 2026-09-17 (Day 17), all green locally, not yet pushed. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 85% |
-| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | Day 17 — evaluation stubs, college tenant, seats and referral codes |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17 complete · 3, 4, 6, 8, 9 partial |
+| **Next** | Day 18 — consent scopes, cohort analytics, invariant 9 |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -49,6 +49,101 @@ states. Newest entries first.
 | **Google OAuth client** | Google federation on the candidate pool | Hours |
 | **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+
+---
+
+## 2026-09-17 — Day 17: interview evaluation, colleges, seats, referral codes, rosters
+
+**1898 -> 2018 tests**, all passing locally as CI runs them. Local CI
+chain green: age, vocabulary, ruff, format, mypy, 9 import contracts, modules.
+Not yet pushed. **Rebuild with `reset_local_db.sh`** — new tables, four
+candidate policies, nine functions and four triggers.
+
+Both decisions this day needed were already in hand: the seat model (Round 7.7,
+*"yes"*) and the typed referral code as consent (Round 7.9, *"do it"*). The
+plan's §14 still listed Q10 and N6 as open; it no longer does.
+
+### What landed
+
+| | |
+|---|---|
+| **Evaluation interfaces** | `interview/evaluation.py`: `TranscriptionProvider` and `EvaluationProvider`, each with an **unconfigured default that raises** and a stub (`INTERVIEW_EVALUATION_PROVIDER=stub`, refused in staging/prod). The module docstring is the contract a real implementation must meet. |
+| **Evaluation** | `interview.evaluate_session` task on `interview.session_completed`, beside the re-score. Transcribes each stored answer once (`interview_transcripts`, idempotent by answer, own transaction because it is paid per minute), then rates spoken answers against the rubric (`interview_evaluations`: ratings, raw response, provider, model, prompt and rubric versions). Session → EVALUATED, or FAILED with `no_speech` / `evaluation_invalid`. Both tables insert-only. |
+| **Report** | `GET /candidate/interview/sessions/{id}/report`: PENDING / READY / FAILED. Per dimension a **level in words** (STRONG, DEVELOPING, FOCUS_AREA) and what good looks like; per question the transcript, `looking_for` and the evaluator's comment. Assembled from stored rows on every read. |
+| **College tenant** | `POST /college/organisation` (business identity), `GET/PATCH` it, team under `/college/team` with COLLEGE_ADMIN / COLLEGE_STAFF (identity's team functions now take the role set). Onboarding against the versioned form: `GET /college/onboarding`, `PUT .../answers`, `POST .../submit`. |
+| **College subscription** | `/college/subscription` (plans, current, checkout, cancel, mandate) — the same five routes as employers; the admin buys, staff read. |
+| **Seats** | `college_seat_assignments`, one live seat per student platform-wide. `guard_college_seat_assignment` holds the cap and **moves `seats_used` itself** (the app role cannot write it). `allocate_seats` (PLATFORM_ADMIN / SYSTEM, audited, **no route** — E10): never below seats in use, never above the live plan's allowance, and growing it seats waiting students, longest-linked first. `GET /college/seats` shows counts only. |
+| **The seat limb** | `require_active_subscription` for a candidate is now **personal subscription OR `candidate_has_college_seat`**: a live seat, live ROSTER consent, ACTIVE college, college subscription in period — read live. |
+| **Referral codes** | `POST/GET /college/referral-codes`, `POST .../{id}/revoke`. 12 characters of Crockford base32 (60 bits, CSPRNG), always expiring (default 90 days, max 365), optional use cap, printed `ABCD-EFGH-JKMN`. The code never enters the audit log. |
+| **Linking** | `/candidate/colleges`: `GET /consent-terms`, `POST /link`, `GET` (links), invitations. **Entering the code is the consent, ROSTER scope only** (`student_consents`, `granted_via = REFERRAL_CODE`, the code named). Every bad code is one `referral_code_invalid`; 10 attempts an hour per student and 30 per address; a stale `consent_version` is refused. A free seat is taken at once. |
+| **Roster import** | `POST /college/roster-imports` (CSV in the body, ≤1 MB / 5,000 rows) previews every row with its issues — malformed phone or email, no contact, duplicate in the file, already on the roster — and invites nobody. Same file again returns the same import. `GET .../{id}`, `.../rows` (keyset), `.../commit` (duplicates re-checked under a roster lock; rows that will never be invited are deleted), `.../discard` (rows deleted). |
+| **Invitations** | `POST .../invitations/send` marks pending rows SENT and emits one `college.invitation_sent` per row, ids only. A student sees invitations **matched on their own verified phone or email** and accepts (INVITE consent, ROSTER only, seat taken) or declines; 30 days, expiry read from the clock. Tracking counts per import. |
+
+### Decisions worth knowing
+
+- **Evaluation is feedback and cannot move a score.** The +20 was frozen at
+  completion and the guard refuses any change to it; the guard now also refuses
+  EVALUATED or FAILED without the evaluation row that records it. The report has
+  **no number about the candidate** — ratings are stored for disputes and turned
+  into words before they leave the service, because a 0–4 average beside a
+  three-digit score is a second, unexplained score (R11).
+- **No fallback evaluator**, for the reason there is no fallback CV extractor:
+  invented feedback is feedback nobody gave. Unconfigured, a session stays
+  COMPLETED and the report PENDING. Evaluator output that does not fit the
+  rubric exactly — including a dimension the rubric forbids, such as accent — is
+  recorded FAILED, never repaired. The evaluator is given the question, what a
+  good answer contains and the transcript, and nothing about the person.
+- **Silence is now visible (E19), and still earns its +20.** All-silent sessions
+  are FAILED `no_speech` without calling the evaluator. Whether that should cost
+  the points remains the client's decision.
+- **A student never binds a college's tenant.** Codes and invitations name a
+  tenant, and binding it would be a tenant id from a request body (SRS 2.24.7)
+  that opens every row of that college to the transaction. Instead the candidate
+  binds `app.user_id`, and nine narrow SECURITY DEFINER functions each answer
+  one question. The consent INSERT policy re-checks that the code or invitation
+  named is live and this college's, so a direct write cannot put a student on a
+  roster, confer INDIVIDUAL scope, or use a revoked code.
+- **A college never learns who has an account.** No roster column says whether a
+  contact matched a user; a student finds their invitation from their own
+  verified contact. A college sees counts: seats used, codes' uses, invitations
+  by state.
+- **Seats follow consent.** Revoking ROSTER consent releases the seat in the same
+  statement (trigger), so Day 18's revocation route is correct the day it lands.
+  A student linked while the college was full is seated when the allowance grows,
+  or on retrying the link.
+- **The 501st student is linked, not seated** — blocking, as recommended, is the
+  only option that cannot surprise anyone with an invoice.
+- **A college that stops paying locks its students out on the next request**,
+  with seats and links kept. No grace period — that is Round 8's open question 2.
+  A student who already paid keeps their own subscription alongside a seat
+  (Round 8 question 1, built as "no money moves"). A seat covers the subscription
+  gate only; courses and interviews are still bought (Round 8 question 3).
+- **Two deviations from the plan's wording, deliberately.** The roster preview is
+  synchronous rather than a 202 job: bounded at 5,000 rows it takes milliseconds,
+  and a job with no broker (E15) would never run in a running API. Delivery is the
+  asynchronous part. And the CSV is sent in the request body and never stored in
+  S3: staged rows hold exactly what is needed, rows the college discards or will
+  never invite are deleted, and there is no roster bucket to provision.
+- **Revoking a code and discarding a preview are not paywalled.** Stopping
+  something must never wait on a payment. Issuing, importing, committing and
+  sending are.
+- **A student's college routes are not paywalled**: linking is how a seated
+  student gets access at all.
+
+### Owed
+
+- **A speech model and an evaluator** — the interfaces and the contract are in
+  `interview/evaluation.py`; the choice, the prompt, and testing it on each
+  supported language are not. Until then no feedback exists outside tests.
+- **Seat allocation has no route** (E10, Day 19's console) — so in a running API
+  no college has seats yet. Neither does releasing one student's seat by hand.
+- **Consent revocation** (Day 18) — the database side is built; the route is not.
+- **Invitation delivery**: SMS is DLT-gated (D1), email waits on SES production
+  access, and the events need the relay's broker (E15). The evaluation task needs
+  the broker too.
+- **Round 8 follow-ons**: grace for students when a college lapses; confirming a
+  seat excludes add-ons; what happens to a student who paid before being seated.
+- Counsel's consent text (`college/domain.py`, flagged placeholder).
 
 ---
 

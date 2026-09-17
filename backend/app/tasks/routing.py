@@ -28,6 +28,7 @@ SCORE_RESUME_TASK: Final = "scoring.score_resume"
 RESCORE_FOR_ADDONS_TASK: Final = "scoring.rescore_for_addons"
 DETECT_INTEGRITY_TASK: Final = "integrity.detect"
 PROCESS_PAYMENT_CALLBACK_TASK: Final = "billing.process_callback"
+EVALUATE_INTERVIEW_TASK: Final = "interview.evaluate_session"
 
 #: `event_type -> the tasks it triggers`.
 #:
@@ -47,8 +48,12 @@ EVENT_SUBSCRIPTIONS: Final[dict[str, tuple[str, ...]]] = {
     # A course completion (Day 15) and a completed interview session (Day 16).
     # Both are read back by `scoring.service.addons_for`, which applies the
     # caps; the questionnaire is worth nothing and routes nowhere near here.
+    #
+    # A completed session is also evaluated (Day 17). That is feedback for the
+    # candidate and nothing else: the +20 was recorded at completion, and the
+    # evaluation task imports nothing that scores.
     "courses.completion_recorded": (RESCORE_FOR_ADDONS_TASK,),
-    "interview.session_completed": (RESCORE_FOR_ADDONS_TASK,),
+    "interview.session_completed": (RESCORE_FOR_ADDONS_TASK, EVALUATE_INTERVIEW_TASK),
     # A verified gateway callback, stored by the callback route. Settling it
     # grants what was bought; the route itself never does.
     "billing.callback_received": (PROCESS_PAYMENT_CALLBACK_TASK,),

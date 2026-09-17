@@ -77,6 +77,15 @@ class AuditAction(StrEnum):
     TEAM_MEMBER_ROLE_CHANGED = "team_member_role_changed"
     TEAM_MEMBER_REMOVED = "team_member_removed"
 
+    # Colleges (Day 17). A seat is a student's paid access, and a referral
+    # code is a credential that attaches students to a roster: issuing,
+    # revoking and allocating are all privileged.
+    COLLEGE_SEATS_ALLOCATED = "college_seats_allocated"
+    REFERRAL_CODE_ISSUED = "referral_code_issued"
+    REFERRAL_CODE_REVOKED = "referral_code_revoked"
+    ROSTER_IMPORT_COMMITTED = "roster_import_committed"
+    ROSTER_INVITATIONS_SENT = "roster_invitations_sent"
+
     # Consent - PRD rule 8
     CONSENT_GRANTED = "consent_granted"
     CONSENT_REVOKED = "consent_revoked"

@@ -9,8 +9,9 @@ Candidate rows carry no tenant and are not under Row-Level Security, as for
 resumes and scores: every read here filters on the authenticated `user_id`,
 and a row belonging to someone else is simply not found.
 
-`device_checks`, `interview_purchases` and `interview_checkout_notices` are
-insert-only; the app role holds no UPDATE or DELETE on them.
+`device_checks`, `interview_purchases`, `interview_checkout_notices`,
+`interview_transcripts` and `interview_evaluations` are insert-only; the app
+role holds no UPDATE or DELETE on them.
 """
 
 from __future__ import annotations
@@ -27,9 +28,11 @@ from app.modules.interview.models import (
     DeviceCheck,
     InterviewAnswer,
     InterviewCheckoutNotice,
+    InterviewEvaluation,
     InterviewProduct,
     InterviewPurchase,
     InterviewSession,
+    InterviewTranscript,
 )
 
 
@@ -324,3 +327,72 @@ async def mark_stored(
     answer.uploaded_at = uploaded_at
     await session.flush()
     return answer
+
+
+# --- evaluation (Day 17) --------------------------------------------------------
+async def get_session_by_id(
+    session: AsyncSession, *, session_id: uuid.UUID, lock: bool = False
+) -> InterviewSession | None:
+    """**System use only** -- the evaluation task has no candidate. Every
+    candidate-facing read goes through `get_session`, which filters on the
+    owner."""
+    query = select(InterviewSession).where(InterviewSession.id == session_id)
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    return (await session.execute(query)).scalar_one_or_none()
+
+
+async def transcripts_for(
+    session: AsyncSession, *, session_id: uuid.UUID
+) -> list[InterviewTranscript]:
+    result = await session.execute(
+        select(InterviewTranscript)
+        .where(InterviewTranscript.session_id == session_id)
+        .order_by(InterviewTranscript.question_index)
+    )
+    return list(result.scalars())
+
+
+async def insert_transcript(
+    session: AsyncSession,
+    *,
+    session_id: uuid.UUID,
+    answer_id: uuid.UUID,
+    question_index: int,
+    provider: str,
+    provider_version: str,
+    language: str | None,
+    text_value: str,
+) -> None:
+    """Idempotent by answer: a transcript already stored is kept, never
+    overwritten, so two task deliveries cannot disagree about what was said."""
+    await session.execute(
+        pg_insert(InterviewTranscript)
+        .values(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            answer_id=answer_id,
+            question_index=question_index,
+            provider=provider,
+            provider_version=provider_version,
+            language=language,
+            text=text_value,
+        )
+        .on_conflict_do_nothing(constraint="uq_interview_transcript_answer")
+    )
+
+
+async def get_evaluation(
+    session: AsyncSession, *, session_id: uuid.UUID
+) -> InterviewEvaluation | None:
+    result = await session.execute(
+        select(InterviewEvaluation).where(InterviewEvaluation.session_id == session_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def insert_evaluation(session: AsyncSession, **values: object) -> InterviewEvaluation:
+    row = InterviewEvaluation(**values)
+    session.add(row)
+    await session.flush()
+    return row

@@ -685,6 +685,18 @@ def test_the_college_form_records_that_consent_is_the_students_to_give() -> None
     assert "undertaking_student_consent" in COLLEGE_FORM.required_codes()
 
 
+def test_the_student_consent_text_is_still_ours_rather_than_counsels() -> None:
+    """Day 17. The words a student agrees to when linking to a college are a
+    placeholder, versioned so that replacing them re-asks rather than silently
+    rebinding consent given to other words. Flipping this is counsel's call."""
+    from app.modules.college.domain import CONSENT_VERSION, ROSTER_CONSENT_TEXT
+
+    assert CONSENT_VERSION.startswith("placeholder-")
+    text = ROSTER_CONSENT_TEXT.lower()
+    assert "count" in text and "disconnect" in text
+    assert "score" in text, "the terms must say the college does not see the score"
+
+
 def test_the_college_form_asks_for_a_second_contact() -> None:
     """Placement officers change between academic years, and an account whose
     only contact has left cannot be recovered without a judgment call about who

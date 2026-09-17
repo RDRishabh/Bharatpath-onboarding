@@ -185,6 +185,14 @@ class Settings(BaseSettings):
     # two purchases.
     payments_checkout_reuse_minutes: int = 30
 
+    # -- interview evaluation (Day 17) ---------------------------------------
+    # No speech model or evaluator is chosen, so the default gives no feedback:
+    # a completed session stays COMPLETED and its report reads PENDING. There
+    # is no heuristic fallback -- see `interview/evaluation.py`. `stub` hears
+    # a hash and rates it; `_stub_evaluation_is_never_production` refuses it
+    # outside local and dev, because it would show candidates made-up feedback.
+    interview_evaluation_provider: Literal["none", "stub"] = "none"
+
     # -- celery ------------------------------------------------------------
     celery_broker_url: str = "sqs://"
     celery_result_backend: str | None = None
@@ -282,6 +290,20 @@ class Settings(BaseSettings):
             raise ValueError(
                 "PAYMENTS_PROVIDER=stub must not be set in staging or production: "
                 "the stub lets a caller mark their own payment as paid."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _stub_evaluation_is_never_production(self) -> Settings:
+        """The stub evaluator invents feedback. A candidate who paid for a
+        rehearsal would act on it."""
+        if self.interview_evaluation_provider == "stub" and self.environment in (
+            "staging",
+            "prod",
+        ):
+            raise ValueError(
+                "INTERVIEW_EVALUATION_PROVIDER=stub must not be set in staging or "
+                "production: it shows candidates feedback nobody gave."
             )
         return self
 

@@ -104,6 +104,10 @@ EMPLOYER_OWNER_ROLE = "EMPLOYER_OWNER"
 EMPLOYER_TEAM_ROLES: frozenset[str] = frozenset(
     {"EMPLOYER_OWNER", "EMPLOYER_RECRUITER", "EMPLOYER_VIEWER"}
 )
+#: A college's team (Day 17). The admin plays the owner's part: it runs the
+#: team, the subscription and the referral codes; staff import rosters.
+COLLEGE_ADMIN_ROLE = "COLLEGE_ADMIN"
+COLLEGE_TEAM_ROLES: frozenset[str] = frozenset({"COLLEGE_ADMIN", "COLLEGE_STAFF"})
 
 
 class AlreadyInOrganisationError(ConflictError):
@@ -213,7 +217,12 @@ async def list_team(session: AsyncSession, *, tenant_id: uuid.UUID) -> list[Team
 
 
 async def add_team_member(
-    session: AsyncSession, *, tenant_id: uuid.UUID, email: str, role: str
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    email: str,
+    role: str,
+    team_roles: frozenset[str] = EMPLOYER_TEAM_ROLES,
 ) -> TeamMember:
     """Invite by email. The person gets access the first time they sign in.
 
@@ -221,7 +230,7 @@ async def add_team_member(
     Cognito pool is admin-create-only), so an address with no account yet gets
     one here and waits to be claimed.
     """
-    if role not in EMPLOYER_TEAM_ROLES:
+    if role not in team_roles:
         raise CannotAddMemberError()
 
     address = normalise_email(email)
@@ -248,10 +257,10 @@ async def add_team_member(
 
 
 async def _ensure_another_owner(
-    session: AsyncSession, *, tenant_id: uuid.UUID, leaving_user_id: uuid.UUID
+    session: AsyncSession, *, tenant_id: uuid.UUID, leaving_user_id: uuid.UUID, owner_role: str
 ) -> None:
     owners = await repository.lock_active_holders_of_role(
-        session, tenant_id=tenant_id, role=EMPLOYER_OWNER_ROLE
+        session, tenant_id=tenant_id, role=owner_role
     )
     if not any(owner != leaving_user_id for owner in owners):
         raise LastOwnerError()
@@ -270,15 +279,23 @@ async def _active_member(
 
 
 async def change_member_role(
-    session: AsyncSession, *, tenant_id: uuid.UUID, user_id: uuid.UUID, role: str
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    role: str,
+    team_roles: frozenset[str] = EMPLOYER_TEAM_ROLES,
+    owner_role: str = EMPLOYER_OWNER_ROLE,
 ) -> TeamMember:
-    if role not in EMPLOYER_TEAM_ROLES:
+    if role not in team_roles:
         raise MemberNotFoundError()
     membership = await repository.get_membership(session, user_id=user_id, tenant_id=tenant_id)
     if membership is None or membership.status != "ACTIVE":
         raise MemberNotFoundError()
-    if membership.role == EMPLOYER_OWNER_ROLE and role != EMPLOYER_OWNER_ROLE:
-        await _ensure_another_owner(session, tenant_id=tenant_id, leaving_user_id=user_id)
+    if membership.role == owner_role and role != owner_role:
+        await _ensure_another_owner(
+            session, tenant_id=tenant_id, leaving_user_id=user_id, owner_role=owner_role
+        )
 
     await grant_membership(session, user_id=user_id, tenant_id=tenant_id, role=role)
     user = await repository.get_user(session, user_id)
@@ -291,7 +308,11 @@ async def change_member_role(
 
 
 async def remove_team_member(
-    session: AsyncSession, *, tenant_id: uuid.UUID, user_id: uuid.UUID
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    owner_role: str = EMPLOYER_OWNER_ROLE,
 ) -> None:
     """Revoke, never delete -- the row is the evidence of who could see what,
     and when. The cached membership is dropped so access ends on the next
@@ -299,6 +320,8 @@ async def remove_team_member(
     membership = await repository.get_membership(session, user_id=user_id, tenant_id=tenant_id)
     if membership is None or membership.status != "ACTIVE":
         raise MemberNotFoundError()
-    if membership.role == EMPLOYER_OWNER_ROLE:
-        await _ensure_another_owner(session, tenant_id=tenant_id, leaving_user_id=user_id)
+    if membership.role == owner_role:
+        await _ensure_another_owner(
+            session, tenant_id=tenant_id, leaving_user_id=user_id, owner_role=owner_role
+        )
     await revoke_membership(session, user_id=user_id, tenant_id=tenant_id)

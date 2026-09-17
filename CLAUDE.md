@@ -31,7 +31,7 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 1898 tests
+.venv/Scripts/pytest.exe                # 2018 tests
 bash scripts/dev_api.sh                 # API on :8099
 ```
 
@@ -167,6 +167,7 @@ test asserts**, so a placeholder cannot quietly become the product:
 | `questionnaire/bank.py`, `interview/bank.py` | `BANK_VERSION` |
 | `kyb/forms.py`, `college/forms.py` | `FORM_VERSION` |
 | `app/core/i18n/locales/*.json` | non-English bundles still need a native-speaker pass |
+| `college/domain.py` | `CONSENT_VERSION` starts `placeholder-` — the words a student agrees to when linking to a college are ours, not counsel's |
 
 Flipping one of these is a client decision, not a tidy-up.
 
@@ -197,7 +198,8 @@ is where a third one would have to be argued for.
 - **`current_business_identity` admits a business account with no
   membership.** It exists so an account can create its organisation, and it
   returns `BusinessIdentity`, not a `TenantContext`. Every route added to it is
-  a way in that skips the membership check; keep it to the two it has.
+  a way in that skips the membership check; keep it to the three it has
+  (employer reference, employer organisation, college organisation — Day 17).
 - **Who an employer can see is `VISIBLE_CANDIDATES_CTE`, and nothing else.**
   Every discovery query is built on it, and a test enforces that. It fails
   closed: a candidate needs a score, an `integrity_checks` row for that version,
@@ -420,6 +422,55 @@ is where a third one would have to be argued for.
   `tests/integration/test_interview.py`.
 - **POST /candidate/interview/sessions returns the open session** if there is
   one. That is the recovery path, not a bug; there is no abandon (E20).
+
+## Interview evaluation — Day 17
+
+- **Evaluation is feedback and never moves a score.** It runs after
+  completion (`interview.evaluate_session`, beside the re-score); the +20 was
+  frozen before it, and the guard refuses EVALUATED/FAILED without an
+  `interview_evaluations` row. **The report carries no number about the
+  candidate** — ratings are stored, levels (STRONG / DEVELOPING / FOCUS_AREA)
+  are shown. `test_questionnaire_never_scores.py` walks the interview schemas.
+- **No provider by default, and no fallback.** `INTERVIEW_EVALUATION_PROVIDER`
+  is `none` (session stays COMPLETED, report PENDING) or `stub` (refused in
+  staging/prod). Tests pass providers to `transcribe_session` /
+  `evaluate_session` explicitly rather than setting the env. The stub hears
+  audio of ≤2 KB as silence — that is how tests reach `no_speech`.
+- Evaluator output that does not fit the rubric exactly is FAILED
+  `evaluation_invalid`, never repaired. The evaluator is given the question,
+  `looking_for` and the transcript — nothing about the person.
+
+## Colleges, seats, referral codes, rosters — Day 17
+
+- **A student never binds a college's tenant.** A code or invitation names a
+  tenant; binding it would be a tenant id from a request body. Student routes
+  bind `app.user_id` and reach college tables through nine narrow SECURITY
+  DEFINER functions (`referral_code_tenant`, `consume_referral_code`,
+  `claim_college_seat`, `invitations_for_candidate`, `answer_invitation`, ...)
+  and four candidate policies. **The consent INSERT policy re-checks** that the
+  code or accepted invitation is live and this college's — keep it that way.
+- **A code or an invitation confers ROSTER scope and nothing else** (R16).
+  `INDIVIDUAL` is Day 18's separate grant. Every bad code is one
+  `referral_code_invalid`; the code itself never enters the audit log.
+- **`seats_used` is the seat guard's, not the app's.** The app role has no
+  UPDATE on it; `guard_college_seat_assignment` counts on insert and release.
+  **One live seat per student, platform-wide.** Revoking ROSTER consent
+  releases the seat by trigger. The seat limb of `require_active_subscription`
+  is `candidate_has_college_seat` — seat, consent, ACTIVE college, college
+  subscription in period — read live.
+- **`allocate_seats` has no route** (E10/E23) and refuses above the live
+  plan's `seat_allowance`. Tests call it as PLATFORM_ADMIN on the app role;
+  seed a COLLEGE subscription with `_subscribe_college` (`test_college.py`).
+- **A college never learns who has an account.** No roster column says a
+  contact matched; a student finds invitations from their own verified phone
+  or email. Don't add a "matched" field to anything college-facing.
+- **Committed roster rows are held by `guard_roster_entry_write`**: contact
+  immutable, transitions generated from `college.domain.INVITE_TRANSITIONS`,
+  only uncommitted rows deletable, `sent_at` fixed. A test that ages an
+  invitation disables that trigger as the migrator for the one UPDATE.
+- Revoking a code and discarding a preview are **not paywalled**; issuing,
+  importing, committing and sending are. A student's `/candidate/colleges`
+  routes are never paywalled — linking is how a seated student gets access.
 
 ## Streak points are not the score
 

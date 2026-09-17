@@ -457,8 +457,17 @@ async def test_four_sessions_move_the_score_by_sixty_and_replay_exactly(
 
 
 def test_a_completed_session_routes_to_the_rescore() -> None:
-    from app.tasks.routing import RESCORE_FOR_ADDONS_TASK, SCORE_RESUME_TASK, tasks_for
+    """And to its evaluation (Day 17), which is feedback and scores nothing."""
+    from app.tasks.routing import (
+        EVALUATE_INTERVIEW_TASK,
+        RESCORE_FOR_ADDONS_TASK,
+        SCORE_RESUME_TASK,
+        tasks_for,
+    )
 
-    assert tasks_for("interview.session_completed") == (RESCORE_FOR_ADDONS_TASK,)
+    assert tasks_for("interview.session_completed") == (
+        RESCORE_FOR_ADDONS_TASK,
+        EVALUATE_INTERVIEW_TASK,
+    )
     assert SCORE_RESUME_TASK not in tasks_for("interview.session_completed")
     assert tasks_for("interview.answer_stored") == ()

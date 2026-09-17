@@ -29,7 +29,7 @@ from app.core.auth.provider import get_identity_provider
 from app.core.auth.tokens import VerifiedToken
 from app.core.auth.users import AuthenticatedUser, resolve_or_create_user
 from app.core.db import get_db
-from app.core.entitlements import has_active_subscription
+from app.core.entitlements import has_active_college_seat, has_active_subscription
 from app.core.errors import (
     AccessWindowExpiredError,
     KybRequiredError,
@@ -251,16 +251,15 @@ async def require_active_subscription(user: CurrentUser, session: DbSession) -> 
     with the wrong role is told 403 rather than invited to pay for a surface
     they cannot use.
 
-    **The seat limb is not built yet, and cannot be.** `college_seats` is one
-    allowance row per college with no per-student assignment, so there is
-    nothing to ask "does this student hold a seat?" of. It lands with seat
-    assignment on Day 17. Until then a seated student is refused, which is
-    the safe direction: no college has been sold a seat yet.
+    **The seat limb** (Day 17) is `has_active_college_seat`: a seat held on a
+    live ROSTER consent, at an ACTIVE college, whose own subscription is in
+    period. A college that lapses, or a student who disconnects, loses the
+    seat's access on the next request.
     """
     if user.tenant_id is None:
         paying = await has_active_subscription(
             session, subscriber_type="USER", subscriber_id=user.user_id
-        )
+        ) or await has_active_college_seat(session, user_id=user.user_id)
     else:
         paying = await has_active_subscription(
             session, subscriber_type="TENANT", subscriber_id=user.tenant_id
@@ -293,6 +292,21 @@ async def require_active_access_window(user: CurrentUser, session: DbSession) ->
     ):
         raise AccessWindowExpiredError()
     return user
+
+
+def client_ip(request: Request) -> str | None:
+    """The caller's address, from the load balancer's forwarding header.
+
+    Behind ALB the socket address is the balancer's, so throttling on it would
+    put every user in India in one bucket. `X-Forwarded-For` is a client-
+    supplied header and trivially spoofed, so the LAST entry is taken rather
+    than the first: everything before it was written by the client, and only
+    the final hop was appended by infrastructure we control.
+    """
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[-1].strip()
+    return request.client.host if request.client else None
 
 
 async def require_kyb_approved(user: CurrentUser) -> TenantContext:

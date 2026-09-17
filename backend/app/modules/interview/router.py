@@ -37,8 +37,11 @@ from app.modules.interview.schemas import (
     CompleteAnswerRequest,
     DeviceCheckRequest,
     DeviceCheckResponse,
+    DimensionFeedbackSchema,
     InterviewCheckoutRequest,
+    InterviewReportResponse,
     OfferResponse,
+    QuestionFeedbackSchema,
     QuestionSchema,
     SessionResponse,
     SessionSummary,
@@ -277,3 +280,55 @@ async def complete_session(
         request_id=get_request_id(request),
     )
     return _session_response(completed.view)
+
+
+@router.get(
+    "/sessions/{session_id}/report",
+    response_model=InterviewReportResponse,
+    dependencies=PayingCandidate,
+    summary="Feedback on a completed session",
+)
+async def get_report(
+    session_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> InterviewReportResponse:
+    """409 while the session is still being recorded. `PENDING` until the
+    evaluation has run -- poll. Levels are words, never numbers."""
+    view = await service.get_report(session, user_id=user.user_id, session_id=session_id)
+    report = view.report
+    if report is None:
+        return InterviewReportResponse(
+            session_id=session_id,
+            status=view.status,
+            failure_reason=view.failure_reason,
+            evaluated_at=view.evaluated_at,
+        )
+    return InterviewReportResponse(
+        session_id=session_id,
+        status="READY",
+        evaluated_at=view.evaluated_at,
+        report_version=report.report_version,
+        dimensions=[
+            DimensionFeedbackSchema(
+                code=d.code,
+                key=d.key,
+                label=d.label,
+                level=d.level,
+                what_good_looks_like=d.what_good_looks_like,
+            )
+            for d in report.dimensions
+        ],
+        strengths=list(report.strengths),
+        focus_areas=list(report.focus_areas),
+        questions=[
+            QuestionFeedbackSchema(
+                index=q.index,
+                code=q.code,
+                prompt=q.prompt,
+                looking_for=q.looking_for,
+                transcript=q.transcript,
+                spoken=q.spoken,
+                comment=q.comment,
+            )
+            for q in report.questions
+        ],
+    )

@@ -34,7 +34,11 @@ from typing import Final
 
 from app.modules.interview.bank import (
     ANSWER_SECONDS,
+    DIMENSIONS,
+    QUESTION_SETS,
     QUESTIONS_PER_SESSION,
+    RATING_MAX,
+    RATING_MIN,
     SESSIONS_THAT_EARN_POINTS,
 )
 
@@ -225,3 +229,182 @@ def validate_answer(*, head: bytes, size_bytes: int, duration_ms: int) -> Answer
             "answer_duration_out_of_range", f"between {MIN_ANSWER_MS} and {MAX_ANSWER_MS} ms"
         )
     return None
+
+
+# ---------------------------------------------------------------------------
+# Evaluation (Day 17) -- feedback, never a number
+# ---------------------------------------------------------------------------
+#: Stored on every evaluation. **Bump when the report's shape or the level
+#: thresholds change**, so an old report can still be read as it was written.
+REPORT_VERSION: Final = "report-1"
+
+#: The two outcomes an evaluation records. A session moves to the same state.
+EVALUATION_OUTCOMES: Final = frozenset({"EVALUATED", "FAILED"})
+
+#: Why an evaluation produced no feedback. Codes, for the app to render.
+FAILURE_NO_SPEECH: Final = "no_speech"
+FAILURE_EVALUATION_INVALID: Final = "evaluation_invalid"
+
+#: A transcript shorter than this, stripped, is treated as no answer. A few
+#: characters is what a speech model returns for a cough or a click.
+MIN_SPOKEN_CHARS: Final = 3
+
+MAX_COMMENT_CHARS: Final = 600
+
+#: What a candidate is shown per dimension. **Words, not numbers**: a 0-4
+#: rating averaged across six answers and shown beside a three-digit score is
+#: a second score, and a second unexplained one (R11). The ratings are stored
+#: for disputes and never leave the service.
+LEVEL_STRONG: Final = "STRONG"
+LEVEL_DEVELOPING: Final = "DEVELOPING"
+LEVEL_FOCUS_AREA: Final = "FOCUS_AREA"
+
+
+class EvaluationInvalid(ValueError):
+    """The evaluator's output does not fit the rubric. Never repaired: a
+    report built from guessed ratings is feedback nobody gave."""
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionEvaluation:
+    question_code: str
+    #: Dimension code -> 0..4. Every rubric dimension, no others.
+    ratings: dict[str, int]
+    comment: str
+
+
+def is_spoken(transcript: str | None) -> bool:
+    return transcript is not None and len(transcript.strip()) >= MIN_SPOKEN_CHARS
+
+
+def parse_evaluation(
+    raw: object, *, question_codes: tuple[str, ...], dimension_codes: frozenset[str]
+) -> tuple[QuestionEvaluation, ...]:
+    """Read an evaluator's response, exactly, or refuse it.
+
+    Expected: `{"questions": [{"question_code", "ratings": {DIM: 0-4}, "comment"}]}`
+    with one entry per question in `question_codes` -- the spoken ones; a silent
+    answer is not sent, so it cannot be rated. A missing question, an extra
+    one, a missing or unknown dimension, a non-integer or out-of-range rating
+    all refuse the whole response. `bool` is not an integer here, although
+    Python says it is.
+    """
+    if not isinstance(raw, dict) or not isinstance(raw.get("questions"), list):
+        raise EvaluationInvalid("expected an object with a `questions` list")
+    by_code: dict[str, QuestionEvaluation] = {}
+    for item in raw["questions"]:
+        if not isinstance(item, dict):
+            raise EvaluationInvalid("each question must be an object")
+        code = item.get("question_code")
+        if not isinstance(code, str) or code not in question_codes:
+            raise EvaluationInvalid(f"unexpected question {code!r}")
+        if code in by_code:
+            raise EvaluationInvalid(f"question {code} rated twice")
+        ratings = item.get("ratings")
+        if not isinstance(ratings, dict) or set(ratings) != dimension_codes:
+            raise EvaluationInvalid(f"question {code} must rate exactly the rubric dimensions")
+        for dimension, value in ratings.items():
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise EvaluationInvalid(f"{code}.{dimension} is not an integer")
+            if not RATING_MIN <= value <= RATING_MAX:
+                raise EvaluationInvalid(f"{code}.{dimension} is out of range")
+        comment = item.get("comment", "")
+        if not isinstance(comment, str) or len(comment) > MAX_COMMENT_CHARS:
+            raise EvaluationInvalid(f"question {code} has an unusable comment")
+        by_code[code] = QuestionEvaluation(code, dict(ratings), comment.strip())
+    missing = [code for code in question_codes if code not in by_code]
+    if missing:
+        raise EvaluationInvalid(f"questions not rated: {missing}")
+    return tuple(by_code[code] for code in question_codes)
+
+
+def level_for(ratings: list[int]) -> str:
+    """A dimension's level across the answers that were rated.
+
+    Mean of at least 3 is STRONG, at least 2 DEVELOPING, else FOCUS_AREA.
+    Integer arithmetic on purpose (`total >= 3 * n`), so no float boundary
+    decides which word a candidate reads.
+    """
+    if not ratings:
+        return LEVEL_FOCUS_AREA
+    total, n = sum(ratings), len(ratings)
+    if total >= 3 * n:
+        return LEVEL_STRONG
+    if total >= 2 * n:
+        return LEVEL_DEVELOPING
+    return LEVEL_FOCUS_AREA
+
+
+@dataclass(frozen=True, slots=True)
+class DimensionFeedback:
+    code: str
+    key: str
+    label: str
+    level: str
+    #: What the top of this dimension sounds like -- the thing to aim at.
+    what_good_looks_like: str
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionFeedback:
+    index: int
+    code: str
+    prompt: str
+    looking_for: str
+    transcript: str
+    spoken: bool
+    comment: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class InterviewReport:
+    report_version: str
+    dimensions: tuple[DimensionFeedback, ...]
+    strengths: tuple[str, ...]
+    focus_areas: tuple[str, ...]
+    questions: tuple[QuestionFeedback, ...]
+
+
+def assemble_report(
+    *,
+    question_set_code: str,
+    transcripts: dict[int, str],
+    evaluations: tuple[QuestionEvaluation, ...],
+) -> InterviewReport:
+    """The candidate's feedback, from stored transcripts and stored ratings.
+
+    Deterministic and pure: the same rows always produce the same report, so a
+    report is re-assembled on every read rather than stored twice. **No total,
+    no average, no rating** leaves this function -- only levels, in words.
+    """
+    question_set = next(s for s in QUESTION_SETS if s.code == question_set_code)
+    rated = {e.question_code: e for e in evaluations}
+    dimensions = tuple(
+        DimensionFeedback(
+            code=d.code,
+            key=d.key,
+            label=d.label,
+            level=level_for([e.ratings[d.code] for e in evaluations]),
+            what_good_looks_like=d.anchor_high,
+        )
+        for d in DIMENSIONS
+    )
+    questions = tuple(
+        QuestionFeedback(
+            index=index,
+            code=q.code,
+            prompt=q.prompt,
+            looking_for=q.looking_for,
+            transcript=(transcripts.get(index) or "").strip(),
+            spoken=is_spoken(transcripts.get(index)),
+            comment=(rated[q.code].comment or None) if q.code in rated else None,
+        )
+        for index, q in enumerate(question_set.questions)
+    )
+    return InterviewReport(
+        report_version=REPORT_VERSION,
+        dimensions=dimensions,
+        strengths=tuple(d.code for d in dimensions if d.level == LEVEL_STRONG),
+        focus_areas=tuple(d.code for d in dimensions if d.level == LEVEL_FOCUS_AREA),
+        questions=questions,
+    )

@@ -21,3 +21,7 @@ SESSION_COMPLETED: Final = f"{MODULE}.session_completed"
 
 #: One answer's audio is stored. For the transcription pipeline (Day 17).
 ANSWER_STORED: Final = f"{MODULE}.answer_stored"
+
+#: A completed session was evaluated, or could not be (`outcome`). Feedback
+#: only: routed to nothing that scores. For notifications (Day 19).
+SESSION_EVALUATED: Final = f"{MODULE}.session_evaluated"
