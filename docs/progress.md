@@ -86,6 +86,64 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 
 ---
 
+## 2026-09-18 — AI providers: OpenAI (CV reading, interview feedback) + Sarvam (speech)
+
+Decision: **no Bedrock for AI**. `bedrock.py` stays selectable
+(`SCORING_EXTRACTION_PROVIDER`) but the default is `openai`.
+
+### Built
+
+- `app/core/openai_responses.py` — one Responses API call, strict JSON schema
+  built from our own types, `store: false`, no sampling params, plain `httpx`
+  (no SDK dependency). Strict mode refuses `maxLength`/`default`, so they are
+  stripped for the request and enforced by `model_validate` afterwards.
+- `scoring/openai_extractor.py` — `ResumeExtractor` on OpenAI. Same prompt,
+  schema, cache key and failure semantics as Bedrock. Reasoning effort
+  `medium`; changing it is a `PROMPT_VERSION` bump (a re-score).
+- `interview/sarvam.py` — Sarvam `saaras:v3`, mode `codemix`, language
+  auto-detect. **Batch job API, not REST**: REST takes < 30 s of audio and an
+  answer runs to 120 s. Our key never goes to the signed blob URLs.
+- `interview/openai_evaluator.py` — rubric feedback; per-call strict schema
+  (question codes as enum, every dimension required 0–4); instructions forbid
+  judging accent, fluency, vocabulary, pace, filler words, and forbid numbers in
+  comments.
+- Settings: `OPENAI_API_KEY`, `SARVAM_API_KEY`, `INTERVIEW_TRANSCRIPTION_PROVIDER`,
+  `INTERVIEW_EVALUATION_MODEL_ID`; boot refuses a selected provider without its
+  key/model. `tests/conftest.py` now *forces* every provider off, so a
+  developer's `.env` can never make the suite call a model.
+- `scripts/verify_ai_providers.py` — live check (costs a few rupees).
+- 23 unit tests on a mock transport (`test_openai_sarvam_providers.py`).
+
+### Model choice
+
+`gpt-5.4-mini-2026-03-17` for both. $0.75 / $4.50 per 1M tokens; a CV is read
+once ever (extraction cache), roughly ₹1–2 each. `gpt-5.4` is ~3× the price;
+run the verify script with `--compare gpt-5.4` on real CVs before switching.
+
+### Live-tested (same day, real keys)
+
+- **The live run caught a bug the mocked tests could not**: stripping the
+  `title` *keyword* from the schema also deleted the role's `title` *field*,
+  so the model was never asked for a job title and every real CV came back
+  `schema_validation`. Fixed; regression test holds every model field in the
+  strict schema.
+- Sample CV: mini 13 s, ~₹0.78; `gpt-5.4` 22 s, ~₹2.55. Roles, dates,
+  education, skills agree. Differences: mini put `total_experience_months` =
+  the CV's own "7+ years" (84) where `gpt-5.4` computed 100 — **harmless for
+  the score**, which sums the dated roles' months (`scoring/domain.py`).
+- Sarvam batch (Hinglish, generated with `bulbul:v3` TTS): 4.9 s, `hi-IN`,
+  accurate, rendered in Devanagari. OpenAI feedback fit the rubric exactly.
+- Suite: 2348 passed. All CI checks green.
+
+### Open
+
+- **N2**: OpenAI processes in the US, so CV text and transcripts leave India.
+  **Client approved this on 2026-09-18.** Sarvam stays in India.
+- Evaluator must still be tested on real recordings in each supported
+  language before launch (`interview/evaluation.py`).
+
+---
+
 ## 2026-09-17 (night) — Day 20: privacy, rate limits, index review, handover · **Week 4 gate**
 
 **2247 -> 2324 tests**, all passing locally as CI runs them. Local CI chain

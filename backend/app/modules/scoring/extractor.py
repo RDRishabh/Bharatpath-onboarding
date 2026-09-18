@@ -10,8 +10,9 @@ cannot aim at a target score -- and neither can anyone writing instructions
 into their CV, which is the attack `integrity/domain.py` detects and this
 layer is structured to make pointless.
 
-**Bedrock is the implementation (`bedrock.py`), and it is off by default.**
-With `scoring_extraction_enabled` false, `UnconfiguredResumeExtractor` raises
+**OpenAI is the implementation (`openai_extractor.py`), and it is off by
+default.** `bedrock.py` is kept selectable (`SCORING_EXTRACTION_PROVIDER`) but
+is not used. With `scoring_extraction_enabled` false, `UnconfiguredResumeExtractor` raises
 and the score stays pending. That is the behaviour `scoring-approach.md` section 11
 specifies for every failure: *we never produce a partial or degraded score*. A
 heuristic stand-in that guessed seniority from keywords would be exactly that
@@ -341,8 +342,13 @@ def get_resume_extractor(settings: Settings | None = None) -> ResumeExtractor:
         # silently.
         raise ExtractionUnavailableError(params={"reason": "no_model_configured"})
 
-    # Imported here so boto3's Bedrock client is built only when extraction is
-    # actually on, and so `bedrock` can import from this module without a cycle.
-    from app.modules.scoring.bedrock import BedrockResumeExtractor
+    # Imported here so a client is built only when extraction is actually on,
+    # and so the implementations can import from this module without a cycle.
+    if settings.scoring_extraction_provider == "bedrock":
+        from app.modules.scoring.bedrock import BedrockResumeExtractor
 
-    return BedrockResumeExtractor(model_id=settings.scoring_model_id)
+        return BedrockResumeExtractor(model_id=settings.scoring_model_id)
+
+    from app.modules.scoring.openai_extractor import OpenAIResumeExtractor
+
+    return OpenAIResumeExtractor(model_id=settings.scoring_model_id)

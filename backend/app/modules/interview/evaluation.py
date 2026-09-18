@@ -1,7 +1,8 @@
 """Transcription and evaluation, each behind one interface (Day 17).
 
-**No speech model and no evaluator is chosen yet.** So, as for payments and CV
-extraction, there are two implementations of each:
+**Chosen 2026-09-18: Sarvam for speech (`sarvam.py`), OpenAI for evaluation
+(`openai_evaluator.py`)**, each selected by setting. Besides those, as for
+payments and CV extraction, there are two more implementations of each:
 
 * **Unconfigured** -- the default. Raises `EvaluationUnavailableError`; the
   session stays COMPLETED and the report says PENDING. **There is no fallback
@@ -160,13 +161,27 @@ class StubEvaluationProvider:
 
 @lru_cache(maxsize=1)
 def get_transcription_provider() -> TranscriptionProvider:
-    if get_settings().interview_evaluation_provider == "stub":
+    settings = get_settings()
+    if settings.interview_transcription_provider == "sarvam":
+        # Imported here: `sarvam` imports this module.
+        from app.modules.interview.sarvam import SarvamTranscriptionProvider
+
+        return SarvamTranscriptionProvider()
+    if "stub" in (
+        settings.interview_transcription_provider,
+        settings.interview_evaluation_provider,
+    ):
         return StubTranscriptionProvider()
     return UnconfiguredTranscriptionProvider()
 
 
 @lru_cache(maxsize=1)
 def get_evaluation_provider() -> EvaluationProvider:
-    if get_settings().interview_evaluation_provider == "stub":
+    settings = get_settings()
+    if settings.interview_evaluation_provider == "openai":
+        from app.modules.interview.openai_evaluator import OpenAIEvaluationProvider
+
+        return OpenAIEvaluationProvider(model_id=settings.interview_evaluation_model_id)
+    if settings.interview_evaluation_provider == "stub":
         return StubEvaluationProvider()
     return UnconfiguredEvaluationProvider()
