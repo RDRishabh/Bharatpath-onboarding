@@ -92,7 +92,7 @@ export function CandidatesTab({
       pageSize={5}
       itemLabel=""
       emptyTitle="No candidates found"
-      emptySubtitle=""
+      emptySubtitle="Candidate listing is not available from the Admin API. Candidate drill-down remains available when a candidate ID is known."
     />
   );
 }

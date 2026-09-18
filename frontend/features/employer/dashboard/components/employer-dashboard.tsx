@@ -4,6 +4,10 @@ import { useRouter } from "next/navigation";
 
 import { useDashboard } from "../hooks/use-dashboard";
 import { usePageHeader } from "@/components/layout/header-context";
+import {
+  CardSkeletonGrid,
+  Skeleton,
+} from "@/components/common/loading";
 
 import { DashboardStats } from "./dashboard-stats";
 import { QuickActions } from "./quick-actions";
@@ -30,20 +34,12 @@ export function EmployerDashboard() {
     return (
       <div className="flex min-w-0 flex-col gap-4">
         {/* Stats */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-[104px] animate-pulse rounded-xl border border-[#e5e7eb] bg-white"
-            />
-          ))}
-        </div>
+        <CardSkeletonGrid count={4} />
 
         {/* Main dashboard */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.95fr)]">
-          <div className="h-[300px] animate-pulse rounded-xl bg-white" />
-
-          <div className="h-[520px] animate-pulse rounded-xl bg-white" />
+          <Skeleton height={300} radius={12} />
+          <Skeleton height={520} radius={12} />
         </div>
       </div>
     );

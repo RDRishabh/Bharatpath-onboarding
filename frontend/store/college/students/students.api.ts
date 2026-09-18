@@ -312,6 +312,17 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
       ],
     }),
 
+    getRosterImport: builder.query<RosterImport, string>({
+      query: (importId) => ({
+        url: `/college/roster-imports/${importId}`,
+        method: "GET",
+      }),
+      transformResponse: mapRosterImport,
+      providesTags: (_result, _error, importId) => [
+        { type: "College", id: `ROSTER_IMPORT_${importId}` },
+      ],
+    }),
+
     getRosterImportRows: builder.query<
       RosterRow[],
       { importId: string; rowState?: RosterRow["rowState"] } | null
@@ -345,8 +356,9 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
         method: "POST",
       }),
       transformResponse: mapRosterImport,
-      invalidatesTags: [
+      invalidatesTags: (_result, _error, importId) => [
         { type: "College", id: "ROSTER_IMPORTS" },
+        { type: "College", id: `ROSTER_IMPORT_${importId}` },
       ],
     }),
 
@@ -359,8 +371,9 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
         method: "POST",
       }),
       transformResponse: mapRosterImport,
-      invalidatesTags: [
+      invalidatesTags: (_result, _error, importId) => [
         { type: "College", id: "ROSTER_IMPORTS" },
+        { type: "College", id: `ROSTER_IMPORT_${importId}` },
       ],
     }),
 
@@ -373,8 +386,9 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
         method: "POST",
       }),
       transformResponse: mapInvitationsSent,
-      invalidatesTags: [
+      invalidatesTags: (_result, _error, importId) => [
         { type: "College", id: "ROSTER_IMPORTS" },
+        { type: "College", id: `ROSTER_IMPORT_${importId}` },
       ],
     }),
   }),
@@ -389,6 +403,7 @@ export const {
   useRevokeReferralCodeMutation,
   useUploadRosterImportMutation,
   useGetRosterImportsQuery,
+  useGetRosterImportQuery,
   useGetRosterImportRowsQuery,
   useCommitRosterImportMutation,
   useDiscardRosterImportMutation,

@@ -4,23 +4,12 @@ import { CircleAlert } from "lucide-react";
 
 import type {
   KybMode,
-  AutomaticCheckKey,
 } from "../types";
-
-import { AutomaticChecks } from "./automatic-checks";
 
 interface KybApprovalTabProps {
   kybMode: KybMode;
-  autoChecks: Record<
-    AutomaticCheckKey,
-    boolean
-  >;
-  onKybModeChange: (
-    mode: KybMode,
-  ) => void;
-  onToggleCheck: (
-    check: AutomaticCheckKey,
-  ) => void;
+  isLoading?: boolean;
+  hasError?: boolean;
 }
 
 const approvalOptions: Array<{
@@ -44,9 +33,8 @@ const approvalOptions: Array<{
 
 export function KybApprovalTab({
   kybMode,
-  autoChecks,
-  onKybModeChange,
-  onToggleCheck,
+  isLoading,
+  hasError,
 }: KybApprovalTabProps) {
   return (
     <div className="grid min-w-0 grid-cols-1 gap-4 pt-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,348px)]">
@@ -72,15 +60,13 @@ export function KybApprovalTab({
         <div className="mt-4 space-y-2.5">
           {approvalOptions.map((option) => {
             const active =
-              kybMode === option.key;
+              !hasError && kybMode === option.key;
 
             return (
               <button
                 key={option.key}
                 type="button"
-                onClick={() =>
-                  onKybModeChange(option.key)
-                }
+                disabled
                 className={[
                   "flex w-full cursor-pointer items-start gap-3 rounded-[12px] border p-4 text-left transition-colors",
                   active
@@ -111,7 +97,7 @@ export function KybApprovalTab({
                       {option.label}
                     </span>
 
-                    {active && (
+                    {active && !isLoading && (
                       <span className="shrink-0 rounded-full bg-[#6255d8] px-2.5 py-1 text-[10px] font-bold uppercase text-white">
                         Current
                       </span>
@@ -133,21 +119,17 @@ export function KybApprovalTab({
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#b17a19]" />
 
           <p className="text-[11px] leading-[17px] text-[#9a6c19]">
-            {kybMode === "auto"
+            {hasError ? "The effective approval mode is unavailable." : isLoading ? "Reading the current mode..." : kybMode === "auto"
               ? "Automatic approval is live. Spot-check the audit trail weekly."
-              : "Manual approval is live. Employers stay gated until an operator decides, so KYB backlog directly delays their hiring."}
+              : "Manual approval is live. This API does not expose a settings mutation; change it through the deployment configuration."}
           </p>
         </div>
       </section>
 
-      {/* ============================================================
-          AUTOMATIC CHECKS
-          ============================================================ */}
-
-      <AutomaticChecks
-        checks={autoChecks}
-        onToggle={onToggleCheck}
-      />
+      <section className="min-w-0 rounded-[12px] border border-[#e5e8ee] bg-white p-5">
+        <h2 className="text-[14px] font-semibold text-[#172033]">Configuration access</h2>
+        <p className="mt-2 text-[12px] leading-[18px] text-[#7b8494]">The Admin API exposes the effective approval mode but does not expose mutations or individual automatic-check settings.</p>
+      </section>
     </div>
   );
 }

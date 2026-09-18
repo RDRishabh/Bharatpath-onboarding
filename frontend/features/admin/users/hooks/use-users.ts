@@ -1,18 +1,19 @@
 "use client";
 
+import { useDeferredValue } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 
 import {
+  closeUser,
+  openUser,
   setUserSearch,
   setUserSegment,
 } from "@/store/admin/users/slice";
 
-import {
-  selectActiveUsers,
-  selectAdminUsers,
-} from "@/store/admin/users/selectors";
+import { selectAdminUsers } from "@/store/admin/users/selectors";
+import { useGetAdminTenantsQuery } from "@/store/api/admin-api";
 
-import type { UserSegment } from "../types";
+import type { UserRow, UserSegment, UserState } from "../types";
 
 export function useUsers() {
   const dispatch = useAppDispatch();
@@ -20,10 +21,22 @@ export function useUsers() {
   const state = useAppSelector(
     selectAdminUsers,
   );
-
-  const users = useAppSelector(
-    selectActiveUsers,
+  const deferredSearch = useDeferredValue(state.search.trim());
+  const tenantType = state.segment === "employers" ? "EMPLOYER" : "COLLEGE";
+  const query = useGetAdminTenantsQuery(
+    { type: tenantType, q: deferredSearch || undefined, limit: 100 },
+    { skip: state.segment === "candidates" },
   );
+
+  const users: UserRow[] = (query.data?.items ?? []).map((tenant) => ({
+    id: tenant.id,
+    name: tenant.name,
+    initials: tenant.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase(),
+    identifier: tenant.id,
+    meta: tenant.type === "EMPLOYER" ? "Employer organisation" : "College institution",
+    state: `${tenant.status[0]}${tenant.status.slice(1).toLowerCase()}` as UserState,
+    joined: new Date(tenant.created_at).toLocaleDateString(),
+  }));
 
   const setSegment = (
     segment: UserSegment,
@@ -37,15 +50,6 @@ export function useUsers() {
     dispatch(setUserSearch(search));
   };
 
-  const filteredUsers = users.filter(
-    (user) =>
-      `${user.name}${user.identifier}${user.meta}`
-        .toLowerCase()
-        .includes(
-          state.search.toLowerCase(),
-        ),
-  );
-
   return {
     state,
 
@@ -55,10 +59,20 @@ export function useUsers() {
 
     users,
 
-    filteredUsers,
+    filteredUsers: users,
+
+    selectedId: state.selectedId,
+
+    isLoading: query.isLoading || query.isFetching,
+
+    error: query.error,
 
     setSegment,
 
     setSearch,
+
+    openUser: (id: string) => dispatch(openUser(id)),
+
+    closeUser: () => dispatch(closeUser()),
   };
 }

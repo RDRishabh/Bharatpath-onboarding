@@ -1,17 +1,25 @@
 "use client";
 
-import { BadgeCheck } from "lucide-react";
-
-import { useAppDispatch } from "@/store/hooks";
-import { updateProfileField } from "@/store/college/settings/college-settings.slice";
+import { BadgeCheck, Loader2 } from "lucide-react";
 
 import { useSettings } from "../hooks/use-settings";
+import { INSTITUTION_TYPE_OPTIONS } from "../types";
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 export function CollegeProfile() {
-  const dispatch = useAppDispatch();
-
   const {
-    profile,
+    organisation,
+    draftName,
+    setDraftName,
+    draftInstitutionType,
+    setDraftInstitutionType,
     saveProfile,
     isSavingProfile,
   } = useSettings();
@@ -30,85 +38,51 @@ export function CollegeProfile() {
         </h2>
 
         <p className="text-[12px] font-normal leading-[17px] text-[#64748b]">
-          Shown to employers alongside your students&apos;
-          verified scores.
+          Shown to employers alongside your students&apos; verified scores.
         </p>
       </div>
 
-      {/* Legal institution name */}
+      {/* Institution name */}
       <label className="flex flex-col gap-2">
         <span className="text-[13px] font-semibold leading-[17px] text-[#131A26]">
-          Legal institution name
+          Institution name
         </span>
 
         <input
           type="text"
-          value={profile.legalInstitutionName}
+          value={draftName}
           placeholder="Sinhgad Technical Education Society"
-          aria-label="Legal institution name"
-          onChange={(event) =>
-            dispatch(
-              updateProfileField({
-                field: "legalInstitutionName",
-                value: event.target.value,
-              }),
-            )
-          }
+          aria-label="Institution name"
+          onChange={(event) => setDraftName(event.target.value)}
           className="w-full rounded-[10px] border border-[#e1e5eb] bg-white px-4 py-3 text-[14px] font-medium leading-5 text-[#131A26] outline-none transition placeholder:text-[#64748b] focus:border-[#3566b8] focus:ring-2 focus:ring-[#3566b8]/10"
         />
       </label>
 
-      {/* AICTE + City */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {/* AICTE code */}
-        <label className="flex flex-col gap-2">
-          <span className="text-[13px] font-semibold leading-[17px] text-[#131A26]">
-            AICTE code
-          </span>
+      {/* Institution type */}
+      <label className="flex flex-col gap-2">
+        <span className="text-[13px] font-semibold leading-[17px] text-[#131A26]">
+          Institution type
+        </span>
 
-          <input
-            type="text"
-            value={profile.aicteCode}
-            placeholder="1-4258963"
-            aria-label="AICTE code"
-            onChange={(event) =>
-              dispatch(
-                updateProfileField({
-                  field: "aicteCode",
-                  value: event.target.value,
-                }),
-              )
-            }
-            className="w-full rounded-[10px] border border-[#e1e5eb] bg-white px-4 py-3 text-[14px] font-medium leading-5 text-[#131A26] outline-none transition placeholder:text-[#64748b] focus:border-[#3566b8] focus:ring-2 focus:ring-[#3566b8]/10"
-          />
-        </label>
-
-        {/* City */}
-        <label className="flex flex-col gap-2">
-          <span className="text-[13px] font-semibold leading-[17px] text-[#131A26]">
-            City
-          </span>
-
-          <input
-            type="text"
-            value={profile.city}
-            placeholder="Pune"
-            aria-label="City"
-            onChange={(event) =>
-              dispatch(
-                updateProfileField({
-                  field: "city",
-                  value: event.target.value,
-                }),
-              )
-            }
-            className="w-full rounded-[10px] border border-[#e1e5eb] bg-white px-4 py-3 text-[14px] font-medium leading-5 text-[#131A26] outline-none transition placeholder:text-[#64748b] focus:border-[#3566b8] focus:ring-2 focus:ring-[#3566b8]/10"
-          />
-        </label>
-      </div>
+        <select
+          value={draftInstitutionType ?? ""}
+          aria-label="Institution type"
+          onChange={(event) =>
+            setDraftInstitutionType(event.target.value || null)
+          }
+          className="w-full rounded-[10px] border border-[#e1e5eb] bg-white px-4 py-3 text-[14px] font-medium leading-5 text-[#131A26] outline-none transition focus:border-[#3566b8] focus:ring-2 focus:ring-[#3566b8]/10"
+        >
+          <option value="">Select a type</option>
+          {INSTITUTION_TYPE_OPTIONS.map((option) => (
+            <option key={option.code} value={option.code}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       {/* Verification */}
-      {profile.verified && (
+      {organisation?.verifiedAt && (
         <div className="flex items-center gap-[10px] rounded-[10px] bg-[#eaf6f0] px-4 py-3">
           <BadgeCheck
             size={16}
@@ -117,7 +91,7 @@ export function CollegeProfile() {
           />
 
           <span className="flex-1 text-[12px] font-medium leading-4 text-[#00845a]">
-            Institution verified on {profile.verifiedOn}
+            Institution verified on {formatDate(organisation.verifiedAt)}
           </span>
         </div>
       )}
@@ -125,10 +99,14 @@ export function CollegeProfile() {
       {/* Save */}
       <button
         type="button"
-        disabled={isSavingProfile}
+        disabled={isSavingProfile || !draftName.trim()}
         onClick={saveProfile}
-        className="self-start rounded-[8px] border-0 bg-[#5a4bd6] px-4 py-[10px] text-[13px] font-semibold leading-[17px] text-white transition hover:bg-[#4f41c8] disabled:cursor-not-allowed disabled:opacity-60"
+        aria-busy={isSavingProfile || undefined}
+        className="inline-flex items-center justify-center gap-1.5 self-start rounded-[8px] border-0 bg-[#5a4bd6] px-4 py-[10px] text-[13px] font-semibold leading-[17px] text-white transition hover:bg-[#4f41c8] disabled:cursor-not-allowed disabled:opacity-60"
       >
+        {isSavingProfile && (
+          <Loader2 aria-hidden="true" size={14} className="animate-spin" />
+        )}
         {isSavingProfile ? "Saving..." : "Save changes"}
       </button>
     </section>

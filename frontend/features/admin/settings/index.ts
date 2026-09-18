@@ -4,7 +4,6 @@ export {
   SettingsTabs,
   KybApprovalTab,
   PlatformTab,
-  AutomaticChecks,
 } from "./components";
 
 export { useSettings } from "./hooks/use-settings";

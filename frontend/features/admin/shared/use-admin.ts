@@ -3,7 +3,6 @@
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 
 import {
-  signIn as signInAction,
   selectAdminSidebarCollapsed,
   toggleSidebar,
 } from "@/store/admin";
@@ -24,15 +23,6 @@ export function useAdmin() {
   return {
     sidebarCollapsed,
     notificationsOpen,
-
-    signIn: () => {
-      dispatch(
-        signInAction({
-          name: "Admin Operator",
-          role: "Platform Administrator",
-        }),
-      );
-    },
 
     toggleSidebar: () => {
       dispatch(toggleSidebar());

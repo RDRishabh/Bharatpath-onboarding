@@ -1,42 +1,43 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Briefcase,
   Check,
   Copy,
+  FileSpreadsheet,
   Gauge,
-  Mail,
-  ShieldCheck,
-  Upload,
+  type LucideIcon,
+  Ticket,
   Users,
+  UserCheck,
 } from "lucide-react";
 
 import { usePageHeader } from "@/components/layout/header-context";
-import { CollegeDashboard as DashboardData } from "../types";
+import { CardSkeletonGrid } from "@/components/common/loading";
 import { MetricCard } from "../../../../components/common/dashboard/metric-card";
-import { RecentActivityList } from "../../../../components/common/dashboard/recent-activity";
+import { useDashboard } from "../hooks/use-dashboard";
 import { ScoreDistribution } from "./score-distribution";
 
-export function CollegeDashboard({
-  data,
-}: {
-  data: DashboardData;
-}) {
+function formatMetric(value: number | null): string | number {
+  return value ?? "—";
+}
+
+export function CollegeDashboard() {
+  const { data, isLoading } = useDashboard();
+
   usePageHeader(
     "Dashboard",
     "Cohort overview, linking code and recent activity",
     {
       stat: {
         icon: Users,
-        label: `${data.seats.used} / ${data.seats.total} seats used`,
-        sublabel: `${Math.max(
-          data.seats.total - data.seats.used,
-          0,
-        )} seats remaining`,
+        label: `${data.seatsUsed} / ${data.seatsTotal} seats used`,
+        sublabel: `${Math.max(data.seatsAvailable, 0)} seats remaining`,
         progress:
-          data.seats.total > 0
-            ? (data.seats.used / data.seats.total) * 100
+          data.seatsTotal > 0
+            ? (data.seatsUsed / data.seatsTotal) * 100
             : 0,
       },
     },
@@ -45,52 +46,109 @@ export function CollegeDashboard({
   return (
     <div className="flex flex-col gap-4">
       {/* Metrics */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title="Students linked"
-          value={data.stats.studentsLinked}
-          icon={Users}
-          tone="purple"
-        />
+      {isLoading ? (
+        <CardSkeletonGrid count={4} />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricCard
+            title="Students linked"
+            value={data.connectedStudents}
+            icon={Users}
+            tone="purple"
+          />
 
-        <MetricCard
-          title="Consent shared"
-          value={data.stats.consentShared}
-          icon={ShieldCheck}
-          tone="green"
-        />
+          <MetricCard
+            title="Individually visible"
+            value={data.individuallyVisible}
+            icon={UserCheck}
+            tone="green"
+          />
 
-        <MetricCard
-          title="Average score"
-          value={data.stats.averageScore}
-          icon={Gauge}
-          tone="blue"
-        />
+          <MetricCard
+            title="Median score"
+            value={formatMetric(data.medianScore)}
+            icon={Gauge}
+            tone="blue"
+          />
 
-        <MetricCard
-          title="Hired via platform"
-          value={data.stats.hiredViaPlatform}
-          icon={Briefcase}
-          tone="orange"
-        />
-      </div>
+          <MetricCard
+            title="Hired via platform"
+            value={formatMetric(data.platformHires)}
+            icon={Briefcase}
+            tone="orange"
+          />
+        </div>
+      )}
 
       {/* Main dashboard */}
       <div className="grid items-start gap-4 lg:grid-cols-[1.5fr_1fr]">
         {/* Left column */}
         <div className="flex min-w-0 flex-col gap-4">
           <ScoreDistribution
-            bands={data.scoreBands}
-            averageScore={data.stats.averageScore}
+            bands={data.bands}
+            medianScore={data.medianScore}
+            belowFloor={data.belowFloor}
+            minCohortSize={data.minCohortSize}
           />
 
           <ReferralCode code={data.referralCode} />
         </div>
 
         {/* Right column */}
-        <RecentActivityList
-          activities={data.recentActivity}
+        <CohortFunnel
+          applicants={data.applicants}
+          applications={data.applications}
+          interviews={data.interviews}
+          hires={data.platformHires}
         />
+      </div>
+    </div>
+  );
+}
+
+function CohortFunnel({
+  applicants,
+  applications,
+  interviews,
+  hires,
+}: Readonly<{
+  applicants: number | null;
+  applications: number | null;
+  interviews: number | null;
+  hires: number | null;
+}>) {
+  const rows: { label: string; value: number | null }[] = [
+    { label: "Applicants", value: applicants },
+    { label: "Applications", value: applications },
+    { label: "Interviews", value: interviews },
+    { label: "Hired via platform", value: hires },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-[#e5e7ec] bg-white p-5">
+      <div className="flex flex-col gap-[2px]">
+        <h2 className="text-sm font-semibold text-[#151b2b]">
+          Cohort activity
+        </h2>
+        <p className="text-xs text-[#8a91a0]">
+          Placement funnel for students who consented to share.
+        </p>
+      </div>
+
+      <div className="flex flex-col divide-y divide-[#eef0f3]">
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="flex items-center justify-between py-2.5"
+          >
+            <span className="text-[13px] text-[#303747]">
+              {row.label}
+            </span>
+            <span className="text-[15px] font-semibold text-[#151b2b]">
+              {row.value ?? "—"}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -98,12 +156,16 @@ export function CollegeDashboard({
 
 function ReferralCode({
   code,
-}: {
-  code: string;
-}) {
+}: Readonly<{
+  code: string | null;
+}>) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
+    if (!code) {
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
@@ -192,12 +254,13 @@ function ReferralCode({
             fontWeight: 700,
           }}
         >
-          {code}
+          {code ?? "No active code"}
         </code>
 
         <button
           type="button"
           onClick={handleCopy}
+          disabled={!code}
           className="
             flex
             shrink-0
@@ -215,6 +278,8 @@ function ReferralCode({
             text-[#151b2b]
             transition-colors
             hover:bg-[#f8f9fb]
+            disabled:cursor-not-allowed
+            disabled:opacity-50
           "
           style={{
             fontFamily: "'General Sans', sans-serif",
@@ -234,13 +299,15 @@ function ReferralCode({
       {/* Quick actions */}
       <div className="flex gap-[10px] border-t border-[#eef0f3] pt-3">
         <QuickAction
-          icon={Mail}
-          label="Invite students by email"
+          icon={Ticket}
+          label="Issue a referral code"
+          href="/college/students"
         />
 
         <QuickAction
-          icon={Upload}
+          icon={FileSpreadsheet}
           label="Bulk upload a roster"
+          href="/college/students"
         />
       </div>
     </div>
@@ -250,13 +317,15 @@ function ReferralCode({
 function QuickAction({
   icon: Icon,
   label,
-}: {
-  icon: typeof Mail;
+  href,
+}: Readonly<{
+  icon: LucideIcon;
   label: string;
-}) {
+  href: string;
+}>) {
   return (
-    <button
-      type="button"
+    <Link
+      href={href}
       className="
         flex
         min-w-0
@@ -307,6 +376,6 @@ function QuickAction({
       >
         {label}
       </span>
-    </button>
+    </Link>
   );
 }

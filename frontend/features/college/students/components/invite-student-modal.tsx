@@ -1,51 +1,72 @@
 "use client";
 
 import React, { useState } from "react";
-import { Mail, X, Check, UserPlus } from "lucide-react";
+import { Copy, Check, Link2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CollegeStudent } from "../types";
+import type { ReferralCode } from "@/store/college/types";
 
 export interface InviteStudentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onInvite?: (student: Partial<CollegeStudent>) => void;
+  onIssueCode: (args: {
+    expiresInDays?: number;
+    maxUses?: number | null;
+  }) => Promise<ReferralCode>;
+  isIssuing?: boolean;
 }
 
+/*
+ * There is no single "invite by email" endpoint. Students reach a college by
+ * entering a referral code (handed out like a password) or by accepting a
+ * roster-import invitation. This dialog issues a code to share.
+ */
 export function InviteStudentModal({
   isOpen,
   onClose,
-  onInvite,
+  onIssueCode,
+  isIssuing = false,
 }: InviteStudentModalProps) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [course, setCourse] = useState("");
-  const [year, setYear] = useState("Final year");
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [expiresInDays, setExpiresInDays] = useState(90);
+  const [maxUses, setMaxUses] = useState("");
+  const [issuedCode, setIssuedCode] = useState<ReferralCode | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const reset = () => {
+    setIssuedCode(null);
+    setCopied(false);
+    setError(null);
+    setMaxUses("");
+    setExpiresInDays(90);
+  };
+
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    setError(null);
 
-    onInvite?.({
-      name: name || email.split("@")[0],
-      email,
-      course: course || "General Studies",
-      year,
-      status: "invited",
-      scoreBand: "not_scored",
-      lastActive: "Just now",
-    });
+    try {
+      const code = await onIssueCode({
+        expiresInDays,
+        maxUses: maxUses.trim() ? Number(maxUses) : null,
+      });
+      setIssuedCode(code);
+    } catch {
+      setError("Could not issue a code. An active subscription is required.");
+    }
+  };
 
-    setIsSubmitted(true);
-    setTimeout(() => {
-      setIsSubmitted(false);
-      setName("");
-      setEmail("");
-      setCourse("");
-      onClose();
-    }, 1200);
+  const handleCopy = async () => {
+    if (!issuedCode) return;
+    await navigator.clipboard.writeText(issuedCode.code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -58,20 +79,20 @@ export function InviteStudentModal({
         <div className="flex items-center justify-between pb-4 border-b border-[#e7e9ee]">
           <div className="flex items-center gap-2.5">
             <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#edf2fa] text-[#5b4fcf]">
-              <Mail size={18} strokeWidth={2.2} />
+              <Link2 size={18} strokeWidth={2.2} />
             </div>
             <div>
               <h3 className="text-[16px] font-bold text-[#151b2b]">
-                Invite student
+                Invite students
               </h3>
               <p className="text-[12px] text-[#777f90]">
-                Send an invite to join your college cohort
+                Issue a referral code to hand out
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             aria-label="Close dialog"
             className="grid h-8 w-8 place-items-center rounded-lg text-[#777f90] hover:bg-[#f3f4f7] hover:text-[#151b2b] transition-colors"
           >
@@ -79,84 +100,83 @@ export function InviteStudentModal({
           </button>
         </div>
 
-        {isSubmitted ? (
-          <div className="py-10 text-center flex flex-col items-center">
+        {issuedCode ? (
+          <div className="py-8 text-center flex flex-col items-center">
             <div className="grid h-12 w-12 place-items-center rounded-full bg-[#eaf5ef] text-[#23805d] mb-3">
               <Check size={24} strokeWidth={2.5} />
             </div>
             <h4 className="text-[15px] font-bold text-[#151b2b]">
-              Invitation sent!
+              Code ready to share
             </h4>
             <p className="mt-1 text-[13px] text-[#777f90]">
-              We have sent an invitation link to {email}.
+              Treat it like a password — anyone with it can link to your college.
             </p>
+
+            <div className="mt-5 flex w-full items-center justify-between gap-3 rounded-xl border border-[#dfe2e8] bg-[#f8f9fb] px-4 py-3">
+              <span className="font-mono text-[16px] font-bold tracking-wider text-[#151b2b]">
+                {issuedCode.code}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#5b4fcf] hover:underline"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              onClick={handleClose}
+              className="mt-6"
+            >
+              Done
+            </Button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-            <div>
-              <label className="block text-[12px] font-semibold text-[#303747] mb-1.5">
-                Full Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Ananya Deshmukh"
-                className="h-[40px] w-full rounded-xl border border-[#dfe2e8] px-3.5 text-[13px] text-[#151b2b] placeholder:text-[#8a91a0] outline-none focus:border-[#5b4fcf] focus:ring-1 focus:ring-[#5b4fcf]/20"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[12px] font-semibold text-[#303747] mb-1.5">
-                Student Email <span className="text-[#e02424]">*</span>
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="student@svit.edu.in"
-                className="h-[40px] w-full rounded-xl border border-[#dfe2e8] px-3.5 text-[13px] text-[#151b2b] placeholder:text-[#8a91a0] outline-none focus:border-[#5b4fcf] focus:ring-1 focus:ring-[#5b4fcf]/20"
-              />
-            </div>
-
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[12px] font-semibold text-[#303747] mb-1.5">
-                  Course
+                  Expires in (days)
                 </label>
                 <input
-                  type="text"
-                  value={course}
-                  onChange={(e) => setCourse(e.target.value)}
-                  placeholder="e.g. B.Tech Computer"
-                  className="h-[40px] w-full rounded-xl border border-[#dfe2e8] px-3.5 text-[13px] text-[#151b2b] placeholder:text-[#8a91a0] outline-none focus:border-[#5b4fcf] focus:ring-1 focus:ring-[#5b4fcf]/20"
+                  type="number"
+                  min={1}
+                  value={expiresInDays}
+                  onChange={(e) => setExpiresInDays(Number(e.target.value))}
+                  className="h-[40px] w-full rounded-xl border border-[#dfe2e8] px-3.5 text-[13px] text-[#151b2b] outline-none focus:border-[#5b4fcf] focus:ring-1 focus:ring-[#5b4fcf]/20"
                 />
               </div>
 
               <div>
                 <label className="block text-[12px] font-semibold text-[#303747] mb-1.5">
-                  Year
+                  Max uses (optional)
                 </label>
-                <select
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  className="h-[40px] w-full rounded-xl border border-[#dfe2e8] bg-white px-3 text-[13px] text-[#303747] outline-none focus:border-[#5b4fcf]"
-                >
-                  <option value="First year">First year</option>
-                  <option value="Second year">Second year</option>
-                  <option value="Third year">Third year</option>
-                  <option value="Final year">Final year</option>
-                </select>
+                <input
+                  type="number"
+                  min={1}
+                  value={maxUses}
+                  onChange={(e) => setMaxUses(e.target.value)}
+                  placeholder="Unlimited"
+                  className="h-[40px] w-full rounded-xl border border-[#dfe2e8] px-3.5 text-[13px] text-[#151b2b] placeholder:text-[#8a91a0] outline-none focus:border-[#5b4fcf] focus:ring-1 focus:ring-[#5b4fcf]/20"
+                />
               </div>
             </div>
+
+            {error && (
+              <p className="text-[12px] font-medium text-[#e02424]">{error}</p>
+            )}
 
             <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#e7e9ee]">
               <Button
                 type="button"
                 variant="secondary"
                 size="md"
-                onClick={onClose}
+                onClick={handleClose}
               >
                 Cancel
               </Button>
@@ -164,9 +184,10 @@ export function InviteStudentModal({
                 type="submit"
                 variant="primary"
                 size="md"
-                icon={<UserPlus size={15} />}
+                icon={<Link2 size={15} />}
+                disabled={isIssuing}
               >
-                Send Invite
+                {isIssuing ? "Issuing..." : "Issue code"}
               </Button>
             </div>
           </form>

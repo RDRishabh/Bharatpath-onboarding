@@ -1,30 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Download } from "lucide-react";
 
 import { usePageHeader } from "@/components/layout/header-context";
 import {
   BarChart,
   Button,
-  FilterPills,
   Panel,
   ProgressList,
   StatCard,
 } from "@/components/ui";
 
-import { AnalyticsCohort, CollegeAnalytics } from "../types";
-import { OutcomesTable } from "./outcomes-table";
-
-const COHORT_OPTIONS: { value: AnalyticsCohort; label: string }[] = [
-  { value: "2025-26", label: "Cohort 2025-26" },
-  { value: "2024-25", label: "Cohort 2024-25" },
-  { value: "all", label: "All cohorts" },
-];
-
-interface AnalyticsDashboardProps {
-  data: CollegeAnalytics;
-}
+import { useAnalytics } from "../hooks/use-analytics";
+import { CollegeAnalyticsView } from "../types";
+import { PlacementsByLocationTable } from "./outcomes-table";
 
 function downloadCsv(filename: string, rows: string[][]) {
   const csv = rows
@@ -42,8 +32,8 @@ function downloadCsv(filename: string, rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
-export function AnalyticsDashboard({ data }: AnalyticsDashboardProps) {
-  const [cohort, setCohort] = useState<AnalyticsCohort>("2025-26");
+export function AnalyticsDashboard() {
+  const { data } = useAnalytics();
 
   const headerAction = useMemo(
     () => (
@@ -52,7 +42,7 @@ export function AnalyticsDashboard({ data }: AnalyticsDashboardProps) {
         variant="primary"
         size="md"
         icon={<Download size={15} strokeWidth={2.2} />}
-        onClick={() => exportOutcomes(data)}
+        onClick={() => exportPlacements(data)}
         className="shadow-sm"
       >
         Export report
@@ -66,99 +56,92 @@ export function AnalyticsDashboard({ data }: AnalyticsDashboardProps) {
     "Cohort score analytics and platform-sourced outcomes",
     {
       stat: {
-        label: `${data.seats.used} of ${data.seats.total} seats used`,
+        label: `${data.seatsUsed} of ${data.seatsTotal} seats used`,
         progress:
-          data.seats.total > 0
-            ? (data.seats.used / data.seats.total) * 100
+          data.seatsTotal > 0
+            ? (data.seatsUsed / data.seatsTotal) * 100
             : 0,
       },
       action: headerAction,
     },
   );
 
-  const cohortLabel =
-    COHORT_OPTIONS.find((option) => option.value === cohort)?.label ??
-    "Cohort 2025-26";
+  const maxLocationHires = Math.max(
+    ...data.placementsByLocation.map((entry) => entry.hires),
+    1,
+  );
 
   return (
     <div
       className="mx-auto max-w-[1280px] space-y-5"
       style={{ fontFamily: "'General Sans', sans-serif" }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <FilterPills
-          options={COHORT_OPTIONS}
-          value={cohort}
-          onChange={setCohort}
-        />
-
-        <Button
-          type="button"
-          variant="secondary"
-          size="md"
-          icon={<Download size={15} strokeWidth={2.2} />}
-          onClick={() => exportOutcomes(data)}
-        >
-          Export CSV
-        </Button>
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {data.metrics.map((metric) => (
           <StatCard
             key={metric.id}
             value={metric.value}
             label={metric.label}
-            delta={metric.delta}
-            deltaLabel={metric.deltaLabel}
           />
         ))}
       </div>
 
       <div className="grid items-stretch gap-4 lg:grid-cols-[1.55fr_1fr]">
         <Panel
-          title="Average score by course"
-          meta={cohortLabel}
-          footer="Bars show the mean verified score of consenting students in each course."
+          title="Hires by month"
+          footer="Platform-sourced hires among students who consented to share."
         >
-          <BarChart
-            items={data.courseScores.map((course) => ({
-              label: course.label,
-              value: course.score,
-            }))}
-          />
+          {data.placementsBelowFloor ? (
+            <BelowFloorNote />
+          ) : (
+            <BarChart
+              items={data.placementsByMonth.map((entry) => ({
+                label: entry.month,
+                value: entry.hires,
+              }))}
+            />
+          )}
         </Panel>
 
         <Panel
-          title="Where students lose points"
-          footer="Share of your cohort scoring below the platform median on each attribute."
+          title="Hires by location"
           footerClassName="mt-0 border-t border-(--border-hair) pt-3"
           className="rounded-[12px] shadow-[0_4px_12px_rgba(19,26,38,0.024)]"
         >
-          <ProgressList
-            items={data.skillGaps.map((gap) => ({
-              label: gap.label,
-              value: gap.percentageBelowMedian,
-              display: `${gap.percentageBelowMedian}% below median`,
-            }))}
-          />
+          {data.placementsBelowFloor ? (
+            <BelowFloorNote />
+          ) : (
+            <ProgressList
+              items={data.placementsByLocation.map((entry) => ({
+                label: entry.location,
+                value: Math.round((entry.hires / maxLocationHires) * 100),
+                display: `${entry.hires} hired`,
+              }))}
+            />
+          )}
         </Panel>
       </div>
 
-      <OutcomesTable outcomes={data.outcomes} />
+      <PlacementsByLocationTable placements={data.placementsByLocation} />
     </div>
   );
 }
 
-function exportOutcomes(data: CollegeAnalytics) {
-  downloadCsv("bharatpath-outcomes.csv", [
-    ["Role", "Employer", "Applied", "Stage", "Students"],
-    ...data.outcomes.map((outcome) => [
-      outcome.role,
-      outcome.employer,
-      outcome.applied,
-      outcome.stage,
-      String(outcome.students),
+function BelowFloorNote() {
+  return (
+    <p className="rounded-lg bg-[#f5f6f8] p-4 text-xs text-[#697386]">
+      Placement figures are withheld until more students consent to share, to
+      protect individual privacy.
+    </p>
+  );
+}
+
+function exportPlacements(data: CollegeAnalyticsView) {
+  downloadCsv("bharatpath-placements.csv", [
+    ["Location", "Hired via platform"],
+    ...data.placementsByLocation.map((entry) => [
+      entry.location,
+      String(entry.hires),
     ]),
   ]);
 }

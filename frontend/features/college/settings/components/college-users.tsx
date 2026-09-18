@@ -3,35 +3,38 @@
 import { useState } from "react";
 import { UserPlus, X } from "lucide-react";
 
+import type { CollegeTeamRole } from "@/store/college/types";
+
 import { useSettings } from "../hooks/use-settings";
-import { UserRole } from "../types";
+
+const ROLE_OPTIONS: { value: CollegeTeamRole; label: string }[] = [
+  { value: "COLLEGE_ADMIN", label: "Admin" },
+  { value: "COLLEGE_STAFF", label: "Staff" },
+];
 
 export function CollegeUsers() {
-  const {
-    users,
-    inviteUser,
-    deleteUser,
-    isInvitingUser,
-  } = useSettings();
+  const { users, inviteUser, removeUser, isInvitingUser } = useSettings();
 
   const [showInvite, setShowInvite] = useState(false);
-
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] =
-    useState<UserRole>("Viewer");
+  const [role, setRole] = useState<CollegeTeamRole>("COLLEGE_STAFF");
+  const [error, setError] = useState<string | null>(null);
 
   const handleInvite = async () => {
-    if (!name.trim() || !email.trim()) {
+    if (!email.trim()) {
       return;
     }
 
-    await inviteUser(name, email, role);
+    setError(null);
 
-    setName("");
-    setEmail("");
-    setRole("Viewer");
-    setShowInvite(false);
+    try {
+      await inviteUser(email.trim(), role);
+      setEmail("");
+      setRole("COLLEGE_STAFF");
+      setShowInvite(false);
+    } catch {
+      setError("Could not add this member. Check the email and try again.");
+    }
   };
 
   return (
@@ -60,26 +63,26 @@ export function CollegeUsers() {
             onClick={() => setShowInvite(true)}
             className="flex shrink-0 items-center gap-2 rounded-[8px] border-0 bg-[#5a4bd6] px-4 py-[10px] text-[13px] font-semibold leading-[17px] text-white transition hover:bg-[#4f41c8]"
           >
-            <UserPlus
-              size={16}
-              strokeWidth={2}
-            />
-
-            Invite user
+            <UserPlus size={16} strokeWidth={2} />
+            Add user
           </button>
         </div>
 
         {/* Users */}
         <div>
+          {users.length === 0 && (
+            <p className="px-5 py-6 text-[13px] text-[#64748b]">
+              No portal users yet. Add a placement cell member to get started.
+            </p>
+          )}
+
           {users.map((user, index) => (
             <div
-              key={user.id}
+              key={user.userId}
               className={[
                 "grid min-h-[56px] grid-cols-[32px_minmax(0,1fr)_128px_32px]",
                 "items-center gap-3 px-5 py-3",
-                index > 0
-                  ? "border-t border-[#eef0f3]"
-                  : "",
+                index > 0 ? "border-t border-[#eef0f3]" : "",
               ].join(" ")}
             >
               {/* Avatar */}
@@ -90,7 +93,7 @@ export function CollegeUsers() {
               {/* User information */}
               <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
                 <span className="truncate text-[13px] font-semibold leading-[17px] text-[#131A26]">
-                  {user.name}
+                  {user.displayName}
                 </span>
 
                 <span className="truncate text-[11px] font-normal leading-[14px] text-[#64748b]">
@@ -103,26 +106,23 @@ export function CollegeUsers() {
                 className={[
                   "justify-self-start whitespace-nowrap rounded-full px-[10px] py-1",
                   "text-[11px] font-semibold leading-[14px]",
-                  user.role === "Owner"
+                  user.role === "COLLEGE_ADMIN"
                     ? "bg-[#131A26] text-white"
                     : "bg-[#edf3fb] text-[#131A26]",
                 ].join(" ")}
               >
-                {user.role}
+                {user.roleLabel}
               </span>
 
               {/* Remove */}
               <button
                 type="button"
-                aria-label={`Remove ${user.name}`}
+                aria-label={`Remove ${user.displayName}`}
                 title="Remove user"
-                onClick={() => deleteUser(user.id)}
+                onClick={() => removeUser(user.userId)}
                 className="grid h-8 w-8 shrink-0 place-items-center rounded-[8px] border border-[#e1e5eb] bg-white text-[#64748b] transition hover:bg-[#f8fafc] hover:text-[#131A26]"
               >
-                <X
-                  size={14}
-                  strokeWidth={2.2}
-                />
+                <X size={14} strokeWidth={2.2} />
               </button>
             </div>
           ))}
@@ -137,11 +137,11 @@ export function CollegeUsers() {
             <div className="mb-5 flex items-start justify-between">
               <div className="flex flex-col gap-[2px]">
                 <h3 className="text-[16px] font-semibold leading-5 text-[#131A26]">
-                  Invite user
+                  Add user
                 </h3>
 
                 <p className="text-[12px] font-normal leading-[17px] text-[#64748b]">
-                  Add a placement cell member.
+                  Add a placement cell member by their account email.
                 </p>
               </div>
 
@@ -157,23 +157,6 @@ export function CollegeUsers() {
 
             {/* Form */}
             <div className="flex flex-col gap-4">
-              {/* Name */}
-              <label className="flex flex-col gap-2">
-                <span className="text-[13px] font-semibold leading-[17px] text-[#131A26]">
-                  Name
-                </span>
-
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(event) =>
-                    setName(event.target.value)
-                  }
-                  placeholder="Enter name"
-                  className="w-full rounded-[10px] border border-[#e1e5eb] bg-white px-4 py-3 text-[14px] font-medium leading-5 text-[#131A26] outline-none transition placeholder:text-[#64748b] focus:border-[#5a4bd6] focus:ring-2 focus:ring-[#5a4bd6]/10"
-                />
-              </label>
-
               {/* Email */}
               <label className="flex flex-col gap-2">
                 <span className="text-[13px] font-semibold leading-[17px] text-[#131A26]">
@@ -183,9 +166,7 @@ export function CollegeUsers() {
                 <input
                   type="email"
                   value={email}
-                  onChange={(event) =>
-                    setEmail(event.target.value)
-                  }
+                  onChange={(event) => setEmail(event.target.value)}
                   placeholder="name@college.edu"
                   className="w-full rounded-[10px] border border-[#e1e5eb] bg-white px-4 py-3 text-[14px] font-medium leading-5 text-[#131A26] outline-none transition placeholder:text-[#64748b] focus:border-[#5a4bd6] focus:ring-2 focus:ring-[#5a4bd6]/10"
                 />
@@ -200,36 +181,32 @@ export function CollegeUsers() {
                 <select
                   value={role}
                   onChange={(event) =>
-                    setRole(
-                      event.target.value as UserRole,
-                    )
+                    setRole(event.target.value as CollegeTeamRole)
                   }
                   className="w-full rounded-[10px] border border-[#e1e5eb] bg-white px-4 py-3 text-[14px] font-medium leading-5 text-[#131A26] outline-none focus:border-[#5a4bd6] focus:ring-2 focus:ring-[#5a4bd6]/10"
                 >
-                  <option value="Placement lead">
-                    Placement lead
-                  </option>
-
-                  <option value="Viewer">
-                    Viewer
-                  </option>
+                  {ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
+
+              {error && (
+                <p className="text-[12px] font-medium text-[#c43d3d]">
+                  {error}
+                </p>
+              )}
 
               {/* Submit */}
               <button
                 type="button"
-                disabled={
-                  isInvitingUser ||
-                  !name.trim() ||
-                  !email.trim()
-                }
+                disabled={isInvitingUser || !email.trim()}
                 onClick={handleInvite}
                 className="mt-1 self-start rounded-[8px] border-0 bg-[#5a4bd6] px-4 py-[10px] text-[13px] font-semibold leading-[17px] text-white transition hover:bg-[#4f41c8] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isInvitingUser
-                  ? "Sending invite..."
-                  : "Send invite"}
+                {isInvitingUser ? "Adding..." : "Add user"}
               </button>
             </div>
           </div>

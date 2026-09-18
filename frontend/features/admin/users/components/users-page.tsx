@@ -9,6 +9,7 @@ import { useUsers } from "../hooks/use-users";
 import { CandidatesTab } from "./candidates-tab";
 import { EmployersTab } from "./employers-tab";
 import { InstitutionsTab } from "./institutions-tab";
+import { UserDrawer } from "./user-drawer";
 
 export function UsersPage() {
   usePageHeader(
@@ -20,6 +21,9 @@ export function UsersPage() {
     segment,
     search,
     filteredUsers,
+    isLoading,
+    error,
+    openUser,
     setSegment,
     setSearch,
   } = useUsers();
@@ -92,6 +96,8 @@ export function UsersPage() {
       {/* TAB CONTENT                                                       */}
       {/* ================================================================ */}
 
+      {error ? <p className="mb-3 rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not load organisations.</p> : null}
+
       {segment === "candidates" && (
         <CandidatesTab
           users={filteredUsers}
@@ -101,14 +107,19 @@ export function UsersPage() {
       {segment === "employers" && (
         <EmployersTab
           users={filteredUsers}
+          isLoading={isLoading}
+          onOpen={openUser}
         />
       )}
 
       {segment === "institutions" && (
         <InstitutionsTab
           users={filteredUsers}
+          isLoading={isLoading}
+          onOpen={openUser}
         />
       )}
+      <UserDrawer />
     </div>
   );
 }

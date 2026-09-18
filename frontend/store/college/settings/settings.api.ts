@@ -84,11 +84,8 @@ export function mapCollegeSeats(
 ========================================================= */
 
 interface CollegeOnboardingResponse {
-  form: Record<string, unknown>;
-  options: Record<
-    string,
-    { code: string; label: string }[]
-  >;
+  form: CollegeOnboarding["form"];
+  options: CollegeOnboarding["options"];
   answers: Record<string, unknown>;
   form_version: string | null;
   submitted_at: string | null;
@@ -212,6 +209,39 @@ export const collegeSettingsApi = baseApi.injectEndpoints({
         method: "GET",
       }),
       transformResponse: mapCollegeOnboarding,
+      providesTags: [
+        { type: "College", id: "ONBOARDING" },
+      ],
+    }),
+
+    saveCollegeOnboarding: builder.mutation<
+      CollegeOnboarding,
+      { answers: Record<string, unknown> }
+    >({
+      query: (payload) => ({
+        url: "/college/onboarding/answers",
+        method: "PUT",
+        body: { answers: payload.answers },
+      }),
+      transformResponse: mapCollegeOnboarding,
+      invalidatesTags: [
+        { type: "College", id: "ONBOARDING" },
+      ],
+    }),
+
+    submitCollegeOnboarding: builder.mutation<
+      CollegeOnboarding,
+      void
+    >({
+      query: () => ({
+        url: "/college/onboarding/submit",
+        method: "POST",
+      }),
+      transformResponse: mapCollegeOnboarding,
+      invalidatesTags: [
+        { type: "College", id: "ONBOARDING" },
+        { type: "College", id: "ORGANISATION" },
+      ],
     }),
   }),
   overrideExisting: false,
@@ -226,4 +256,6 @@ export const {
   useRemoveCollegeTeamMemberMutation,
   useGetCollegeSeatsQuery,
   useGetCollegeOnboardingQuery,
+  useSaveCollegeOnboardingMutation,
+  useSubmitCollegeOnboardingMutation,
 } = collegeSettingsApi;

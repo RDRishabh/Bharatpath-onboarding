@@ -1,42 +1,42 @@
-export interface DashboardStats {
-  studentsLinked: number;
-  consentShared: number;
-  averageScore: number;
-  hiredViaPlatform: number;
-}
+/*
+ * Dashboard view model.
+ *
+ * Every field here is derived from a real backend response — the cohort
+ * analytics overview, seat usage and the college's referral codes. Nothing on
+ * this screen is fabricated: where the API withholds a number (a cohort below
+ * the privacy floor, or a metric the college has not earned yet) the value is
+ * `null` and the UI renders a neutral placeholder rather than a made-up figure.
+ */
 
-export interface ScoreBand {
+export interface DashboardBand {
+  /** Band name as used by scoring (Entry, Developing, Solid, Strong). */
   label: string;
-  range: string;
-  count: number;
+  /**
+   * Number of consenting students in the band, or `null` when the cohort is
+   * below the privacy floor and counts are suppressed.
+   */
+  count: number | null;
 }
 
-export interface RecentActivity {
-  id: string;
-  text: string;
-  time: string;
-  type:
-    | "link"
-    | "upload"
-    | "hire"
-    | "invoice";
-}
+export interface CollegeDashboardView {
+  /* Cohort */
+  connectedStudents: number;
+  individuallyVisible: number;
+  medianScore: number | null;
+  platformHires: number | null;
+  applicants: number | null;
+  applications: number | null;
+  interviews: number | null;
+  belowFloor: boolean;
+  minCohortSize: number;
+  bands: DashboardBand[];
 
-export interface SeatUsage {
-  used: number;
-  total: number;
-}
+  /* Linking */
+  referralCode: string | null;
 
-export type PaymentStatus =
-  | "pending"
-  | "active"
-  | "full";
-
-export interface CollegeDashboard {
-  stats: DashboardStats;
-  scoreBands: ScoreBand[];
-  referralCode: string;
-  seats: SeatUsage;
-  recentActivity: RecentActivity[];
-  paymentStatus: PaymentStatus;
+  /* Seats */
+  seatsUsed: number;
+  seatsTotal: number;
+  seatsAvailable: number;
+  subscriptionActive: boolean;
 }

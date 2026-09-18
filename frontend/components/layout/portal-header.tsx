@@ -4,7 +4,6 @@ import {
   Armchair,
   ChevronRight,
   FlaskConical,
-  ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -141,44 +140,6 @@ export function PortalHeader({
 
   const isAdmin =
     portal === PORTAL_TYPES.ADMIN;
-
-  /*
-   * ==========================================
-   * ADMIN KYB
-   *
-   * The KYB control is intentionally part of
-   * the shared header so it appears on every
-   * Admin page.
-   *
-   * ==========================================
-   */
-
-  /*
-   * Default to Manual so the header matches
-   * the current Admin demo state.
-   *
-   * Replace this with your admin Redux selector
-   * once the admin settings slice exposes
-   * kybMode globally.
-   */
-  const [adminKybMode] = useState<
-    "manual" | "auto"
-  >("manual");
-
-  const adminKybModeLabel =
-    adminKybMode === "auto"
-      ? "Automatic"
-      : "Manual";
-
-  /*
-   * ==========================================
-   * ADMIN KYB SETTINGS NAVIGATION
-   * ==========================================
-   */
-
-  const handleOpenKybSettings = () => {
-    router.push("/admin/settings");
-  };
 
   /*
    * ==========================================
@@ -332,7 +293,7 @@ export function PortalHeader({
             DEMO STATE
             ========================================== */}
 
-        <button
+        {!isAdmin && <button
           type="button"
           onClick={onDemoStateClick}
           aria-label="Open demo state options"
@@ -370,105 +331,7 @@ export function PortalHeader({
           >
             {resolvedBadge.label}
           </span>
-        </button>
-
-        {/* ==========================================
-            ADMIN KYB APPROVAL MODE
-            ========================================== */}
-
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={handleOpenKybSettings}
-            aria-label="KYB approval mode — open settings"
-            title="Change KYB approval mode in Settings"
-            className="
-              hidden
-              h-[36px]
-              shrink-0
-              items-center
-              gap-[8px]
-              rounded-[10px]
-              border
-              border-[#e5e7ec]
-              bg-white
-              px-[10px]
-              transition-colors
-              hover:border-[rgba(47,93,168,0.3)]
-              hover:bg-[#f4f7fc]
-              sm:flex
-            "
-          >
-            {/* Shield icon */}
-
-            <span
-              className="
-                grid
-                h-[24px]
-                w-[24px]
-                shrink-0
-                place-items-center
-                rounded-[8px]
-                bg-[#edf2fa]
-              "
-            >
-              <ShieldCheck
-                size={14}
-                strokeWidth={2.4}
-                className="text-[#2f5da8]"
-              />
-            </span>
-
-            {/* KYB + mode */}
-
-            <span
-              className="
-                flex
-                items-center
-                gap-[6px]
-                whitespace-nowrap
-              "
-            >
-              <span
-                className="
-                  text-[12px]
-                  font-[500]
-                  leading-[16px]
-                  text-[#5d6673]
-                "
-              >
-                KYB
-              </span>
-
-              <span
-                className="
-                  h-[3px]
-                  w-[5px]
-                  shrink-0
-                  rounded-full
-                  bg-[#e5e7ec]
-                "
-              />
-
-              <span
-                className="
-                  text-[12px]
-                  font-[600]
-                  leading-[16px]
-                  text-[#151b2b]
-                "
-              >
-                {adminKybModeLabel}
-              </span>
-            </span>
-
-            <ChevronRight
-              size={12}
-              strokeWidth={2}
-              className="shrink-0 text-[#777f90]"
-            />
-          </button>
-        )}
+        </button>}
 
         {/* ==========================================
             EMPLOYER CREDITS

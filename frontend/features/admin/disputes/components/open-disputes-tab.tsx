@@ -12,11 +12,13 @@ import type { Dispute } from "../types";
 interface OpenDisputesTabProps {
   disputes: Dispute[];
   onOpen: (id: string) => void;
+  isLoading?: boolean;
 }
 
 export function OpenDisputesTab({
   disputes,
   onOpen,
+  isLoading,
 }: OpenDisputesTabProps) {
   const columns: ColumnDef<Dispute>[] = [
     {
@@ -84,6 +86,7 @@ export function OpenDisputesTab({
       itemLabel=""
       emptyTitle="No open disputes"
       emptySubtitle=""
+      isLoading={isLoading}
     />
   );
 }

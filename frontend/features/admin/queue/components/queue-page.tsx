@@ -1,7 +1,5 @@
 "use client";
 
-import { Filter } from "lucide-react";
-
 import { usePageHeader } from "@/components/layout/header-context";
 
 import { DataTable } from "@/components/ui/table";
@@ -29,6 +27,11 @@ export function QueuePage() {
     items,
     kybCount,
     integrityCount,
+    isLoading,
+    error,
+    isActing,
+    approve,
+    refresh,
     openReview,
     setTab,
   } = useQueue();
@@ -139,9 +142,11 @@ export function QueuePage() {
 
           <button
             type="button"
+            disabled={isActing}
+            onClick={() => void approve(item)}
             className="cursor-pointer rounded-lg bg-[#5b4fcf] px-3 py-2 text-[11px] font-semibold text-white transition-colors hover:bg-[#4f44bc]"
           >
-            Approve
+            {isActing ? "Saving..." : isKyb ? "Approve" : "Clear"}
           </button>
         </div>
       ),
@@ -206,15 +211,6 @@ export function QueuePage() {
         {/* ================================================================ */}
 
         <div className="flex flex-wrap items-center gap-3 px-0 pt-4">
-          <button
-            type="button"
-            className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#e2e5eb] bg-white px-4 py-2 text-[12px] font-semibold text-[#172033] transition-colors hover:bg-[#f8f9fb]"
-          >
-            <Filter className="h-4 w-4" />
-
-            Filters
-          </button>
-
           <span className="text-[12px] text-[#7b8494]">
             {isKyb
               ? `${kybCount} submissions awaiting review`
@@ -227,6 +223,12 @@ export function QueuePage() {
         {/* ================================================================ */}
 
         <div className="pt-4">
+          {error ? (
+            <div className="mb-3 flex items-center justify-between rounded-lg border border-[#f0c8cc] bg-[#fff7f7] px-4 py-3 text-[12px] text-[#9f2432]" role="alert">
+              <span>Could not load this queue.</span>
+              <button type="button" onClick={() => void refresh()} className="font-semibold underline">Retry</button>
+            </div>
+          ) : null}
           <DataTable<QueueItem>
             columns={columns}
             data={items}
@@ -236,6 +238,7 @@ export function QueuePage() {
             pageSize={4}
             totalCount={items.length}
             itemLabel=""
+            isLoading={isLoading}
             emptyTitle={
               isKyb
                 ? "No KYB submissions found"

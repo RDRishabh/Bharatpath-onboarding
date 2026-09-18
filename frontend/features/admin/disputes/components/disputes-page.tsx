@@ -20,6 +20,9 @@ export function DisputesPage() {
     openDisputes,
     resolvedDisputes,
     auditItems,
+    isLoading,
+    auditLoading,
+    error,
     openCount,
     resolvedCount,
     setTab,
@@ -86,10 +89,12 @@ export function DisputesPage() {
               ========================================================== */}
 
           <div className="min-w-0">
+            {error ? <p className="mb-3 rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not load disputes.</p> : null}
             {state.tab === "open" && (
               <OpenDisputesTab
                 disputes={openDisputes}
                 onOpen={openDispute}
+                isLoading={isLoading}
               />
             )}
 
@@ -97,6 +102,7 @@ export function DisputesPage() {
               <ResolvedDisputesTab
                 disputes={resolvedDisputes}
                 onOpen={openDispute}
+                isLoading={isLoading}
               />
             )}
           </div>
@@ -107,6 +113,7 @@ export function DisputesPage() {
 
           <AuditTrail
             items={auditItems}
+            isLoading={auditLoading}
           />
         </div>
       </div>

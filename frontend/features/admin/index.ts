@@ -1,4 +1,3 @@
-export * from "./auth";
 export * from "./dashboard";
 export * from "./queue";
 export * from "./users";

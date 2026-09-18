@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, type ChangeEvent } from "react";
+import { Loader2 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { Skeleton } from "@/components/common/loading";
 import {
   saveCompanyProfile,
   replaceCompanyProfile,
@@ -36,29 +38,29 @@ function CompanyTabSkeleton() {
     <section
       aria-label="Loading company profile"
       aria-busy="true"
-      className="max-w-[600px] animate-pulse rounded-xl border border-[#e0e4e9] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.02)]"
+      className="max-w-[600px] rounded-xl border border-[#e0e4e9] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.02)]"
     >
       <div className="mb-6 space-y-2">
-        <div className="h-4 w-28 rounded bg-[#e8ecf1]" />
-        <div className="h-3 w-72 rounded bg-[#eef1f4]" />
+        <Skeleton width={112} height={16} radius={6} />
+        <Skeleton width={288} height={12} radius={6} />
       </div>
       <div className="mb-3 space-y-1.5">
-        <div className="h-3 w-28 rounded bg-[#e8ecf1]" />
-        <div className="h-[43px] rounded-[9px] bg-[#eef1f4]" />
+        <Skeleton width={112} height={12} radius={6} />
+        <Skeleton height={43} radius={9} />
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {["gstin", "type", "industry", "status"].map((field) => (
           <div key={field} className="space-y-1.5">
-            <div className="h-3 w-20 rounded bg-[#e8ecf1]" />
-            <div className="h-[43px] rounded-[9px] bg-[#eef1f4]" />
+            <Skeleton width={80} height={12} radius={6} />
+            <Skeleton height={43} radius={9} />
           </div>
         ))}
       </div>
       <div className="mt-3 space-y-1.5">
-        <div className="h-3 w-32 rounded bg-[#e8ecf1]" />
-        <div className="h-[43px] rounded-[9px] bg-[#eef1f4]" />
+        <Skeleton width={128} height={12} radius={6} />
+        <Skeleton height={43} radius={9} />
       </div>
-      <div className="mt-5 h-9 w-28 rounded-lg bg-[#e8ecf1]" />
+      <Skeleton className="mt-5" width={112} height={36} radius={8} />
     </section>
   );
 }
@@ -182,10 +184,14 @@ export function CompanyTab() {
 
       <button
         type="button"
-        className="min-h-9 cursor-pointer rounded-lg border border-[#5a4bd1] bg-[#5b4ed0] px-3.5 text-xs font-bold text-white hover:bg-[#4f43bd]"
+        className="inline-flex min-h-9 items-center justify-center gap-1.5 cursor-pointer rounded-lg border border-[#5a4bd1] bg-[#5b4ed0] px-3.5 text-xs font-bold text-white hover:bg-[#4f43bd] disabled:cursor-not-allowed disabled:opacity-60"
         disabled={isSaving || !company.legalName.trim()}
+        aria-busy={isSaving || undefined}
         onClick={save}
       >
+        {isSaving && (
+          <Loader2 aria-hidden="true" size={14} className="animate-spin" />
+        )}
         {isSaving ? "Saving…" : "Save changes"}
       </button>
     </section>

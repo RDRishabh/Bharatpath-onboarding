@@ -1,47 +1,38 @@
-export type OutcomeStage =
-  | "Applied"
-  | "Shortlisted"
-  | "Interview"
-  | "Hired";
-
-export type AnalyticsCohort = "2025-26" | "2024-25" | "all";
+/*
+ * Analytics view model.
+ *
+ * Everything here is derived from the real cohort-overview and placement-report
+ * endpoints plus live seat usage. Where a figure is withheld — a cohort or a
+ * placement cell below the privacy floor — the value is `null` and the UI shows
+ * a neutral placeholder rather than a fabricated number.
+ */
 
 export interface AnalyticsMetric {
   id: string;
-  value: number;
+  value: string | number;
   label: string;
-  delta: number;
-  deltaLabel: string;
 }
 
-export interface CourseScore {
-  label: string;
-  score: number;
+export interface MonthPlacement {
+  month: string;
+  hires: number;
 }
 
-export interface SkillGap {
-  label: string;
-  percentageBelowMedian: number;
+export interface LocationPlacement {
+  location: string;
+  hires: number;
 }
 
-export interface Outcome {
-  id: string;
-  role: string;
-  employer: string;
-  applied: string;
-  stage: OutcomeStage;
-  students: number;
-}
+export interface CollegeAnalyticsView {
+  seatsUsed: number;
+  seatsTotal: number;
 
-export interface SeatUsage {
-  used: number;
-  total: number;
-}
-
-export interface CollegeAnalytics {
-  seats: SeatUsage;
+  cohortBelowFloor: boolean;
+  minCohortSize: number;
   metrics: AnalyticsMetric[];
-  courseScores: CourseScore[];
-  skillGaps: SkillGap[];
-  outcomes: Outcome[];
+
+  placementsBelowFloor: boolean;
+  totalHires: number | null;
+  placementsByMonth: MonthPlacement[];
+  placementsByLocation: LocationPlacement[];
 }

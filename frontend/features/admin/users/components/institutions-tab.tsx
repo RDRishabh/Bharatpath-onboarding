@@ -9,10 +9,14 @@ import type { UserRow } from "../types";
 
 interface InstitutionsTabProps {
   users: UserRow[];
+  isLoading?: boolean;
+  onOpen: (id: string) => void;
 }
 
 export function InstitutionsTab({
   users,
+  isLoading,
+  onOpen,
 }: InstitutionsTabProps) {
   const columns: ColumnDef<UserRow>[] = [
     {
@@ -72,9 +76,10 @@ export function InstitutionsTab({
       header: "Actions",
       headerClassName: "min-w-[100px]",
       cellClassName: "min-w-[100px]",
-      cell: () => (
+      cell: (user) => (
         <button
           type="button"
+          onClick={() => onOpen(user.id)}
           className="cursor-pointer rounded-lg border border-[#e2e5eb] bg-white px-3 py-2 text-[11px] font-semibold text-[#172033] transition-colors hover:bg-[#f8f9fb]"
         >
           View
@@ -93,6 +98,7 @@ export function InstitutionsTab({
       itemLabel=""
       emptyTitle="No institutions found"
       emptySubtitle=""
+      isLoading={isLoading}
     />
   );
 }

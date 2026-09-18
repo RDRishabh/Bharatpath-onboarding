@@ -11,6 +11,8 @@ interface ConfirmModalProps {
   readonly description: string;
   readonly confirmLabel?: string;
   readonly cancelLabel?: string;
+  /** Shows a spinner on the confirm button and blocks the dialog while true. */
+  readonly confirmLoading?: boolean;
   readonly onClose: () => void;
   readonly onConfirm: () => void;
 }
@@ -21,6 +23,7 @@ export function ConfirmModal({
   description,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
+  confirmLoading = false,
   onClose,
   onConfirm,
 }: ConfirmModalProps) {
@@ -80,17 +83,30 @@ export function ConfirmModal({
             type="button"
             onClick={onClose}
             aria-label="Close confirmation dialog"
-            className="grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-lg text-[#7b8494] transition-colors hover:bg-[#f5f6f8] hover:text-[#151b2b]"
+            disabled={confirmLoading}
+            className="grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-lg text-[#7b8494] transition-colors hover:bg-[#f5f6f8] hover:text-[#151b2b] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <X size={16} strokeWidth={1.8} />
           </button>
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onClose}
+            disabled={confirmLoading}
+          >
             {cancelLabel}
           </Button>
-          <Button type="button" variant="dark" size="sm" onClick={onConfirm}>
+          <Button
+            type="button"
+            variant="dark"
+            size="sm"
+            onClick={onConfirm}
+            isLoading={confirmLoading}
+          >
             {confirmLabel}
           </Button>
         </div>

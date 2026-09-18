@@ -3,26 +3,32 @@
 import React, { useRef, useState, DragEvent, ChangeEvent } from "react";
 import { Upload, CheckCircle2, FileText, AlertCircle } from "lucide-react";
 
+import type { RosterImport } from "@/store/college/types";
+
 export interface BulkUploadCardProps {
-  onUploadSuccess?: (fileName: string, rowCount: number) => void;
+  onUpload: (args: {
+    fileName: string;
+    csv: string;
+  }) => Promise<RosterImport>;
 }
 
-export function BulkUploadCard({ onUploadSuccess }: BulkUploadCardProps) {
+export function BulkUploadCard({ onUpload }: BulkUploadCardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadState, setUploadState] = useState<{
     fileName?: string;
     rowCount?: number;
+    validRows?: number;
+    invalidRows?: number;
     status: "idle" | "uploading" | "success" | "error";
     errorMsg?: string;
   }>({ status: "idle" });
 
   const handleDownloadTemplate = () => {
     const csvContent =
-      "name,email,course,year\n" +
-      "Anjali Kulkarni,anjali.k@svit.edu.in,B.Sc Chemistry,Final year\n" +
-      "Rohit Patil,rohit.p@svit.edu.in,B.E Mechanical,Final year\n" +
-      "Sneha Deshmukh,sneha.d@svit.edu.in,B.Sc Chemistry,Third year\n";
+      "name,phone,email,student_ref\n" +
+      "Anjali Kulkarni,+919876543210,anjali.k@svit.edu.in,STU001\n" +
+      "Rohit Patil,+919812345678,rohit.p@svit.edu.in,STU002\n";
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -46,21 +52,30 @@ export function BulkUploadCard({ onUploadSuccess }: BulkUploadCardProps) {
 
     setUploadState({ status: "uploading", fileName: file.name });
 
-    // Read and parse sample row count
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const lines = text ? text.split("\n").filter((l) => l.trim().length > 0) : [];
-      const rows = Math.max(0, lines.length - 1); // minus header
+    reader.onload = async (e) => {
+      const text = (e.target?.result as string) ?? "";
 
-      setTimeout(() => {
+      try {
+        const result = await onUpload({
+          fileName: file.name,
+          csv: text,
+        });
+
         setUploadState({
           status: "success",
-          fileName: file.name,
-          rowCount: rows,
+          fileName: result.fileName,
+          rowCount: result.totalRows,
+          validRows: result.validRows,
+          invalidRows: result.invalidRows,
         });
-        onUploadSuccess?.(file.name, rows);
-      }, 700);
+      } catch {
+        setUploadState({
+          status: "error",
+          fileName: file.name,
+          errorMsg: "The roster could not be read. Check the header row.",
+        });
+      }
     };
     reader.onerror = () => {
       setUploadState({
@@ -105,8 +120,8 @@ export function BulkUploadCard({ onUploadSuccess }: BulkUploadCardProps) {
           Bulk upload a roster
         </h3>
         <p className="mt-1 text-[13px] text-[#777f90] leading-relaxed">
-          CSV with name, email and course. Students still confirm consent in
-          their app before any score is shared.
+          CSV with name, phone, email and student_ref. Students still confirm
+          consent in their app before any score is shared.
         </p>
 
         {/* DROPZONE */}
@@ -147,7 +162,8 @@ export function BulkUploadCard({ onUploadSuccess }: BulkUploadCardProps) {
                 {uploadState.fileName}
               </p>
               <p className="text-[12px] text-[#23805d] mt-0.5">
-                Ready to import • {uploadState.rowCount} rows detected
+                Preview ready • {uploadState.validRows ?? 0} valid of{" "}
+                {uploadState.rowCount ?? 0} rows
               </p>
             </div>
           ) : uploadState.status === "error" ? (

@@ -16,9 +16,9 @@ export function SettingsPage() {
 
   const {
     state,
+    isLoading,
+    error,
     setTab,
-    setKybMode,
-    toggleCheck,
   } = useSettings();
 
   return (
@@ -28,12 +28,13 @@ export function SettingsPage() {
         onChange={setTab}
       />
 
+      {error ? <p className="mt-4 rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not read the current KYB mode.</p> : null}
+
       {state.tab === "approval" ? (
         <KybApprovalTab
           kybMode={state.kybMode}
-          autoChecks={state.autoChecks}
-          onKybModeChange={setKybMode}
-          onToggleCheck={toggleCheck}
+          isLoading={isLoading}
+          hasError={Boolean(error)}
         />
       ) : (
         <PlatformTab />

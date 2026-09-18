@@ -10,6 +10,7 @@ import {
 } from "./index";
 
 import { useDashboard } from "../hooks/use-dashboard";
+import { CardSkeletonGrid, ListSkeleton } from "@/components/common/loading";
 
 export function AdminDashboard() {
   usePageHeader(
@@ -22,6 +23,8 @@ export function AdminDashboard() {
     oldestItems,
     platformTotals,
     intakeCleared,
+    isLoading,
+    error,
   } = useDashboard();
 
   return (
@@ -30,7 +33,8 @@ export function AdminDashboard() {
       {/* Metrics                                                          */}
       {/* ================================================================ */}
 
-      <DashboardMetrics metrics={metrics} />
+      {isLoading ? <CardSkeletonGrid count={4} /> : <DashboardMetrics metrics={metrics} />}
+      {error ? <p className="rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Some dashboard data could not be loaded.</p> : null}
 
       {/* ================================================================ */}
       {/* Main content                                                     */}
@@ -41,7 +45,7 @@ export function AdminDashboard() {
         {/* Oldest items                                                  */}
         {/* ============================================================ */}
 
-        <OldestItems items={oldestItems} />
+        {isLoading ? <ListSkeleton rows={5} /> : <OldestItems items={oldestItems} />}
 
         {/* ============================================================ */}
         {/* Right column                                                  */}
@@ -50,7 +54,9 @@ export function AdminDashboard() {
         <div className="flex min-w-0 flex-col gap-4">
           <PlatformTotals items={platformTotals} />
 
-          <IntakeClearedChart data={intakeCleared} />
+          {intakeCleared.length > 0 ? <IntakeClearedChart data={intakeCleared} /> : (
+            <section className="rounded-[12px] border border-[#e5e7ec] bg-white p-5 text-[12px] text-[#777f90]">Historical intake and clearance metrics are not exposed by the Admin API.</section>
+          )}
         </div>
       </div>
     </div>

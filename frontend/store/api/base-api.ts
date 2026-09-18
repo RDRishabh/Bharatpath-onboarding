@@ -26,13 +26,12 @@ export const baseApi = createApi({
        * routes without wiring up the real login flow.
        * Set via NEXT_PUBLIC_API_BEARER_TOKEN, never in production.
        */
-      const devBearerToken =
-        process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
+      const bearerToken = process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
 
-      if (devBearerToken) {
+      if (bearerToken) {
         headers.set(
           "Authorization",
-          `Bearer ${devBearerToken}`,
+          `Bearer ${bearerToken}`,
         );
       }
 
@@ -42,6 +41,7 @@ export const baseApi = createApi({
 
   tagTypes: [
     "Auth",
+    "Admin",
     "College",
     "Student",
     "Analytics",

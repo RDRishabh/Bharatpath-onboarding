@@ -7,7 +7,8 @@ import type {
 export type SettingsTab =
   | "profile"
   | "users"
-  | "subscription";
+  | "billing"
+  | "onboarding";
 
 export type UserRole = "Admin" | "Staff";
 

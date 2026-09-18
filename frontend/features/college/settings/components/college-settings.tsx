@@ -5,6 +5,7 @@ import { usePageHeader } from "@/components/layout/header-context";
 import { useSettings } from "../hooks/use-settings";
 
 import { Billing } from "./billing";
+import { CollegeOnboarding } from "./college-onboarding";
 import { CollegeProfile } from "./college-profile";
 import { CollegeUsers } from "./college-users";
 
@@ -21,6 +22,10 @@ const tabs = [
     id: "billing" as const,
     label: "Seats & payment",
   },
+  {
+    id: "onboarding" as const,
+    label: "Onboarding",
+  },
 ];
 
 export function CollegeSettings() {
@@ -35,10 +40,10 @@ export function CollegeSettings() {
     "College profile, users, seats and payment",
     {
       stat: {
-        label: `${seats.used} of ${seats.total} seats used`,
+        label: `${seats?.used ?? 0} of ${seats?.allocated ?? 0} seats used`,
         progress:
-          seats.total > 0
-            ? (seats.used / seats.total) * 100
+          seats && seats.allocated > 0
+            ? (seats.used / seats.allocated) * 100
             : 0,
       },
     },
@@ -92,6 +97,10 @@ export function CollegeSettings() {
 
         {activeTab === "billing" && (
           <Billing />
+        )}
+
+        {activeTab === "onboarding" && (
+          <CollegeOnboarding />
         )}
       </main>
     </div>

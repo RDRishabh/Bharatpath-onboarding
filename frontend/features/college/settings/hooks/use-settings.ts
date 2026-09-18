@@ -1,152 +1,186 @@
 "use client";
 
-import { useCallback } from "react";
-
-import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
-  addUser,
-  removeUser,
-  setActiveTab,
-  setInvitingUser,
-  setProfile,
-  setRequestingSeats,
-  setSavingProfile,
-} from "@/store/college/settings/college-settings.slice";
+  useAddCollegeTeamMemberMutation,
+  useChangeCollegeTeamMemberRoleMutation,
+  useGetCollegeOrganisationQuery,
+  useGetCollegeSeatsQuery,
+  useGetCollegeTeamQuery,
+  useRemoveCollegeTeamMemberMutation,
+  useUpdateCollegeOrganisationMutation,
+} from "@/store/college/settings/settings.api";
 
 import {
-  selectCollegeProfile,
-  selectCollegeUsers,
-  selectInvoices,
-  selectIsInvitingUser,
-  selectIsRequestingSeats,
-  selectIsSavingProfile,
-  selectSeatInfo,
-  selectSettingsTab,
-} from "@/store/college/settings/college-settings.selectors";
+  useCancelCollegeSubscriptionMutation,
+  useCreateCollegeCheckoutMutation,
+  useGetCollegePlansQuery,
+  useGetCollegeSubscriptionQuery,
+} from "@/store/college/billing/billing.api";
 
-import {
-  updateCollegeProfile,
-} from "../services/college.service";
+import type {
+  CollegeTeamMember,
+  CollegeTeamRole,
+} from "@/store/college/types";
 
-import {
-  inviteCollegeUser,
-  removeCollegeUser,
-} from "../services/users.service";
+import type { CollegeUser, SettingsTab, UserRole } from "../types";
 
-import {
-  requestMoreSeats,
-} from "../services/billing.service";
+const ROLE_LABELS: Record<CollegeTeamRole, UserRole> = {
+  COLLEGE_ADMIN: "Admin",
+  COLLEGE_STAFF: "Staff",
+};
 
-import {
-  CollegeUser,
-  SettingsTab,
-  UserRole,
-} from "../types";
+function initialsFor(email: string): string {
+  const parts = email
+    .split("@")[0]
+    .split(/[._-]+/)
+    .filter(Boolean);
 
+  return (
+    parts
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join("") || "?"
+  );
+}
+
+function displayNameFor(email: string): string {
+  const parts = email
+    .split("@")[0]
+    .split(/[._-]+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return "Team member";
+  }
+
+  return parts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function toUser(member: CollegeTeamMember): CollegeUser {
+  return {
+    ...member,
+    initials: initialsFor(member.email),
+    displayName: displayNameFor(member.email),
+    roleLabel: ROLE_LABELS[member.role],
+  };
+}
+
+/*
+ * Single source of truth for the college settings screen. Organisation
+ * profile, team, seat usage and the subscription all come from the backend
+ * through RTK Query. Only the transient UI state — the active tab and the
+ * editable profile draft — is held locally.
+ */
 export function useSettings() {
-  const dispatch = useAppDispatch();
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
 
-  const activeTab = useAppSelector(selectSettingsTab);
-  const profile = useAppSelector(selectCollegeProfile);
-  const users = useAppSelector(selectCollegeUsers);
-  const seats = useAppSelector(selectSeatInfo);
-  const invoices = useAppSelector(selectInvoices);
+  /* Profile */
+  const organisationQuery = useGetCollegeOrganisationQuery();
+  const [updateOrganisation, updateOrganisationState] =
+    useUpdateCollegeOrganisationMutation();
 
-  const isSavingProfile = useAppSelector(
-    selectIsSavingProfile,
-  );
+  const [draftName, setDraftName] = useState("");
+  const [draftInstitutionType, setDraftInstitutionType] = useState<
+    string | null
+  >(null);
 
-  const isInvitingUser = useAppSelector(
-    selectIsInvitingUser,
-  );
+  /*
+   * Seed the editable draft from the server once the organisation loads.
+   */
+  const organisation = organisationQuery.data;
+  useEffect(() => {
+    if (organisation) {
+      setDraftName(organisation.name);
+      setDraftInstitutionType(organisation.institutionType);
+    }
+  }, [organisation]);
 
-  const isRequestingSeats = useAppSelector(
-    selectIsRequestingSeats,
-  );
+  const saveProfile = useCallback(async () => {
+    await updateOrganisation({
+      name: draftName,
+      institutionType: draftInstitutionType,
+    }).unwrap();
+  }, [updateOrganisation, draftName, draftInstitutionType]);
 
-  const changeTab = useCallback(
-    (tab: SettingsTab) => {
-      dispatch(setActiveTab(tab));
-    },
-    [dispatch],
-  );
+  /* Team */
+  const teamQuery = useGetCollegeTeamQuery();
+  const [addMember, addMemberState] = useAddCollegeTeamMemberMutation();
+  const [changeRole] = useChangeCollegeTeamMemberRoleMutation();
+  const [removeMember] = useRemoveCollegeTeamMemberMutation();
 
-  const saveProfile = useCallback(
-    async () => {
-      dispatch(setSavingProfile(true));
-
-      try {
-        const updatedProfile =
-          await updateCollegeProfile(profile);
-
-        dispatch(setProfile(updatedProfile));
-      } finally {
-        dispatch(setSavingProfile(false));
-      }
-    },
-    [dispatch, profile],
+  const users = useMemo<CollegeUser[]>(
+    () => (teamQuery.data ?? []).map(toUser),
+    [teamQuery.data],
   );
 
   const inviteUser = useCallback(
-    async (
-      name: string,
-      email: string,
-      role: UserRole,
-    ) => {
-      dispatch(setInvitingUser(true));
-
-      try {
-        const user = await inviteCollegeUser({
-          name,
-          email,
-          role,
-        });
-
-        dispatch(addUser(user));
-      } finally {
-        dispatch(setInvitingUser(false));
-      }
-    },
-    [dispatch],
+    (email: string, role: CollegeTeamRole) =>
+      addMember({ email, role }).unwrap(),
+    [addMember],
   );
 
-  const deleteUser = useCallback(
-    async (userId: string) => {
-      await removeCollegeUser(userId);
-      dispatch(removeUser(userId));
-    },
-    [dispatch],
+  const changeUserRole = useCallback(
+    (userId: string, role: CollegeTeamRole) =>
+      changeRole({ userId, role }).unwrap(),
+    [changeRole],
   );
 
-  const requestSeats = useCallback(
-    async (count: number) => {
-      dispatch(setRequestingSeats(true));
+  const removeUser = useCallback(
+    (userId: string) => removeMember(userId).unwrap(),
+    [removeMember],
+  );
 
-      try {
-        await requestMoreSeats(count);
-      } finally {
-        dispatch(setRequestingSeats(false));
-      }
-    },
-    [dispatch],
+  /* Seats */
+  const seatsQuery = useGetCollegeSeatsQuery();
+
+  /* Billing */
+  const subscriptionQuery = useGetCollegeSubscriptionQuery();
+  const plansQuery = useGetCollegePlansQuery();
+  const [createCheckout, checkoutState] = useCreateCollegeCheckoutMutation();
+  const [cancelSubscription, cancelState] =
+    useCancelCollegeSubscriptionMutation();
+
+  const checkout = useCallback(
+    (planCode: string) => createCheckout({ planCode }).unwrap(),
+    [createCheckout],
   );
 
   return {
     activeTab,
-    profile,
-    users,
-    seats,
-    invoices,
+    changeTab: setActiveTab,
 
-    isSavingProfile,
-    isInvitingUser,
-    isRequestingSeats,
-
-    changeTab,
+    /* Profile */
+    organisation: organisation ?? null,
+    draftName,
+    setDraftName,
+    draftInstitutionType,
+    setDraftInstitutionType,
+    isSavingProfile: updateOrganisationState.isLoading,
     saveProfile,
+
+    /* Team */
+    users,
+    isLoadingUsers: teamQuery.isLoading,
     inviteUser,
-    deleteUser,
-    requestSeats,
+    isInvitingUser: addMemberState.isLoading,
+    changeUserRole,
+    removeUser,
+
+    /* Seats */
+    seats: seatsQuery.data ?? null,
+    isLoadingSeats: seatsQuery.isLoading,
+
+    /* Billing */
+    subscription: subscriptionQuery.data ?? null,
+    plans: plansQuery.data ?? [],
+    isLoadingBilling: subscriptionQuery.isLoading || plansQuery.isLoading,
+    checkout,
+    isCheckingOut: checkoutState.isLoading,
+    cancelSubscription: () => cancelSubscription().unwrap(),
+    isCancelling: cancelState.isLoading,
   };
 }

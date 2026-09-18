@@ -2,7 +2,7 @@
  * College portal domain types.
  *
  * snake_case API payloads are mapped into these camelCase UI shapes at the
- * API layer (`store/college/*/*.api.ts`). Slices and components read only
+ * API layer (`store/college/*.api.ts`). Slices and components read only
  * these types; nothing outside the API layer sees a raw backend field.
  */
 
@@ -30,12 +30,59 @@ export interface CollegeTeamMember {
   addedAt: string;
 }
 
+/*
+ * The onboarding form is data-driven: the backend publishes the field list and
+ * the client renders it. Field keys stay snake_case because the `form` object
+ * is passed through untouched from the API (it is a published definition, not a
+ * mapped domain object).
+ */
+export type OnboardingFieldType =
+  | "TEXT"
+  | "TEXTAREA"
+  | "EMAIL"
+  | "PHONE"
+  | "NUMBER"
+  | "SELECT"
+  | "MULTISELECT"
+  | "DATE"
+  | "FILE"
+  | "CHECKBOX";
+
+export interface OnboardingField {
+  code: string;
+  key: string;
+  label: string;
+  type: OnboardingFieldType;
+  required: boolean;
+  pattern: string | null;
+  max_length: number | null;
+  help_text: string | null;
+  options_source: string | null;
+  public: boolean;
+  verification_note: string | null;
+}
+
+export interface OnboardingSection {
+  code: string;
+  title: string;
+  fields: OnboardingField[];
+  help_text: string | null;
+}
+
+export interface OnboardingFormDefinition {
+  code: string;
+  version: string;
+  sections: OnboardingSection[];
+}
+
+export interface OnboardingOption {
+  code: string;
+  label: string;
+}
+
 export interface CollegeOnboarding {
-  form: Record<string, unknown>;
-  options: Record<
-    string,
-    { code: string; label: string }[]
-  >;
+  form: OnboardingFormDefinition;
+  options: Record<string, OnboardingOption[]>;
   answers: Record<string, unknown>;
   formVersion: string | null;
   submittedAt: string | null;

@@ -10,6 +10,7 @@ import React, {
   useState,
 } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/common/loading/skeleton";
 
 /* =========================================================
    1. TABLE CONTAINER (Card wrapper)
@@ -311,6 +312,8 @@ export interface DataTableProps<T> {
   emptyTitle?: string;
   emptySubtitle?: string;
   isLoading?: boolean;
+  /** Number of skeleton rows shown while loading. Defaults to pageSize. */
+  skeletonRows?: number;
   itemLabel?: string;
   className?: string;
   header?: ReactNode;
@@ -327,6 +330,7 @@ export function DataTable<T>({
   emptyTitle,
   emptySubtitle,
   isLoading = false,
+  skeletonRows,
   itemLabel = "items",
   className = "",
   header,
@@ -340,6 +344,56 @@ export function DataTable<T>({
   const rowsToDisplay = onPageChange
     ? data
     : data.slice(startIndex, startIndex + pageSize);
+
+  const skeletonRowCount = skeletonRows ?? Math.min(pageSize, 6);
+
+  const columnKey = (col: ColumnDef<T>, fallback: number) =>
+    col.id ?? (col.accessorKey ? String(col.accessorKey) : `col-${fallback}`);
+
+  let bodyContent: ReactNode;
+  if (isLoading && rowsToDisplay.length === 0) {
+    bodyContent = Array.from({ length: skeletonRowCount }).map((_, rowIdx) => (
+      <TableRow key={`skeleton-row-${rowIdx}`}>
+        {columns.map((col, colIdx) => (
+          <TableCell key={columnKey(col, colIdx)} className={col.cellClassName}>
+            <Skeleton
+              height={12}
+              radius={6}
+              width={colIdx === 0 ? "55%" : "72%"}
+            />
+          </TableCell>
+        ))}
+      </TableRow>
+    ));
+  } else if (rowsToDisplay.length > 0) {
+    bodyContent = rowsToDisplay.map((row, rowIdx) => (
+      <TableRow key={keyExtractor(row, rowIdx)}>
+        {columns.map((col, colIdx) => {
+          let content: ReactNode = null;
+          if (col.cell) {
+            content = col.cell(row, rowIdx);
+          } else if (col.accessorKey) {
+            content = String(row[col.accessorKey] ?? "");
+          }
+
+          return (
+            <TableCell key={columnKey(col, colIdx)} className={col.cellClassName}>
+              {content}
+            </TableCell>
+          );
+        })}
+      </TableRow>
+    ));
+  } else {
+    bodyContent = (
+      <TableEmpty
+        colSpan={columns.length}
+        title={emptyTitle}
+        subtitle={emptySubtitle}
+        loading={isLoading}
+      />
+    );
+  }
 
   return (
     <TableContainer
@@ -370,35 +424,7 @@ export function DataTable<T>({
         </TableHeader>
 
         <TableBody>
-          {rowsToDisplay.length > 0 ? (
-            rowsToDisplay.map((row, rowIdx) => (
-              <TableRow key={keyExtractor(row, rowIdx)}>
-                {columns.map((col, colIdx) => {
-                  const content = col.cell
-                    ? col.cell(row, rowIdx)
-                    : col.accessorKey
-                    ? String(row[col.accessorKey] ?? "")
-                    : null;
-
-                  return (
-                    <TableCell
-                      key={col.id ?? String(col.accessorKey) ?? colIdx}
-                      className={col.cellClassName}
-                    >
-                      {content}
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
-            ))
-          ) : (
-            <TableEmpty
-              colSpan={columns.length}
-              title={emptyTitle}
-              subtitle={emptySubtitle}
-              loading={isLoading}
-            />
-          )}
+          {bodyContent}
         </TableBody>
       </Table>
     </TableContainer>

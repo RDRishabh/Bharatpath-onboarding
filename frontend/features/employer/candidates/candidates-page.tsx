@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo } from "react";
 
-import { Loader } from "@/components/common/loader";
+import { ListSkeleton } from "@/components/common/loading";
 import { usePageHeader } from "@/components/layout/header-context";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -89,9 +89,7 @@ export function CandidatesPage() {
           <div className="flex h-full flex-col gap-3">
 
             {isLoading && (
-              <div className="flex flex-1 items-center justify-center">
-                <Loader label="Loading candidates…" />
-              </div>
+              <ListSkeleton rows={6} trailing />
             )}
 
             {!isLoading && candidates.map((candidate) => (

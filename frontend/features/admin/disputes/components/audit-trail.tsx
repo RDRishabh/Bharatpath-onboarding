@@ -12,9 +12,11 @@ import type {
   AuditIcon,
   AuditItem,
 } from "../types";
+import { ListSkeleton } from "@/components/common/loading";
 
 interface AuditTrailProps {
   items: AuditItem[];
+  isLoading?: boolean;
 }
 
 function AuditIconComponent({
@@ -68,6 +70,7 @@ function AuditIconComponent({
 
 export function AuditTrail({
   items,
+  isLoading,
 }: AuditTrailProps) {
   return (
     <section
@@ -84,12 +87,7 @@ export function AuditTrail({
           Audit trail
         </span>
 
-        <button
-          type="button"
-          className="cursor-pointer text-[12px] font-semibold leading-4 text-[#385da8]"
-        >
-          Export
-        </button>
+        <span className="text-[11px] text-[#7b8494]">Latest 10</span>
       </div>
 
       {/* Timeline */}
@@ -97,6 +95,8 @@ export function AuditTrail({
       <div className="relative pb-3">
         <span className="absolute bottom-0 left-[13px] top-7 w-[2px] bg-[#eef0f3]" />
 
+        {isLoading ? <ListSkeleton rows={5} /> : null}
+        {!isLoading && items.length === 0 ? <p className="pt-3 text-[12px] text-[#7b8494]">No audit events found.</p> : null}
         <div className="flex flex-col">
           {items.map((item) => (
             <div

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Loader } from "@/components/common/loader";
+import { Skeleton } from "@/components/common/loading";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   askRemoveMember,
@@ -54,7 +54,7 @@ export function TeamTab() {
               <span className="text-[14px] font-semibold leading-[18px] text-[#718096]">
                 ·
               </span>
-              <span className="h-4 w-5 animate-pulse rounded bg-[#e2e7ed]" />
+              <Skeleton width={20} height={16} radius={4} />
             </div>
           )}
           <h2
@@ -86,8 +86,25 @@ export function TeamTab() {
         </div>
 
         {isLoading ? (
-          <div className="flex min-h-[360px] items-center justify-center px-[18px] py-8">
-            <Loader label="Loading team members…" />
+          <div aria-busy="true">
+            <span className="sr-only">Loading team members…</span>
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="grid min-h-[57px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] border-t border-[#edf0f3] px-[18px] max-sm:grid-cols-[minmax(0,1fr)_90px_70px_22px] max-sm:gap-2 max-sm:px-2.5"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <Skeleton width={30} height={30} radius={8} />
+                  <div className="min-w-0 flex-1">
+                    <Skeleton width="55%" height={11} radius={6} />
+                    <Skeleton className="mt-1.5" width="70%" height={9} radius={6} />
+                  </div>
+                </div>
+                <Skeleton width={64} height={18} radius={999} />
+                <Skeleton width={56} height={18} radius={999} />
+                <span />
+              </div>
+            ))}
           </div>
         ) : isError ? (
           <div className="px-[18px] py-5 text-xs text-[#c0392b]">

@@ -7,14 +7,11 @@ import {
 
 import {
   selectAdminSettings,
-  setKybMode,
   setSettingsTab,
-  toggleCheck,
 } from "@/store/admin";
+import { useGetAdminKybSubmissionsQuery } from "@/store/api/admin-api";
 
 import type {
-  AutomaticCheckKey,
-  KybMode,
   SettingsTab,
 } from "../types";
 
@@ -24,6 +21,7 @@ export function useSettings() {
   const state = useAppSelector(
     selectAdminSettings,
   );
+  const configQuery = useGetAdminKybSubmissionsQuery({ limit: 1 });
 
   const setTab = (
     tab: SettingsTab,
@@ -31,25 +29,16 @@ export function useSettings() {
     dispatch(setSettingsTab(tab));
   };
 
-  const changeKybMode = (
-    mode: KybMode,
-  ) => {
-    dispatch(setKybMode(mode));
-  };
-
-  const changeCheck = (
-    check: AutomaticCheckKey,
-  ) => {
-    dispatch(toggleCheck(check));
-  };
-
   return {
-    state,
+    state: {
+      ...state,
+      kybMode: configQuery.data?.review_required ? "manual" as const : "auto" as const,
+    },
+
+    isLoading: configQuery.isLoading,
+
+    error: configQuery.error,
 
     setTab,
-
-    setKybMode: changeKybMode,
-
-    toggleCheck: changeCheck,
   };
 }

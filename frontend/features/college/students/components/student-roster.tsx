@@ -4,56 +4,80 @@ import React, { useMemo, useState } from "react";
 import { Armchair, Mail } from "lucide-react";
 import { usePageHeader } from "@/components/layout/header-context";
 import { Button } from "@/components/ui/button";
-import { CollegeStudent, StudentStatus } from "../types";
+import type { RosterImport } from "@/store/college/types";
+
+import { StudentStatus } from "../types";
+import { useStudents } from "../hooks/use-students";
 import { StudentFilters } from "./student-filters";
 import { StudentTable } from "./student-table";
 import { BulkUploadCard } from "./bulk-upload-card";
 import { LinkStatesSummary } from "./link-states-summary";
 import { InviteStudentModal } from "./invite-student-modal";
+import { StudentDetailModal } from "./student-detail-modal";
+import { ReferralCodesCard } from "./referral-codes-card";
+import { RosterImportsCard } from "./roster-imports-card";
+import { RosterRowsModal } from "./roster-rows-modal";
 
-export interface StudentRosterProps {
-  students?: CollegeStudent[];
-  total?: number;
-}
+export function StudentRoster() {
+  const {
+    students,
+    isLoadingStudents,
+    seats,
+    referralCodes,
+    isLoadingReferralCodes,
+    rosterImports,
+    isLoadingRosterImports,
+    issueReferralCode,
+    isIssuingCode,
+    revokeReferralCode,
+    isRevokingCode,
+    uploadRosterImport,
+    commitRosterImport,
+    isCommittingRoster,
+    discardRosterImport,
+    isDiscardingRoster,
+    sendRosterInvitations,
+    isSendingInvitations,
+  } = useStudents();
 
-export function StudentRoster({
-  students = [],
-}: StudentRosterProps) {
-  const [studentList, setStudentList] = useState<CollegeStudent[]>(students);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StudentStatus | "all">("all");
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [viewingStudentId, setViewingStudentId] = useState<string | null>(
+    null,
+  );
+  const [rowsPreview, setRowsPreview] = useState<RosterImport | null>(null);
 
-  // Compute counts for Link states summary
-  const linkedCount = useMemo(
-    () => studentList.filter((s) => s.status === "linked").length,
-    [studentList],
-  );
-  const invitedCount = useMemo(
-    () => studentList.filter((s) => s.status === "invited").length,
-    [studentList],
-  );
-  const consentPendingCount = useMemo(
-    () => studentList.filter((s) => s.status === "consent_pending").length,
-    [studentList],
-  );
+  /*
+   * The roster only lists individually-visible (linked) students. Invited and
+   * consent-pending counts come from the outstanding roster-import invitations.
+   */
+  const linkedCount = students.length;
 
-  // Filter students based on search query and status filter
+  const { invitedCount, consentPendingCount } = useMemo(() => {
+    let invited = 0;
+    let pending = 0;
+
+    for (const roster of rosterImports) {
+      invited += roster.invitations.sent;
+      pending += roster.invitations.pending;
+    }
+
+    return { invitedCount: invited, consentPendingCount: pending };
+  }, [rosterImports]);
+
   const filteredStudents = useMemo(() => {
     const query = search.toLowerCase().trim();
 
-    return studentList.filter((student) => {
+    return students.filter((student) => {
       const matchesSearch =
-        !query ||
-        student.name.toLowerCase().includes(query) ||
-        student.email.toLowerCase().includes(query) ||
-        student.course.toLowerCase().includes(query);
+        !query || student.name.toLowerCase().includes(query);
 
       const matchesStatus = status === "all" || student.status === status;
 
       return matchesSearch && matchesStatus;
     });
-  }, [studentList, search, status]);
+  }, [students, search, status]);
 
   const headerAction = useMemo(
     () => (
@@ -71,39 +95,27 @@ export function StudentRoster({
     [],
   );
 
-  // Set the portal header content with the exact design elements:
-  // Title, Subtitle, Seats widget (248 of 300 seats used with progress), and the purple Invite students button!
+  const seatLabel = seats
+    ? `${seats.used} of ${seats.allocated} seats used`
+    : "Seats";
+
+  const seatProgress =
+    seats && seats.allocated > 0
+      ? (seats.used / seats.allocated) * 100
+      : 0;
+
   usePageHeader(
     "Students",
     "Roster, invites, bulk upload and consent...",
     {
       stat: {
         icon: Armchair,
-        label: "248 of 300 seats used",
-        progress: (248 / 300) * 100,
+        label: seatLabel,
+        progress: seatProgress,
       },
       action: headerAction,
     },
   );
-
-  const handleInviteStudent = (newStudent: Partial<CollegeStudent>) => {
-    const student: CollegeStudent = {
-      id: `stu-${Date.now()}`,
-      name: newStudent.name || "New Student",
-      email: newStudent.email || "student@example.edu",
-      course: newStudent.course || "General Course",
-      year: newStudent.year || "Final year",
-      status: (newStudent.status as StudentStatus) || "invited",
-      scoreBand: "not_scored",
-      lastActive: "Just now",
-    };
-    setStudentList((prev) => [student, ...prev]);
-  };
-
-  const handleUploadSuccess = (fileName: string, rowCount: number) => {
-    // Optionally notify or prepend imported students
-    console.log(`Uploaded ${fileName} with ${rowCount} rows`);
-  };
 
   return (
     <div
@@ -122,22 +134,16 @@ export function StudentRoster({
       <StudentTable
         students={filteredStudents}
         totalCount={filteredStudents.length}
-        pageSize={5}
-        onResend={(student) => {
-          // Pre-fill name & email then open invite modal
-          setIsInviteModalOpen(true);
-          console.log("Resending invite to", student.email);
-        }}
-        onRemove={(student) => {
-          setStudentList((prev) =>
-            prev.filter((s) => s.id !== student.id),
-          );
-        }}
+        pageSize={10}
+        isLoading={isLoadingStudents}
+        onView={(student) => setViewingStudentId(student.id)}
       />
 
       {/* 3. BOTTOM CARDS: BULK UPLOAD & LINK STATES */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1">
-        <BulkUploadCard onUploadSuccess={handleUploadSuccess} />
+        <BulkUploadCard
+          onUpload={(args) => uploadRosterImport(args).unwrap()}
+        />
         <LinkStatesSummary
           linkedCount={linkedCount}
           invitedCount={invitedCount}
@@ -145,11 +151,46 @@ export function StudentRoster({
         />
       </div>
 
-      {/* 4. INVITE STUDENT MODAL */}
+      {/* 4. ROSTER IMPORT PIPELINE & REFERRAL CODES */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <RosterImportsCard
+          imports={rosterImports}
+          isLoading={isLoadingRosterImports}
+          onViewRows={(import_) => setRowsPreview(import_)}
+          onCommit={(id) => commitRosterImport(id).unwrap()}
+          isCommitting={isCommittingRoster}
+          onDiscard={(id) => discardRosterImport(id).unwrap()}
+          isDiscarding={isDiscardingRoster}
+          onSend={(id) => sendRosterInvitations(id).unwrap()}
+          isSending={isSendingInvitations}
+        />
+        <ReferralCodesCard
+          codes={referralCodes}
+          isLoading={isLoadingReferralCodes}
+          onRevoke={(id) => revokeReferralCode(id).unwrap()}
+          isRevoking={isRevokingCode}
+        />
+      </div>
+
+      {/* 5. INVITE STUDENT MODAL — issues a referral code to hand out */}
       <InviteStudentModal
         isOpen={isInviteModalOpen}
         onClose={() => setIsInviteModalOpen(false)}
-        onInvite={handleInviteStudent}
+        onIssueCode={(args) => issueReferralCode(args).unwrap()}
+        isIssuing={isIssuingCode}
+      />
+
+      {/* 6. STUDENT DETAIL — audited open of a single visible student */}
+      <StudentDetailModal
+        candidateId={viewingStudentId}
+        onClose={() => setViewingStudentId(null)}
+      />
+
+      {/* 7. ROSTER ROWS PREVIEW */}
+      <RosterRowsModal
+        importId={rowsPreview?.id ?? null}
+        fileName={rowsPreview?.fileName}
+        onClose={() => setRowsPreview(null)}
       />
     </div>
   );

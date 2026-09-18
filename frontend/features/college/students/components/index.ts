@@ -5,3 +5,7 @@ export * from "./bulk-upload-card";
 export * from "./link-states-summary";
 export * from "./invite-student-modal";
 export * from "./student-status-badge";
+export * from "./student-detail-modal";
+export * from "./referral-codes-card";
+export * from "./roster-imports-card";
+export * from "./roster-rows-modal";

@@ -1,32 +1,61 @@
 "use client";
 
-import { Receipt } from "lucide-react";
+import type {
+  CollegePlan,
+  CollegeSeats,
+  CollegeSubscription,
+} from "@/store/college/types";
 
 import { useSettings } from "../hooks/use-settings";
 
-function formatCurrency(amount: number) {
+function formatCurrency(amountMinor: number, currency: string) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
-    currency: "INR",
+    currency: currency || "INR",
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(amountMinor / 100);
 }
+
+function formatDate(iso: string | null): string {
+  if (!iso) {
+    return "—";
+  }
+
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+const SUBSCRIPTION_LABELS: Record<CollegeSubscription["state"], string> = {
+  NONE: "No subscription",
+  PENDING: "Payment pending",
+  ACTIVE: "Active",
+  GRACE: "In grace period",
+  LAPSED: "Lapsed",
+  CANCELLED: "Cancelled",
+};
 
 export function Billing() {
   const {
     seats,
-    invoices,
-    requestSeats,
-    isRequestingSeats,
+    subscription,
+    plans,
+    isLoadingBilling,
+    checkout,
+    isCheckingOut,
+    cancelSubscription,
+    isCancelling,
   } = useSettings();
 
-  const percentage =
-    seats.total > 0
-      ? Math.min((seats.used / seats.total) * 100, 100)
-      : 0;
+  const collegePlans = plans.filter((plan) => plan.audience === "COLLEGE");
 
-  const handleRequestSeats = async () => {
-    await requestSeats(50);
+  const handleCheckout = async (planCode: string) => {
+    const result = await checkout(planCode);
+    if (result.redirectUrl) {
+      window.location.href = result.redirectUrl;
+    }
   };
 
   return (
@@ -36,321 +65,206 @@ export function Billing() {
         fontFamily: "'General Sans', sans-serif",
       }}
     >
-      {/* Billing Cards */}
-      <div
-        className="
-          grid
-          w-full
-          grid-cols-1
-          gap-4
-          min-[1024px]:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]
-        "
-      >
-        {/* =========================
-            Seat Block
-        ========================= */}
-        <section
-          className="
-            flex
-            flex-col
-            gap-[14px]
-            rounded-[12px]
-            border
-            border-[#e1e5eb]
-            bg-white
-            p-5
-            shadow-[0_4px_12px_rgba(19,26,38,0.024)]
-          "
-        >
-          {/* Title + Status */}
-          <div className="flex items-center gap-[10px]">
-            <span className="flex-1 text-[14px] font-semibold leading-[18px] text-[#131A26]">
-              Seat block
-            </span>
-
-            <span
-              className="
-                whitespace-nowrap
-                rounded-full
-                bg-[#eaf6f0]
-                px-[10px]
-                py-1
-                text-[11px]
-                font-semibold
-                leading-[14px]
-                text-[#00845a]
-              "
-            >
-              {seats.status}
-            </span>
-          </div>
-
-          {/* Seat Count */}
-          <span
-            className="
-              text-[28px]
-              font-bold
-              leading-8
-              tracking-[-0.02em]
-              text-[#131A26]
-            "
-          >
-            {seats.used} / {seats.total}
-          </span>
-
-          {/* Progress */}
-          <span className="block h-2 overflow-hidden rounded-full bg-[#eef0f3]">
-            <span
-              className="
-                block
-                h-full
-                rounded-full
-                bg-[#3566b8]
-                transition-all
-              "
-              style={{
-                width: `${percentage}%`,
-              }}
-            />
-          </span>
-
-          {/* Description */}
-          <p
-            className="
-              text-[12px]
-              font-normal
-              leading-[17px]
-              text-[#131A26]
-            "
-          >
-            Seat pricing is confirmed on your invoice. Contact your
-            BharatPath partner manager to change the block mid-term.
-          </p>
-
-          {/* Actions */}
-          <div
-            className="
-              flex
-              gap-[10px]
-              border-t
-              border-[#eef0f3]
-              pt-3
-            "
-          >
-            <button
-              type="button"
-              disabled={isRequestingSeats}
-              onClick={handleRequestSeats}
-              className="
-                flex-1
-                rounded-[8px]
-                border-0
-                bg-[#5a4bd6]
-                px-3
-                py-3
-                text-[13px]
-                font-semibold
-                leading-[17px]
-                text-white
-                transition
-                hover:bg-[#4f41c8]
-                disabled:cursor-not-allowed
-                disabled:opacity-60
-              "
-            >
-              {isRequestingSeats
-                ? "Requesting..."
-                : "Request more seats"}
-            </button>
-
-            <button
-              type="button"
-              className="
-                flex-1
-                rounded-[8px]
-                border
-                border-[#e1e5eb]
-                bg-white
-                px-3
-                py-3
-                text-[13px]
-                font-semibold
-                leading-[17px]
-                text-[#131A26]
-                transition
-                hover:bg-[#f8fafc]
-              "
-              onClick={() => {
-                // Replace with real quote download later.
-              }}
-            >
-              Download quote
-            </button>
-          </div>
-        </section>
-
-        {/* =========================
-            Invoices
-        ========================= */}
-        <section
-          className="
-            overflow-x-auto
-            rounded-[12px]
-            border
-            border-[#e1e5eb]
-            bg-white
-            shadow-[0_4px_12px_rgba(19,26,38,0.024)]
-          "
-        >
-          {/* Invoice Title */}
-          <div
-            className="
-              min-w-[420px]
-              border-b
-              border-[#e1e5eb]
-              px-5
-              py-4
-              text-[14px]
-              font-semibold
-              leading-[18px]
-              text-[#131A26]
-            "
-          >
-            Invoices
-          </div>
-
-          {/* Table Header */}
-          <div
-            className="
-              grid
-              min-w-[420px]
-              grid-cols-[minmax(160px,1fr)_104px_88px]
-              gap-3
-              border-b
-              border-[#e1e5eb]
-              bg-[#f3f5f7]
-              px-5
-              py-3
-            "
-          >
-            <span
-              className="
-                text-[11px]
-                font-bold
-                leading-[14px]
-                text-[#64748b]
-              "
-            >
-              INVOICE
-            </span>
-
-            <span
-              className="
-                text-[11px]
-                font-bold
-                leading-[14px]
-                text-[#64748b]
-              "
-            >
-              AMOUNT
-            </span>
-
-            <span
-              className="
-                text-right
-                text-[11px]
-                font-bold
-                leading-[14px]
-                text-[#64748b]
-              "
-            >
-              STATUS
-            </span>
-          </div>
-
-          {/* Invoice Rows */}
-          {invoices.map((invoice, index) => (
-            <div
-              key={invoice.id}
-              className={[
-                "grid min-h-[52px] min-w-[420px]",
-                "grid-cols-[minmax(160px,1fr)_104px_88px]",
-                "items-center gap-3 px-5 py-3",
-                index > 0
-                  ? "border-t border-[#eef0f3]"
-                  : "",
-              ].join(" ")}
-            >
-              {/* Invoice */}
-              <div className="flex min-w-0 items-center gap-[10px]">
-                <Receipt
-                  size={16}
-                  strokeWidth={2}
-                  className="shrink-0 text-[#64748b]"
-                />
-
-                <div className="flex min-w-0 flex-col gap-[2px]">
-                  <span
-                    className="
-                      truncate
-                      text-[13px]
-                      font-semibold
-                      leading-[17px]
-                      text-[#131A26]
-                    "
-                  >
-                    {invoice.id}
-                  </span>
-
-                  <span
-                    className="
-                      text-[11px]
-                      font-normal
-                      leading-[14px]
-                      text-[#64748b]
-                    "
-                  >
-                    {invoice.date}
-                  </span>
-                </div>
-              </div>
-
-              {/* Amount */}
-              <span
-                className="
-                  flex
-                  items-center
-                  text-[13px]
-                  font-semibold
-                  leading-[17px]
-                  text-[#131A26]
-                "
-              >
-                {formatCurrency(invoice.amount)}
-              </span>
-
-              {/* Status */}
-              <span className="flex items-center justify-end">
-                <span
-                  className="
-                    whitespace-nowrap
-                    rounded-full
-                    bg-[#eaf6f0]
-                    px-[10px]
-                    py-1
-                    text-[11px]
-                    font-semibold
-                    leading-[14px]
-                    text-[#00845a]
-                  "
-                >
-                  {invoice.status}
-                </span>
-              </span>
-            </div>
-          ))}
-        </section>
+      <div className="grid w-full grid-cols-1 gap-4 min-[1024px]:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <SeatBlock seats={seats} />
+        <SubscriptionBlock
+          subscription={subscription}
+          isLoading={isLoadingBilling}
+          isCancelling={isCancelling}
+          onCancel={cancelSubscription}
+        />
       </div>
+
+      {/* Plans */}
+      <section className="overflow-hidden rounded-[12px] border border-[#e1e5eb] bg-white shadow-[0_4px_12px_rgba(19,26,38,0.024)]">
+        <div className="border-b border-[#e1e5eb] px-5 py-4 text-[14px] font-semibold leading-[18px] text-[#131A26]">
+          Available plans
+        </div>
+
+        {collegePlans.length === 0 && (
+          <p className="px-5 py-6 text-[13px] text-[#64748b]">
+            {isLoadingBilling
+              ? "Loading plans..."
+              : "No plans are available right now."}
+          </p>
+        )}
+
+        {collegePlans.map((plan, index) => (
+          <PlanRow
+            key={plan.code}
+            plan={plan}
+            isCurrent={subscription?.planCode === plan.code}
+            isCheckingOut={isCheckingOut}
+            onSubscribe={() => handleCheckout(plan.code)}
+            divided={index > 0}
+          />
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function SeatBlock({ seats }: Readonly<{ seats: CollegeSeats | null }>) {
+  const used = seats?.used ?? 0;
+  const allocated = seats?.allocated ?? 0;
+  const percentage =
+    allocated > 0 ? Math.min((used / allocated) * 100, 100) : 0;
+
+  return (
+    <section className="flex flex-col gap-[14px] rounded-[12px] border border-[#e1e5eb] bg-white p-5 shadow-[0_4px_12px_rgba(19,26,38,0.024)]">
+      <div className="flex items-center gap-[10px]">
+        <span className="flex-1 text-[14px] font-semibold leading-[18px] text-[#131A26]">
+          Seat block
+        </span>
+
+        <span
+          className={[
+            "whitespace-nowrap rounded-full px-[10px] py-1",
+            "text-[11px] font-semibold leading-[14px]",
+            seats?.subscriptionActive
+              ? "bg-[#eaf6f0] text-[#00845a]"
+              : "bg-[#fdecec] text-[#c43d3d]",
+          ].join(" ")}
+        >
+          {seats?.subscriptionActive ? "Active" : "Inactive"}
+        </span>
+      </div>
+
+      <span className="text-[28px] font-bold leading-8 tracking-[-0.02em] text-[#131A26]">
+        {used} / {allocated}
+      </span>
+
+      <span className="block h-2 overflow-hidden rounded-full bg-[#eef0f3]">
+        <span
+          className="block h-full rounded-full bg-[#3566b8] transition-all"
+          style={{ width: `${percentage}%` }}
+        />
+      </span>
+
+      <p className="text-[12px] font-normal leading-[17px] text-[#131A26]">
+        {seats?.available ?? 0} seats available. Seat pricing is confirmed on
+        your invoice; contact your BharatPath partner manager to change the
+        block mid-term.
+      </p>
+    </section>
+  );
+}
+
+function SubscriptionBlock({
+  subscription,
+  isLoading,
+  isCancelling,
+  onCancel,
+}: Readonly<{
+  subscription: CollegeSubscription | null;
+  isLoading: boolean;
+  isCancelling: boolean;
+  onCancel: () => Promise<unknown>;
+}>) {
+  const state = subscription?.state ?? "NONE";
+  const isActive = state === "ACTIVE" || state === "GRACE";
+
+  return (
+    <section className="flex flex-col gap-[14px] rounded-[12px] border border-[#e1e5eb] bg-white p-5 shadow-[0_4px_12px_rgba(19,26,38,0.024)]">
+      <div className="flex items-center gap-[10px]">
+        <span className="flex-1 text-[14px] font-semibold leading-[18px] text-[#131A26]">
+          Subscription
+        </span>
+
+        <span
+          className={[
+            "whitespace-nowrap rounded-full px-[10px] py-1",
+            "text-[11px] font-semibold leading-[14px]",
+            isActive
+              ? "bg-[#eaf6f0] text-[#00845a]"
+              : "bg-[#f3f5f7] text-[#64748b]",
+          ].join(" ")}
+        >
+          {SUBSCRIPTION_LABELS[state]}
+        </span>
+      </div>
+
+      <dl className="flex flex-col gap-2 text-[13px]">
+        <div className="flex items-center justify-between">
+          <dt className="text-[#64748b]">Current plan</dt>
+          <dd className="font-semibold text-[#131A26]">
+            {subscription?.planCode ?? "—"}
+          </dd>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <dt className="text-[#64748b]">Renews on</dt>
+          <dd className="font-semibold text-[#131A26]">
+            {formatDate(subscription?.currentPeriodEnd ?? null)}
+          </dd>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <dt className="text-[#64748b]">Auto-renewal</dt>
+          <dd className="font-semibold text-[#131A26]">
+            {subscription?.renewsAutomatically ? "On" : "Off"}
+          </dd>
+        </div>
+      </dl>
+
+      {isActive && (
+        <button
+          type="button"
+          disabled={isCancelling || isLoading}
+          onClick={() => onCancel()}
+          className="self-start rounded-[8px] border border-[#e1e5eb] bg-white px-4 py-[10px] text-[13px] font-semibold leading-[17px] text-[#c43d3d] transition hover:bg-[#fdf2f2] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isCancelling ? "Cancelling..." : "Cancel subscription"}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function PlanRow({
+  plan,
+  isCurrent,
+  isCheckingOut,
+  onSubscribe,
+  divided,
+}: Readonly<{
+  plan: CollegePlan;
+  isCurrent: boolean;
+  isCheckingOut: boolean;
+  onSubscribe: () => void;
+  divided: boolean;
+}>) {
+  return (
+    <div
+      className={[
+        "flex items-center gap-3 px-5 py-4",
+        divided ? "border-t border-[#eef0f3]" : "",
+      ].join(" ")}
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
+        <span className="text-[13px] font-semibold leading-[17px] text-[#131A26]">
+          {plan.code}
+        </span>
+        <span className="text-[11px] font-normal leading-[14px] text-[#64748b]">
+          {plan.period.toLowerCase()} ·{" "}
+          {plan.seatAllowance === null
+            ? "seats by arrangement"
+            : `${plan.seatAllowance} seats`}
+        </span>
+      </div>
+
+      <span className="whitespace-nowrap text-[13px] font-semibold text-[#131A26]">
+        {formatCurrency(plan.priceMinor, plan.currency)}
+      </span>
+
+      <button
+        type="button"
+        disabled={isCurrent || isCheckingOut}
+        onClick={onSubscribe}
+        className="shrink-0 rounded-[8px] border-0 bg-[#5a4bd6] px-4 py-[8px] text-[12px] font-semibold leading-[16px] text-white transition hover:bg-[#4f41c8] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isCurrent ? "Current" : "Choose"}
+      </button>
     </div>
   );
 }

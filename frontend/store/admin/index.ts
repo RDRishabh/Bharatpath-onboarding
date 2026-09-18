@@ -6,6 +6,7 @@ import queue from "./queue/slice";
 import users from "./users/slice";
 import disputes from "./disputes/slice";
 import settings from "./settings/slice";
+import feedback from "./feedback/slice";
 
 export const adminReducer = combineReducers({
   auth,
@@ -14,6 +15,7 @@ export const adminReducer = combineReducers({
   users,
   disputes,
   settings,
+  feedback,
 });
 
 export * from "./auth/slice";
@@ -28,6 +30,8 @@ export * from "./disputes/slice";
 export * from "./disputes/selectors";
 export * from "./settings/slice";
 export * from "./settings/selectors";
+export * from "./feedback/slice";
+export * from "./feedback/selectors";
 
 export {
   toggleSidebar,

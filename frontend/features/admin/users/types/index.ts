@@ -22,6 +22,7 @@ export interface UserRow {
 export interface AdminUsersState {
   segment: UserSegment;
   search: string;
+  selectedId: string | null;
 
   candidates: UserRow[];
   employers: UserRow[];

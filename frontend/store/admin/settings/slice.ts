@@ -26,10 +26,10 @@ const initialState: AdminSettingsState = {
   kybMode: "manual",
 
   autoChecks: {
-    gstin: true,
-    pan: true,
+    gstin: false,
+    pan: false,
     bank: false,
-    address: true,
+    address: false,
   },
 };
 

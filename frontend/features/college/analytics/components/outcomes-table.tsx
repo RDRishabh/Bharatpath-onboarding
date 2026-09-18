@@ -1,66 +1,44 @@
 "use client";
 
-import { ColumnDef, DataTable, StatusBadge, StatusBadgeTone } from "@/components/ui";
-import { Outcome, OutcomeStage } from "../types";
+import { ColumnDef, DataTable } from "@/components/ui";
+import { LocationPlacement } from "../types";
 
-const STAGE_TONE: Record<OutcomeStage, StatusBadgeTone> = {
-  Hired: "success",
-  Interview: "info",
-  Shortlisted: "neutral",
-  Applied: "muted",
-};
-
-const COLUMNS: ColumnDef<Outcome>[] = [
+const COLUMNS: ColumnDef<LocationPlacement>[] = [
   {
-    accessorKey: "role",
-    header: "Role",
+    accessorKey: "location",
+    header: "Location",
     cell: (row) => (
-      <span className="font-semibold text-[#151b2b]">{row.role}</span>
+      <span className="font-semibold text-[#151b2b]">{row.location}</span>
     ),
   },
   {
-    accessorKey: "employer",
-    header: "Employer",
-    cellClassName: "text-[#4f5666]",
-  },
-  {
-    accessorKey: "applied",
-    header: "Applied",
-    cellClassName: "text-[#8a91a0]",
-  },
-  {
-    accessorKey: "stage",
-    header: "Stage",
+    accessorKey: "hires",
+    header: "Hired via platform",
     cell: (row) => (
-      <StatusBadge label={row.stage} tone={STAGE_TONE[row.stage]} />
-    ),
-  },
-  {
-    accessorKey: "students",
-    header: "Students",
-    cell: (row) => (
-      <span className="font-semibold text-[#151b2b]">{row.students}</span>
+      <span className="font-semibold text-[#151b2b]">{row.hires}</span>
     ),
   },
 ];
 
-export function OutcomesTable({ outcomes }: { outcomes: Outcome[] }) {
+export function PlacementsByLocationTable({
+  placements,
+}: Readonly<{ placements: LocationPlacement[] }>) {
   return (
     <DataTable
       columns={COLUMNS}
-      data={outcomes}
-      keyExtractor={(row) => row.id}
-      pageSize={4}
+      data={placements}
+      keyExtractor={(row) => row.location}
+      pageSize={6}
       itemLabel=""
-      emptyTitle="No outcomes yet"
-      emptySubtitle="Platform-sourced roles will appear here as students apply."
+      emptyTitle="No placements yet"
+      emptySubtitle="Platform-sourced hires will appear here as students are hired."
       header={
         <div className="flex items-center justify-between gap-3 border-b border-[#e7e9ee] px-5 py-4">
           <h2 className="text-[14px] font-semibold text-[#151b2b]">
-            Outcomes sourced through BharatPath
+            Hires by location
           </h2>
           <span className="text-[12px] font-medium text-[#777f90]">
-            Updated daily
+            Sourced through BharatPath
           </span>
         </div>
       }

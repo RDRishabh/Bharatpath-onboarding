@@ -9,29 +9,61 @@ import {
   X,
 } from "lucide-react";
 
-import { useAppSelector } from "@/store/hooks";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { showAdminFeedback } from "@/store/admin";
+import { DetailSkeleton } from "@/components/common/loading";
 
 import {
-  selectSelectedDispute,
+  selectAdminDisputes,
 } from "@/store/admin/disputes/selectors";
+import {
+  useAssignAdminDisputeMutation,
+  useGetAdminDisputeQuery,
+  useResolveAdminDisputeMutation,
+} from "@/store/api/admin-api";
 
 import { useDisputes } from "../hooks/use-disputes";
 
 import { StateBadge } from "../../shared/status-badge";
 
 export function DisputeDrawer() {
-  const selectedDispute = useAppSelector(
-    selectSelectedDispute,
-  );
+  const dispatch = useAppDispatch();
+  const { openId } = useAppSelector(selectAdminDisputes);
+  const detailQuery = useGetAdminDisputeQuery(openId ?? "", { skip: !openId });
+  const [assignDispute, assignState] = useAssignAdminDisputeMutation();
+  const [resolveDispute, resolveState] = useResolveAdminDisputeMutation();
 
   const { closeDispute } = useDisputes();
 
   const [resolutionNote, setResolutionNote] =
     useState("");
 
-  if (!selectedDispute) {
+  if (!openId) {
     return null;
   }
+
+  const detail = detailQuery.data;
+  const selectedDispute = {
+    title: detail ? `${detail.kind[0]}${detail.kind.slice(1).toLowerCase()} dispute` : "Loading dispute",
+    parties: detail ? `${detail.party} · ${detail.tenant_id ?? detail.raised_by}` : "",
+    raised: detail ? new Date(detail.created_at).toLocaleString() : "",
+    status: detail?.state === "IN_REVIEW" ? "Investigating" : detail ? `${detail.state[0]}${detail.state.slice(1).toLowerCase()}` : "Pending",
+    claim: detail?.description ?? "",
+    evidence: detail ? [
+      ...(detail.links.application ? [{ label: "Application", meta: `${detail.links.application.id} · ${detail.links.application.stage}` }] : []),
+      ...(detail.links.candidate_id ? [{ label: "Candidate", meta: detail.links.candidate_id }] : []),
+      ...Object.entries(detail.links.live_integrity_signals).map(([severity, count]) => ({ label: `${severity} integrity signals`, meta: String(count) })),
+    ] : [],
+  };
+  const actionLoading = assignState.isLoading || resolveState.isLoading;
+
+  const finish = async (outcome: "RESOLVED" | "REJECTED") => {
+    if (!resolutionNote.trim()) return;
+    await resolveDispute({ disputeId: openId, outcome, resolution: resolutionNote.trim() }).unwrap();
+    dispatch(showAdminFeedback(outcome === "RESOLVED" ? "Dispute resolved." : "Dispute rejected."));
+    setResolutionNote("");
+    closeDispute();
+  };
 
   return (
     <>
@@ -89,6 +121,8 @@ export function DisputeDrawer() {
             ============================================================ */}
 
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
+          {detailQuery.isLoading ? <DetailSkeleton sections={3} /> : null}
+          {detailQuery.error ? <p className="rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not load dispute details.</p> : null}
           {/* ==========================================================
               STATUS
               ========================================================== */}
@@ -192,20 +226,31 @@ export function DisputeDrawer() {
 
           <button
             type="button"
-            onClick={closeDispute}
+            disabled={actionLoading || !detail || detail.state !== "OPEN"}
+            onClick={() => void assignDispute(openId).unwrap().then(() => dispatch(showAdminFeedback("Dispute assigned to you.")))}
             className="flex-1 cursor-pointer rounded-lg border border-[#e5e8ee] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#172033] transition-colors hover:bg-[#f8f9fb]"
           >
-            Request evidence
+            {assignState.isLoading ? "Assigning..." : "Assign to me"}
+          </button>
+
+          <button
+            type="button"
+            disabled={actionLoading || !resolutionNote.trim() || !detail || ["RESOLVED", "REJECTED"].includes(detail.state)}
+            onClick={() => void finish("REJECTED")}
+            className="flex-1 cursor-pointer rounded-lg border border-[#c92f3f] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#c92f3f] transition-colors hover:bg-[#fff7f7] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Reject
           </button>
 
           {/* Record Resolution */}
 
           <button
             type="button"
-            onClick={closeDispute}
+            disabled={actionLoading || !resolutionNote.trim() || !detail || ["RESOLVED", "REJECTED"].includes(detail.state)}
+            onClick={() => void finish("RESOLVED")}
             className="flex-[1.4] cursor-pointer rounded-lg border-0 bg-[#5b4fcf] px-3 py-3 text-[13px] font-semibold leading-[17px] text-white transition-colors hover:bg-[#4f44bc]"
           >
-            Record resolution
+            {resolveState.isLoading ? "Saving..." : "Resolve"}
           </button>
         </div>
       </aside>
@@ -233,7 +278,6 @@ function getEvidenceIcon(
   }
 
   if (
-    normalized.includes("unlock") ||
     normalized.includes("record")
   ) {
     return (

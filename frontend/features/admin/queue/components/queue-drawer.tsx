@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   AlertCircle,
   Check,
@@ -9,29 +10,29 @@ import {
   X,
 } from "lucide-react";
 
-import { useAppSelector } from "@/store/hooks";
-
+import { DetailSkeleton } from "@/components/common/loading";
+import { showAdminFeedback } from "@/store/admin";
+import { useAppDispatch } from "@/store/hooks";
 import {
-  selectAdminQueue,
-  selectIntegrityItems,
-  selectKybItems,
-} from "@/store/admin/queue/selectors";
+  useDecideAdminKybMutation,
+  useGetAdminIntegritySignalQuery,
+  useGetAdminKybSubmissionQuery,
+  useResolveAdminIntegritySignalMutation,
+} from "@/store/api/admin-api";
 
 import { useQueue } from "../hooks/use-queue";
 
+function formatDetail(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "Not provided";
+  if (Array.isArray(value)) return value.map(formatDetail).join(", ");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 export function QueueDrawer() {
-  const { openReviewId } =
-    useAppSelector(selectAdminQueue);
-
-  const kybItems = useAppSelector(
-    selectKybItems,
-  );
-
-  const integrityItems = useAppSelector(
-    selectIntegrityItems,
-  );
-
-  const { closeReview } = useQueue();
+  const dispatch = useAppDispatch();
+  const { openReviewId, items, closeReview } = useQueue();
+  const [note, setNote] = useState("");
 
   /*
    * ================================================================
@@ -39,19 +40,28 @@ export function QueueDrawer() {
    * ================================================================
    */
 
-  const item = [
-    ...kybItems,
-    ...integrityItems,
-  ].find(
+  const item = items.find(
     (queueItem) =>
       queueItem.id === openReviewId,
   );
+
+  const isKyb = item?.type === "KYB";
+  const kybDetail = useGetAdminKybSubmissionQuery(openReviewId ?? "", {
+    skip: !openReviewId || !isKyb,
+  });
+  const integrityDetail = useGetAdminIntegritySignalQuery(openReviewId ?? "", {
+    skip: !openReviewId || isKyb,
+  });
+  const [decideKyb, kybDecision] = useDecideAdminKybMutation();
+  const [resolveSignal, signalDecision] = useResolveAdminIntegritySignalMutation();
 
   if (!item) {
     return null;
   }
 
-  const isKyb = item.type === "KYB";
+  const detailLoading = kybDetail.isLoading || integrityDetail.isLoading;
+  const actionLoading = kybDecision.isLoading || signalDecision.isLoading;
+  const actionError = kybDecision.error || signalDecision.error;
 
   /*
    * ================================================================
@@ -60,56 +70,16 @@ export function QueueDrawer() {
    */
 
   const verificationChecks = isKyb
-    ? [
-        {
-          label: "GSTIN active",
-          detail: item.secondary,
-          status: "Passed" as const,
-        },
-        {
-          label: "PAN matches entity",
-          detail: "AAECS1234F",
-          status: "Passed" as const,
-        },
-        {
-          label: "Registered address",
-          detail: "Matches utility bill",
-          status:
-            item.risk === "High"
-              ? ("Attention" as const)
-              : ("Passed" as const),
-        },
-        {
-          label: "Bank account",
-          detail: "Not submitted",
-          status: "Not run" as const,
-        },
-      ]
-    : [
-        {
-          label: "Device fingerprint",
-          detail:
-            "Shared with 3 other accounts",
-          status: "Attention" as const,
-        },
-        {
-          label: "Score trajectory",
-          detail:
-            "Retest +180 in 6 days",
-          status: "Attention" as const,
-        },
-        {
-          label: "Identity document",
-          detail:
-            "Aadhaar last 4 · 8821",
-          status: "Passed" as const,
-        },
-        {
-          label: "Prior flags",
-          detail: "None on record",
-          status: "Passed" as const,
-        },
-      ];
+    ? Object.entries(kybDetail.data?.answers ?? {}).map(([label, value]) => ({
+        label: label.replaceAll("_", " "),
+        detail: formatDetail(value),
+        status: value === null || value === "" ? ("Not run" as const) : ("Passed" as const),
+      }))
+    : Object.entries(integrityDetail.data?.evidence ?? {}).map(([label, value]) => ({
+        label: label.replaceAll("_", " "),
+        detail: formatDetail(value),
+        status: "Attention" as const,
+      }));
 
   /*
    * ================================================================
@@ -117,31 +87,24 @@ export function QueueDrawer() {
    * ================================================================
    */
 
-  const documents = isKyb
-    ? [
-        {
-          name: "GST certificate.pdf",
-          meta: "Uploaded 03 Sep · 240 KB",
-        },
-        {
-          name: "PAN card.jpg",
-          meta: "Uploaded 03 Sep · 180 KB",
-        },
-        {
-          name: "Address proof.pdf",
-          meta: "Uploaded 03 Sep · 310 KB",
-        },
-      ]
-    : [
-        {
-          name: "Session log.csv",
-          meta: "Generated 04 Sep · 62 KB",
-        },
-        {
-          name: "Mock interview recording",
-          meta: "12 min · flagged segment 04:20",
-        },
-      ];
+  const documents = (kybDetail.data?.documents ?? []).map((document) => ({
+    name: document.doc_type.replaceAll("_", " "),
+    meta: `${document.mime ?? "Document"} · ${new Date(document.uploaded_at).toLocaleDateString()}`,
+  }));
+
+  const submitDecision = async (
+    decision: "APPROVED" | "REJECTED" | "MORE_INFO_REQUIRED" | "CLEARED" | "CONFIRMED",
+  ) => {
+    if ((decision === "REJECTED" || decision === "MORE_INFO_REQUIRED") && !note.trim()) return;
+    if (isKyb) {
+      await decideKyb({ submissionId: item.id, decision: decision as "APPROVED" | "REJECTED" | "MORE_INFO_REQUIRED", reason: note.trim() || undefined }).unwrap();
+    } else {
+      await resolveSignal({ signalId: item.id, outcome: decision as "CLEARED" | "CONFIRMED", note: note.trim() || undefined }).unwrap();
+    }
+    dispatch(showAdminFeedback(isKyb ? "KYB decision saved." : "Integrity decision saved."));
+    setNote("");
+    closeReview();
+  };
 
   /*
    * ================================================================
@@ -279,6 +242,10 @@ export function QueueDrawer() {
             ========================================================== */}
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          {detailLoading ? <DetailSkeleton sections={2} /> : null}
+          {!detailLoading && (kybDetail.error || integrityDetail.error) ? (
+            <p className="rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not load review details.</p>
+          ) : null}
           <div className="flex flex-col gap-5">
             {/* ======================================================
                 RISK + TYPE
@@ -325,6 +292,9 @@ export function QueueDrawer() {
               </h3>
 
               <div className="flex flex-col overflow-hidden rounded-xl border border-[#e5e7eb]">
+                {verificationChecks.length === 0 ? (
+                  <p className="px-4 py-3 text-[12px] text-[#7b8494]">No review evidence was supplied.</p>
+                ) : null}
                 {verificationChecks.map(
                   (check, index) => {
                     const styles =
@@ -400,12 +370,13 @@ export function QueueDrawer() {
                 DOCUMENTS
                 ====================================================== */}
 
-            <section className="flex flex-col gap-3">
+            {isKyb ? <section className="flex flex-col gap-3">
               <h3 className="text-[11px] font-bold uppercase leading-[14px] tracking-[0.06em] text-[#7b8494]">
                 Documents
               </h3>
 
               <div className="flex flex-col gap-2">
+                {documents.length === 0 ? <p className="text-[12px] text-[#7b8494]">No documents attached.</p> : null}
                 {documents.map(
                   (document) => (
                     <div
@@ -432,19 +403,12 @@ export function QueueDrawer() {
 
                       {/* Open document */}
 
-                      <button
-                        type="button"
-                        aria-label={`Open ${document.name}`}
-                        title="Open document"
-                        className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#e5e7eb] bg-white text-[#7b8494] transition-colors hover:bg-[#f5f6f8] hover:text-[#172033]"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </button>
+                      <Eye className="h-3.5 w-3.5 shrink-0 text-[#7b8494]" aria-hidden="true" />
                     </div>
                   ),
                 )}
               </div>
-            </section>
+            </section> : null}
 
             {/* ======================================================
                 DECISION NOTE
@@ -457,10 +421,13 @@ export function QueueDrawer() {
 
               <textarea
                 rows={3}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
                 placeholder="Recorded in the audit trail against your operator ID"
                 aria-label="Decision note"
                 className="w-full resize-y rounded-[10px] border border-[#e5e7eb] px-4 py-3 text-[13px] font-medium leading-[18px] text-[#172033] outline-none transition-colors placeholder:text-[#7b8494] focus:border-[#315c9f]"
               />
+              {actionError ? <span className="text-[11px] text-[#c92f3f]">The decision could not be saved. Try again.</span> : null}
             </label>
           </div>
         </div>
@@ -474,30 +441,33 @@ export function QueueDrawer() {
 
           <button
             type="button"
-            onClick={closeReview}
+            disabled={actionLoading || !isKyb || !note.trim()}
+            onClick={() => void submitDecision("MORE_INFO_REQUIRED")}
             className="flex-1 cursor-pointer rounded-lg border border-[#e5e7eb] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#172033] transition-colors hover:bg-[#f8f9fb]"
           >
-            Request info
+            {isKyb ? "Request info" : "Clear"}
           </button>
 
           {/* Reject */}
 
           <button
             type="button"
-            onClick={closeReview}
+            disabled={actionLoading || (isKyb && !note.trim())}
+            onClick={() => void submitDecision(isKyb ? "REJECTED" : "CONFIRMED")}
             className="flex-1 cursor-pointer rounded-lg border border-[#c92f3f] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#c92f3f] transition-colors hover:bg-[#fff7f7]"
           >
-            Reject
+            {isKyb ? "Reject" : "Confirm"}
           </button>
 
           {/* Approve */}
 
           <button
             type="button"
-            onClick={closeReview}
+            disabled={actionLoading}
+            onClick={() => void submitDecision(isKyb ? "APPROVED" : "CLEARED")}
             className="flex-[1.4] cursor-pointer rounded-lg bg-[#5b4fcf] px-3 py-3 text-[13px] font-semibold leading-[17px] text-white transition-colors hover:bg-[#4f44bc]"
           >
-            Approve
+            {actionLoading ? "Saving..." : isKyb ? "Approve" : "Clear"}
           </button>
         </div>
       </aside>
