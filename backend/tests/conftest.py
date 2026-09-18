@@ -35,6 +35,14 @@ os.environ.setdefault("PAYMENTS_PROVIDER", "stub")
 # One test "IP" makes more requests a minute than any person could. The
 # global tier is switched on by `tests/integration/test_rate_limits.py`.
 os.environ.setdefault("RATE_LIMIT_GLOBAL_ENABLED", "false")
+# No test may call a model or a speech service, whatever a developer's .env
+# switches on for the running API. Assigned, not defaulted, for that reason;
+# tests that need a provider pass one explicitly or fake its transport.
+os.environ["SCORING_EXTRACTION_ENABLED"] = "false"
+os.environ["INTERVIEW_EVALUATION_PROVIDER"] = "none"
+os.environ["INTERVIEW_TRANSCRIPTION_PROVIDER"] = "none"
+os.environ["OPENAI_API_KEY"] = ""
+os.environ["SARVAM_API_KEY"] = ""
 
 # Complete `Base.metadata` for every test, not just the ones that happen to
 # build the app. A test that imports one module's models alone cannot resolve

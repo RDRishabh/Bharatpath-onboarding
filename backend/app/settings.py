@@ -162,11 +162,28 @@ class Settings(BaseSettings):
     # retired; an alias that silently moved would make two scores computed
     # months apart claim the same provenance.
     #
-    # A Bedrock model or inference-profile id, e.g.
-    # `global.anthropic.claude-sonnet-4-6`. **Empty until the client chooses**
-    # (offered 2026-09-13: Sonnet 4.6, Haiku 4.5, Sonnet 5, GPT-5.6 Luna).
-    # Enabling extraction without one is refused rather than defaulted.
+    # A dated OpenAI snapshot (chosen 2026-09-18: `gpt-5.4-mini-2026-03-17`),
+    # never the bare alias. Empty by default: enabling extraction without one
+    # is refused rather than defaulted.
     scoring_model_id: str = ""
+
+    # OpenAI (chosen 2026-09-18). Bedrock stays selectable but is not used.
+    scoring_extraction_provider: Literal["openai", "bedrock"] = "openai"
+
+    # -- OpenAI and Sarvam ---------------------------------------------------
+    # Keys come from the environment (`backend/.env` locally, Secrets Manager
+    # when deployed) and are never committed. OpenAI processes in the US by
+    # default, so CV text and interview transcripts sent to it leave India
+    # (plan section 13, N2). Sarvam processes in India.
+    openai_api_key: SecretStr | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
+    sarvam_api_key: SecretStr | None = None
+    sarvam_base_url: str = "https://api.sarvam.ai"
+    #: Stored on every transcript as the provider version, with the mode.
+    sarvam_stt_model: str = "saaras:v3"
+    #: `codemix` keeps English words in Latin script and Indic words in their
+    #: own -- Hinglish as spoken, not translated (`interview/evaluation.py`).
+    sarvam_stt_mode: Literal["transcribe", "codemix", "verbatim"] = "codemix"
 
     # -- payments ------------------------------------------------------------
     # No gateway is chosen (blockers D3), so the default sells nothing:
@@ -186,12 +203,16 @@ class Settings(BaseSettings):
     payments_checkout_reuse_minutes: int = 30
 
     # -- interview evaluation (Day 17) ---------------------------------------
-    # No speech model or evaluator is chosen, so the default gives no feedback:
-    # a completed session stays COMPLETED and its report reads PENDING. There
+    # `openai` evaluates (with Sarvam transcribing, below). The default gives no
+    # feedback: a completed session stays COMPLETED and its report reads PENDING. There
     # is no heuristic fallback -- see `interview/evaluation.py`. `stub` hears
     # a hash and rates it; `_stub_evaluation_is_never_production` refuses it
     # outside local and dev, because it would show candidates made-up feedback.
-    interview_evaluation_provider: Literal["none", "stub"] = "none"
+    interview_evaluation_provider: Literal["none", "stub", "openai"] = "none"
+    # Pinned snapshot for `openai`; refused empty.
+    interview_evaluation_model_id: str = ""
+    # Speech-to-text. `stub` here, or `stub` evaluation, selects the stub.
+    interview_transcription_provider: Literal["none", "stub", "sarvam"] = "none"
 
     # -- notifications (Day 19) -----------------------------------------------
     # Nothing is wired by default: SMS and email are recorded as SKIPPED
@@ -283,6 +304,15 @@ class Settings(BaseSettings):
             return None
         return v
 
+    @field_validator("openai_api_key", "sarvam_api_key", mode="before")
+    @classmethod
+    def _blank_key_means_none(cls, v: object) -> object:
+        """`OPENAI_API_KEY=` in a .env is "not set", not an empty key -- or the
+        boot check passes and every call fails with a 401 instead."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
     @field_validator("database_admin_url", mode="after")
     @classmethod
     def _admin_url_must_differ(cls, v: PostgresDsn | None, info: object) -> PostgresDsn | None:
@@ -329,6 +359,32 @@ class Settings(BaseSettings):
             raise ValueError(
                 "INTERVIEW_EVALUATION_PROVIDER=stub must not be set in staging or "
                 "production: it shows candidates feedback nobody gave."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _model_providers_have_what_they_need(self) -> Settings:
+        """A provider chosen without its key fails every call at runtime, and
+        the score or report sits PENDING with nothing saying why. Refuse at boot."""
+        uses_openai = (
+            self.scoring_extraction_enabled and self.scoring_extraction_provider == "openai"
+        ) or self.interview_evaluation_provider == "openai"
+        if uses_openai and self.openai_api_key is None:
+            raise ValueError("OPENAI_API_KEY is required by the selected providers.")
+        if self.interview_evaluation_provider == "openai" and not (
+            self.interview_evaluation_model_id.strip()
+        ):
+            raise ValueError(
+                "INTERVIEW_EVALUATION_PROVIDER=openai needs INTERVIEW_EVALUATION_MODEL_ID."
+            )
+        if self.interview_transcription_provider == "sarvam" and self.sarvam_api_key is None:
+            raise ValueError("INTERVIEW_TRANSCRIPTION_PROVIDER=sarvam needs SARVAM_API_KEY.")
+        if self.interview_transcription_provider == "stub" and self.environment in (
+            "staging",
+            "prod",
+        ):
+            raise ValueError(
+                "INTERVIEW_TRANSCRIPTION_PROVIDER=stub must not be set in staging or production."
             )
         return self
 

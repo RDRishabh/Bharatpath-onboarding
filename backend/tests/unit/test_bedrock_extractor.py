@@ -217,9 +217,14 @@ def test_enabling_without_choosing_a_model_is_refused() -> None:
         get_resume_extractor(_settings(scoring_extraction_enabled=True, scoring_model_id="  "))
 
 
-def test_enabling_with_a_model_selects_bedrock_pinned_to_it() -> None:
+def test_selecting_bedrock_with_a_model_pins_it() -> None:
+    """OpenAI is the default since 2026-09-18; Bedrock stays selectable."""
     extractor = get_resume_extractor(
-        _settings(scoring_extraction_enabled=True, scoring_model_id=MODEL)
+        _settings(
+            scoring_extraction_enabled=True,
+            scoring_extraction_provider="bedrock",
+            scoring_model_id=MODEL,
+        )
     )
     assert isinstance(extractor, BedrockResumeExtractor)
     assert extractor.model_id == MODEL
