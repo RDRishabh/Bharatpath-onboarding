@@ -30,18 +30,28 @@ from app.core.deps import CurrentUser, DbSession, get_request_id, require_role
 from app.modules.admin import service
 from app.modules.admin.domain import CONSOLE_ROLES, DISPUTE_RAISER_ROLES, Capability
 from app.modules.admin.schemas import (
+    AddOrganisationMemberRequest,
     AllocateSeatsRequest,
     AuditEventsPage,
     CandidateDrilldown,
     CollegeDrilldown,
+    CreateDiscountCodeRequest,
+    DiscountCodeResponse,
+    DiscountCodesPage,
+    DiscountRedemptionsPage,
     DisputeDetail,
     DisputesPage,
     EmployerDrilldown,
     IntegritySignalDetail,
     IntegritySignalsPage,
+    InvitationResentResponse,
     KybDecisionRequest,
     KybSubmissionsPage,
     MyDisputeResponse,
+    ProvisionCandidateRequest,
+    ProvisionCollegeRequest,
+    ProvisionedAccountResponse,
+    ProvisionEmployerRequest,
     RaiseDisputeRequest,
     ResolveDisputeRequest,
     ResolveSignalRequest,
@@ -480,6 +490,175 @@ async def search_audit(
         limit=limit,
         request_id=get_request_id(request),
     )
+
+
+# ---------------------------------------------------------------------------
+# Accounts made on someone's behalf (2026-09-18)
+# ---------------------------------------------------------------------------
+@router.post(
+    "/accounts/candidates",
+    response_model=ProvisionedAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=can("accounts"),
+    summary="Create a candidate account; Cognito emails a temporary password",
+)
+async def provision_candidate(
+    payload: ProvisionCandidateRequest, request: Request, user: CurrentUser, session: DbSession
+) -> ProvisionedAccountResponse:
+    """409 `identity_account_exists` if the address has any account. The
+    candidate signs in with the emailed password, sets their own, and
+    onboards as usual."""
+    return await service.provision_candidate(
+        session, ctx=user, payload=payload, request_id=get_request_id(request)
+    )
+
+
+@router.post(
+    "/accounts/employers",
+    response_model=ProvisionedAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=can("accounts"),
+    summary="Create an employer and its owner; Cognito emails a temporary password",
+)
+async def provision_employer(
+    payload: ProvisionEmployerRequest, request: Request, user: CurrentUser, session: DbSession
+) -> ProvisionedAccountResponse:
+    """The owner completes KYB and pays as any employer does. 409
+    `identity_already_in_organisation` if the address already runs one."""
+    return await service.provision_employer(
+        session, ctx=user, payload=payload, request_id=get_request_id(request)
+    )
+
+
+@router.post(
+    "/accounts/colleges",
+    response_model=ProvisionedAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=can("accounts"),
+    summary="Create a college and its admin; Cognito emails a temporary password",
+)
+async def provision_college(
+    payload: ProvisionCollegeRequest, request: Request, user: CurrentUser, session: DbSession
+) -> ProvisionedAccountResponse:
+    return await service.provision_college(
+        session, ctx=user, payload=payload, request_id=get_request_id(request)
+    )
+
+
+@router.post(
+    "/tenants/{tenant_id}/members",
+    response_model=ProvisionedAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=can("accounts"),
+    summary="Add a member to an employer or college, inviting them if new",
+)
+async def add_organisation_member(
+    tenant_id: uuid.UUID,
+    payload: AddOrganisationMemberRequest,
+    request: Request,
+    user: CurrentUser,
+    session: DbSession,
+) -> ProvisionedAccountResponse:
+    return await service.add_organisation_member(
+        session,
+        ctx=user,
+        tenant_id=tenant_id,
+        payload=payload,
+        request_id=get_request_id(request),
+    )
+
+
+@router.post(
+    "/accounts/{user_id}/resend-invitation",
+    response_model=InvitationResentResponse,
+    dependencies=can("resend_invitation"),
+    summary="Email a provisioned account's temporary password again",
+)
+async def resend_invitation(
+    user_id: uuid.UUID, request: Request, user: CurrentUser, session: DbSession
+) -> InvitationResentResponse:
+    """Only for an account that has never signed in (409
+    `identity_account_already_active` otherwise). The new password gets a
+    fresh expiry."""
+    return await service.resend_invitation(
+        session, ctx=user, user_id=user_id, request_id=get_request_id(request)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Discount codes (2026-09-18)
+# ---------------------------------------------------------------------------
+@router.post(
+    "/discount-codes",
+    response_model=DiscountCodeResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=can("discounts"),
+    summary="Create a discount code for candidates, employers or colleges",
+)
+async def create_discount_code(
+    payload: CreateDiscountCodeRequest, request: Request, user: CurrentUser, session: DbSession
+) -> DiscountCodeResponse:
+    """A code's terms never change once made; switch it off and make
+    another. 409 `discount_code_taken` for a chosen code that exists."""
+    return await service.create_discount_code(
+        session, ctx=user, payload=payload, request_id=get_request_id(request)
+    )
+
+
+@router.get(
+    "/discount-codes",
+    response_model=DiscountCodesPage,
+    dependencies=can("discounts_read"),
+    summary="Every discount code with its usage and status, newest first",
+)
+async def list_discount_codes(
+    session: DbSession,
+    audience: Literal["CANDIDATE", "EMPLOYER", "COLLEGE"] | None = None,
+    cursor: str | None = None,
+    limit: int | None = Limit,
+) -> DiscountCodesPage:
+    return await service.list_discount_codes(session, audience=audience, cursor=cursor, limit=limit)
+
+
+@router.get(
+    "/discount-codes/{code_id}",
+    response_model=DiscountCodeResponse,
+    dependencies=can("discounts_read"),
+    summary="One discount code",
+)
+async def get_discount_code(code_id: uuid.UUID, session: DbSession) -> DiscountCodeResponse:
+    return await service.get_discount_code(session, code_id=code_id)
+
+
+@router.post(
+    "/discount-codes/{code_id}/disable",
+    response_model=DiscountCodeResponse,
+    dependencies=can("discounts"),
+    summary="Switch a discount code off, for good",
+)
+async def disable_discount_code(
+    code_id: uuid.UUID, request: Request, user: CurrentUser, session: DbSession
+) -> DiscountCodeResponse:
+    """Idempotent. Payments already made with the code are untouched."""
+    return await service.disable_discount_code(
+        session, ctx=user, code_id=code_id, request_id=get_request_id(request)
+    )
+
+
+@router.get(
+    "/discount-codes/{code_id}/redemptions",
+    response_model=DiscountRedemptionsPage,
+    dependencies=can("discounts_read"),
+    summary="Who used a discount code, on which payment, and when",
+)
+async def discount_redemptions(
+    code_id: uuid.UUID,
+    session: DbSession,
+    cursor: str | None = None,
+    limit: int | None = Limit,
+) -> DiscountRedemptionsPage:
+    """A use is recorded when its payment succeeds, not at checkout."""
+    return await service.discount_redemptions(session, code_id=code_id, cursor=cursor, limit=limit)
 
 
 # ---------------------------------------------------------------------------

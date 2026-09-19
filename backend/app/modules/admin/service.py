@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import status
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,12 +58,18 @@ from app.modules.admin.events import (
 )
 from app.modules.admin.models import Dispute
 from app.modules.admin.schemas import (
+    AddOrganisationMemberRequest,
     ApplicationLink,
     AuditEventRow,
     AuditEventsPage,
     CandidateDrilldown,
     CollegeDrilldown,
     CollegeLinkSummary,
+    CreateDiscountCodeRequest,
+    DiscountCodeResponse,
+    DiscountCodesPage,
+    DiscountRedemptionRow,
+    DiscountRedemptionsPage,
     DisputeDetail,
     DisputeLinks,
     DisputeRow,
@@ -71,10 +78,15 @@ from app.modules.admin.schemas import (
     IntegritySignalDetail,
     IntegritySignalRow,
     IntegritySignalsPage,
+    InvitationResentResponse,
     KybSubmissionRow,
     KybSubmissionsPage,
     KybSummary,
     MyDisputeResponse,
+    ProvisionCandidateRequest,
+    ProvisionCollegeRequest,
+    ProvisionedAccountResponse,
+    ProvisionEmployerRequest,
     ResumeSummary,
     ScoreSummary,
     SeatAllocationResponse,
@@ -86,8 +98,13 @@ from app.modules.admin.schemas import (
     TenantRow,
     TenantsPage,
 )
+from app.modules.billing import service as billing_service
+from app.modules.billing.domain import DISCOUNT_POLICY_VERSION
 from app.modules.college import service as college_service
+from app.modules.college.schemas import CreateCollegeRequest
 from app.modules.discovery import service as discovery_service
+from app.modules.employer import service as employer_service
+from app.modules.employer.schemas import CreateOrganisationRequest
 from app.modules.identity import service as identity_service
 from app.modules.integrity import service as integrity_service
 from app.modules.jobs import service as jobs_service
@@ -1042,4 +1059,342 @@ async def _emit_opened(session: AsyncSession, row: Dispute) -> None:
         aggregate_type="dispute",
         aggregate_id=row.id,
         payload={"dispute_id": str(row.id), "kind": row.kind, "party": row.party},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Accounts made on someone's behalf (2026-09-18)
+# ---------------------------------------------------------------------------
+# The console presses the button and records that it did; `identity` makes
+# the account and asks Cognito to email its temporary password, `employer`
+# and `college` make the organisation exactly as self-registration does. An
+# organisation made here is an ordinary one: its owner completes KYB and
+# pays like anyone else.
+
+
+def _payload(model: Any, **values: Any) -> Any:
+    """Build another module's request schema, turning its validation into a
+    422 rather than a 500."""
+    try:
+        return model(**values)
+    except PydanticValidationError as exc:
+        fields = sorted({str(e["loc"][0]) for e in exc.errors() if e.get("loc")})
+        raise ValidationError(code="admin_account_invalid", params={"fields": fields}) from exc
+
+
+async def _account_audit(
+    session: AsyncSession,
+    ctx: TenantContext,
+    *,
+    user_id: uuid.UUID,
+    kind: str,
+    invitation: str,
+    tenant_id: uuid.UUID | None = None,
+    request_id: str | None,
+) -> None:
+    await audit_event(
+        session,
+        action=AuditAction.ACCOUNT_PROVISIONED,
+        actor_id=ctx.user_id,
+        actor_role=ctx.role,
+        target_type="user",
+        target_id=user_id,
+        tenant_id=tenant_id,
+        request_id=request_id,
+        metadata={"kind": kind, "invitation": invitation},
+    )
+
+
+async def provision_candidate(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    payload: ProvisionCandidateRequest,
+    request_id: str | None = None,
+) -> ProvisionedAccountResponse:
+    """A candidate account, claimed at first sign-in. The candidate names
+    themselves, uploads a CV and subscribes as any candidate does -- and links
+    to a college themselves, because that link is their consent."""
+    account = await identity_service.provision_candidate(session, email=payload.email)
+    await _account_audit(
+        session,
+        ctx,
+        user_id=account.user_id,
+        kind="CANDIDATE",
+        invitation=account.invitation,
+        request_id=request_id,
+    )
+    return ProvisionedAccountResponse(
+        user_id=account.user_id, kind="CANDIDATE", invitation=account.invitation
+    )
+
+
+async def provision_employer(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    payload: ProvisionEmployerRequest,
+    request_id: str | None = None,
+) -> ProvisionedAccountResponse:
+    organisation = _payload(
+        CreateOrganisationRequest,
+        legal_name=payload.legal_name,
+        employer_type=payload.employer_type,
+        industry=payload.industry,
+    )
+    owner_id = await identity_service.provision_business_user(session, email=payload.owner_email)
+    row = await employer_service.create_organisation(
+        session, user_id=owner_id, payload=organisation, actor_id=ctx.user_id, actor_role=ctx.role
+    )
+    invitation = await identity_service.invitation_outcome_for(session, user_id=owner_id)
+    await _account_audit(
+        session,
+        ctx,
+        user_id=owner_id,
+        kind="EMPLOYER",
+        invitation=invitation,
+        tenant_id=row.tenant_id,
+        request_id=request_id,
+    )
+    return ProvisionedAccountResponse(
+        user_id=owner_id,
+        kind="EMPLOYER",
+        tenant_id=row.tenant_id,
+        role=identity_service.EMPLOYER_OWNER_ROLE,
+        invitation=invitation,
+    )
+
+
+async def provision_college(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    payload: ProvisionCollegeRequest,
+    request_id: str | None = None,
+) -> ProvisionedAccountResponse:
+    college = _payload(
+        CreateCollegeRequest, name=payload.name, institution_type=payload.institution_type
+    )
+    admin_id = await identity_service.provision_business_user(session, email=payload.admin_email)
+    row = await college_service.create_college(
+        session, user_id=admin_id, payload=college, actor_id=ctx.user_id, actor_role=ctx.role
+    )
+    invitation = await identity_service.invitation_outcome_for(session, user_id=admin_id)
+    await _account_audit(
+        session,
+        ctx,
+        user_id=admin_id,
+        kind="COLLEGE",
+        invitation=invitation,
+        tenant_id=row.tenant_id,
+        request_id=request_id,
+    )
+    return ProvisionedAccountResponse(
+        user_id=admin_id,
+        kind="COLLEGE",
+        tenant_id=row.tenant_id,
+        role=identity_service.COLLEGE_ADMIN_ROLE,
+        invitation=invitation,
+    )
+
+
+async def add_organisation_member(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    tenant_id: uuid.UUID,
+    payload: AddOrganisationMemberRequest,
+    request_id: str | None = None,
+) -> ProvisionedAccountResponse:
+    """Invite someone into an existing employer or college with a role of its
+    kind -- the owner's "add a team member", done by staff."""
+    tenant = await identity_service.get_tenant(session, tenant_id=tenant_id)
+    team_roles = {
+        "EMPLOYER": identity_service.EMPLOYER_TEAM_ROLES,
+        "COLLEGE": identity_service.COLLEGE_TEAM_ROLES,
+    }.get(tenant.type)
+    if team_roles is None:
+        raise OrganisationNotFoundError()
+    member = await identity_service.add_team_member(
+        session, tenant_id=tenant_id, email=payload.email, role=payload.role, team_roles=team_roles
+    )
+    await audit_event(
+        session,
+        action=AuditAction.TEAM_MEMBER_ADDED,
+        actor_id=ctx.user_id,
+        actor_role=ctx.role,
+        target_type="user",
+        target_id=member.user_id,
+        tenant_id=tenant_id,
+        request_id=request_id,
+        metadata={"role": payload.role},
+    )
+    return ProvisionedAccountResponse(
+        user_id=member.user_id,
+        kind="MEMBER",
+        tenant_id=tenant_id,
+        role=payload.role,
+        # `add_team_member` invites anyone who has never signed in; someone
+        # who has already has a password.
+        invitation=(
+            "ALREADY_REGISTERED"
+            if await identity_service.has_signed_in(session, user_id=member.user_id)
+            else "SENT"
+        ),
+    )
+
+
+async def resend_invitation(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    user_id: uuid.UUID,
+    request_id: str | None = None,
+) -> InvitationResentResponse:
+    pool = await identity_service.resend_invitation(session, user_id=user_id)
+    await audit_event(
+        session,
+        action=AuditAction.ACCOUNT_INVITATION_RESENT,
+        actor_id=ctx.user_id,
+        actor_role=ctx.role,
+        target_type="user",
+        target_id=user_id,
+        request_id=request_id,
+        metadata={"pool": pool},
+    )
+    return InvitationResentResponse(user_id=user_id)
+
+
+# ---------------------------------------------------------------------------
+# Discount codes (2026-09-18)
+# ---------------------------------------------------------------------------
+def _discount(view: Any) -> DiscountCodeResponse:
+    code = view.code
+    return DiscountCodeResponse(
+        id=code.id,
+        code=code.code,
+        audience=code.audience,
+        percent_off=code.percent_off,
+        amount_off_minor=code.amount_off_minor,
+        valid_from=code.valid_from,
+        valid_until=code.valid_until,
+        usage_limit=code.usage_limit,
+        usage_count=view.used,
+        status=view.status,
+        label=code.label,
+        created_by=code.created_by,
+        created_at=code.created_at,
+        disabled_at=code.disabled_at,
+        disabled_by=code.disabled_by,
+    )
+
+
+async def create_discount_code(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    payload: CreateDiscountCodeRequest,
+    request_id: str | None = None,
+) -> DiscountCodeResponse:
+    view = await billing_service.create_discount_code(
+        session,
+        created_by=ctx.user_id,
+        code=payload.code,
+        audience=payload.audience,
+        percent_off=payload.percent_off,
+        amount_off_minor=payload.amount_off_minor,
+        valid_from=payload.valid_from,
+        valid_until=payload.valid_until,
+        usage_limit=payload.usage_limit,
+        label=payload.label,
+    )
+    await audit_event(
+        session,
+        action=AuditAction.DISCOUNT_CODE_CREATED,
+        actor_id=ctx.user_id,
+        actor_role=ctx.role,
+        target_type="discount_code",
+        target_id=view.code.id,
+        request_id=request_id,
+        metadata={
+            "audience": payload.audience,
+            "percent_off": payload.percent_off,
+            "amount_off_minor": payload.amount_off_minor,
+            "usage_limit": payload.usage_limit,
+        },
+    )
+    return _discount(view)
+
+
+async def disable_discount_code(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    code_id: uuid.UUID,
+    request_id: str | None = None,
+) -> DiscountCodeResponse:
+    view = await billing_service.disable_discount_code(
+        session, code_id=code_id, disabled_by=ctx.user_id
+    )
+    await audit_event(
+        session,
+        action=AuditAction.DISCOUNT_CODE_DISABLED,
+        actor_id=ctx.user_id,
+        actor_role=ctx.role,
+        target_type="discount_code",
+        target_id=code_id,
+        request_id=request_id,
+    )
+    return _discount(view)
+
+
+async def list_discount_codes(
+    session: AsyncSession, *, audience: str | None, cursor: str | None, limit: int | None
+) -> DiscountCodesPage:
+    views, next_cursor = await billing_service.list_discount_codes(
+        session, audience=audience, cursor=cursor, limit=limit
+    )
+    return DiscountCodesPage(
+        items=[_discount(v) for v in views],
+        next_cursor=next_cursor,
+        policy_version=DISCOUNT_POLICY_VERSION,
+    )
+
+
+async def get_discount_code(session: AsyncSession, *, code_id: uuid.UUID) -> DiscountCodeResponse:
+    return _discount(await billing_service.get_discount_code(session, code_id=code_id))
+
+
+async def discount_redemptions(
+    session: AsyncSession, *, code_id: uuid.UUID, cursor: str | None, limit: int | None
+) -> DiscountRedemptionsPage:
+    """The usage log: who used a code, on which payment, for how much, when."""
+    rows, next_cursor = await billing_service.list_redemptions(
+        session, code_id=code_id, cursor=cursor, limit=limit
+    )
+    names: dict[uuid.UUID, str] = {}
+    for tenant_id in {r.subscriber_id for r in rows if r.subscriber_type == "TENANT"}:
+        try:
+            names[tenant_id] = (
+                await identity_service.get_tenant(session, tenant_id=tenant_id)
+            ).name
+        except identity_service.TenantNotFoundError:  # pragma: no cover - FK-less, defensive
+            continue
+    return DiscountRedemptionsPage(
+        items=[
+            DiscountRedemptionRow(
+                id=r.id,
+                payment_id=r.payment_id,
+                user_id=r.user_id,
+                subscriber_type=r.subscriber_type,
+                subscriber_id=r.subscriber_id,
+                organisation=names.get(r.subscriber_id),
+                list_amount_minor=r.list_amount_minor,
+                discount_minor=r.discount_minor,
+                amount_minor=r.amount_minor,
+                redeemed_at=r.redeemed_at,
+            )
+            for r in rows
+        ],
+        next_cursor=next_cursor,
     )

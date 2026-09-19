@@ -25,11 +25,19 @@ id in a URL -- none of those reach step 3 (PRD section 8). The payer polls
 **Both renewal paths go through here (R17).** Manual renewal is step 1 again.
 The mandate path is `register_mandate`, then `advance_renewal` from the sweep:
 a pre-debit notice, the wait, the debit, and its callback back through step 3.
+
+**Discount codes (2026-09-18)** change step 1 and nothing after it. A code
+lowers what the checkout asks the gateway for, and is recorded on the payment
+with the list price; step 3 grants exactly what an undiscounted payment
+grants, and writes the redemption beside it. A code is therefore used when
+money moves and not before, and it can never make a payment of zero -- the
+policy is `billing.domain`, and it is a placeholder until the client answers.
 """
 
 from __future__ import annotations
 
 import json
+import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -38,13 +46,22 @@ from typing import Final
 from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AppError, NotFoundError, PermissionDeniedError, UnauthenticatedError
+from app.core.errors import (
+    AppError,
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    UnauthenticatedError,
+)
 from app.core.errors import ValidationError as AppValidationError
 from app.core.logging import get_logger
 from app.core.outbox import emit
+from app.core.pagination import clamp_limit, decode_cursor, encode_cursor
+from app.core.ratelimit import enforce
 from app.core.tenant import TenantContext
 from app.modules.billing import events, repository
 from app.modules.billing.domain import (
+    CHECKOUT_HOLD_MINUTES,
     CURRENCY,
     MANDATE_ACTIVATED,
     MANDATE_GONE_FAILURE_CODES,
@@ -52,10 +69,19 @@ from app.modules.billing.domain import (
     PAYMENT_FAILED,
     PAYMENT_SUCCEEDED,
     CallbackEvent,
+    DiscountCodeFormatError,
+    DiscountPrice,
+    DiscountStatus,
+    discount_refusal,
+    discount_status,
+    discounted_price,
+    generate_discount_code,
+    normalise_discount_code,
     parse_callback,
     payment_step,
+    validate_discount_value,
 )
-from app.modules.billing.models import Payment, PaymentCallback
+from app.modules.billing.models import DiscountCode, DiscountRedemption, Payment, PaymentCallback
 from app.modules.billing.provider import (
     PaymentsUnavailableError,
     StubPaymentProvider,
@@ -99,6 +125,30 @@ class PaymentNotFoundError(NotFoundError):
     title = "Payment not found"
 
 
+class DiscountRefusedError(AppError):
+    """The code cannot be used on this checkout. `code` is the reason from
+    `billing.domain.DiscountRefusal`; nothing about the code itself is said."""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "discount_code_invalid"
+    title = "This discount code cannot be used"
+
+
+class DiscountCodeNotFoundError(NotFoundError):
+    code = "discount_code_not_found"
+    title = "Discount code not found"
+
+
+class DiscountCodeTakenError(ConflictError):
+    code = "discount_code_taken"
+    title = "That code already exists"
+
+
+class DiscountCodeTermsInvalidError(AppValidationError):
+    code = "discount_code_terms_invalid"
+    title = "The code's terms are not valid"
+
+
 def _now(now: datetime | None) -> datetime:
     return now or datetime.now(UTC)
 
@@ -117,11 +167,32 @@ async def _open_checkout(
     subscriber_type: str | None,
     subscriber_id: uuid.UUID | None,
     now: datetime,
+    discount_code: str | None = None,
+    audience: str | None = None,
 ) -> Payment:
     """A PENDING payment and its gateway order. A second checkout for the same
-    item and price inside the reuse window returns the first."""
+    item, price and code inside the reuse window returns the first.
+
+    With a code, the code's row is locked for the rest of the transaction, so
+    checkouts against it are serialised and its last use is sold once."""
     provider = get_payment_provider()
     await repository.lock_checkout(session, user_id=payer_id, item_id=item_id)
+    applied: _AppliedDiscount | None = None
+    if discount_code is not None:
+        assert subscriber_id is not None and audience is not None  # subscriptions only
+        applied = await _apply_discount(
+            session,
+            raw_code=discount_code,
+            audience=audience,
+            subscriber_id=subscriber_id,
+            payer_id=payer_id,
+            purpose=purpose,
+            item_id=item_id,
+            price_minor=amount_minor,
+            provider_name=provider.name,
+            now=now,
+        )
+        amount_minor = applied.price.amount_minor
     existing = await repository.reusable_pending_payment(
         session,
         user_id=payer_id,
@@ -130,6 +201,7 @@ async def _open_checkout(
         amount_minor=amount_minor,
         provider=provider.name,
         since=now - timedelta(minutes=get_settings().payments_checkout_reuse_minutes),
+        discount_code_id=applied.code.id if applied else None,
     )
     if existing is not None:
         return existing
@@ -151,8 +223,16 @@ async def _open_checkout(
         subscriber_id=subscriber_id,
         subscription_id=None,
         checkout_url=order.redirect_url,
+        discount_code_id=applied.code.id if applied else None,
+        list_amount_minor=applied.price.list_amount_minor if applied else None,
     )
-    logger.info("payment_opened", purpose=purpose, item_code=item_code, amount_minor=amount_minor)
+    logger.info(
+        "payment_opened",
+        purpose=purpose,
+        item_code=item_code,
+        amount_minor=amount_minor,
+        discounted=applied is not None,
+    )
     return payment
 
 
@@ -165,11 +245,19 @@ def _require_buyer(ctx: TenantContext, subscriber: subscriptions_service.Subscri
 
 
 async def checkout_subscription(
-    session: AsyncSession, *, ctx: TenantContext, plan_code: str, now: datetime | None = None
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    plan_code: str,
+    discount_code: str | None = None,
+    now: datetime | None = None,
 ) -> Payment:
-    """Buy a period of a plan: the first one, or a manual renewal."""
+    """Buy a period of a plan: the first one, or a manual renewal -- with a
+    discount code, if the payer has one."""
     subscriber = subscriptions_service.subscriber_for(ctx)
     _require_buyer(ctx, subscriber)
+    if discount_code is not None:
+        await enforce("billing.discount_code", subject=str(ctx.user_id))
     plan = await subscriptions_service.purchasable_plan(
         session, code=plan_code, audience=subscriber.audience
     )
@@ -183,6 +271,131 @@ async def checkout_subscription(
         subscriber_type=subscriber.type,
         subscriber_id=subscriber.id,
         now=_now(now),
+        discount_code=discount_code,
+        audience=subscriber.audience,
+    )
+
+
+async def preview_discount(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    plan_code: str,
+    discount_code: str,
+    now: datetime | None = None,
+) -> DiscountPrice:
+    """What this payer would pay for this plan with this code. **Writes
+    nothing and holds nothing**: the checkout checks again, under the lock,
+    and a code can be used up between the two."""
+    subscriber = subscriptions_service.subscriber_for(ctx)
+    _require_buyer(ctx, subscriber)
+    await enforce("billing.discount_code", subject=str(ctx.user_id))
+    plan = await subscriptions_service.purchasable_plan(
+        session, code=plan_code, audience=subscriber.audience
+    )
+    applied = await _apply_discount(
+        session,
+        raw_code=discount_code,
+        audience=subscriber.audience,
+        subscriber_id=subscriber.id,
+        payer_id=ctx.user_id,
+        purpose="SUBSCRIPTION",
+        item_id=plan.id,
+        price_minor=plan.price_minor,
+        provider_name=get_payment_provider().name,
+        now=_now(now),
+        lock=False,
+    )
+    return applied.price
+
+
+@dataclass(frozen=True, slots=True)
+class _AppliedDiscount:
+    code: DiscountCode
+    price: DiscountPrice
+
+
+async def _apply_discount(
+    session: AsyncSession,
+    *,
+    raw_code: str,
+    audience: str,
+    subscriber_id: uuid.UUID,
+    payer_id: uuid.UUID,
+    purpose: str,
+    item_id: uuid.UUID,
+    price_minor: int,
+    provider_name: str,
+    now: datetime,
+    lock: bool = True,
+) -> _AppliedDiscount:
+    """The code, checked against this checkout, and the price it gives.
+    Raises `DiscountRefusedError` with the reason as its code."""
+    try:
+        code_text = normalise_discount_code(raw_code)
+    except DiscountCodeFormatError:
+        raise DiscountRefusedError(code="discount_code_invalid") from None
+    if lock:
+        code = await repository.lock_discount_code_by_code(session, code=code_text)
+    else:
+        code = await repository.discount_code_by_code(session, code=code_text)
+    if code is None:
+        raise DiscountRefusedError(code="discount_code_invalid")
+
+    used = (await repository.redemption_counts(session, code_ids=[code.id])).get(code.id, 0)
+    # This payer's own reusable checkout with this code is not someone else's
+    # hold: asking again must return it, not count it against them.
+    own = await repository.reusable_pending_payment(
+        session,
+        user_id=payer_id,
+        purpose=purpose,
+        item_id=item_id,
+        amount_minor=_net_or_list(price_minor, code),
+        provider=provider_name,
+        since=now - timedelta(minutes=get_settings().payments_checkout_reuse_minutes),
+        discount_code_id=code.id,
+    )
+    held = await repository.held_checkouts(
+        session,
+        code_id=code.id,
+        since=now - timedelta(minutes=CHECKOUT_HOLD_MINUTES),
+        excluding_payment_id=own.id if own else None,
+    )
+    refusal = discount_refusal(
+        status=_status_of(code, used=used, now=now),
+        audience_matches=code.audience == audience,
+        already_used_by_subscriber=await repository.subscriber_has_redeemed(
+            session, code_id=code.id, subscriber_id=subscriber_id
+        ),
+        held=held,
+        usage_limit=code.usage_limit,
+        used=used,
+    )
+    if refusal is not None:
+        raise DiscountRefusedError(code=refusal)
+    price = discounted_price(
+        price_minor, percent_off=code.percent_off, amount_off_minor=code.amount_off_minor
+    )
+    if price is None:
+        raise DiscountRefusedError(code="discount_exceeds_price")
+    return _AppliedDiscount(code, price)
+
+
+def _net_or_list(price_minor: int, code: DiscountCode) -> int:
+    price = discounted_price(
+        price_minor, percent_off=code.percent_off, amount_off_minor=code.amount_off_minor
+    )
+    return price.amount_minor if price is not None else price_minor
+
+
+def _status_of(code: DiscountCode, *, used: int, now: datetime) -> DiscountStatus:
+    return discount_status(
+        disabled=code.disabled_at is not None,
+        valid_from=code.valid_from,
+        valid_until=code.valid_until,
+        usage_limit=code.usage_limit,
+        used=used,
+        now=now,
     )
 
 
@@ -372,6 +585,10 @@ async def _apply_payment_event(
         payment.failure_code = None
         await session.flush()
         await _grant(session, payment, now)
+        if payment.discount_code_id is not None:
+            # The code is used now, when money moved, and in the transaction
+            # that granted what it paid for.
+            await repository.insert_redemption(session, payment=payment)
         await emit(
             session,
             event_type=events.PAYMENT_SUCCEEDED,
@@ -633,3 +850,153 @@ async def simulate_callback(
         await process_callback(session, callback_id=receipt.callback_id, now=now)
     await session.refresh(payment)
     return payment
+
+
+# ---------------------------------------------------------------------------
+# Discount codes -- the console's half (2026-09-18)
+# ---------------------------------------------------------------------------
+# The console (`admin.service`) decides who may press the button and writes
+# the audit row; the rules about what a code is live here, beside the
+# checkout that spends it.
+
+
+@dataclass(frozen=True, slots=True)
+class DiscountCodeView:
+    code: DiscountCode
+    used: int
+    status: str
+
+
+async def create_discount_code(
+    session: AsyncSession,
+    *,
+    created_by: uuid.UUID,
+    code: str | None,
+    audience: str,
+    percent_off: int | None,
+    amount_off_minor: int | None,
+    valid_from: datetime | None,
+    valid_until: datetime | None,
+    usage_limit: int | None,
+    label: str | None,
+    now: datetime | None = None,
+) -> DiscountCodeView:
+    """Make a code. With `code` None one is generated; a generated code that
+    collides is regenerated, a chosen one that collides is refused."""
+    now = _now(now)
+    try:
+        validate_discount_value(percent_off=percent_off, amount_off_minor=amount_off_minor)
+        chosen = normalise_discount_code(code) if code is not None else None
+    except ValueError as exc:
+        raise DiscountCodeTermsInvalidError(params={"reason": str(exc)}) from exc
+    starts = valid_from or now
+    if valid_until is not None and valid_until <= starts:
+        raise DiscountCodeTermsInvalidError(params={"reason": "valid_until must follow valid_from"})
+
+    for _ in range(5):
+        text_code = chosen or generate_discount_code(secrets.token_bytes(16))
+        row = await repository.insert_discount_code(
+            session,
+            code=text_code,
+            audience=audience,
+            percent_off=percent_off,
+            amount_off_minor=amount_off_minor,
+            valid_from=starts,
+            valid_until=valid_until,
+            usage_limit=usage_limit,
+            label=label.strip() if label and label.strip() else None,
+            created_by=created_by,
+        )
+        if row is not None:
+            logger.info("discount_code_created", discount_code_id=str(row.id), audience=audience)
+            return DiscountCodeView(row, 0, _status_of(row, used=0, now=now))
+        if chosen is not None:
+            raise DiscountCodeTakenError()
+    raise RuntimeError("five generated discount codes collided")  # pragma: no cover
+
+
+async def disable_discount_code(
+    session: AsyncSession,
+    *,
+    code_id: uuid.UUID,
+    disabled_by: uuid.UUID,
+    now: datetime | None = None,
+) -> DiscountCodeView:
+    """Switch a code off, for good. Idempotent: a code already off is
+    returned as it is. Payments already made with it are untouched."""
+    now = _now(now)
+    row = await repository.lock_discount_code(session, code_id=code_id)
+    if row is None:
+        raise DiscountCodeNotFoundError()
+    if row.disabled_at is None:
+        await repository.disable_discount_code(session, code=row, disabled_by=disabled_by, now=now)
+    return await _view(session, row, now)
+
+
+async def get_discount_code(
+    session: AsyncSession, *, code_id: uuid.UUID, now: datetime | None = None
+) -> DiscountCodeView:
+    row = await repository.get_discount_code(session, code_id=code_id)
+    if row is None:
+        raise DiscountCodeNotFoundError()
+    return await _view(session, row, _now(now))
+
+
+async def list_discount_codes(
+    session: AsyncSession,
+    *,
+    audience: str | None,
+    cursor: str | None,
+    limit: int | None,
+    now: datetime | None = None,
+) -> tuple[list[DiscountCodeView], str | None]:
+    """Newest first."""
+    now = _now(now)
+    size = clamp_limit(limit)
+    rows = await repository.list_discount_codes(
+        session, audience=audience, after=_keyset(cursor), limit=size
+    )
+    counts = await repository.redemption_counts(session, code_ids=[r.id for r in rows])
+    views = [
+        DiscountCodeView(r, counts.get(r.id, 0), _status_of(r, used=counts.get(r.id, 0), now=now))
+        for r in rows
+    ]
+    next_cursor = (
+        encode_cursor({"t": rows[-1].created_at.isoformat(), "i": str(rows[-1].id)})
+        if len(rows) == size
+        else None
+    )
+    return views, next_cursor
+
+
+async def list_redemptions(
+    session: AsyncSession, *, code_id: uuid.UUID, cursor: str | None, limit: int | None
+) -> tuple[list[DiscountRedemption], str | None]:
+    """Who used a code, newest first -- the usage log."""
+    if await repository.get_discount_code(session, code_id=code_id) is None:
+        raise DiscountCodeNotFoundError()
+    size = clamp_limit(limit)
+    rows = await repository.list_redemptions(
+        session, code_id=code_id, after=_keyset(cursor), limit=size
+    )
+    next_cursor = (
+        encode_cursor({"t": rows[-1].redeemed_at.isoformat(), "i": str(rows[-1].id)})
+        if len(rows) == size
+        else None
+    )
+    return rows, next_cursor
+
+
+async def _view(session: AsyncSession, row: DiscountCode, now: datetime) -> DiscountCodeView:
+    used = (await repository.redemption_counts(session, code_ids=[row.id])).get(row.id, 0)
+    return DiscountCodeView(row, used, _status_of(row, used=used, now=now))
+
+
+def _keyset(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    payload = decode_cursor(cursor)
+    try:
+        return datetime.fromisoformat(str(payload["t"])), uuid.UUID(str(payload["i"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise AppValidationError(code="invalid_cursor") from exc

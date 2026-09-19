@@ -1,5 +1,15 @@
 # Blocker register
 
+> ## 2026-09-18 — sign-up and login decisions (client note)
+> `docs/Signup_Login_Discussion_Updates .pdf`, built the same day
+> (`docs/signup-and-accounts.md`). **E7 closed** (anyone signs up) ·
+> **D1 and D2 deferred by the client**, with phone OTP and every SMS: sign-in
+> is email and password, every code and message goes by email or in-app ·
+> **E9 narrowed** (invited colleagues now get a Cognito email) · new: **E35**
+> (roster contacts given by phone alone hear nothing), **E36** (discount
+> policy is a placeholder), **E37** (business MFA: keep, email, or optional?),
+> **E38** (the client's sending domain).
+
 > ## ✅ Round 7 (2026-09-11) closed ten of these
 > **A1** scoring weights (delegated to us — rubric now in `scoring/domain.py`) ·
 > **B1/N2** CV text may leave India · **B2/Q12** score never explained ·
@@ -114,15 +124,16 @@ starting late cannot be recovered by working faster.
 
 | # | Item | Lead time | Owner | Status |
 |---|---|---|---|---|
-| **D1** | **TRAI DLT registration** | **2–4 weeks** | Client | ✅ **Started 2026-09-11.** Binds the sender, not the gateway — neither Cognito nor Twilio removes it. Without it, SMS to Indian numbers silently fails. |
-| **D2** | **Twilio account + Verify service** | Days | Client | ❌ Not started. **Blocks the three Cognito custom-auth Lambda triggers, and therefore phone OTP entirely.** Test credentials alone unblock development. |
+| ⏸ **D1** | **TRAI DLT registration** | **2–4 weeks** | Client | **Deferred by the client 2026-09-18**, with every SMS: nothing is sent by SMS until the organisation's registration exists. Started 2026-09-11 on the entity side. Binds the sender, not the gateway. The 19 SMS drafts are kept, unregistered, and no event routes to them (`test_nothing_is_sent_by_sms`). |
+| ⏸ **D2** | **Twilio account + Verify service** | Days | Client | **Deferred by the client 2026-09-18**: no phone OTP. `/auth/otp/start` is registered only behind `AUTH_PHONE_OTP_ENABLED`; `ALLOW_CUSTOM_AUTH` and the Twilio secret are gone from Terraform. Bringing phone OTP back is the three Lambda triggers, SMS delivery, and that flag. |
 | **D3** | **Payment gateway KYC** | 1–2 weeks | Client | ❌ Not started. Blocks all revenue. **Must be confirmed to support recurring billing** (UPI e-mandate, R17). Day 15 built both renewal paths behind `PaymentProvider` with a stub; the real gateway is one adapter, plus its callback format in `billing.domain.parse_callback`. |
 | **D4** | **Legal review of the scoring model** | Weeks | Client's counsel | ❌ Not started — confirmed by the client 2026-09-15. Selling an item that raises a three-digit consumer score is a different proposition from giving that score away free. |
 | **D5** | **Apple Developer (organisation)** | 1–3 weeks | Client | ❌ Not started. Needs a D-U-N-S number, which is its own separate application. |
 
 Also pending, shorter: **SES production access** (3–7 days, AWS reviews manually
-and rejects vague requests) and **Google OAuth client** (hours — blocks Google
-federation on the candidate pool).
+and rejects vague requests) — **now on the critical path (E38)**, since email is
+the only channel outside the app — and **Google OAuth client** (hours — blocks
+Google federation on the candidate pool).
 
 ---
 
@@ -138,9 +149,9 @@ Technical, ours to fix, recorded so they are not rediscovered.
 | **E4** | **Deployment infrastructure, and every sweep that needs a schedule** | Day 20 | RDS, ElastiCache, VPC/NAT, ECS/ALB, ECR, CloudFront, ACM, Route 53 — none provisioned, deliberately. They bill while idle and are not needed until deploy. See `infra/README.md`. **Six periodic tasks exist and nothing runs them**: application expiry, subscription renewal, view-partition creation, incomplete-profile nudges, and now `privacy.erase_due` and `privacy.expire_exports` (Day 20). The last two fail in the safe direction — a deletion request is accepted, tracked and shown with its due date, and nothing is destroyed until a scheduler exists — but **that is a promise not being kept**, so it is a launch blocker rather than a convenience. Hourly is enough for both. |
 | **E5** | **Hidden text is not extracted** | The best integrity rule we have | `ResumeClaims.hidden_text` defaults to empty, so `HIDDEN_TEXT` and half of `INJECTED_INSTRUCTIONS` are **written and inert**. Populating it means a `pypdf` visitor reading font colour, size and position — white-on-white, zero-size, off-page. Until then the most widely documented CV-gaming technique goes undetected, and the rule looks like coverage without being it. |
 | ~~**E6**~~ | ~~**Manual-form resumes are never scored**~~ | — | ✅ **Fixed in code 2026-09-13.** A structured version is rendered to text, without the name or the graduation year, and goes through Layer 1 like an upload. Scoring the form directly was rejected: it would give zero for the three judgments only the model makes. Scores still wait on E2 and a model choice. |
-| **E7** | **Business sign-up is admin-only; R15 says employers sign up** | Employer onboarding at launch | The business Cognito pool has `allow_admin_create_user_only = true`, set so an employer could not bypass KYB. R15 later made KYB auto-approve and payment the gate. The API already supports self-serve through `current_business_identity`; opening it is one Terraform flag and a client decision. |
+| ~~**E7**~~ | ~~Business sign-up is admin-only~~ | — | ✅ **Closed 2026-09-18 by the client** ("they can themselves also do"). `allow_admin_create_user_only = false` on the business pool (Terraform, **not yet applied**). Staff can still create employers and colleges from the console. |
 | **E8** | **One address cannot be both a candidate and employer staff** | Recruiters who are also job-hunting | `users.email` is unique across both pools, so a recruiter who is also a candidate needs two addresses. Deliberate for now: merging identities across pools with different assurance (the business pool requires MFA) is a design of its own. |
-| **E9** | **Adding a team member still reveals that an address exists** | Privacy | Candidate and other-employer addresses get one identical refusal, so *which* is never revealed. That a refusal differs from success still is. Closing it needs accept-by-link invitations. |
+| ◐ **E9** | **Adding a team member still reveals that an address exists** | Privacy | Candidate and other-employer addresses get one identical refusal, so *which* is never revealed. That a refusal differs from success still is. **2026-09-18**: an added colleague who has never signed in now gets Cognito's temporary-password email, so the invitation half exists; the refusal still differs from success. |
 | ~~**E11**~~ | ~~Interview links go to candidates from any https host~~ | — | ✅ **Decided 2026-09-15: do not limit.** Any https meeting link stays allowed; the Day 12 checks (https, a real host, no credentials, no `javascript:`) remain. |
 | **E12** | **A disputed hire has a queue and a reviewer, and no remedy** | Hire disputes | ◐ **Day 19**: a candidate's dispute is filed in `/admin/disputes` as theirs, cross-linked to the application's two sides and the candidate's live integrity signals, and staff resolve it with words both can read. **Resolving changes nothing else**: the application stays unconfirmed until the candidate confirms, the employer rejects, or the candidate withdraws. Whether staff may confirm or void a hire is a client decision, and a new transition in `guard_application_write`. |
 | ~~**E10**~~ | ~~No platform-staff account can exist~~ | — | ✅ **Closed 2026-09-17 (Day 19)** on the recommendation: one PLATFORM tenant for our staff (`uq_tenants_one_platform`). `guard_membership_tenant_type` holds every role to its kind of tenant for every writer, so no employer can add a staff role. Staff are provisioned by `scripts/create_platform_staff.py`, never by a route; the Cognito business-pool user is created separately. |
@@ -165,6 +176,10 @@ Technical, ours to fix, recorded so they are not rediscovered.
 | **E32** | **An erasure does not delete the Cognito user** | Re-registration after erasure | The erasure empties the `users` row and replaces `cognito_sub` with its SHA-256, so a token issued before it is recognised and refused (`account_inactive`) instead of signing the person up again as a new account — which is what a NULL there did, and what this replaced. What it does **not** do is delete the identity in Cognito, because the provider interface has no admin call. The consequence is narrow but real: a person who is erased and later signs in with the same phone or email presents the same subject, matches the hash, and is refused forever rather than starting fresh. **Needs `AdminDeleteUser` in the erasure task** (and the IAM permission for it); until then, re-registration after an erasure is a support action. |
 | **E33** | **A business account cannot erase itself** | Employer and college staff DSRs | `POST /privacy/requests/deletion` refuses a BUSINESS-pool account with `dsr_deletion_requires_support`, and `erase_candidate` refuses one in the database. Deliberate: erasing the last owner of an employer strands the tenant, its jobs, its subscription and its staff, and nobody has decided what should happen to the organisation. Export works for them today. **Client and counsel: what happens to an organisation when its last owner asks to be erased?** |
 | **E34** | **Export archives have no S3 lifecycle rule** | DPDP, S3 cost | An export is a whole person's data in one object. `privacy.expire_exports` deletes it after 48 hours and clears the key — but that sweep is unscheduled (**E4**), so today an archive persists until somebody runs it. (An *erasure* destroys that person's archives immediately, whatever the sweep is doing; this is about the ones nobody asked to erase.) A lifecycle rule on `bharatpath-exports` in `infra/terraform/s3.tf` would make the bucket enforce it independently of our workers, and should exist whatever the sweep does. Same family as **E22** (interview audio has no retention rule either). |
+| **E35** | **A roster contact given by phone alone hears nothing** | College invitations while SMS is deferred | A roster row needs a phone *or* an email, and an invitation went by both. With no SMS (2026-09-18) a phone-only row is recorded SKIPPED `NO_CONTACT`, and a student signing in by email is never matched to it. **Ask colleges for email addresses**; a roster that is phone-only works again when SMS returns. Making email required at import is a one-line change if the client wants it. |
+| **E36** | **The discount-code policy is ours** | Launch of discount codes | Built 2026-09-18 with a placeholder policy (`billing.domain.DISCOUNT_POLICY_VERSION`, asserted by a test): no 100% code (a zero payment has no gateway callback, and only a verified callback grants), first checkout only (a UPI auto-renewal is full price), one use per person or organisation. **Client: the three answers.** A 100% code needs a new grant path that no gateway verified, which would be the first; renewals need the mandate amount to change. |
+| **E37** | **Business accounts must set up an authenticator app** | Business onboarding | Cognito business pool `mfa_configuration = "ON"` (software token), unchanged 2026-09-18. It is not phone OTP, so the client's decision did not remove it. **Client: keep it, switch to an emailed code (Cognito Essentials tier, extra cost), or make it optional?** Any of the three is Terraform only; the API never checks MFA. |
+| **E38** | **No sending domain yet** | Every email: sign-up codes at volume, invitations, notifications | `infra/terraform/ses.tf` is written and creates nothing until `email_domain` is set. Needs from the client: **the domain and access to its DNS** (five records, listed by `terraform output email_dns_records`), then **SES production access**. Until then Cognito uses its own sender (~50/day, development only) and notification email is recorded `PROVIDER_UNCONFIGURED`. |
 | **E31** | **Incomplete-profile nudges run on our numbers, unscheduled** | R9 | 24h after sign-up, then every 72h, three at most, 09:00-21:00 IST, stopped by `nudges_enabled` -- all in `config_values` `notifications.nudges` (strict; a row can make nudging rarer, never daily or endless). The SMS is registered as SERVICE_EXPLICIT, which needs recorded consent to reach a DND number: **the sign-up screen must collect it**. The sweep (`notifications.nudge_incomplete_profiles`) has no schedule (**E4**). |
 
 ---
@@ -177,8 +192,8 @@ Worth stating, because it is most of the build:
   config. Only **Days 8 and 15** have hard content dependencies.
 - `openapi.json` publishes on every green build, so the **mobile and three web
   teams are not blocked** — they generate clients against real endpoints today.
-- Email/password authentication works on both Cognito pools **now**. Only phone
-  OTP waits on D2.
+- Email/password authentication works on both Cognito pools **now**, and it is
+  the only sign-in the client wants (2026-09-18).
 
 ---
 

@@ -36,6 +36,8 @@ from app.modules.billing.schemas import CheckoutResponse
 from app.modules.subscriptions import service
 from app.modules.subscriptions.catalogue import PERIOD_MONTHS
 from app.modules.subscriptions.schemas import (
+    DiscountPreviewRequest,
+    DiscountPreviewResponse,
     MandateResponse,
     PlanResponse,
     SubscriptionCheckoutRequest,
@@ -76,7 +78,7 @@ def _subscription_response(current: service.SubscriptionStatus) -> SubscriptionR
 
 
 def _mount(router: APIRouter, *, audience: str, readers: Any, buyers: Any) -> None:
-    """The same five routes for each audience, guarded per audience."""
+    """The same six routes for each audience, guarded per audience."""
 
     @router.get(
         "/plans",
@@ -108,11 +110,34 @@ def _mount(router: APIRouter, *, audience: str, readers: Any, buyers: Any) -> No
         payload: SubscriptionCheckoutRequest, user: CurrentUser, session: DbSession
     ) -> CheckoutResponse:
         """Nothing is granted here. The period starts when the gateway's signed
-        callback has been processed; poll `GET /billing/payments/{payment_id}`."""
+        callback has been processed; poll `GET /billing/payments/{payment_id}`.
+
+        With `discount_code`, `amount_minor` in the response is the discounted
+        amount; the code counts as used only once that payment succeeds."""
         payment = await billing_service.checkout_subscription(
-            session, ctx=user, plan_code=payload.plan_code
+            session, ctx=user, plan_code=payload.plan_code, discount_code=payload.discount_code
         )
         return CheckoutResponse.of(payment)
+
+    @router.post(
+        "/checkout/discount-preview",
+        response_model=DiscountPreviewResponse,
+        dependencies=[buyers],
+        summary="What a plan would cost with a discount code",
+    )
+    async def discount_preview(
+        payload: DiscountPreviewRequest, user: CurrentUser, session: DbSession
+    ) -> DiscountPreviewResponse:
+        """Writes nothing. Refused with the same 422 codes as checkout, and
+        limited per person (40 tries an hour, shared with checkout)."""
+        price = await billing_service.preview_discount(
+            session, ctx=user, plan_code=payload.plan_code, discount_code=payload.discount_code
+        )
+        return DiscountPreviewResponse(
+            list_amount_minor=price.list_amount_minor,
+            discount_minor=price.discount_minor,
+            amount_minor=price.amount_minor,
+        )
 
     @router.post(
         "/cancel",

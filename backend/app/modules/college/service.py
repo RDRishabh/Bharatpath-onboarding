@@ -218,9 +218,15 @@ async def _bind_student(session: AsyncSession, ctx: TenantContext) -> uuid.UUID:
 # 1. The organisation and its team
 # ---------------------------------------------------------------------------
 async def create_college(
-    session: AsyncSession, *, user_id: uuid.UUID, payload: CreateCollegeRequest
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    payload: CreateCollegeRequest,
+    actor_id: uuid.UUID | None = None,
+    actor_role: str | None = None,
 ) -> College:
-    """A business account creates its college and becomes its admin.
+    """A business account creates its college and becomes its admin -- or
+    staff create it for them (`actor_*`, 2026-09-18).
 
     Tenant first, then bind, then the college row -- the RLS `WITH CHECK`
     refuses a row for a tenant that is not bound, so the order is not style.
@@ -239,8 +245,8 @@ async def create_college(
     await audit_event(
         session,
         action=AuditAction.ORGANISATION_CREATED,
-        actor_id=user_id,
-        actor_role=COLLEGE_ADMIN,
+        actor_id=actor_id or user_id,
+        actor_role=actor_role or COLLEGE_ADMIN,
         target_type="tenant",
         target_id=tenant_id,
         tenant_id=tenant_id,

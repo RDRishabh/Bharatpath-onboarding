@@ -63,7 +63,29 @@ output "env_file" {
     CELERY_BROKER_URL=sqs://
     SQS_QUEUE_URL=${aws_sqs_queue.tasks.url}
 
+    # Email by SES once the client's domain is verified; none until then.
+    NOTIFICATIONS_EMAIL_PROVIDER=${local.email_enabled ? "ses" : "none"}
+    NOTIFICATIONS_EMAIL_FROM=${local.email_from}
+
     # Local tokens must be OFF once real Cognito pools exist.
     AUTH_ALLOW_LOCAL_TOKENS=false
   EOT
+}
+
+# What to add at the registrar when the domain's DNS is not a Route 53 zone in
+# this account. Empty until `email_domain` is set.
+output "email_dns_records" {
+  description = "DNS records SES needs. Add them once where the domain's DNS is managed."
+  value = local.email_enabled ? concat(
+    [for token in aws_sesv2_email_identity.domain[0].dkim_signing_attributes[0].tokens : {
+      type  = "CNAME"
+      name  = "${token}._domainkey.${var.email_domain}"
+      value = "${token}.dkim.amazonses.com"
+    }],
+    [
+      { type = "MX", name = "mail.${var.email_domain}", value = "10 feedback-smtp.${var.aws_region}.amazonses.com" },
+      { type = "TXT", name = "mail.${var.email_domain}", value = "v=spf1 include:amazonses.com ~all" },
+      { type = "TXT", name = "_dmarc.${var.email_domain}", value = "v=DMARC1; p=none; rua=mailto:${var.dmarc_report_address != "" ? var.dmarc_report_address : "dmarc@${var.email_domain}"}" },
+    ],
+  ) : []
 }

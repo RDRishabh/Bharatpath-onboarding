@@ -70,9 +70,16 @@ token and then resolves role and tenant itself:
 
 Cognito linkage, sessions, "who am I."
 
+**Sign-up (2026-09-18, `docs/signup-and-accounts.md`)**: anyone registers in
+Cognito by email and password. A candidate's first call creates their account.
+A business account's first `GET /auth/me` is **403 `no_active_membership`**,
+which means "create your organisation" (`POST /employer/organisation` or
+`POST /college/organisation`). An email already used in the other pool is
+**403 `account_contact_in_use`** (blockers E8).
+
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
-| POST | `/auth/otp/start` | Public, rate-limited by phone/IP | `{phone}` | `{retry_after_seconds}` (202) | Sits in front of Cognito's custom-auth flow; response is identical whether the phone is known or not — no enumeration |
+| ~~POST~~ | ~~`/auth/otp/start`~~ | — | — | — | **Not registered** since 2026-09-18: the client deferred phone OTP. Exists only with `AUTH_PHONE_OTP_ENABLED=true`. Sign-in is email + password on both pools; Cognito emails every code |
 | GET | `/auth/me` | Any authenticated user | — | `{user_id, role, pool, tenant_id}` | Smallest possible proof the auth chain works end to end |
 | POST | `/auth/dev/token` | Dev-only, flag-gated | `{subject, pool, phone?, email?}` | `{access_token, subject, expires_in}` | Only exists when `AUTH_ALLOW_LOCAL_TOKENS=true`; mints a real RS256 token locally |
 
@@ -262,7 +269,8 @@ different guards.
 |---|---|---|---|---|---|---|
 | GET | `.../plans` | CANDIDATE | OWNER/RECRUITER/VIEWER | — | `list[PlanResponse]` | Plans on sale for that audience |
 | GET | `.../` | CANDIDATE | OWNER/RECRUITER/VIEWER | — | `SubscriptionResponse` | Current state; anyone in the org can read |
-| POST | `.../checkout` | CANDIDATE | OWNER only | `{plan_code}` | `CheckoutResponse` (201) | First purchase or manual renewal; grants nothing until the callback |
+| POST | `.../checkout` | CANDIDATE | OWNER only | `{plan_code, discount_code?}` | `CheckoutResponse` (201) | First purchase or manual renewal; grants nothing until the callback. With a code, `amount_minor` is discounted and `list_amount_minor` is the plan price; a refused code is 422 `discount_code_invalid` / `_expired` / `_exhausted` / `_already_used` / `discount_exceeds_price`. The code is used only when the payment succeeds |
+| POST | `.../checkout/discount-preview` | CANDIDATE | OWNER only | `{plan_code, discount_code}` | `{list_amount_minor, discount_minor, amount_minor}` | Writes nothing, holds nothing. Same 422 codes. 40 tries/hour per person, shared with checkout |
 | POST | `.../cancel` | CANDIDATE | OWNER only | — | `SubscriptionResponse` | Stops auto-renew at period end; idempotent |
 | POST | `.../mandate` | CANDIDATE | OWNER only | — | `{state, max_amount_minor, valid_until, authorisation_url}` (201) | Sets up UPI AutoPay; stays manual until the payer approves in the UPI app; a debit still needs a NOTIFIED `mandate_debit_notices` row ≥24h ahead |
 
@@ -358,6 +366,16 @@ session opens**; a read whose audit cannot be written returns nothing.
 | GET | `/admin/disputes/{dispute_id}` | same | path | `DisputeDetail` | Description, cross-links (application's two sides, live integrity signals). Audited |
 | POST | `/admin/disputes/{dispute_id}/assign` | same | — | `DisputeDetail` | Caller takes it; IN_REVIEW |
 | POST | `/admin/disputes/{dispute_id}/resolve` | same | `{outcome: RESOLVED\|REJECTED, resolution}` | `DisputeDetail` | The raiser reads `resolution`. Changes nothing else. Closed is final |
+| POST | `/admin/accounts/candidates` | PLATFORM_ADMIN | `{email}` | `ProvisionedAccountResponse` (201) | 2026-09-18. Makes the account; **Cognito emails a temporary password**; the first sign-in adopts it. 409 `identity_account_exists`. 502 `account_directory_unavailable` if Cognito refuses (nothing created). Audited |
+| POST | `/admin/accounts/employers` | PLATFORM_ADMIN | `{owner_email, legal_name, employer_type?, industry?}` | same (201) | The employer and its owner. KYB and payment are the owner's as usual. 409 `identity_already_in_organisation`. Audited |
+| POST | `/admin/accounts/colleges` | PLATFORM_ADMIN | `{admin_email, name, institution_type}` | same (201) | The college and its admin. Audited |
+| POST | `/admin/tenants/{tenant_id}/members` | PLATFORM_ADMIN | `{email, role}` | same (201) | A member of an existing employer or college, with a role of its kind (409 `identity_cannot_add_member` otherwise). Invites anyone who has never signed in. Audited |
+| POST | `/admin/accounts/{user_id}/resend-invitation` | PLATFORM_ADMIN, SUPPORT_AGENT | path | `{user_id, resent}` | Only before the first sign-in (409 `identity_account_already_active`). Audited |
+| POST | `/admin/discount-codes` | PLATFORM_ADMIN | `{code?, audience, percent_off? \| amount_off_minor?, valid_from?, valid_until?, usage_limit?, label?}` | `DiscountCodeResponse` (201) | Omit `code` to generate one. Terms never change afterwards. 409 `discount_code_taken`. Audited |
+| GET | `/admin/discount-codes` | PLATFORM_ADMIN, SUPPORT_AGENT | `audience`, `cursor`, `limit` | `DiscountCodesPage` | With `usage_count`, `status` (ACTIVE/SCHEDULED/EXPIRED/EXHAUSTED/DISABLED) and the placeholder `policy_version` |
+| GET | `/admin/discount-codes/{code_id}` | same | path | `DiscountCodeResponse` | |
+| POST | `/admin/discount-codes/{code_id}/disable` | PLATFORM_ADMIN | path | `DiscountCodeResponse` | For good; idempotent. Audited |
+| GET | `/admin/discount-codes/{code_id}/redemptions` | PLATFORM_ADMIN, SUPPORT_AGENT | `cursor`, `limit` | `DiscountRedemptionsPage` | The usage log: payer, subscriber (organisation named), amounts, when |
 | GET | `/admin/audit-events` | PLATFORM_ADMIN | `actor_id`, `action`, `target_type`, `target_id`, `tenant_id`, `from`, `to`, `cursor` | `AuditEventsPage` | Newest first, keyset. The search is itself audited with its filters |
 | POST | `/disputes` | CANDIDATE, EMPLOYER_OWNER/RECRUITER, COLLEGE_ADMIN/STAFF | `{kind, application_id?, description}` | `MyDisputeResponse` (201) | HIRE needs an application the caller can see (else 404); colleges cannot dispute a hire (422). 5/day per person |
 | GET | `/disputes` | same | — | `list[MyDisputeResponse]` | A candidate's own; an organisation's. No staff identities |
@@ -414,9 +432,10 @@ Two tiers, both answering **429** with a `Retry-After` header in seconds:
 - **Global** — per IP, per user and per tenant, per minute. Generous: a guard
   against a runaway client, not something a person clicking can reach. An
   organisation's staff share one tenant budget.
-- **Specific** — tightest on OTP (per phone and per IP, hourly) and the
-  employer threshold preview (per organisation, hourly); the privacy routes
-  have their own, looser one.
+- **Specific** — tightest on OTP (per phone and per IP, hourly; the route is
+  off while phone OTP is deferred) and the employer threshold preview (per
+  organisation, hourly); the privacy routes and discount codes (40/hour per
+  person) have their own, looser ones.
 
 A client should back off by `Retry-After` rather than retrying immediately;
 retrying inside the window extends its own lockout, because the window counts

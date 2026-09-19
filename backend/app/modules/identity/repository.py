@@ -191,6 +191,22 @@ async def create_business_user(session: AsyncSession, *, email: str) -> User:
     return user
 
 
+async def create_candidate_user(session: AsyncSession, *, email: str) -> User:
+    """A candidate row with no provider subject yet (2026-09-18): made by
+    staff, claimed on the person's first sign-in in the candidate pool.
+    Returns whatever row holds the address afterwards; the caller checks it
+    is the one it asked for."""
+    await session.execute(
+        pg_insert(User)
+        .values(id=uuid.uuid4(), pool="CANDIDATE", email=email, status="ACTIVE", locale="en")
+        .on_conflict_do_nothing(index_elements=["email"])
+    )
+    user = await user_by_email(session, email=email)
+    if user is None:  # pragma: no cover - only on a genuine constraint failure
+        raise RuntimeError("could not create or read the provisioned candidate")
+    return user
+
+
 # ---------------------------------------------------------------------------
 # Day 19 -- platform staff, suspension, contacts
 # ---------------------------------------------------------------------------

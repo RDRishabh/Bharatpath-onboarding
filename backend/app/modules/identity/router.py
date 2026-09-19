@@ -6,9 +6,11 @@ Routes only. No business logic, no repository access.
 import-linter enforces the second half of that sentence.
 
 **What is NOT here, and why.** There is no login endpoint and no token
-endpoint. Cognito owns the session and issues the tokens: the candidate pool
-through a custom auth flow whose three Lambda triggers call Twilio Verify, the
-business pool through username, password and software-token MFA. Putting a
+endpoint. Cognito owns the session and issues the tokens: both pools by email
+and password (the business pool adds software-token MFA), with Cognito
+emailing every verification and reset code. Phone OTP is deferred by the
+client (2026-09-18); its route below exists only behind
+`AUTH_PHONE_OTP_ENABLED`. Putting a
 login endpoint here would mean this service handling credentials, which is the
 liability the Cognito decision exists to avoid (docs/plan.md 5.7).
 
@@ -34,12 +36,6 @@ from app.settings import get_settings
 router = APIRouter()
 
 
-@router.post(
-    "/otp/start",
-    response_model=OtpStartResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Outer throttle in front of the Cognito custom auth flow",
-)
 async def otp_start(payload: OtpStartRequest, request: Request) -> OtpStartResponse:
     """Rate-limit an OTP request. Sends nothing itself.
 
@@ -55,6 +51,20 @@ async def otp_start(payload: OtpStartRequest, request: Request) -> OtpStartRespo
         client_ip=_client_ip(request),
     )
     return OtpStartResponse(retry_after_seconds=retry_after)
+
+
+# Phone OTP is deferred (2026-09-18). Registered at import time and only when
+# the flag is on, like `/dev/token` below: while it is off the route does not
+# exist and is absent from openapi.json, so no client can come to depend on it.
+if get_settings().auth_phone_otp_enabled:  # pragma: no cover - off until phone OTP returns
+    router.add_api_route(
+        "/otp/start",
+        otp_start,
+        methods=["POST"],
+        response_model=OtpStartResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        summary="Outer throttle in front of the Cognito custom auth flow",
+    )
 
 
 @router.get("/me", response_model=MeResponse, summary="The caller's resolved identity")

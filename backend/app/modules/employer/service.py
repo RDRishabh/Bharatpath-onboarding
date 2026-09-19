@@ -68,7 +68,12 @@ async def _bind(session: AsyncSession, ctx: TenantContext) -> uuid.UUID:
 # The organisation
 # ---------------------------------------------------------------------------
 async def create_organisation(
-    session: AsyncSession, *, user_id: uuid.UUID, payload: CreateOrganisationRequest
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    payload: CreateOrganisationRequest,
+    actor_id: uuid.UUID | None = None,
+    actor_role: str | None = None,
 ) -> Any:
     """A business account creates its organisation and becomes its owner.
 
@@ -79,6 +84,9 @@ async def create_organisation(
 
     KYB starts at DRAFT. The organisation exists before it is verified;
     publishing a job does not (invariant 8, Day 10).
+
+    `actor_id` / `actor_role` name who did it when that is not the owner:
+    staff creating the organisation for them from the console (2026-09-18).
     """
     tenant_id = await identity_service.create_tenant_with_owner(
         session,
@@ -99,8 +107,8 @@ async def create_organisation(
     await audit_event(
         session,
         action=AuditAction.ORGANISATION_CREATED,
-        actor_id=user_id,
-        actor_role=identity_service.EMPLOYER_OWNER_ROLE,
+        actor_id=actor_id or user_id,
+        actor_role=actor_role or identity_service.EMPLOYER_OWNER_ROLE,
         target_type="tenant",
         target_id=tenant_id,
         tenant_id=tenant_id,

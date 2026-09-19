@@ -14,10 +14,16 @@
 resource "aws_cognito_user_pool" "candidates" {
   name = "${var.project}-candidates-${var.environment}"
 
-  # Phone OTP is delivered by Twilio from inside the custom-auth Lambdas,
-  # NOT by Cognito via SNS (plan.md 5.8). So phone is never listed as an
-  # auto-verified attribute -- doing so would make Cognito try to send its
-  # own SMS, duplicating the message and bypassing Twilio's abuse controls.
+  # Email and password only (2026-09-18): the client deferred phone OTP
+  # until the organisation's registration and DLT exist, and every code goes
+  # by email. Phone is never an auto-verified attribute -- that would make
+  # Cognito send its own SMS.
+  #
+  # `phone_number` stays a username attribute ON PURPOSE: changing
+  # username_attributes forces Terraform to REPLACE the pool (new pool id,
+  # every user gone), and bringing phone sign-in back later would force it
+  # again. The app offers email only; a phone-number sign-up cannot be
+  # verified and so can never sign in.
   auto_verified_attributes = ["email"]
   username_attributes      = ["email", "phone_number"]
 
@@ -29,13 +35,16 @@ resource "aws_cognito_user_pool" "candidates" {
     ignore_changes = [schema]
   }
 
+  # temporary_password_validity_days: a staff-created account's emailed
+  # password (2026-09-18). A day was too short for someone who reads work
+  # email weekly; staff can resend.
   password_policy {
     minimum_length                   = 12
     require_lowercase                = true
     require_uppercase                = true
     require_numbers                  = true
     require_symbols                  = false
-    temporary_password_validity_days = 1
+    temporary_password_validity_days = 7
   }
 
   account_recovery_setting {
@@ -45,13 +54,40 @@ resource "aws_cognito_user_pool" "candidates" {
     }
   }
 
+
+  # The email an account created on someone's behalf receives (2026-09-18:
+  # staff create candidates, employers and colleges from the console, and an
+  # owner adds colleagues). Cognito fills in {username} and the temporary
+  # password {####}; both placeholders are required.
   admin_create_user_config {
     allow_admin_create_user_only = false
+
+    invite_message_template {
+      email_subject = "Your BharatPath account is ready"
+      email_message = "An account has been created for you on BharatPath.<br><br>Sign in with<br>Email: {username}<br>Temporary password: {####}<br><br>You will be asked to choose your own password. This temporary password expires in 7 days; if it has, ask us to send a new one."
+    }
   }
 
-  # MFA is not forced on candidates: the phone-OTP flow is already a
-  # possession factor, and requiring a second one on a consumer signup in
-  # this market would cost more conversions than it buys security.
+  # Sign-up and password-reset codes go by email -- there is no SMS.
+  verification_message_template {
+    default_email_option = "CONFIRM_WITH_CODE"
+    email_subject        = "Your BharatPath verification code"
+    email_message        = "Your BharatPath verification code is {####}. Do not share it with anyone."
+  }
+
+  # Through SES once the client's domain is verified (ses.tf); Cognito's own
+  # sender until then, which is capped at about 50 emails a day.
+  dynamic "email_configuration" {
+    for_each = local.email_enabled ? [1] : []
+    content {
+      email_sending_account = "DEVELOPER"
+      source_arn            = aws_sesv2_email_identity.domain[0].arn
+      from_email_address    = local.email_from_display
+    }
+  }
+
+  # MFA is not forced on candidates: requiring a second factor on a consumer
+  # sign-up in this market would cost more conversions than it buys security.
   mfa_configuration = "OFF"
 
   deletion_protection = "INACTIVE"
@@ -65,8 +101,9 @@ resource "aws_cognito_user_pool_client" "candidates" {
   # app binary is not a secret.
   generate_secret = false
 
+  # ALLOW_CUSTOM_AUTH (phone OTP) removed 2026-09-18: deferred, and its
+  # Lambda triggers were never written. Add it back with them.
   explicit_auth_flows = [
-    "ALLOW_CUSTOM_AUTH",   # phone OTP, once the Lambda triggers land
     "ALLOW_USER_SRP_AUTH", # email + password
     "ALLOW_REFRESH_TOKEN_AUTH",
   ]
@@ -107,7 +144,7 @@ resource "aws_cognito_user_pool" "business" {
     require_uppercase                = true
     require_numbers                  = true
     require_symbols                  = true
-    temporary_password_validity_days = 3
+    temporary_password_validity_days = 7
   }
 
   # Software-token MFA is mandatory for every business user (SRS 1.3.4).
@@ -126,10 +163,38 @@ resource "aws_cognito_user_pool" "business" {
     }
   }
 
-  # Business accounts are provisioned by us, not self-registered. An
-  # employer signing themselves up would bypass KYB entirely.
+  # Employers and colleges sign themselves up (2026-09-18, closing blocker
+  # E7): R15 made KYB automatic and payment the gate, so self-registration no
+  # longer bypasses anything. Staff can still create accounts for them.
+  # The email an account created on someone's behalf receives (2026-09-18:
+  # staff create candidates, employers and colleges from the console, and an
+  # owner adds colleagues). Cognito fills in {username} and the temporary
+  # password {####}; both placeholders are required.
   admin_create_user_config {
-    allow_admin_create_user_only = true
+    allow_admin_create_user_only = false
+
+    invite_message_template {
+      email_subject = "Your BharatPath account is ready"
+      email_message = "An account has been created for you on BharatPath.<br><br>Sign in with<br>Email: {username}<br>Temporary password: {####}<br><br>You will be asked to choose your own password. This temporary password expires in 7 days; if it has, ask us to send a new one."
+    }
+  }
+
+  # Sign-up and password-reset codes go by email -- there is no SMS.
+  verification_message_template {
+    default_email_option = "CONFIRM_WITH_CODE"
+    email_subject        = "Your BharatPath verification code"
+    email_message        = "Your BharatPath verification code is {####}. Do not share it with anyone."
+  }
+
+  # Through SES once the client's domain is verified (ses.tf); Cognito's own
+  # sender until then, which is capped at about 50 emails a day.
+  dynamic "email_configuration" {
+    for_each = local.email_enabled ? [1] : []
+    content {
+      email_sending_account = "DEVELOPER"
+      source_arn            = aws_sesv2_email_identity.domain[0].arn
+      from_email_address    = local.email_from_display
+    }
   }
 
   deletion_protection = "INACTIVE"

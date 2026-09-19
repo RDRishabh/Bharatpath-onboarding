@@ -3,13 +3,16 @@ suppression, and incomplete-profile nudges.
 
 Events are produced the real way -- through the routes that emit them -- and
 dispatched by calling the service the task calls, on the app role.
+
+**Email and in-app only since 2026-09-18**: the client deferred SMS with phone
+OTP, so no event plans an SMS (`test_notifications_domain.test_nothing_is_sent_by_sms`)
+and these tests follow the email row where they once followed the SMS one.
 """
 
 from __future__ import annotations
 
 import os
 import uuid
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -17,8 +20,7 @@ import pytest
 from sqlalchemy import text
 
 from app.modules.notifications import service
-from app.modules.notifications.providers import StubEmailProvider, StubSmsProvider
-from app.modules.notifications.templates import template_by_code
+from app.modules.notifications.providers import StubEmailProvider
 from tests.conftest import _seed_url, sessions
 from tests.integration.test_admin_console import _staff
 from tests.integration.test_college import _college
@@ -36,21 +38,22 @@ NOON_IST = datetime(2031, 3, 12, 6, 30, tzinfo=UTC)
 
 # --- helpers ------------------------------------------------------------------------
 @pytest.fixture
-def stub_sms(monkeypatch: pytest.MonkeyPatch) -> StubSmsProvider:
-    """A configured SMS provider that records, and every SMS template treated
-    as DLT-registered -- the state the product reaches once D1 clears."""
-    provider = StubSmsProvider()
-    monkeypatch.setattr(service, "get_sms_provider", lambda: provider)
-    monkeypatch.setattr(service, "get_email_provider", lambda: StubEmailProvider())
-
-    def registered(code: str) -> Any:
-        template = template_by_code(code)
-        if template is not None and template.channel == "SMS":
-            return replace(template, dlt_template_id=f"1107{abs(hash(code)) % 10**15:015d}")
-        return template
-
-    monkeypatch.setattr(service, "template_by_code", registered)
+def stub_email(monkeypatch: pytest.MonkeyPatch) -> StubEmailProvider:
+    """A configured email provider that records -- the state the product
+    reaches once SES is verified for the client's domain (blockers E38)."""
+    provider = StubEmailProvider()
+    monkeypatch.setattr(service, "get_email_provider", lambda: provider)
     return provider
+
+
+async def _give_email(user_id: Any) -> str:
+    """The pipeline's test candidate signs in by phone; give them an address."""
+    email = f"notify-{uuid.uuid4().hex[:12]}@example.test"
+    async with sessions(_seed_url())() as session, session.begin():
+        await session.execute(
+            text("UPDATE users SET email = :e WHERE id = :u"), {"e": email, "u": str(user_id)}
+        )
+    return email
 
 
 async def _event_id(event_type: str, aggregate_id: str) -> uuid.UUID:
@@ -90,21 +93,22 @@ async def _rows(**where: Any) -> list[dict[str, Any]]:
 
 
 # --- fan-out and the inbox -------------------------------------------------------------------
-async def test_an_application_reaches_the_inbox_and_the_sms_waits_on_dlt(
+async def test_an_application_reaches_the_inbox_and_the_email_waits_on_a_provider(
     client: Any, mint_token: Any
 ) -> None:
     a = await _applied(client, mint_token)
+    await _give_email(a["candidate"]["id"])
     event_id = await _event_id("applications.application_submitted", a["id"])
 
-    assert await _dispatch(event_id) == [], "no SMS may leave without a DLT registration"
+    assert await _dispatch(event_id) == [], "no email may leave without a provider"
     rows = await _rows(source_event_id=event_id)
     by_channel = {row["channel"]: row for row in rows}
-    assert set(by_channel) == {"IN_APP", "SMS"}
+    assert set(by_channel) == {"IN_APP", "EMAIL"}, "and no SMS row at all"
     assert by_channel["IN_APP"]["state"] == "DELIVERED"
     assert a["employer"]["name"] in by_channel["IN_APP"]["body"]
-    assert (by_channel["SMS"]["state"], by_channel["SMS"]["skip_reason"]) == (
+    assert (by_channel["EMAIL"]["state"], by_channel["EMAIL"]["skip_reason"]) == (
         "SKIPPED",
-        "DLT_UNREGISTERED",
+        "PROVIDER_UNCONFIGURED",
     )
 
     await _dispatch(event_id)
@@ -124,39 +128,34 @@ async def test_an_application_reaches_the_inbox_and_the_sms_waits_on_dlt(
     assert (await client.get(INBOX, headers=candidate)).json()["unread"] == unread - 1
 
 
-async def test_a_registered_sms_is_sent_once_whatever_the_relay_repeats(
-    client: Any, mint_token: Any, stub_sms: StubSmsProvider
+async def test_an_email_is_sent_once_whatever_the_relay_repeats(
+    client: Any, mint_token: Any, stub_email: StubEmailProvider
 ) -> None:
     a = await _applied(client, mint_token)
+    email = await _give_email(a["candidate"]["id"])
     event_id = await _event_id("applications.application_submitted", a["id"])
 
     first = await _dispatch(event_id)
-    assert [m.channel for m in first] == ["SMS"]
+    assert [m.channel for m in first] == ["EMAIL"]
     # The attempt died before sending: the retry finds the same PENDING row.
     retried = await _dispatch(event_id)
     assert [m.notification_id for m in retried] == [first[0].notification_id]
 
     assert await _send(first + retried) == ["SENT", "NOT_PENDING"]
-    assert len(stub_sms.sent) == 1
-    phone = await _phone(a["candidate"]["id"])
-    assert stub_sms.sent[0]["to"] == phone
-    [sms] = [r for r in await _rows(source_event_id=event_id) if r["channel"] == "SMS"]
-    assert (sms["state"], sms["provider"]) == ("SENT", "stub")
-    assert phone not in sms["body"], "a contact detail was written into the message row"
+    assert len(stub_email.sent) == 1
+    assert stub_email.sent[0]["to"] == email
+    assert stub_email.sent[0]["subject"] == "Your application has been sent"
+    [row] = [r for r in await _rows(source_event_id=event_id) if r["channel"] == "EMAIL"]
+    assert (row["state"], row["provider"]) == ("SENT", "stub")
+    assert email not in row["body"], "a contact detail was written into the message row"
     assert await _dispatch(event_id) == []
 
 
-async def _phone(user_id: Any) -> str:
-    async with sessions(_seed_url())() as session:
-        return str(
-            await session.scalar(text("SELECT phone FROM users WHERE id = :u"), {"u": str(user_id)})
-        )
-
-
 async def test_preferences_turn_a_channel_off_and_set_the_language(
-    client: Any, mint_token: Any, stub_sms: StubSmsProvider
+    client: Any, mint_token: Any, stub_email: StubEmailProvider
 ) -> None:
     a = await _applied(client, mint_token)
+    await _give_email(a["candidate"]["id"])
     headers = a["candidate"]["headers"]
     before = await client.get(f"{INBOX}/preferences", headers=headers)
     assert before.json() == {
@@ -167,28 +166,29 @@ async def test_preferences_turn_a_channel_off_and_set_the_language(
         "nudges_enabled": True,
     }
     changed = await client.patch(
-        f"{INBOX}/preferences", json={"sms_enabled": False, "locale": "hi"}, headers=headers
+        f"{INBOX}/preferences", json={"email_enabled": False, "locale": "hi"}, headers=headers
     )
     assert changed.status_code == 200, changed.text
-    assert changed.json()["sms_enabled"] is False and changed.json()["locale"] == "hi"
-    assert changed.json()["email_enabled"] is True
+    assert changed.json()["email_enabled"] is False and changed.json()["locale"] == "hi"
+    assert changed.json()["sms_enabled"] is True
     refused = await client.patch(f"{INBOX}/preferences", json={"locale": "fr"}, headers=headers)
     assert refused.status_code == 422
 
     event_id = await _event_id("applications.application_submitted", a["id"])
     assert await _dispatch(event_id) == []
-    [sms] = [r for r in await _rows(source_event_id=event_id) if r["channel"] == "SMS"]
-    assert (sms["skip_reason"], sms["locale"]) == ("OPTED_OUT", "hi")
-    assert stub_sms.sent == []
+    [row] = [r for r in await _rows(source_event_id=event_id) if r["channel"] == "EMAIL"]
+    assert (row["skip_reason"], row["locale"]) == ("OPTED_OUT", "hi")
+    assert stub_email.sent == []
 
 
 async def test_support_can_suppress_a_channel_and_it_is_audited(
-    client: Any, mint_token: Any, stub_sms: StubSmsProvider
+    client: Any, mint_token: Any, stub_email: StubEmailProvider
 ) -> None:
     agent = await _staff(mint_token, "SUPPORT_AGENT")
     a = await _applied(client, mint_token)
+    await _give_email(a["candidate"]["id"])
     url = f"{API}/admin/users/{a['candidate']['id']}/notification-suppressions"
-    body = {"channel": "SMS", "reason": "SUPPORT_REQUEST"}
+    body = {"channel": "EMAIL", "reason": "SUPPORT_REQUEST"}
 
     first = await client.post(url, json=body, headers=agent["headers"])
     assert first.status_code == 200, first.text
@@ -199,8 +199,8 @@ async def test_support_can_suppress_a_channel_and_it_is_audited(
 
     event_id = await _event_id("applications.application_submitted", a["id"])
     assert await _dispatch(event_id) == []
-    [sms] = [r for r in await _rows(source_event_id=event_id) if r["channel"] == "SMS"]
-    assert sms["skip_reason"] == "SUPPRESSED"
+    [row] = [r for r in await _rows(source_event_id=event_id) if r["channel"] == "EMAIL"]
+    assert row["skip_reason"] == "SUPPRESSED"
     async with sessions(_seed_url())() as session:
         audited = await session.scalar(
             text(
@@ -280,7 +280,6 @@ async def test_a_nudge_waits_its_interval_and_stops_at_the_cap() -> None:
     rows = await _rows(user_id=user_id, category="NUDGE")
     assert {(r["channel"], r["state"], r["skip_reason"]) for r in rows} == {
         ("IN_APP", "DELIVERED", None),
-        ("SMS", "SKIPPED", "DLT_UNREGISTERED"),
         ("EMAIL", "SKIPPED", "NO_CONTACT"),
     }
 

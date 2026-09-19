@@ -221,10 +221,12 @@ async def current_business_identity(
     skips the membership check**, so each one should be as narrow as those
     two are.
 
-    The business Cognito pool is admin-create-only, so this is reachable only
-    by accounts we provisioned. If the client ever opens self-registration
-    (R15 says an employer "signs up"), this dependency is what makes that work
-    without a code change -- and it is also what starts admitting strangers.
+    **Self-registration is open (2026-09-18).** The client decided employers
+    and colleges sign themselves up, as R15 said, so the business Cognito pool
+    is no longer admin-create-only and this dependency now admits strangers:
+    anyone can register, verify their email, set up MFA, and reach these
+    routes. That is acceptable only because they stay this narrow -- what a
+    new organisation can *do* is still gated on KYB and payment (R15).
     """
     user, token = await _authenticate(session, authorization)
     if token.pool != "BUSINESS":

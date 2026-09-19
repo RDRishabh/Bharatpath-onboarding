@@ -118,14 +118,17 @@ def plan_for(event_type: str, payload: dict[str, object]) -> tuple[Planned, ...]
     **No template takes the score, a band or a threshold**, and nothing here
     can ask for one: `Variable` has no member for it, and `notifications`
     may not import `scoring` (import-linter).
+
+    **Email and in-app only** (2026-09-18): no SMS is sent until the client
+    has DLT and a sender, and a unit test holds that nothing here names one.
     """
     candidate_update = Planned(
-        "CANDIDATE", ("SMS_APPLICATION_UPDATE", "IN_APP_APPLICATION_UPDATE"), ("employer",)
+        "CANDIDATE", ("EMAIL_APPLICATION_UPDATE", "IN_APP_APPLICATION_UPDATE"), ("employer",)
     )
     if event_type == "applications.application_submitted":
         return (
             Planned(
-                "CANDIDATE", ("SMS_APPLICATION_SENT", "IN_APP_APPLICATION_SENT"), ("employer",)
+                "CANDIDATE", ("EMAIL_APPLICATION_SENT", "IN_APP_APPLICATION_SENT"), ("employer",)
             ),
         )
     if event_type == "applications.stage_changed":
@@ -139,28 +142,28 @@ def plan_for(event_type: str, payload: dict[str, object]) -> tuple[Planned, ...]
     if event_type == "billing.payment_succeeded":
         return (Planned("USER", ("IN_APP_PAYMENT_RECEIVED",)),)
     if event_type == "billing.payment_failed":
-        return (Planned("USER", ("SMS_PAYMENT_FAILED", "IN_APP_PAYMENT_FAILED")),)
+        return (Planned("USER", ("EMAIL_PAYMENT_FAILED", "IN_APP_PAYMENT_FAILED")),)
     if event_type == "subscriptions.state_changed":
         if payload.get("to_state") != "LAPSED":
             return ()
-        return (Planned("SUBSCRIBER", ("SMS_ACCESS_ENDED", "IN_APP_ACCESS_ENDED")),)
+        return (Planned("SUBSCRIBER", ("EMAIL_ACCESS_ENDED", "IN_APP_ACCESS_ENDED")),)
     if event_type == "subscriptions.pre_debit_notified":
         return (
             Planned(
                 "SUBSCRIBER",
-                ("SMS_MANDATE_PRE_DEBIT", "IN_APP_PRE_DEBIT"),
+                ("EMAIL_MANDATE_PRE_DEBIT", "IN_APP_PRE_DEBIT"),
                 ("amount", "date"),
                 mandatory=True,
             ),
         )
     if event_type == "kyb.approved":
-        return (Planned("EMPLOYER_OWNERS", ("SMS_KYB_APPROVED", "IN_APP_KYB_APPROVED")),)
+        return (Planned("EMPLOYER_OWNERS", ("EMAIL_KYB_APPROVED", "IN_APP_KYB_APPROVED")),)
     if event_type == "kyb.reviewed":
         decision = payload.get("decision")
         if decision == "APPROVED":
-            return (Planned("EMPLOYER_OWNERS", ("SMS_KYB_APPROVED", "IN_APP_KYB_APPROVED")),)
+            return (Planned("EMPLOYER_OWNERS", ("EMAIL_KYB_APPROVED", "IN_APP_KYB_APPROVED")),)
         if decision == "MORE_INFO_REQUIRED":
-            return (Planned("EMPLOYER_OWNERS", ("SMS_KYB_NEEDS_INFO", "IN_APP_KYB_NEEDS_INFO")),)
+            return (Planned("EMPLOYER_OWNERS", ("EMAIL_KYB_NEEDS_INFO", "IN_APP_KYB_NEEDS_INFO")),)
         return ()
     if event_type == "college.consent_revoked":
         scopes = payload.get("scopes")
@@ -175,7 +178,9 @@ def plan_for(event_type: str, payload: dict[str, object]) -> tuple[Planned, ...]
         return (
             Planned(
                 "ROSTER_CONTACT",
-                ("SMS_COLLEGE_INVITATION", "EMAIL_COLLEGE_INVITATION"),
+                # Email only. A roster contact given by phone alone hears
+                # nothing until SMS returns (blockers E35).
+                ("EMAIL_COLLEGE_INVITATION",),
                 ("college",),
             ),
         )
@@ -293,7 +298,6 @@ def delivery_decision(
 # ---------------------------------------------------------------------------
 NUDGE_TEMPLATES: Final = (
     "IN_APP_PROFILE_INCOMPLETE",
-    "SMS_PROFILE_INCOMPLETE",
     "EMAIL_PROFILE_INCOMPLETE",
 )
 

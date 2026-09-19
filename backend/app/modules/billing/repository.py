@@ -19,7 +19,7 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.billing.models import Payment, PaymentCallback
+from app.modules.billing.models import DiscountCode, DiscountRedemption, Payment, PaymentCallback
 
 
 async def lock_checkout(session: AsyncSession, *, user_id: uuid.UUID, item_id: uuid.UUID) -> None:
@@ -40,6 +40,7 @@ async def reusable_pending_payment(
     amount_minor: int,
     provider: str,
     since: datetime,
+    discount_code_id: uuid.UUID | None = None,
 ) -> Payment | None:
     result = await session.execute(
         select(Payment)
@@ -51,6 +52,9 @@ async def reusable_pending_payment(
             Payment.amount_minor == amount_minor,
             Payment.provider == provider,
             Payment.created_at >= since,
+            Payment.discount_code_id.is_(None)
+            if discount_code_id is None
+            else Payment.discount_code_id == discount_code_id,
         )
         .order_by(Payment.created_at.desc())
         .limit(1)
@@ -73,6 +77,8 @@ async def insert_payment(
     subscriber_id: uuid.UUID | None,
     subscription_id: uuid.UUID | None,
     checkout_url: str | None,
+    discount_code_id: uuid.UUID | None = None,
+    list_amount_minor: int | None = None,
 ) -> Payment:
     """Always PENDING and unverified. The database refuses anything else."""
     row = Payment(
@@ -90,6 +96,8 @@ async def insert_payment(
         subscriber_id=subscriber_id,
         subscription_id=subscription_id,
         checkout_url=checkout_url,
+        discount_code_id=discount_code_id,
+        list_amount_minor=list_amount_minor,
     )
     session.add(row)
     await session.flush()
@@ -156,3 +164,190 @@ async def mark_callback_processed(
     row.processed_at = now
     row.outcome = outcome
     await session.flush()
+
+
+# ---------------------------------------------------------------------------
+# Discount codes (2026-09-18)
+# ---------------------------------------------------------------------------
+async def insert_discount_code(
+    session: AsyncSession,
+    *,
+    code: str,
+    audience: str,
+    percent_off: int | None,
+    amount_off_minor: int | None,
+    valid_from: datetime,
+    valid_until: datetime | None,
+    usage_limit: int | None,
+    label: str | None,
+    created_by: uuid.UUID,
+) -> DiscountCode | None:
+    """None when the code is taken -- the caller says so, or tries another."""
+    result = await session.execute(
+        pg_insert(DiscountCode)
+        .values(
+            id=uuid.uuid4(),
+            code=code,
+            audience=audience,
+            percent_off=percent_off,
+            amount_off_minor=amount_off_minor,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            usage_limit=usage_limit,
+            label=label,
+            created_by=created_by,
+        )
+        .on_conflict_do_nothing(constraint="uq_discount_codes_code")
+        .returning(DiscountCode.id)
+    )
+    code_id = result.scalar_one_or_none()
+    return None if code_id is None else await session.get(DiscountCode, code_id)
+
+
+async def get_discount_code(session: AsyncSession, *, code_id: uuid.UUID) -> DiscountCode | None:
+    return await session.get(DiscountCode, code_id)
+
+
+async def discount_code_by_code(session: AsyncSession, *, code: str) -> DiscountCode | None:
+    result = await session.execute(select(DiscountCode).where(DiscountCode.code == code))
+    return result.scalar_one_or_none()
+
+
+async def lock_discount_code_by_code(session: AsyncSession, *, code: str) -> DiscountCode | None:
+    """The row, locked: checkouts against one code are serialised, so two
+    payers cannot both take its last use."""
+    result = await session.execute(
+        select(DiscountCode)
+        .where(DiscountCode.code == code)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one_or_none()
+
+
+async def lock_discount_code(session: AsyncSession, *, code_id: uuid.UUID) -> DiscountCode | None:
+    result = await session.execute(
+        select(DiscountCode)
+        .where(DiscountCode.id == code_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one_or_none()
+
+
+async def disable_discount_code(
+    session: AsyncSession, *, code: DiscountCode, disabled_by: uuid.UUID, now: datetime
+) -> None:
+    code.disabled_at = now
+    code.disabled_by = disabled_by
+    await session.flush()
+
+
+async def list_discount_codes(
+    session: AsyncSession,
+    *,
+    audience: str | None,
+    after: tuple[datetime, uuid.UUID] | None,
+    limit: int,
+) -> list[DiscountCode]:
+    query = select(DiscountCode)
+    if audience is not None:
+        query = query.where(DiscountCode.audience == audience)
+    if after is not None:
+        query = query.where(
+            (DiscountCode.created_at < after[0])
+            | ((DiscountCode.created_at == after[0]) & (DiscountCode.id < after[1]))
+        )
+    result = await session.execute(
+        query.order_by(DiscountCode.created_at.desc(), DiscountCode.id.desc()).limit(limit)
+    )
+    return list(result.scalars())
+
+
+async def redemption_counts(
+    session: AsyncSession, *, code_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    if not code_ids:
+        return {}
+    result = await session.execute(
+        text(
+            "SELECT discount_code_id, count(*) AS used FROM discount_redemptions "
+            "WHERE discount_code_id = ANY(:ids) GROUP BY discount_code_id"
+        ),
+        {"ids": code_ids},
+    )
+    return {row.discount_code_id: int(row.used) for row in result}
+
+
+async def subscriber_has_redeemed(
+    session: AsyncSession, *, code_id: uuid.UUID, subscriber_id: uuid.UUID
+) -> bool:
+    result = await session.execute(
+        text(
+            "SELECT EXISTS (SELECT 1 FROM discount_redemptions "
+            "WHERE discount_code_id = :code AND subscriber_id = :subscriber)"
+        ),
+        {"code": code_id, "subscriber": subscriber_id},
+    )
+    return bool(result.scalar())
+
+
+async def held_checkouts(
+    session: AsyncSession,
+    *,
+    code_id: uuid.UUID,
+    since: datetime,
+    excluding_payment_id: uuid.UUID | None,
+) -> int:
+    """Fresh PENDING checkouts carrying this code: uses promised, not yet paid."""
+    result = await session.execute(
+        text(
+            "SELECT count(*) FROM payments "
+            "WHERE discount_code_id = :code AND status = 'PENDING' AND created_at >= :since "
+            "AND (CAST(:exclude AS uuid) IS NULL OR id <> CAST(:exclude AS uuid))"
+        ),
+        {"code": code_id, "since": since, "exclude": excluding_payment_id},
+    )
+    return int(result.scalar() or 0)
+
+
+async def insert_redemption(session: AsyncSession, *, payment: Payment) -> None:
+    """Once per payment. `guard_discount_redemption` checks the payment."""
+    assert payment.discount_code_id is not None and payment.list_amount_minor is not None
+    assert payment.subscriber_type is not None and payment.subscriber_id is not None
+    await session.execute(
+        pg_insert(DiscountRedemption)
+        .values(
+            id=uuid.uuid4(),
+            discount_code_id=payment.discount_code_id,
+            payment_id=payment.id,
+            user_id=payment.user_id,
+            subscriber_type=payment.subscriber_type,
+            subscriber_id=payment.subscriber_id,
+            list_amount_minor=payment.list_amount_minor,
+            discount_minor=payment.list_amount_minor - payment.amount_minor,
+            amount_minor=payment.amount_minor,
+        )
+        .on_conflict_do_nothing(constraint="uq_discount_redemptions_payment")
+    )
+
+
+async def list_redemptions(
+    session: AsyncSession,
+    *,
+    code_id: uuid.UUID,
+    after: tuple[datetime, uuid.UUID] | None,
+    limit: int,
+) -> list[DiscountRedemption]:
+    query = select(DiscountRedemption).where(DiscountRedemption.discount_code_id == code_id)
+    if after is not None:
+        query = query.where(
+            (DiscountRedemption.redeemed_at < after[0])
+            | ((DiscountRedemption.redeemed_at == after[0]) & (DiscountRedemption.id < after[1]))
+        )
+    result = await session.execute(
+        query.order_by(DiscountRedemption.redeemed_at.desc(), DiscountRedemption.id.desc()).limit(
+            limit
+        )
+    )
+    return list(result.scalars())

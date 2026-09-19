@@ -312,52 +312,31 @@ async def test_a_candidate_lookup_does_not_hit_the_database_twice(client, mint_t
 
 
 # ---------------------------------------------------------------------------
-# The OTP outer throttle
+# The OTP outer throttle -- deferred with phone OTP (2026-09-18)
 # ---------------------------------------------------------------------------
-async def test_otp_start_throttles_per_phone(client) -> None:
-    """Ours is the outer throttle; Twilio Verify owns the real abuse controls.
+async def test_phone_otp_is_not_offered_while_it_is_deferred(client, app) -> None:
+    """The client deferred phone OTP until the organisation's registration and
+    DLT exist. The route is not registered, so no client can come to depend
+    on it, and it is absent from the published API."""
+    response = await client.post("/api/v1/auth/otp/start", json={"phone": "+919800000000"})
+    assert response.status_code in (404, 405)
+    assert "/api/v1/auth/otp/start" not in app.openapi()["paths"]
 
-    Note what this endpoint does NOT do: it sends nothing, and it never sees
-    an OTP value. That is why no code appears anywhere in this test.
-    """
+
+async def test_the_otp_throttle_still_limits_per_phone_for_when_it_returns() -> None:
+    """Kept and tested at the service, so switching phone OTP back on is the
+    Lambda triggers and a flag, not a rebuild. It sends nothing itself and
+    never sees a code."""
+    from app.core.errors import RateLimitedError
+    from app.modules.identity import service as identity_service
     from app.settings import get_settings
 
     phone = f"+9193{uuid.uuid4().int % 10**8:08d}"
     limit = get_settings().otp_start_per_phone_per_hour
-
     for _ in range(limit):
-        response = await client.post("/api/v1/auth/otp/start", json={"phone": phone})
-        assert response.status_code == 202
-
-    blocked = await client.post("/api/v1/auth/otp/start", json={"phone": phone})
-    assert blocked.status_code == 429
-    assert blocked.json()["code"] == "rate_limited"
-
-
-async def test_otp_start_requires_e164(client) -> None:
-    """Normalising a bare number would guess a country code.
-
-    Guessing wrong sends a stranger a login code, so this rejects instead.
-    """
-    response = await client.post("/api/v1/auth/otp/start", json={"phone": "9876543210"})
-    assert response.status_code == 422
-
-
-async def test_otp_start_says_nothing_about_whether_the_number_is_known(client, mint_token) -> None:
-    """Otherwise the login form becomes an account-existence oracle."""
-    known = f"+9192{uuid.uuid4().int % 10**8:08d}"
-    headers, subject = mint_token(pool="CANDIDATE", phone=known)
-    try:
-        await client.get(ME, headers=headers)  # creates the user
-
-        registered = await client.post("/api/v1/auth/otp/start", json={"phone": known})
-        unknown = await client.post(
-            "/api/v1/auth/otp/start", json={"phone": f"+9191{uuid.uuid4().int % 10**8:08d}"}
-        )
-        assert registered.status_code == unknown.status_code
-        assert registered.json() == unknown.json()
-    finally:
-        await _delete_user(subject)
+        assert await identity_service.start_otp_challenge(phone=phone, client_ip=None) > 0
+    with pytest.raises(RateLimitedError):
+        await identity_service.start_otp_challenge(phone=phone, client_ip=None)
 
 
 # ---------------------------------------------------------------------------

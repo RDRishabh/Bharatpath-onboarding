@@ -78,8 +78,10 @@ pytest --cov=app
   authority: a revoked membership that stayed valid until token expiry is the
   tenant-isolation failure SRS §2.24.7 forbids.
 - `cognito_sub` is stored on `users` but **must never appear in an API response.**
-- Two pools: candidates (phone OTP / email) and business (password + mandatory
-  software-token MFA). A token from the wrong pool is rejected, not half-trusted.
+- Two pools: candidates (email + password) and business (email + password +
+  mandatory software-token MFA). **No phone OTP and no SMS** (client,
+  2026-09-18) — see *Sign-up, accounts and discount codes* below. A token from
+  the wrong pool is rejected, not half-trusted.
 - `AUTH_ALLOW_LOCAL_TOKENS=true` enables a dev-only provider that mints real
   RS256 tokens locally. `Settings` refuses to boot with it set outside local/CI.
   **CI needs it set** — with no Cognito pool configured, `Settings` otherwise
@@ -170,6 +172,7 @@ test asserts**, so a placeholder cannot quietly become the product:
 | `college/domain.py` | `CONSENT_VERSION` starts `placeholder-` — the words a student agrees to when linking to a college are ours, not counsel's |
 | `college/domain.py` | `INDIVIDUAL_CONSENT_VERSION` starts `placeholder-` — the words for letting a college see a student by name, and the field list they name (blockers E27) |
 | `analytics/domain.py` | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3 |
+| `billing/domain.py` | `DISCOUNT_POLICY_VERSION` starts `placeholder-` — no 100% code, first checkout only, one use per payer (blockers E36) |
 
 Flipping one of these is a client decision, not a tidy-up.
 
@@ -547,10 +550,11 @@ is where a third one would have to be argued for.
 - **Every message decided is a row, sent or not**, with `skip_reason`, keyed by
   `dedupe_key` so a redelivered event writes nothing new. Decide in one
   transaction, send each in its own (`app/tasks/notify.py`).
-- **No SMS without a `dlt_template_id`** -- all `None`, so today SMS rows are
-  SKIPPED `DLT_UNREGISTERED`. Providers default to `none`; tests use the
-  `stub_sms` fixture (`test_notifications.py`), which also pretends DLT is done.
-  Only the UPI pre-debit notice ignores an opt-out.
+- **No SMS at all since 2026-09-18**: `plan_for` names only EMAIL and IN_APP
+  templates, and `test_nothing_is_sent_by_sms` fails the build otherwise. The
+  SMS drafts stay, unregistered. Providers default to `none`; tests use the
+  `stub_email` fixture (`test_notifications.py`). Only the UPI pre-debit
+  notice (now `EMAIL_MANDATE_PRE_DEBIT`) ignores an opt-out.
 - **No template may carry the score**: no variable for it, and
   `notifications-never-import-scoring` in `.importlinter`.
 - **A message to a college about a revocation never names the student** (E28).
@@ -608,6 +612,42 @@ is where a third one would have to be argued for.
   every hot query with `enable_seqscan = off` and holds every FK on a growing
   table to an index or a written exemption. `users` is exempt as a parent
   *because* an erasure empties rather than deletes it.
+
+## Sign-up, accounts and discount codes — 2026-09-18
+
+From the client's `docs/Signup_Login_Discussion_Updates .pdf`; the reference
+for app teams is `docs/signup-and-accounts.md`.
+
+- **Anyone signs up**, by email and password: candidates, and employers and
+  colleges in the business pool (`allow_admin_create_user_only = false`,
+  closing E7). A business account with no organisation gets 403
+  `no_active_membership` from `/auth/me`, then creates one.
+  `current_business_identity` therefore admits strangers now — keep its
+  routes as narrow as they are.
+- **Phone OTP is deferred, and there is no SMS.** `/auth/otp/start` exists
+  only behind `AUTH_PHONE_OTP_ENABLED`; `start_otp_challenge` is kept and
+  tested at the service. Cognito sends every code by email (through SES once
+  the client's domain exists, `infra/terraform/ses.tf`, E38).
+- **Staff create accounts** (`/admin/accounts/*`, PLATFORM_ADMIN): our row
+  first, then `app/core/auth/directory.py` asks Cognito `AdminCreateUser`,
+  which emails a temporary password. **Invite last**, so a refusal emails
+  nobody and a Cognito failure (502) rolls the rows back. Tests read
+  `LocalAccountDirectory.sent`. An owner adding a never-signed-in colleague
+  sends the same email. Staff never link a student to a college: that link is
+  the student's consent.
+- **First sign-in adopts a pre-made row by email *and pool*** (`_adopt_unlinked`).
+  A contact already held by the other pool is 403 `account_contact_in_use`,
+  not a 500.
+- **Discount codes live in `billing`.** A code lowers the checkout's
+  `amount_minor` and is recorded on the payment (`discount_code_id`,
+  `list_amount_minor`, both held by `guard_payment_write`). **A use is a
+  `discount_redemptions` row written in `_apply_payment_event`, beside the
+  grant** — never at checkout; `guard_discount_redemption` refuses a row
+  without this code's verified payment. A code's terms never change
+  (`guard_discount_code_write`); staff switch it off and make another. Checkouts
+  against one code are serialised by locking its row, and a fresh PENDING
+  checkout holds a use for `CHECKOUT_HOLD_MINUTES`. Status is computed, never
+  stored. Only a checkout reads a code, so a mandate debit is never discounted.
 
 ## Streak points are not the score
 
