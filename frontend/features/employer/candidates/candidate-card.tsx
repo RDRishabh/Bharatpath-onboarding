@@ -12,6 +12,7 @@ import type { Candidate } from "./types";
 
 interface CandidateCardProps {
   candidate: Candidate;
+  onReveal?: () => void;
 }
 
 /* =========================================================
@@ -70,6 +71,7 @@ function SkillPill({
 
 export function CandidateCard({
   candidate,
+  onReveal,
 }: CandidateCardProps) {
   const bandLabels = {
     ENTRY: "Entry",
@@ -348,6 +350,7 @@ export function CandidateCard({
         </span>
       </span>
 
+      {onReveal && <button type="button" onClick={onReveal} className="ml-auto shrink-0 rounded-lg bg-[#5b4fcf] px-3 py-2 text-xs font-semibold text-white">Open profile</button>}
     </article>
   );
 }

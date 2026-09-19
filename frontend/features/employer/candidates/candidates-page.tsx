@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { ListSkeleton } from "@/components/common/loading";
 import { usePageHeader } from "@/components/layout/header-context";
@@ -16,6 +16,8 @@ import {
   toggleCandidateBand,
   toggleCandidateFilter,
   useSearchEmployerCandidatesQuery,
+  useLazyRevealEmployerCandidateQuery,
+  type RevealedCandidateResponse,
 } from "@/store/employer/candidates";
 
 import { CandidateCard } from "./candidate-card";
@@ -49,6 +51,8 @@ export function CandidatesPage() {
   const { data, error, isLoading, isFetching } = useSearchEmployerCandidatesQuery(query);
   const candidates = data?.items ?? [];
   const nextCursor = data?.nextCursor ?? null;
+  const [revealCandidate, revealState] = useLazyRevealEmployerCandidateQuery();
+  const [revealed, setRevealed] = useState<RevealedCandidateResponse | null>(null);
 
   /* =====================================================
      PAGE
@@ -96,6 +100,7 @@ export function CandidatesPage() {
               <CandidateCard
                 key={candidate.candidateId}
                 candidate={candidate}
+                onReveal={() => void revealCandidate(candidate.candidateId).unwrap().then(setRevealed)}
               />
             ))}
 
@@ -176,6 +181,17 @@ export function CandidatesPage() {
         onToggleBand={(value) => dispatch(toggleCandidateBand(value))}
         onToggleFilter={(key, value) => dispatch(toggleCandidateFilter({ key, value }))}
       />
+      {(revealed || revealState.isFetching || revealState.isError) && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
+        <section className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+          {revealState.isFetching ? <p className="text-sm">Opening candidate…</p> : revealState.isError ? <p className="text-sm text-[#b42318]">This profile could not be opened.</p> : revealed && <>
+            <h2 className="text-lg font-bold">{revealed.full_name ?? "Candidate"}</h2>
+            <p className="mt-1 text-sm text-[#647083]">Score {revealed.score} · {revealed.band}</p>
+            <div className="mt-4 space-y-1 text-sm"><p>{revealed.email ?? "No email shared"}</p><p>{revealed.phone ?? "No phone shared"}</p></div>
+            <div className="mt-4 flex flex-wrap gap-1">{revealed.skills.map((skill) => <span key={skill} className="rounded-full bg-[#f2f4f7] px-2 py-1 text-xs">{skill}</span>)}</div>
+          </>}
+          <button type="button" onClick={() => { setRevealed(null); revealState.reset(); }} className="mt-5 rounded-lg border px-3 py-2 text-xs font-semibold">Close</button>
+        </section>
+      </div>}
     </div>
   );
 }

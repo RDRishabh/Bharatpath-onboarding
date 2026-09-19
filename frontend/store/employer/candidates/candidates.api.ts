@@ -16,6 +16,20 @@ interface CandidatePageResponse {
   next_cursor: string | null;
 }
 
+export interface RevealedCandidateResponse {
+  candidate_id: string;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  score: number;
+  band: CandidateBand;
+  experience_years: number;
+  skills: string[];
+  badges: CandidateBadge[];
+  city: string | null;
+  state_code: string | null;
+}
+
 export interface EmployerCandidatesQuery {
   band?: CandidateBand[];
   skill?: string[];
@@ -55,8 +69,12 @@ export const employerCandidatesApi = baseApi.injectEndpoints({
       }),
       providesTags: [{ type: "Candidate" as const, id: "LIST" }],
     }),
+    revealEmployerCandidate: builder.query<RevealedCandidateResponse, string>({
+      query: (candidateId) => ({ url: `/employer/discovery/candidates/${candidateId}`, method: "GET" }),
+      providesTags: (_result, _error, candidateId) => [{ type: "Candidate", id: candidateId }],
+    }),
   }),
   overrideExisting: false,
 });
 
-export const { useSearchEmployerCandidatesQuery } = employerCandidatesApi;
+export const { useSearchEmployerCandidatesQuery, useLazyRevealEmployerCandidateQuery } = employerCandidatesApi;

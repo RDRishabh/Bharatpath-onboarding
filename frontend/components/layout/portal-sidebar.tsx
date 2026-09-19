@@ -100,12 +100,11 @@ export function PortalSidebar({
    * Applications page.
    */
 
+  const employerPendingApplications = useAppSelector(
+    selectPendingApplicationsCount,
+  );
   const pendingApplications =
-    portal === "employer"
-      ? useAppSelector(
-          selectPendingApplicationsCount,
-        )
-      : 0;
+    portal === "employer" ? employerPendingApplications : 0;
 
   /*
    * ============================================================

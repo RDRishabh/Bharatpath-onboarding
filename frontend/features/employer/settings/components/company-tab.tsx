@@ -11,6 +11,7 @@ import {
   updateCompanyField,
   useGetEmployerOrganisationQuery,
   useUpdateEmployerOrganisationMutation,
+  useGetEmployerReferenceQuery,
 } from "@/store/employer/settings";
 
 const inputClass =
@@ -72,6 +73,7 @@ export function CompanyTab() {
     useGetEmployerOrganisationQuery();
   const [updateOrganisation, { isLoading: isSaving }] =
     useUpdateEmployerOrganisationMutation();
+  const { data: reference } = useGetEmployerReferenceQuery();
 
   useEffect(() => {
     if (organisation) {
@@ -80,7 +82,7 @@ export function CompanyTab() {
   }, [dispatch, organisation]);
 
   const update =
-    (field: keyof typeof company) => (event: ChangeEvent<HTMLInputElement>) =>
+    (field: keyof typeof company) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       dispatch(
         updateCompanyField({
           field,
@@ -142,23 +144,25 @@ export function CompanyTab() {
         </Field>
 
         <Field label="Business type">
-          <input
+          <select
             value={company.businessType}
-            placeholder="Not specified"
-            disabled
-            readOnly
+            onChange={update("businessType")}
             className={inputClass}
-          />
+          >
+            <option value="">Not specified</option>
+            {reference?.employer_types.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+          </select>
         </Field>
 
         <Field label="Industry">
-          <input
+          <select
             value={company.industry}
-            placeholder="Not specified"
-            disabled
-            readOnly
+            onChange={update("industry")}
             className={inputClass}
-          />
+          >
+            <option value="">Not specified</option>
+            {reference?.industries.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+          </select>
         </Field>
       </div>
 

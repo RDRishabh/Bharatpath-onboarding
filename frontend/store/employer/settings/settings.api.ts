@@ -10,6 +10,11 @@ interface EmployerOrganisationResponse {
   kyb_status: string;
 }
 
+export interface EmployerReferenceResponse {
+  employer_types: Array<{ code: string; label: string }>;
+  industries: Array<{ code: string; label: string }>;
+}
+
 export function mapEmployerOrganisation(
   organisation: EmployerOrganisationResponse,
 ): CompanyProfile {
@@ -81,6 +86,9 @@ export const employerSettingsApi = baseApi.injectEndpoints({
         response.map(mapEmployerTeamMember),
       providesTags: [{ type: "Team", id: "LIST" }],
     }),
+    getEmployerReference: builder.query<EmployerReferenceResponse, void>({
+      query: () => ({ url: "/employer/reference", method: "GET" }),
+    }),
 
     getEmployerOrganisation: builder.query<CompanyProfile, void>({
       query: () => ({
@@ -89,6 +97,32 @@ export const employerSettingsApi = baseApi.injectEndpoints({
       }),
       transformResponse: (response: EmployerOrganisationResponse) =>
         mapEmployerOrganisation(response),
+      providesTags: [{ type: "Team", id: "ORGANISATION" }],
+    }),
+    addEmployerTeamMember: builder.mutation<TeamMember, { email: string; role: TeamRole }>({
+      query: ({ email, role }) => ({
+        url: "/employer/team",
+        method: "POST",
+        body: {
+          email,
+          role: role === "Recruiter" ? "EMPLOYER_RECRUITER" : role === "View only" ? "EMPLOYER_VIEWER" : "EMPLOYER_OWNER",
+        },
+      }),
+      transformResponse: (response: EmployerTeamMemberResponse) => mapEmployerTeamMember(response),
+      invalidatesTags: [{ type: "Team", id: "LIST" }],
+    }),
+    updateEmployerTeamMember: builder.mutation<TeamMember, { userId: string; role: TeamRole }>({
+      query: ({ userId, role }) => ({
+        url: `/employer/team/${userId}`,
+        method: "PATCH",
+        body: { role: role === "Recruiter" ? "EMPLOYER_RECRUITER" : role === "View only" ? "EMPLOYER_VIEWER" : "EMPLOYER_OWNER" },
+      }),
+      transformResponse: (response: EmployerTeamMemberResponse) => mapEmployerTeamMember(response),
+      invalidatesTags: [{ type: "Team", id: "LIST" }],
+    }),
+    removeEmployerTeamMember: builder.mutation<void, string>({
+      query: (userId) => ({ url: `/employer/team/${userId}`, method: "DELETE" }),
+      invalidatesTags: [{ type: "Team", id: "LIST" }],
     }),
 
     updateEmployerOrganisation: builder.mutation<
@@ -106,6 +140,7 @@ export const employerSettingsApi = baseApi.injectEndpoints({
       }),
       transformResponse: (response: EmployerOrganisationResponse) =>
         mapEmployerOrganisation(response),
+      invalidatesTags: [{ type: "Team", id: "ORGANISATION" }],
     }),
   }),
   overrideExisting: false,
@@ -115,4 +150,8 @@ export const {
   useGetEmployerTeamQuery,
   useGetEmployerOrganisationQuery,
   useUpdateEmployerOrganisationMutation,
+  useGetEmployerReferenceQuery,
+  useAddEmployerTeamMemberMutation,
+  useUpdateEmployerTeamMemberMutation,
+  useRemoveEmployerTeamMemberMutation,
 } = employerSettingsApi;

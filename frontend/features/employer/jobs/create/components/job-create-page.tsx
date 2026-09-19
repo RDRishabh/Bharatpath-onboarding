@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
-  useEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -19,6 +18,13 @@ import { usePageHeader } from "@/components/layout/header-context";
 import { useJobCreateForm } from "../hooks/use-job-create-form";
 import type { CreateJobFormValues } from "../types";
 import { JobSkillsField } from "./job-skills-field";
+import {
+  useCreateEmployerJobMutation,
+  usePublishEmployerJobMutation,
+  usePreviewEmployerJobThresholdQuery,
+  useUpdateEmployerJobMutation,
+} from "@/store/employer/jobs";
+import { useGetEmployerOrganisationQuery } from "@/store/employer/settings";
 
 const employmentOptions = [
   {
@@ -36,15 +42,15 @@ const employmentOptions = [
 ];
 
 export interface JobCreatePageProps {
-  canPublish?: boolean;
   initialValues?: CreateJobFormValues;
   heading?: string;
+  jobId?: string;
 }
 
 export function JobCreatePage({
-  canPublish = false,
   initialValues,
   heading = "Create job",
+  jobId,
 }: JobCreatePageProps) {
   const router = useRouter();
 
@@ -53,8 +59,14 @@ export function JobCreatePage({
     errors,
     setValue,
     validate,
-    matchingCandidateCount,
   } = useJobCreateForm(initialValues);
+  const { data: organisation } = useGetEmployerOrganisationQuery();
+  const canPublish = organisation?.kybStatus === "APPROVED";
+  const { data: thresholdPreview } = usePreviewEmployerJobThresholdQuery(values.minScore);
+  const [createJob, { isLoading: isCreating }] = useCreateEmployerJobMutation();
+  const [updateJob, { isLoading: isUpdating }] = useUpdateEmployerJobMutation();
+  const [publish, { isLoading: isPublishing }] = usePublishEmployerJobMutation();
+  const isSaving = isCreating || isUpdating || isPublishing;
 
   const [toast, setToast] =
     useState<string | null>(null);
@@ -109,11 +121,19 @@ export function JobCreatePage({
     );
   };
 
-  const saveDraft = () => {
-    showToast("Draft saved");
+  const saveDraft = async () => {
+    if (!validate()) return;
+    try {
+      if (jobId) await updateJob({ id: jobId, values }).unwrap();
+      else await createJob(values).unwrap();
+      showToast("Draft saved");
+      window.setTimeout(() => router.push("/employer/jobs"), 450);
+    } catch {
+      showToast("Could not save the job");
+    }
   };
 
-  const publishJob = () => {
+  const publishJob = async () => {
     if (!canPublish) {
       return;
     }
@@ -122,11 +142,16 @@ export function JobCreatePage({
       return;
     }
 
-    showToast("Job published");
-
-    window.setTimeout(() => {
-      router.push("/employer/jobs");
-    }, 650);
+    try {
+      const saved = jobId
+        ? await updateJob({ id: jobId, values }).unwrap()
+        : await createJob(values).unwrap();
+      await publish(saved.id).unwrap();
+      showToast("Job published");
+      window.setTimeout(() => router.push("/employer/jobs"), 650);
+    } catch {
+      showToast("Could not publish the job");
+    }
   };
 
   return (
@@ -272,8 +297,8 @@ export function JobCreatePage({
             >
               <input
                 type="range"
-                min={680}
-                max={999}
+                min={700}
+                max={990}
                 value={values.minScore}
                 onChange={(event) =>
                   setValue(
@@ -287,8 +312,8 @@ export function JobCreatePage({
               />
 
               <div className="mt-1.5 flex justify-between text-[11px] text-[#7b8493]">
-                <span>680</span>
-                <span>999</span>
+                <span>700</span>
+                <span>990</span>
               </div>
             </FieldShell>
 
@@ -300,9 +325,9 @@ export function JobCreatePage({
               />
 
               <span className="text-[13px] font-medium leading-[17px] text-[#28578f]">
-                {matchingCandidateCount}{" "}
-                candidates in your pool currently
-                meet this bar
+                {thresholdPreview?.fewer_than_ten
+                  ? "Fewer than 10 candidates"
+                  : `${thresholdPreview?.approximate_count ?? "—"} candidates`} in your pool currently meet this bar
               </span>
             </div>
           </div>
@@ -336,6 +361,7 @@ export function JobCreatePage({
             <button
               type="button"
               onClick={saveDraft}
+              disabled={isSaving}
               className="flex-1 cursor-pointer rounded-[8px] border border-[#e1e5ea] bg-white px-4 py-3 text-sm font-semibold text-[#151b2b] transition hover:bg-[#f7f8fa]"
             >
               Save as draft
@@ -344,7 +370,7 @@ export function JobCreatePage({
             <button
               type="button"
               onClick={publishJob}
-              disabled={!canPublish}
+              disabled={!canPublish || isSaving}
               className="flex-[1.5] cursor-pointer rounded-[8px] bg-[#151b2b] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#222b3e] disabled:cursor-not-allowed disabled:opacity-45"
             >
               Publish job

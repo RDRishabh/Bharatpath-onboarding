@@ -17,7 +17,7 @@ function mapApiJobToFormValues(
      */
     employmentType: "Full time",
 
-    location: job.location,
+    location: job.location ?? "",
     description: job.description,
     skills: job.skills,
     salaryMin: job.salary_min_minor / 100,
@@ -60,6 +60,7 @@ export function JobEditPage({ jobId }: JobEditPageProps) {
   return (
     <JobCreatePage
       heading="Edit job"
+      jobId={jobId}
       initialValues={mapApiJobToFormValues(job)}
     />
   );

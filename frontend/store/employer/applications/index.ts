@@ -29,4 +29,5 @@ export {
   useLazyGetEmployerApplicationQuery,
   useMoveEmployerApplicationMutation,
   useProposeEmployerHireMutation,
+  useScheduleEmployerInterviewMutation,
 } from "./applications.api";

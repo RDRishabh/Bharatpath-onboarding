@@ -5,8 +5,8 @@ import { ChevronDown } from "lucide-react";
 import { useAppDispatch } from "@/store/hooks";
 import {
   closeInviteModal,
-  inviteMember,
   type TeamRole,
+  useAddEmployerTeamMemberMutation,
 } from "@/store/employer/settings";
 
 const inputClass =
@@ -17,11 +17,17 @@ export function InviteMemberModal() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<TeamRole>("Recruiter");
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+  const [addMember, { isLoading, error }] = useAddEmployerTeamMemberMutation();
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!email.trim()) return;
-    dispatch(inviteMember({ email, role }));
+    try {
+      await addMember({ email: email.trim(), role }).unwrap();
+      dispatch(closeInviteModal());
+    } catch {
+      // The API error remains visible below the fields.
+    }
   };
 
   return (
@@ -49,6 +55,8 @@ export function InviteMemberModal() {
             ×
           </button>
         </div>
+
+        {error && <p className="text-xs text-[#c0392b]">Could not add this team member.</p>}
 
         <div className="mb-3 flex flex-col gap-1.5">
           <span className="text-[11px] font-semibold leading-[15px] text-[#526074]">
@@ -125,9 +133,10 @@ export function InviteMemberModal() {
 
           <button
             type="submit"
+            disabled={isLoading}
             className="min-h-9 cursor-pointer rounded-lg border border-[#5a4bd1] bg-[#5b4ed0] px-3.5 text-xs font-bold text-white hover:bg-[#4f43bd]"
           >
-            Send invite
+            {isLoading ? "Adding…" : "Send invite"}
           </button>
         </div>
       </form>

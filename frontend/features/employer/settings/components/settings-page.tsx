@@ -8,6 +8,7 @@ import {
   clearToast,
   confirmRemoveMember,
   selectEmployerSettings,
+  useRemoveEmployerTeamMemberMutation,
 } from "@/store/employer/settings";
 
 import { SettingsTabs } from "./settings-tabs";
@@ -24,6 +25,7 @@ import { BuyCreditsModal } from "./buy-credits-modal";
 export function EmployerSettingsPage() {
   const dispatch = useAppDispatch();
   const settings = useAppSelector(selectEmployerSettings);
+  const [removeMember, { isLoading: isRemoving }] = useRemoveEmployerTeamMemberMutation();
 
   usePageHeader(
     "Settings & Billing",
@@ -94,7 +96,11 @@ export function EmployerSettingsPage() {
               <button
                 type="button"
                 className="min-h-9 cursor-pointer rounded-lg border border-[#c0392b] bg-[#c0392b] px-3.5 text-xs font-bold text-white"
-                onClick={() => dispatch(confirmRemoveMember())}
+                disabled={isRemoving}
+                onClick={() => {
+                  if (!settings.removeMemberId) return;
+                  void removeMember(settings.removeMemberId).unwrap().then(() => dispatch(confirmRemoveMember()));
+                }}
               >
                 Remove member
               </button>

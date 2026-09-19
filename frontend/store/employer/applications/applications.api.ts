@@ -176,6 +176,21 @@ export const employerApplicationsApi = baseApi.injectEndpoints({
         mapEmployerApplication(response),
       invalidatesTags: [{ type: "Application", id: "EMPLOYER_LIST" }],
     }),
+    scheduleEmployerInterview: builder.mutation<
+      EmployerApplicationApiModel,
+      { applicationId: string; interviewAt: string; meetingUrl: string }
+    >({
+      query: ({ applicationId, interviewAt, meetingUrl }) => ({
+        url: `/employer/applications/${applicationId}/interview`,
+        method: "PUT",
+        body: { interview_at: interviewAt, meeting_url: meetingUrl },
+      }),
+      transformResponse: (response: EmployerApplicationDetailResponse) => mapEmployerApplication(response),
+      invalidatesTags: (_result, _error, { applicationId }) => [
+        { type: "Application", id: applicationId },
+        { type: "Application", id: "EMPLOYER_LIST" },
+      ],
+    }),
   }),
   overrideExisting: false,
 });
@@ -187,4 +202,5 @@ export const {
   useLazyGetEmployerApplicationQuery,
   useMoveEmployerApplicationMutation,
   useProposeEmployerHireMutation,
+  useScheduleEmployerInterviewMutation,
 } = employerApplicationsApi;
