@@ -1,5 +1,13 @@
 """Message templates, and the DLT registration each SMS one still needs.
 
+**No SMS is sent today, by the client's decision of 2026-09-18.** Phone OTP
+and every SMS notification are deferred until the organisation's registration
+exists, and with it DLT and a sender. Everything a person is told goes by
+email and to the in-app inbox: `domain.plan_for` names no SMS template, and
+`tests/unit/test_notifications_domain.py` fails the build if one reappears.
+The SMS drafts below are kept, unregistered, so that switching SMS back on is
+a registration and a routing change rather than a rewrite.
+
 Produced 2026-09-11 under `answers-log.md` Round 7.10, closing the drafting half
 of blocker C6.
 
@@ -52,7 +60,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final, Literal
 
-TEMPLATES_VERSION: Final = "placeholder-2-2026-09-17"
+TEMPLATES_VERSION: Final = "placeholder-3-2026-09-18"
 
 #: GSM-7 single segment.
 MAX_GSM_SEGMENT: Final = 160
@@ -384,6 +392,70 @@ EMAIL_TEMPLATES: Final[tuple[MessageTemplate, ...]] = (
         "this email address to accept.",
         ("college",),
         subject="An invitation from your college",
+    ),
+    # 2026-09-18: what the SMS drafts said, by email, now that no SMS is sent.
+    MessageTemplate(
+        "EMAIL_APPLICATION_SENT",
+        "EMAIL",
+        "email.application_sent",
+        "Your application to {employer} has been sent. You can follow it in the BharatPath app.",
+        ("employer",),
+        subject="Your application has been sent",
+    ),
+    MessageTemplate(
+        "EMAIL_APPLICATION_UPDATE",
+        "EMAIL",
+        "email.application_update",
+        "There is an update on your application to {employer}. Open BharatPath to see it.",
+        ("employer",),
+        subject="An update on your application",
+    ),
+    MessageTemplate(
+        "EMAIL_PAYMENT_FAILED",
+        "EMAIL",
+        "email.payment_failed",
+        "Your BharatPath payment did not go through, and you have not been charged for it. "
+        "Open the app to try again.",
+        (),
+        subject="Your payment did not go through",
+    ),
+    MessageTemplate(
+        "EMAIL_ACCESS_ENDED",
+        "EMAIL",
+        "email.access_ended",
+        "Your BharatPath access has ended. Everything you saved is still here; open the "
+        "app to restore it.",
+        (),
+        subject="Your BharatPath access has ended",
+    ),
+    # The UPI AutoPay pre-debit notice. **Required before every automatic
+    # debit**, so it is `mandatory` in `domain.plan_for` and ignores the
+    # payer's email preference. Now the only channel it has besides the inbox.
+    MessageTemplate(
+        "EMAIL_MANDATE_PRE_DEBIT",
+        "EMAIL",
+        "email.mandate_pre_debit",
+        "{amount} will be debited on {date} to renew your BharatPath access. To stop it, "
+        "cancel the mandate in your UPI app before then.",
+        ("amount", "date"),
+        subject="An automatic payment is coming up",
+    ),
+    MessageTemplate(
+        "EMAIL_KYB_APPROVED",
+        "EMAIL",
+        "email.kyb_approved",
+        "Your organisation has been verified on BharatPath. You can sign in and publish jobs.",
+        (),
+        subject="Your organisation is verified",
+    ),
+    MessageTemplate(
+        "EMAIL_KYB_NEEDS_INFO",
+        "EMAIL",
+        "email.kyb_needs_info",
+        "Your organisation's verification on BharatPath needs more information. Sign in to "
+        "see what is missing.",
+        (),
+        subject="Your verification needs more information",
     ),
 )
 

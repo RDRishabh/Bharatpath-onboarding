@@ -142,6 +142,17 @@ ROUTE_CAPABILITY: dict[str, Any] = {
     "assign_dispute": "disputes",
     "resolve_dispute": "disputes",
     "search_audit": "audit_search",
+    # 2026-09-18: accounts made on someone's behalf, and discount codes.
+    "provision_candidate": "accounts",
+    "provision_employer": "accounts",
+    "provision_college": "accounts",
+    "add_organisation_member": "accounts",
+    "resend_invitation": "resend_invitation",
+    "create_discount_code": "discounts",
+    "disable_discount_code": "discounts",
+    "list_discount_codes": "discounts_read",
+    "get_discount_code": "discounts_read",
+    "discount_redemptions": "discounts_read",
 }
 
 

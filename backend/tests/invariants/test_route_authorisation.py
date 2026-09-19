@@ -19,7 +19,9 @@ asserted separately below.
 
 The client reversed the anonymous flow on 2026-08-27: *"Without login the user
 cannot parse the resume / cannot get a score."* So public means health checks and
-the two doors into authentication, and nothing else.
+the doors into authentication, and nothing else. (Phone OTP's
+`/auth/otp/start` left this list on 2026-09-18, when the client deferred
+phone OTP and the route stopped being registered.)
 """
 
 from __future__ import annotations
@@ -35,10 +37,6 @@ import pytest
 PUBLIC: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/health"): "Liveness probe. Touches no data.",
     ("GET", "/api/v1/health/ready"): "Readiness probe. Touches no data.",
-    ("POST", "/api/v1/auth/otp/start"): (
-        "The front door: sending a login code cannot require being logged in. "
-        "Throttled per phone, and says nothing about whether the number is known."
-    ),
     ("POST", "/api/v1/billing/callbacks/{provider}"): (
         "Called server-to-server by the payment gateway, which holds no user "
         "token. Authenticated instead by an HMAC signature over the raw body, "

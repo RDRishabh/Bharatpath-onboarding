@@ -41,3 +41,28 @@ variable "scoring_model_ids" {
     "in.openai.gpt-5.6-luna",
   ]
 }
+
+# -- email (2026-09-18) ------------------------------------------------------
+variable "email_domain" {
+  description = "The domain BharatPath sends email from, e.g. bharatpath.in. Empty until the client names it: no SES identity is created and both Cognito pools keep Cognito's built-in sender (about 50 emails a day -- development only)."
+  type        = string
+  default     = ""
+}
+
+variable "email_from_local_part" {
+  description = "The sender's mailbox name. It need not be a real mailbox; replies go to support."
+  type        = string
+  default     = "no-reply"
+}
+
+variable "route53_zone_id" {
+  description = "Set if the domain's DNS is a Route 53 hosted zone in this account; Terraform then writes the DKIM, MAIL FROM and DMARC records itself. Empty: add them at the registrar from `terraform output email_dns_records`."
+  type        = string
+  default     = ""
+}
+
+variable "dmarc_report_address" {
+  description = "Where DMARC aggregate reports go. Defaults to dmarc@<email_domain>."
+  type        = string
+  default     = ""
+}

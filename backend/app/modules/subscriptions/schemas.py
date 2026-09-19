@@ -50,6 +50,28 @@ class SubscriptionResponse(_Base):
 
 class SubscriptionCheckoutRequest(_Base):
     plan_code: str = Field(min_length=1, max_length=64)
+    discount_code: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Optional. Case does not matter. A code that cannot be used on this "
+        "checkout is a 422 whose `code` says why: `discount_code_invalid`, "
+        "`discount_code_expired`, `discount_code_exhausted`, "
+        "`discount_code_already_used` or `discount_exceeds_price`.",
+    )
+
+
+class DiscountPreviewRequest(_Base):
+    plan_code: str = Field(min_length=1, max_length=64)
+    discount_code: str = Field(min_length=1, max_length=64)
+
+
+class DiscountPreviewResponse(_Base):
+    """What the checkout would ask for. Holds nothing: the code is checked
+    again at checkout and may have been used up in between."""
+
+    list_amount_minor: int = Field(ge=0, description="The plan's price, in paise.")
+    discount_minor: int = Field(ge=0, description="What the code takes off, in paise.")
+    amount_minor: int = Field(ge=0, description="What would be charged, in paise.")
 
 
 class MandateResponse(_Base):

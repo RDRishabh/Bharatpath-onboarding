@@ -49,10 +49,10 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 |---|---|
 | **Branch** | `feat/day6-resume-intake` |
 | **`main`** | green on all five CI jobs |
-| **Tests** | 2324 on 2026-09-17 (Day 20), not yet pushed. 2247 (Day 19). 2079 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Tests** | 2419 on 2026-09-18 (sign-up, accounts, discount codes), not yet pushed. 2324 on 2026-09-17 (Day 20). 2247 (Day 19). 2079 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 84% |
 | **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | **The twenty days are done.** What is outstanding is external or unscheduled rather than unbuilt: the sweeps' schedules (E4), a payment gateway (D3), DLT and Twilio (D1, D2), AWS service activation (E2), a model choice, and the client and counsel decisions in `blockers.md`. |
+| **Next** | **The twenty days are done**, and the client's sign-up decisions of 2026-09-18 are built. Outstanding: `terraform apply` for the Cognito changes (planned, not applied), the client's sending domain and SES production access (E38), the three discount-policy answers (E36), business MFA (E37), the sweeps' schedules (E4), a payment gateway (D3), AWS service activation (E2), and the decisions in `blockers.md`. DLT and Twilio (D1, D2) are deferred by the client. |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -85,6 +85,72 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 | ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
 
 ---
+
+## 2026-09-18 (evening) — Sign-up, admin-created accounts, email only, discount codes
+
+From the client's note `docs/Signup_Login_Discussion_Updates .pdf`, confirmed
+in conversation: anyone signs up (candidate, employer, college) by email and
+password; staff can create any of the three; no phone OTP and **no SMS of any
+kind** until the organisation's registration exists; Cognito sends every code
+by email through SES; discount codes applied at payment; scoring unchanged.
+Reference for app teams: **`docs/signup-and-accounts.md`**.
+
+### Built
+
+- **Self-registration for businesses** (closes E7): `allow_admin_create_user_only
+  = false` in Terraform. No API change was needed — a business account with no
+  organisation already got 403 `no_active_membership` and could create one.
+- **Phone OTP off**: `/auth/otp/start` registered only behind
+  `AUTH_PHONE_OTP_ENABLED` (default off); the throttle is kept and tested at
+  the service. `ALLOW_CUSTOM_AUTH` and the Twilio secret removed from Terraform.
+- **Email instead of SMS**: seven new EMAIL templates; `plan_for` routes every
+  former SMS to email, and the UPI pre-debit notice is `EMAIL_MANDATE_PRE_DEBIT`
+  (mandatory). The SMS nudge is dropped. `test_nothing_is_sent_by_sms` holds it.
+- **Staff-created accounts**: `/admin/accounts/{candidates,employers,colleges}`,
+  `/admin/tenants/{id}/members`, `/admin/accounts/{id}/resend-invitation`.
+  `app/core/auth/directory.py` is the one Cognito write (`AdminCreateUser`,
+  which emails a temporary password), with a local implementation that tests
+  read. Employer and college team adds send the same email to anyone who has
+  never signed in. New capabilities `accounts`, `resend_invitation`.
+- **Discount codes**, in `billing`: `discount_codes` and `discount_redemptions`
+  tables; `payments.discount_code_id` and `list_amount_minor`; checkout and a
+  preview route per audience; the console routes for create, list, read,
+  disable and the usage log. Guards: `guard_discount_redemption` (a use needs
+  this code's verified payment), `guard_discount_code_write` (terms immutable,
+  switch-off a latch); column grants; erasure plan (codes NOT_PERSONAL,
+  redemptions RETAINED). Rate limit `billing.discount_code` (40/h per person).
+  The policy is a placeholder (`DISCOUNT_POLICY_VERSION`, E36).
+- **SES in Terraform** (`ses.tf`): domain identity, DKIM, MAIL FROM, DMARC,
+  optional Route 53 records, `email_dns_records` output; Cognito
+  `email_configuration` switches to SES when `email_domain` is set; invite and
+  verification email templates; temporary passwords valid 7 days; IAM gains
+  `AdminCreateUser` and (with a domain) `ses:SendEmail`.
+
+### Decisions taken inside that work, worth knowing
+
+- **A code is used when money moves, not at checkout.** A redemption row is
+  written in the same transaction as the grant. A fresh PENDING checkout holds
+  a use for 30 minutes, and checkouts against one code serialise on its row
+  lock, so the last use cannot be sold twice.
+- **No 100% code** until the client says otherwise: a zero payment has no
+  gateway callback, and a verified callback is the only thing that grants.
+- **Adoption at first sign-in now matches the pool too.** Staff can make
+  candidate rows, and a business sign-in claiming one by email would carry a
+  candidate into the wrong authentication model. A contact held by the other
+  pool is now 403 `account_contact_in_use` — **it was a 500 before** (the
+  INSERT hit the unique email index), found while writing these tests.
+- **`phone_number` stays a candidate-pool username attribute**, because
+  changing `username_attributes` replaces the pool.
+- **Staff never link a student to a college**: the link is the student's
+  consent (invariant 9), so they do it after signing in.
+
+### Not done
+
+- **`terraform apply`** — the plan is 4 in-place changes (both pools, the
+  candidate client, the IAM policy) and 1 destroy (the unused Twilio secret);
+  nothing is replaced. Not applied: it changes live AWS.
+- **SES** waits on the client's domain and production access (E38).
+- Roster contacts with a phone number only hear nothing while SMS is off (E35).
 
 ## 2026-09-18 — AI providers: OpenAI (CV reading, interview feedback) + Sarvam (speech)
 

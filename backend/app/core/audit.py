@@ -86,6 +86,17 @@ class AuditAction(StrEnum):
     TEAM_MEMBER_ADDED = "team_member_added"
     TEAM_MEMBER_ROLE_CHANGED = "team_member_role_changed"
     TEAM_MEMBER_REMOVED = "team_member_removed"
+    #: Staff created an account on someone's behalf (2026-09-18): a
+    #: candidate, or an organisation with its first owner. Metadata holds the
+    #: kind and ids, never the address the invitation went to.
+    ACCOUNT_PROVISIONED = "account_provisioned"
+    #: Staff sent a provisioned account's invitation again.
+    ACCOUNT_INVITATION_RESENT = "account_invitation_resent"
+
+    # Discount codes (2026-09-18). A code is money off; making one and
+    # switching one off are privileged acts on the price of the product.
+    DISCOUNT_CODE_CREATED = "discount_code_created"
+    DISCOUNT_CODE_DISABLED = "discount_code_disabled"
 
     # Colleges (Day 17). A seat is a student's paid access, and a referral
     # code is a credential that attaches students to a roster: issuing,

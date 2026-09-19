@@ -89,25 +89,41 @@ data "aws_iam_policy_document" "app" {
     sid       = "ReadSecrets"
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_secretsmanager_secret.app.arn, aws_secretsmanager_secret.twilio.arn]
+    resources = [aws_secretsmanager_secret.app.arn]
   }
 
-  # Read-only against Cognito. The API verifies tokens against the public
-  # JWKS, which needs no credentials at all; these calls are for looking a
-  # user up by sub. Nothing here can create a user or change a password,
-  # because account lifecycle belongs to the pools' own flows.
+  # Against Cognito. The API verifies tokens against the public JWKS, which
+  # needs no credentials at all; the reads look a user up by sub.
+  #
+  # AdminCreateUser is the one write (2026-09-18): staff creating an account
+  # for someone, and an owner adding a colleague, make a Cognito user whose
+  # temporary password Cognito emails (`app/core/auth/directory.py`). Nothing
+  # here can set or read a password, confirm a user or delete one.
   statement {
-    sid    = "CognitoRead"
+    sid    = "CognitoAccounts"
     effect = "Allow"
     actions = [
       "cognito-idp:GetUser",
       "cognito-idp:AdminGetUser",
       "cognito-idp:ListUsers",
+      "cognito-idp:AdminCreateUser",
     ]
     resources = [
       aws_cognito_user_pool.candidates.arn,
       aws_cognito_user_pool.business.arn,
     ]
+  }
+
+  # Notifications by email (`NOTIFICATIONS_EMAIL_PROVIDER=ses`), from the
+  # client's domain only. Present once `email_domain` is set.
+  dynamic "statement" {
+    for_each = local.email_enabled ? [1] : []
+    content {
+      sid       = "SendEmail"
+      effect    = "Allow"
+      actions   = ["ses:SendEmail"]
+      resources = [aws_sesv2_email_identity.domain[0].arn]
+    }
   }
 }
 

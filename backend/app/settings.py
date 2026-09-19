@@ -272,6 +272,15 @@ class Settings(BaseSettings):
     # way of ending up in a shared script.
     local_token_ttl_seconds: int = 3600
 
+    # -- phone OTP (deferred, 2026-09-18) -----------------------------------
+    # The client deferred phone OTP until the organisation's registration
+    # (and with it DLT and an SMS sender) exists. Sign-in is email and
+    # password on both pools, with Cognito sending every code by email.
+    # `POST /auth/otp/start` is registered only when this is set, and nothing
+    # sets it: switching phone OTP on later is the three Cognito Lambda
+    # triggers, SMS delivery, and this flag.
+    auth_phone_otp_enabled: bool = False
+
     # -- rate limits -------------------------------------------------------
     # Our coarse outer throttle sits in front of Twilio Verify. Twilio's limits
     # protect Twilio's spend; ours protects against someone walking the phone

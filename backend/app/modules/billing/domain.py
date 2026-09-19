@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Final, Literal
 
 Purpose = Literal["SUBSCRIPTION", "COURSE", "INTERVIEW_SESSION", "MANDATE_DEBIT"]
@@ -184,3 +185,184 @@ def payment_step(current_status: str, event_type: str) -> PaymentStep:
     if (current_status, target) in PAYMENT_TRANSITIONS:
         return "APPLY"
     return "REFUSE"
+
+
+# ---------------------------------------------------------------------------
+# Discount codes (2026-09-18, "Signup_Login_Discussion_Updates")
+# ---------------------------------------------------------------------------
+# A code takes an amount off a **first purchase of a subscription**. Staff
+# create it in the console for one kind of account -- a candidate, an
+# employer or a college -- and every use is a row in `discount_redemptions`,
+# written when the payment settles and never before: a code applied to a
+# checkout nobody paid for was not used.
+#
+# **Three answers are the client's and are not in yet** (questions of
+# 2026-09-18). Until they land, the policy below is ours, conservative, and
+# named `placeholder-` in a string a test asserts on, so it cannot quietly
+# become the product:
+#
+#   1. *A 100% code?* No. Nothing here can make a payment of zero, because
+#      the gateway cannot take one and only a verified gateway callback
+#      grants access. A percentage is 1-99, and a fixed amount that would
+#      leave less than `MIN_NET_AMOUNT_MINOR` is refused at checkout.
+#   2. *Renewals?* No. Only checkout reads a code; a manual renewal is a
+#      checkout, so it may carry a new code, but a mandate debit never does.
+#   3. *Reuse?* One redemption per code per subscriber -- the person for a
+#      candidate, the organisation for an employer or a college.
+
+DISCOUNT_POLICY_VERSION: Final = "placeholder-1-2026-09-18"
+
+DiscountAudience = Literal["CANDIDATE", "EMPLOYER", "COLLEGE"]
+DISCOUNT_AUDIENCES: Final[tuple[DiscountAudience, ...]] = ("CANDIDATE", "EMPLOYER", "COLLEGE")
+
+#: The least a discounted payment may be. A gateway order for zero does not
+#: exist, and "free" would need a grant that no callback verified.
+MIN_NET_AMOUNT_MINOR: Final = 100
+MIN_PERCENT_OFF: Final = 1
+MAX_PERCENT_OFF: Final = 99
+ONE_REDEMPTION_PER_SUBSCRIBER: Final = True
+
+#: Minutes a PENDING discounted checkout counts against a usage limit.
+#: Without a hold, ten people can check out against the last use of a code;
+#: without an end to it, an abandoned checkout would use the code up forever.
+CHECKOUT_HOLD_MINUTES: Final = 30
+
+#: Readable aloud and typed from a poster: no 0/O, 1/I/L.
+CODE_ALPHABET: Final = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+GENERATED_CODE_LENGTH: Final = 10
+MIN_CODE_LENGTH: Final = 4
+MAX_CODE_LENGTH: Final = 32
+_CODE_CHARACTERS: Final = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
+
+DiscountStatus = Literal["ACTIVE", "SCHEDULED", "EXPIRED", "EXHAUSTED", "DISABLED"]
+DISCOUNT_STATUSES: Final[tuple[DiscountStatus, ...]] = (
+    "ACTIVE",
+    "SCHEDULED",
+    "EXPIRED",
+    "EXHAUSTED",
+    "DISABLED",
+)
+
+#: Why a code cannot be used by this checkout. One code for everything that
+#: is about the code's existence or fit -- unknown, disabled, not started, or
+#: meant for another kind of account -- so the form is not a way to learn
+#: which codes exist.
+DiscountRefusal = Literal[
+    "discount_code_invalid",
+    "discount_code_expired",
+    "discount_code_exhausted",
+    "discount_code_already_used",
+    "discount_exceeds_price",
+]
+
+
+class DiscountCodeFormatError(ValueError):
+    """A code staff typed that could not be printed, read out or typed back."""
+
+
+def normalise_discount_code(raw: str) -> str:
+    """Upper case, no surrounding space. A payer types `launch50`; the
+    code is `LAUNCH50`, and both find it."""
+    code = raw.strip().upper()
+    if not MIN_CODE_LENGTH <= len(code) <= MAX_CODE_LENGTH:
+        raise DiscountCodeFormatError(
+            f"a code is {MIN_CODE_LENGTH} to {MAX_CODE_LENGTH} characters"
+        )
+    if not set(code) <= _CODE_CHARACTERS or code.startswith("-") or code.endswith("-"):
+        raise DiscountCodeFormatError("a code is letters, digits and inner hyphens")
+    return code
+
+
+def generate_discount_code(entropy: bytes, *, length: int = GENERATED_CODE_LENGTH) -> str:
+    """A code from `entropy` (the caller's `secrets.token_bytes`), one
+    character per byte. Pure, so a test can pin the output."""
+    if len(entropy) < length:
+        raise ValueError(f"need {length} bytes of entropy, got {len(entropy)}")
+    return "".join(CODE_ALPHABET[b % len(CODE_ALPHABET)] for b in entropy[:length])
+
+
+def validate_discount_value(*, percent_off: int | None, amount_off_minor: int | None) -> None:
+    """Exactly one of the two, each inside its bounds. Raises `ValueError`."""
+    if (percent_off is None) == (amount_off_minor is None):
+        raise ValueError("a code takes either a percentage or a fixed amount off, not both")
+    if percent_off is not None and not MIN_PERCENT_OFF <= percent_off <= MAX_PERCENT_OFF:
+        raise ValueError(f"a percentage is {MIN_PERCENT_OFF} to {MAX_PERCENT_OFF}")
+    if amount_off_minor is not None and amount_off_minor < 1:
+        raise ValueError("a fixed amount off is at least one paisa")
+
+
+@dataclass(frozen=True, slots=True)
+class DiscountPrice:
+    list_amount_minor: int
+    discount_minor: int
+    amount_minor: int
+
+
+def discounted_price(
+    price_minor: int, *, percent_off: int | None, amount_off_minor: int | None
+) -> DiscountPrice | None:
+    """What a payer pays with this code, or None when the code would take the
+    price below `MIN_NET_AMOUNT_MINOR`.
+
+    A percentage rounds the discount **down** to the paisa, so the payer is
+    never charged less than the stated percentage allows by a rounding
+    choice we made.
+    """
+    validate_discount_value(percent_off=percent_off, amount_off_minor=amount_off_minor)
+    if percent_off is not None:
+        discount = price_minor * percent_off // 100
+    else:
+        discount = amount_off_minor or 0
+    net = price_minor - discount
+    if net < MIN_NET_AMOUNT_MINOR:
+        return None
+    return DiscountPrice(price_minor, discount, net)
+
+
+def discount_status(
+    *,
+    disabled: bool,
+    valid_from: datetime,
+    valid_until: datetime | None,
+    usage_limit: int | None,
+    used: int,
+    now: datetime,
+) -> DiscountStatus:
+    """Worked out when read, never stored, so it cannot go stale. The order
+    is what staff need to see first: a code someone switched off reads
+    DISABLED even after it would have expired."""
+    if disabled:
+        return "DISABLED"
+    if now < valid_from:
+        return "SCHEDULED"
+    if valid_until is not None and now >= valid_until:
+        return "EXPIRED"
+    if usage_limit is not None and used >= usage_limit:
+        return "EXHAUSTED"
+    return "ACTIVE"
+
+
+def discount_refusal(
+    *,
+    status: DiscountStatus,
+    audience_matches: bool,
+    already_used_by_subscriber: bool,
+    held: int,
+    usage_limit: int | None,
+    used: int,
+) -> DiscountRefusal | None:
+    """Whether this subscriber may use this code on this checkout.
+
+    `held` is the fresh PENDING checkouts already carrying the code (other
+    than this subscriber's reusable one); they count against the limit so
+    the last use cannot be sold twice.
+    """
+    if status in ("DISABLED", "SCHEDULED") or not audience_matches:
+        return "discount_code_invalid"
+    if status == "EXPIRED":
+        return "discount_code_expired"
+    if status == "EXHAUSTED" or (usage_limit is not None and used + held >= usage_limit):
+        return "discount_code_exhausted"
+    if ONE_REDEMPTION_PER_SUBSCRIBER and already_used_by_subscriber:
+        return "discount_code_already_used"
+    return None

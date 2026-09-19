@@ -361,3 +361,117 @@ class MyDisputeResponse(_Base):
     resolution: str | None
     created_at: datetime
     resolved_at: datetime | None
+
+
+# ---------------------------------------------------------------------------
+# Accounts made on someone's behalf (2026-09-18)
+# ---------------------------------------------------------------------------
+_EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+
+class ProvisionCandidateRequest(_Base):
+    email: str = Field(min_length=3, max_length=320, pattern=_EMAIL_PATTERN)
+
+
+class ProvisionEmployerRequest(_Base):
+    """The organisation and its first owner. The owner completes KYB and
+    pays like any other employer; this only saves them typing the form."""
+
+    owner_email: str = Field(min_length=3, max_length=320, pattern=_EMAIL_PATTERN)
+    legal_name: str = Field(min_length=2, max_length=255)
+    employer_type: str | None = None
+    industry: str | None = None
+
+
+class ProvisionCollegeRequest(_Base):
+    admin_email: str = Field(min_length=3, max_length=320, pattern=_EMAIL_PATTERN)
+    name: str = Field(min_length=2, max_length=255)
+    institution_type: str
+
+
+class AddOrganisationMemberRequest(_Base):
+    email: str = Field(min_length=3, max_length=320, pattern=_EMAIL_PATTERN)
+    role: str = Field(description="A role of the organisation's kind: EMPLOYER_* or COLLEGE_*.")
+
+
+class ProvisionedAccountResponse(_Base):
+    """Who was made, and whether Cognito emailed them. The address is not
+    echoed: staff typed it, and the response is logged by proxies."""
+
+    user_id: uuid.UUID
+    kind: Literal["CANDIDATE", "EMPLOYER", "COLLEGE", "MEMBER"]
+    tenant_id: uuid.UUID | None = None
+    role: str | None = None
+    invitation: Literal["SENT", "ALREADY_REGISTERED"] = Field(
+        description="SENT: Cognito emailed a temporary password. ALREADY_REGISTERED: the "
+        "person has a sign-in already, no email went out, and they should sign in as usual."
+    )
+
+
+class InvitationResentResponse(_Base):
+    user_id: uuid.UUID
+    resent: bool = True
+
+
+# ---------------------------------------------------------------------------
+# Discount codes (2026-09-18)
+# ---------------------------------------------------------------------------
+class CreateDiscountCodeRequest(_Base):
+    """Exactly one of `percent_off` (1-99) and `amount_off_minor` (paise).
+    Leave `code` out to have one generated."""
+
+    code: str | None = Field(default=None, min_length=4, max_length=32)
+    audience: Literal["CANDIDATE", "EMPLOYER", "COLLEGE"]
+    percent_off: int | None = Field(default=None, ge=1, le=99)
+    amount_off_minor: int | None = Field(default=None, gt=0)
+    valid_from: datetime | None = Field(default=None, description="Defaults to now.")
+    valid_until: datetime | None = None
+    usage_limit: int | None = Field(default=None, gt=0, description="Null: no limit.")
+    label: str | None = Field(default=None, max_length=120)
+
+
+class DiscountCodeResponse(_Base):
+    id: uuid.UUID
+    code: str
+    audience: str
+    percent_off: int | None
+    amount_off_minor: int | None
+    valid_from: datetime
+    valid_until: datetime | None
+    usage_limit: int | None
+    usage_count: int
+    status: Literal["ACTIVE", "SCHEDULED", "EXPIRED", "EXHAUSTED", "DISABLED"]
+    label: str | None
+    created_by: uuid.UUID
+    created_at: datetime
+    disabled_at: datetime | None
+    disabled_by: uuid.UUID | None
+
+
+class DiscountCodesPage(_Base):
+    items: list[DiscountCodeResponse]
+    next_cursor: str | None
+    #: `placeholder-...` until the client has answered what a code may do.
+    policy_version: str
+
+
+class DiscountRedemptionRow(_Base):
+    """One use: the payer, who the subscription was for, the amounts, when.
+    An organisation is named; a candidate is an id (open their drill-down,
+    which is audited, to see more)."""
+
+    id: uuid.UUID
+    payment_id: uuid.UUID
+    user_id: uuid.UUID
+    subscriber_type: str
+    subscriber_id: uuid.UUID
+    organisation: str | None = None
+    list_amount_minor: int
+    discount_minor: int
+    amount_minor: int
+    redeemed_at: datetime
+
+
+class DiscountRedemptionsPage(_Base):
+    items: list[DiscountRedemptionRow]
+    next_cursor: str | None

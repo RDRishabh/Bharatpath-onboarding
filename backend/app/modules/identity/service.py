@@ -12,12 +12,14 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
+from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import membership as membership_lookup
-from app.core.errors import ConflictError, NotFoundError
+from app.core.auth.directory import DirectoryError, InviteOutcome, get_account_directory
+from app.core.errors import AppError, ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.core.ratelimit import enforce
 from app.modules.identity import repository
@@ -30,6 +32,12 @@ OTP_WINDOW_SECONDS = 3600
 
 async def start_otp_challenge(*, phone: str, client_ip: str | None) -> int:
     """Throttle an OTP request, then let the client proceed to Cognito.
+
+    **Deferred by the client (2026-09-18): there is no phone OTP today.** The
+    route in front of this is registered only when `AUTH_PHONE_OTP_ENABLED`
+    is set, and nothing sets it; sign-in is email and password on both pools.
+    Kept, and tested directly, so that switching phone OTP on later is the
+    Lambda triggers and a flag rather than a rebuild.
 
     **Two counters, not one, and both are needed.** Per-phone stops someone
     hammering one victim's number into a flood of login texts. Per-IP stops
@@ -143,6 +151,31 @@ class LastOwnerError(ConflictError):
     title = "An organisation needs at least one owner"
 
 
+class AccountExistsError(ConflictError):
+    """Staff asked for an account that exists already. Staff may know that --
+    this is our console, not a public form -- so it says so plainly."""
+
+    code = "identity_account_exists"
+    title = "An account with this email already exists"
+
+
+class AccountAlreadyActiveError(ConflictError):
+    """The invitation cannot be sent again: the person has signed in, so the
+    temporary password is gone and they use their own."""
+
+    code = "identity_account_already_active"
+    title = "This account has already signed in"
+
+
+class AccountDirectoryUnavailableError(AppError):
+    """Cognito refused or could not be reached. Nothing was created: the rows
+    written in this transaction roll back with the error."""
+
+    status_code = status.HTTP_502_BAD_GATEWAY
+    code = "account_directory_unavailable"
+    title = "The sign-in service could not create the account"
+
+
 @dataclass(frozen=True, slots=True)
 class TeamMember:
     user_id: uuid.UUID
@@ -242,7 +275,115 @@ async def add_team_member(
     membership = await repository.get_membership(session, user_id=user.id, tenant_id=tenant_id)
     if membership is None:  # pragma: no cover - just written on this transaction
         raise MemberNotFoundError()
+    if user.cognito_sub is None:
+        # Never signed in: ask Cognito for their sign-in, which emails the
+        # temporary password. Last, so a refusal above sends nobody an email.
+        await send_invitation(pool="BUSINESS", email=address)
     return TeamMember(user_id=user.id, email=user.email, role=role, added_at=membership.created_at)
+
+
+# ---------------------------------------------------------------------------
+# Accounts made on someone's behalf (2026-09-18)
+# ---------------------------------------------------------------------------
+# Staff create a candidate, or an organisation with its first owner, from the
+# console. Each is a `users` row with no `cognito_sub` -- the same "waiting to
+# be claimed" row a team invitation has always made -- plus a Cognito user
+# whose temporary password Cognito emails. The first sign-in adopts the row
+# by email (`app.core.auth.users._adopt_unlinked`, same pool only).
+#
+# Self-registration is unchanged beside this: a person who signs up in the
+# app gets their row on first sign-in, as before.
+
+InvitationPool = Literal["CANDIDATE", "BUSINESS"]
+
+
+@dataclass(frozen=True, slots=True)
+class ProvisionedAccount:
+    user_id: uuid.UUID
+    pool: str
+    #: SENT, or ALREADY_REGISTERED when the person had a sign-in already --
+    #: no email went out and they should sign in as they normally do.
+    invitation: InviteOutcome
+
+
+async def send_invitation(*, pool: InvitationPool, email: str) -> InviteOutcome:
+    """Ask Cognito for a sign-in for `email`. Raises
+    `AccountDirectoryUnavailableError`, which rolls the caller's rows back."""
+    try:
+        outcome = await get_account_directory().invite(pool=pool, email=email)
+    except DirectoryError as exc:
+        logger.error("account_invitation_failed", pool=pool, code=exc.code)
+        raise AccountDirectoryUnavailableError(params={"reason": exc.code}) from exc
+    logger.info("account_invitation", pool=pool, outcome=outcome)
+    return outcome
+
+
+async def provision_candidate(session: AsyncSession, *, email: str) -> ProvisionedAccount:
+    """A candidate account for `email`, waiting to be claimed. Refused if the
+    address has any account already -- staff should tell that person to sign
+    in, not make them a second one."""
+    address = normalise_email(email)
+    if await repository.user_by_email(session, email=address) is not None:
+        raise AccountExistsError()
+    user = await repository.create_candidate_user(session, email=address)
+    if user.pool != "CANDIDATE" or user.cognito_sub is not None:
+        # Lost a race with another request for the same address.
+        raise AccountExistsError()
+    outcome = await send_invitation(pool="CANDIDATE", email=address)
+    return ProvisionedAccount(user_id=user.id, pool="CANDIDATE", invitation=outcome)
+
+
+async def provision_business_user(session: AsyncSession, *, email: str) -> uuid.UUID:
+    """A business account for `email` that belongs to no organisation yet,
+    ready to be made one's owner. An existing business account with no
+    organisation is reused; anything else is refused. **Sends nothing** --
+    the caller invites once the organisation exists, so a refusal there
+    emails nobody."""
+    address = normalise_email(email)
+    user = await repository.user_by_email(session, email=address)
+    if user is None:
+        user = await repository.create_business_user(session, email=address)
+    if user.pool != "BUSINESS":
+        raise AccountExistsError()
+    await repository.lock_user(session, user_id=user.id)
+    if await repository.active_membership(session, user_id=user.id) is not None:
+        raise AlreadyInOrganisationError()
+    return user.id
+
+
+async def invitation_outcome_for(session: AsyncSession, *, user_id: uuid.UUID) -> InviteOutcome:
+    """Invite a provisioned business owner. One who has signed in before is
+    ALREADY_REGISTERED without a call: they have a password."""
+    user = await repository.get_user(session, user_id)
+    if user is None or user.email is None:  # pragma: no cover - just provisioned
+        raise MemberNotFoundError()
+    if user.cognito_sub is not None:
+        return "ALREADY_REGISTERED"
+    pool: InvitationPool = "BUSINESS" if user.pool == "BUSINESS" else "CANDIDATE"
+    return await send_invitation(pool=pool, email=user.email)
+
+
+async def has_signed_in(session: AsyncSession, *, user_id: uuid.UUID) -> bool:
+    """Whether this account has ever been claimed by a sign-in."""
+    user = await repository.get_user(session, user_id)
+    return user is not None and user.cognito_sub is not None
+
+
+async def resend_invitation(session: AsyncSession, *, user_id: uuid.UUID) -> str:
+    """Send a provisioned account's temporary password again, for one that
+    has never signed in. Returns the pool."""
+    user = await repository.get_user(session, user_id)
+    if user is None or user.email is None or user.status != "ACTIVE":
+        raise MemberNotFoundError()
+    if user.cognito_sub is not None:
+        raise AccountAlreadyActiveError()
+    pool: InvitationPool = "BUSINESS" if user.pool == "BUSINESS" else "CANDIDATE"
+    try:
+        await get_account_directory().resend_invitation(pool=pool, email=user.email)
+    except DirectoryError as exc:
+        logger.error("account_invitation_resend_failed", pool=pool, code=exc.code)
+        raise AccountDirectoryUnavailableError(params={"reason": exc.code}) from exc
+    return pool
 
 
 async def _ensure_another_owner(

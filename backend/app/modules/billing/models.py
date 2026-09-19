@@ -37,7 +37,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.mixins import Timestamps, UUIDPrimaryKey
-from app.modules.billing.domain import ONE_OFF_PURPOSES, PURPOSES
+from app.modules.billing.domain import (
+    DISCOUNT_AUDIENCES,
+    MAX_PERCENT_OFF,
+    MIN_PERCENT_OFF,
+    ONE_OFF_PURPOSES,
+    PURPOSES,
+)
 
 
 def _sql_list(values: Iterable[str]) -> str:
@@ -91,6 +97,15 @@ class Payment(Base, UUIDPrimaryKey, Timestamps):
     signature_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw_callback: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
+    #: A discounted checkout (2026-09-18): the code, and the price before it.
+    #: `amount_minor` is what the gateway was asked for. Both are fixed at
+    #: checkout like everything else about what was charged, and
+    #: `guard_payment_write` holds them.
+    discount_code_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("discount_codes.id", ondelete="RESTRICT")
+    )
+    list_amount_minor: Mapped[int | None] = mapped_column(Integer)
+
     __table_args__ = (
         CheckConstraint(
             "status IN ('PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED')",
@@ -115,6 +130,14 @@ class Payment(Base, UUIDPrimaryKey, Timestamps):
             "purpose <> 'MANDATE_DEBIT' OR subscription_id IS NOT NULL",
             name="ck_payments_debit_has_subscription",
         ),
+        # A code and its list price arrive together, only on a subscription,
+        # and the list price is what the code was taken off.
+        CheckConstraint(
+            "(discount_code_id IS NULL AND list_amount_minor IS NULL) OR "
+            "(discount_code_id IS NOT NULL AND purpose = 'SUBSCRIPTION' "
+            "AND list_amount_minor > amount_minor)",
+            name="ck_payments_discount_shape",
+        ),
         # One order reference lands once.
         UniqueConstraint("provider", "provider_ref", name="uq_payment_provider_ref"),
         Index("ix_payments_user", "user_id", "created_at"),
@@ -124,6 +147,13 @@ class Payment(Base, UUIDPrimaryKey, Timestamps):
             "purpose",
             "item_id",
             postgresql_where="status = 'PENDING'",
+        ),
+        # The usage-limit hold counts fresh PENDING checkouts per code.
+        Index(
+            "ix_payments_discount_code",
+            "discount_code_id",
+            "created_at",
+            postgresql_where="discount_code_id IS NOT NULL",
         ),
     )
 
@@ -203,4 +233,132 @@ class Entitlement(Base, UUIDPrimaryKey, Timestamps):
             "product",
             postgresql_where="consumed_at IS NULL",
         ),
+    )
+
+
+class DiscountCode(Base, UUIDPrimaryKey, Timestamps):
+    """A code staff created that takes an amount off a subscription checkout.
+
+    **Created, then only ever switched off.** What it was worth, who it was
+    for and when it ran are fixed once it exists -- a code whose terms could
+    change after a payer used it would make the redemption log say something
+    other than what happened. `guard_discount_code_write` holds that; the
+    app role may update `disabled_at`, `disabled_by` and `updated_at` only.
+
+    Its status (ACTIVE, SCHEDULED, EXPIRED, EXHAUSTED, DISABLED) is worked out
+    when read (`billing.domain.discount_status`), never stored.
+    """
+
+    __tablename__ = "discount_codes"
+
+    code: Mapped[str] = mapped_column(String(32), nullable=False)
+    audience: Mapped[str] = mapped_column(String(16), nullable=False)
+    percent_off: Mapped[int | None] = mapped_column(Integer)
+    amount_off_minor: Mapped[int | None] = mapped_column(Integer)
+    valid_from: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    usage_limit: Mapped[int | None] = mapped_column(Integer)
+    #: Staff's own note: the campaign or partner it was made for. Never
+    #: shown to a payer.
+    label: Mapped[str | None] = mapped_column(String(120))
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_discount_codes_code"),
+        CheckConstraint(
+            f"audience IN ({_sql_list(DISCOUNT_AUDIENCES)})", name="ck_discount_codes_audience"
+        ),
+        CheckConstraint(
+            "code = upper(code) AND length(code) BETWEEN 4 AND 32",
+            name="ck_discount_codes_code_normalised",
+        ),
+        CheckConstraint(
+            "(percent_off IS NULL) <> (amount_off_minor IS NULL)",
+            name="ck_discount_codes_one_kind",
+        ),
+        CheckConstraint(
+            f"percent_off IS NULL OR percent_off BETWEEN {MIN_PERCENT_OFF} AND {MAX_PERCENT_OFF}",
+            name="ck_discount_codes_percent_bounds",
+        ),
+        CheckConstraint(
+            "amount_off_minor IS NULL OR amount_off_minor > 0",
+            name="ck_discount_codes_amount_positive",
+        ),
+        CheckConstraint(
+            "usage_limit IS NULL OR usage_limit > 0", name="ck_discount_codes_limit_positive"
+        ),
+        CheckConstraint(
+            "valid_until IS NULL OR valid_until > valid_from",
+            name="ck_discount_codes_window",
+        ),
+        CheckConstraint(
+            "(disabled_at IS NULL) = (disabled_by IS NULL)",
+            name="ck_discount_codes_disabled_pair",
+        ),
+        Index("ix_discount_codes_created", "created_at"),
+        Index("ix_discount_codes_created_by", "created_by"),
+        Index(
+            "ix_discount_codes_disabled_by",
+            "disabled_by",
+            postgresql_where="disabled_by IS NOT NULL",
+        ),
+    )
+
+
+class DiscountRedemption(Base, UUIDPrimaryKey):
+    """One use of a code: who used it, on which payment, for how much, when.
+
+    **Written when the payment settles, in the same transaction as the grant,
+    and never changed** (the app role holds no UPDATE or DELETE). A checkout
+    that was never paid is not a use. `guard_discount_redemption` refuses a
+    row whose payment is not this code's SUCCEEDED, verified payment -- the
+    same shape as `guard_course_purchase`.
+
+    Retained on erasure: it is part of the financial record of what was
+    charged (`privacy.domain.ERASURE_PLAN`).
+    """
+
+    __tablename__ = "discount_redemptions"
+
+    discount_code_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("discount_codes.id", ondelete="RESTRICT"), nullable=False
+    )
+    payment_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("payments.id", ondelete="RESTRICT"), nullable=False
+    )
+    #: Who paid.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    #: Who the subscription is for: the person, or their organisation.
+    subscriber_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    subscriber_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    list_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    discount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    redeemed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("payment_id", name="uq_discount_redemptions_payment"),
+        CheckConstraint(
+            "subscriber_type IN ('USER', 'TENANT')", name="ck_discount_redemptions_subscriber"
+        ),
+        CheckConstraint(
+            "discount_minor > 0 AND amount_minor > 0 "
+            "AND list_amount_minor = amount_minor + discount_minor",
+            name="ck_discount_redemptions_arithmetic",
+        ),
+        Index("ix_discount_redemptions_code", "discount_code_id", "redeemed_at"),
+        Index("ix_discount_redemptions_subscriber", "discount_code_id", "subscriber_id"),
+        Index("ix_discount_redemptions_user", "user_id"),
     )

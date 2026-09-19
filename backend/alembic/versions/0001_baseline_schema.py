@@ -100,6 +100,7 @@ def upgrade() -> None:
     _create_application_guard()
     _create_candidate_search_projection()
     _create_payment_guards()
+    _create_discount_guards()
     _create_interview_guards()
     _create_college_access()
     _create_college_student_reads()
@@ -279,6 +280,8 @@ def _create_employer_tables() -> None:
 
 def _create_billing_tables() -> None:
     _create_from_metadata(
+        # Before `payments`, which names the code a checkout carried.
+        "discount_codes",
         "payments",
         "payment_callbacks",
         "entitlements",
@@ -297,6 +300,7 @@ def _create_billing_tables() -> None:
         "interview_answers",
         "interview_transcripts",
         "interview_evaluations",
+        "discount_redemptions",
     )
 
 
@@ -406,6 +410,15 @@ def _apply_append_only_grants() -> None:
         op.execute(f"REVOKE UPDATE, DELETE ON {table} FROM {APP_ROLE}")
     for table in ("interview_products", "interview_sessions", "interview_answers"):
         op.execute(f"REVOKE DELETE ON {table} FROM {APP_ROLE}")
+    # Discount codes (2026-09-18). A code is created and then only switched
+    # off -- its terms are what every redemption was priced on. A redemption
+    # is the record that a code was used, written once when its payment
+    # settled.
+    op.execute(f"REVOKE UPDATE, DELETE ON discount_codes FROM {APP_ROLE}")
+    op.execute(
+        f"GRANT UPDATE (disabled_at, disabled_by, updated_at) ON discount_codes TO {APP_ROLE}"
+    )
+    op.execute(f"REVOKE UPDATE, DELETE ON discount_redemptions FROM {APP_ROLE}")
     # Lapsing loses access, not history (R13).
     for table in ("plans", "subscriptions", "upi_mandates", "mandate_debit_notices"):
         op.execute(f"REVOKE DELETE ON {table} FROM {APP_ROLE}")
@@ -1091,6 +1104,8 @@ def _create_payment_guards() -> None:
              OR NEW.subscriber_type IS DISTINCT FROM OLD.subscriber_type
              OR NEW.subscriber_id IS DISTINCT FROM OLD.subscriber_id
              OR NEW.subscription_id IS DISTINCT FROM OLD.subscription_id
+             OR NEW.discount_code_id IS DISTINCT FROM OLD.discount_code_id
+             OR NEW.list_amount_minor IS DISTINCT FROM OLD.list_amount_minor
              OR NEW.created_at <> OLD.created_at THEN
             RAISE EXCEPTION 'PAYMENT_GUARD: what was charged, to whom and for what never changes'
               USING ERRCODE = 'check_violation';
@@ -1148,6 +1163,90 @@ def _create_payment_guards() -> None:
         CREATE TRIGGER trg_guard_course_purchase
           BEFORE INSERT ON course_purchases
           FOR EACH ROW EXECUTE FUNCTION guard_course_purchase();
+        """
+    )
+
+
+def _create_discount_guards() -> None:
+    """A discount is spent only by the payment that carried it (2026-09-18).
+
+      * **`guard_discount_redemption`** -- a redemption needs this code's
+        SUCCEEDED, verified payment, by the same payer, for the same
+        subscriber and the same amounts. The shape of `guard_course_purchase`:
+        a row that says a code was used is written only by money that moved.
+      * **`guard_discount_code_write`** -- a code's terms never change after
+        it exists, and switching it off is a latch. The column grants already
+        stop the app role; this stops every writer, the migrator included.
+    """
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_discount_redemption()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM payments p
+             WHERE p.id = NEW.payment_id
+               AND p.discount_code_id = NEW.discount_code_id
+               AND p.user_id = NEW.user_id
+               AND p.purpose = 'SUBSCRIPTION'
+               AND p.subscriber_type = NEW.subscriber_type
+               AND p.subscriber_id = NEW.subscriber_id
+               AND p.amount_minor = NEW.amount_minor
+               AND p.list_amount_minor = NEW.list_amount_minor
+               AND p.status = 'SUCCEEDED'
+               AND p.signature_verified_at IS NOT NULL
+          ) THEN
+            RAISE EXCEPTION 'DISCOUNT_GUARD: a code is redeemed only by its verified payment'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_discount_redemption
+          BEFORE INSERT ON discount_redemptions
+          FOR EACH ROW EXECUTE FUNCTION guard_discount_redemption();
+        """
+    )
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION guard_discount_code_write()
+        RETURNS TRIGGER
+        SET search_path = public, pg_temp
+        AS $$
+        BEGIN
+          IF NEW.code <> OLD.code OR NEW.audience <> OLD.audience
+             OR NEW.percent_off IS DISTINCT FROM OLD.percent_off
+             OR NEW.amount_off_minor IS DISTINCT FROM OLD.amount_off_minor
+             OR NEW.valid_from <> OLD.valid_from
+             OR NEW.valid_until IS DISTINCT FROM OLD.valid_until
+             OR NEW.usage_limit IS DISTINCT FROM OLD.usage_limit
+             OR NEW.label IS DISTINCT FROM OLD.label
+             OR NEW.created_by <> OLD.created_by OR NEW.created_at <> OLD.created_at THEN
+            RAISE EXCEPTION 'DISCOUNT_GUARD: a code''s terms never change'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          IF OLD.disabled_at IS NOT NULL AND (
+               NEW.disabled_at IS DISTINCT FROM OLD.disabled_at
+               OR NEW.disabled_by IS DISTINCT FROM OLD.disabled_by) THEN
+            RAISE EXCEPTION 'DISCOUNT_GUARD: switching a code off is a latch'
+              USING ERRCODE = 'check_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_guard_discount_code_write
+          BEFORE UPDATE ON discount_codes
+          FOR EACH ROW EXECUTE FUNCTION guard_discount_code_write();
         """
     )
 

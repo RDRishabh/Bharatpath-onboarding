@@ -90,6 +90,11 @@ STATIC_POLICIES: Final[Mapping[str, Policy]] = {
     # left open in a tab should not run them continuously. Per organisation,
     # because a college's staff share the dashboard.
     "analytics.read": Policy("analytics:read", Scope.TENANT, 120, 3600),
+    # Trying a discount code, at preview or checkout (2026-09-18). Per person,
+    # because the risk is one account walking the code space; a real payer
+    # types a code a handful of times. Looser than OTP and the threshold
+    # preview, which must stay the tightest.
+    "billing.discount_code": Policy("billing:discount_code", Scope.USER, 40, 3600),
 }
 
 

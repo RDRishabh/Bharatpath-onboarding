@@ -33,6 +33,9 @@ class PaymentResponse(_Base):
     purpose: Literal["SUBSCRIPTION", "COURSE", "INTERVIEW_SESSION", "MANDATE_DEBIT"]
     item_code: str
     amount_minor: int = Field(ge=0, description="Paise.")
+    list_amount_minor: int | None = Field(
+        default=None, description="The price before a discount code; null without one."
+    )
     currency: str
     failure_code: str | None = None
     created_at: datetime
@@ -43,6 +46,9 @@ class CheckoutResponse(_Base):
     payment_id: uuid.UUID
     status: str
     amount_minor: int = Field(ge=0, description="Paise.")
+    list_amount_minor: int | None = Field(
+        default=None, description="The price before a discount code; null without one."
+    )
     currency: str
     redirect_url: str | None = Field(description="Where to send the payer to pay.")
 
@@ -52,6 +58,7 @@ class CheckoutResponse(_Base):
             payment_id=payment.id,
             status=payment.status,
             amount_minor=payment.amount_minor,
+            list_amount_minor=payment.list_amount_minor,
             currency=payment.currency,
             redirect_url=payment.checkout_url,
         )

@@ -43,6 +43,10 @@ Capability = Literal[
     "disputes",
     "suppress_notifications",
     "audit_search",
+    "accounts",
+    "resend_invitation",
+    "discounts",
+    "discounts_read",
 ]
 
 #: `capability -> the staff roles that hold it`. PLATFORM_ADMIN holds all of
@@ -66,7 +70,18 @@ CONSOLE_ROLES: Final[dict[Capability, frozenset[str]]] = {
     # them. Not their own opt-out, which is theirs to set.
     "suppress_notifications": frozenset({PLATFORM_ADMIN, SUPPORT_AGENT}),
     "audit_search": frozenset({PLATFORM_ADMIN}),
+    # 2026-09-18. Making an account or an organisation on someone's behalf,
+    # and adding a member to one, is the admin's alone: it decides who gets
+    # into an organisation that holds candidate data. Resending an invitation
+    # is support's too -- it adds nobody, it only re-sends what was decided.
+    "accounts": frozenset({PLATFORM_ADMIN}),
+    "resend_invitation": frozenset({PLATFORM_ADMIN, SUPPORT_AGENT}),
+    # A code is money off the product: made and switched off by the admin,
+    # read by support, who answer "my code did not work".
+    "discounts": frozenset({PLATFORM_ADMIN}),
+    "discounts_read": frozenset({PLATFORM_ADMIN, SUPPORT_AGENT}),
 }
+
 
 # ---------------------------------------------------------------------------
 # Disputes

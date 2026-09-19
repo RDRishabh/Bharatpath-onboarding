@@ -86,6 +86,31 @@ def test_a_college_learns_that_a_student_left_and_never_which() -> None:
         assert template is not None and template.variables == ()
 
 
+@pytest.mark.parametrize("event", sorted(NOTIFYING_EVENTS))
+def test_nothing_is_sent_by_sms(event: str) -> None:
+    """The client's decision of 2026-09-18: no SMS and no phone OTP until the
+    organisation's registration and DLT exist. Every message goes by email and
+    to the inbox. Routing an event to an SMS template again is that decision
+    being reversed, and belongs in a conversation with the client first."""
+    for plan in _plans(event):
+        for code in plan.templates:
+            template = template_by_code(code)
+            assert template is not None and template.channel != "SMS", (event, code)
+
+
+def test_the_pre_debit_notice_goes_by_email_and_ignores_the_email_preference() -> None:
+    """UPI AutoPay requires the payer be told before every automatic debit.
+    With no SMS, email is the channel that carries it outside the app."""
+    [plan] = _plans("subscriptions.pre_debit_notified")
+    assert plan.mandatory
+    assert "EMAIL_MANDATE_PRE_DEBIT" in plan.templates
+    email = template_by_code("EMAIL_MANDATE_PRE_DEBIT")
+    assert email is not None and set(email.variables) == {"amount", "date"}
+    assert _decide(
+        "EMAIL_MANDATE_PRE_DEBIT", preferences=Preferences(email_enabled=False), mandatory=True
+    ) == ("PENDING", None)
+
+
 def test_only_the_pre_debit_notice_ignores_preferences() -> None:
     mandatory = {
         (event, code)
@@ -205,11 +230,14 @@ def test_turning_nudges_off_stops_every_nudge_channel() -> None:
 
 
 # --- nudges ------------------------------------------------------------------------------------
-def test_every_nudge_template_exists_and_the_sms_one_is_service_explicit() -> None:
+def test_every_nudge_template_exists_and_none_is_an_sms() -> None:
     templates = [template_by_code(code) for code in NUDGE_TEMPLATES]
     assert all(templates)
-    [sms] = [t for t in templates if t is not None and t.channel == "SMS"]
-    assert sms.dlt_category == "SERVICE_EXPLICIT"
+    assert not [t for t in templates if t is not None and t.channel == "SMS"]
+    # The draft is kept for when SMS returns, in the category that needs the
+    # recorded consent a reminder to a DND number requires.
+    kept = template_by_code("SMS_PROFILE_INCOMPLETE")
+    assert kept is not None and kept.dlt_category == "SERVICE_EXPLICIT"
 
 
 def test_the_default_rules_are_ours_and_reasonable() -> None:

@@ -279,6 +279,11 @@ ERASURE_PLAN: Final[Mapping[str, TablePlan]] = {
     "subscription_events": _retain("How that tenure moved. Append-only."),
     "upi_mandates": _retain("A standing authority to debit, and its life.", "registered_by"),
     "mandate_debit_notices": _retain("Proof the payer was told before being debited."),
+    "discount_redemptions": _retain(
+        "That a code was used on a payment, and what it took off. Part of the "
+        "record of what was charged, beside the payment it priced.",
+        link="user_id",
+    ),
     # -- the carve-out: audit --------------------------------------------
     "audit_events": _retain(
         "PRD rule 9 and invariant 7'. Deleting these destroys the evidence "
@@ -293,6 +298,9 @@ ERASURE_PLAN: Final[Mapping[str, TablePlan]] = {
     ),
     # -- not the candidate's ---------------------------------------------
     "tenants": _not_personal("An organisation."),
+    "discount_codes": _not_personal(
+        "A code staff created. Names the member of staff who made it, never a payer."
+    ),
     "tenant_suspensions": _not_personal("Our decision about an organisation, taken by staff."),
     "employers": _not_personal("An organisation's profile."),
     "colleges": _not_personal("An organisation's profile."),

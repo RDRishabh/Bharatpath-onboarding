@@ -22,6 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.tokens import IdentityProvider, VerifiedToken
+from app.core.errors import PermissionDeniedError
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -64,7 +65,9 @@ async def resolve_or_create_user(
     # a colleague. Adopting that row is the difference between one account and
     # two accounts for the same person, and two accounts means a candidate
     # whose score history silently splits in half.
-    adopted = await _adopt_unlinked(session, token.subject, profile.phone, profile.email)
+    adopted = await _adopt_unlinked(
+        session, token.subject, token.pool, profile.phone, profile.email
+    )
     if adopted is not None:
         logger.info("user_linked_to_existing_row", user_id=str(adopted.id))
         return adopted
@@ -75,7 +78,7 @@ async def resolve_or_create_user(
                 """
                 INSERT INTO users (id, cognito_sub, pool, phone, email, status, locale)
                 VALUES (gen_random_uuid(), :sub, :pool, :phone, :email, 'ACTIVE', 'en')
-                ON CONFLICT (cognito_sub) DO NOTHING
+                ON CONFLICT DO NOTHING
                 RETURNING id, pool, status
                 """
             ),
@@ -93,8 +96,13 @@ async def resolve_or_create_user(
         # two devices signing in at once. The other transaction created the
         # row; read it rather than failing a legitimate sign-in.
         existing = await _by_subject(session, token.subject)
-        if existing is None:  # pragma: no cover - only on a genuine constraint failure
-            raise RuntimeError(f"could not resolve or create user for subject {token.subject}")
+        if existing is None:
+            # Not a race: the phone or email already belongs to another
+            # account -- in practice the other pool's (blockers E8: one
+            # address cannot be both a candidate and employer staff). Said
+            # plainly rather than as a 500. The address is not logged.
+            logger.warning("user_contact_in_use", pool=token.pool)
+            raise PermissionDeniedError(code="account_contact_in_use")
         return existing
 
     logger.info("user_created", user_id=str(row.id), pool=token.pool)
@@ -131,7 +139,7 @@ async def _by_subject(session: AsyncSession, subject: str) -> AuthenticatedUser 
 
 
 async def _adopt_unlinked(
-    session: AsyncSession, subject: str, phone: str | None, email: str | None
+    session: AsyncSession, subject: str, pool: str, phone: str | None, email: str | None
 ) -> AuthenticatedUser | None:
     """Link a pre-existing row that has no provider subject yet.
 
@@ -139,6 +147,12 @@ async def _adopt_unlinked(
     row that already carries a different subject belongs to a different
     identity, and merging two identities because they share a contact detail
     is an account-takeover primitive, not a convenience.
+
+    **And only a row made for this pool.** Staff create candidate rows as well
+    as business ones (2026-09-18); a business sign-in adopting a candidate row
+    by email would carry a candidate's history into an account with a
+    different authentication model, and the pool check in `current_user`
+    would then refuse the person forever.
     """
     if not phone and not email:
         return None
@@ -150,6 +164,7 @@ async def _adopt_unlinked(
                 UPDATE users
                    SET cognito_sub = :sub
                  WHERE cognito_sub IS NULL
+                   AND pool = :pool
                    AND (
                          phone = CAST(:phone AS text)
                       OR email = CAST(:email AS text)
@@ -167,7 +182,7 @@ async def _adopt_unlinked(
                 # wanted here -- a user with no phone must not adopt every
                 # row whose phone is also unset.
             ),
-            {"sub": subject, "phone": phone, "email": email},
+            {"sub": subject, "pool": pool, "phone": phone, "email": email},
         )
     ).first()
     return None if row is None else AuthenticatedUser(id=row.id, pool=row.pool, status=row.status)
