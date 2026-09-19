@@ -1,0 +1,223 @@
+"use client";
+
+import { useEffect } from "react";
+import { Skeleton } from "@/components/common/loading";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import {
+  askRemoveMember,
+  openInviteModal,
+  replaceTeamMembers,
+  resendInvite,
+  selectTeamMembers,
+  toggleMemberMenu,
+  useGetEmployerTeamQuery,
+} from "@/store/employer/settings";
+import { UserPlus } from "lucide-react";
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+export function TeamTab() {
+  const dispatch = useAppDispatch();
+  const members = useAppSelector(selectTeamMembers);
+  const {
+    data: team,
+    isError,
+    isLoading,
+  } = useGetEmployerTeamQuery();
+
+  // Do not expose a stale in-memory value before this tab's API request resolves.
+  const displayedMembers = team ? members : [];
+
+  useEffect(() => {
+    if (team) {
+      dispatch(replaceTeamMembers(team));
+    }
+  }, [dispatch, team]);
+
+  return (
+    <>
+      <div className="mb-2.5 flex items-start justify-between gap-4">
+        <div className="relative">
+          {isLoading && (
+            <div className="absolute left-0 top-0 flex h-[18px] items-center gap-1.5">
+              <span className="text-[14px] font-semibold leading-[18px]">
+                Team members
+              </span>
+              <span className="text-[14px] font-semibold leading-[18px] text-[#718096]">
+                ·
+              </span>
+              <Skeleton width={20} height={16} radius={4} />
+            </div>
+          )}
+          <h2
+            className={`m-0 text-[14px] font-semibold leading-[18px] ${isLoading ? "invisible" : ""}`}
+          >
+            Team members · {members.length}
+          </h2>
+          <p className="mt-0.5 text-xs leading-4 text-[#718096]">
+            People with access to this employer account
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-[#5a4bd1] bg-[#5b4ed0] px-3.5 text-xs font-bold text-white hover:bg-[#4f43bd]"
+          onClick={() => dispatch(openInviteModal())}
+        >
+          <UserPlus className="h-3.5 w-3.5" strokeWidth={2} />
+          Invite member
+        </button>
+      </div>
+
+      <section className="overflow-visible rounded-xl border border-[#e0e4e9] bg-white shadow-[0_1px_2px_rgba(17,24,39,0.02)]">
+        <div className="grid min-h-[37px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] bg-[#f4f6f8] px-[18px] text-[10px] font-extrabold text-[#657083] max-sm:grid-cols-[minmax(0,1fr)_90px_70px_22px] max-sm:gap-2 max-sm:px-2.5">
+          <span>MEMBER</span>
+          <span>ROLE</span>
+          <span>STATUS</span>
+          <span />
+        </div>
+
+        {isLoading ? (
+          <div aria-busy="true">
+            <span className="sr-only">Loading team members…</span>
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="grid min-h-[57px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] border-t border-[#edf0f3] px-[18px] max-sm:grid-cols-[minmax(0,1fr)_90px_70px_22px] max-sm:gap-2 max-sm:px-2.5"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <Skeleton width={30} height={30} radius={8} />
+                  <div className="min-w-0 flex-1">
+                    <Skeleton width="55%" height={11} radius={6} />
+                    <Skeleton className="mt-1.5" width="70%" height={9} radius={6} />
+                  </div>
+                </div>
+                <Skeleton width={64} height={18} radius={999} />
+                <Skeleton width={56} height={18} radius={999} />
+                <span />
+              </div>
+            ))}
+          </div>
+        ) : isError ? (
+          <div className="px-[18px] py-5 text-xs text-[#c0392b]">
+            Unable to load team members. Please try again.
+          </div>
+        ) : displayedMembers.length === 0 ? (
+          <div className="px-[18px] py-5 text-xs text-[#718096]">
+            No team members found.
+          </div>
+        ) : displayedMembers.map((member) => (
+          <div
+            key={member.id}
+            className="grid min-h-[57px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] border-t border-[#edf0f3] px-[18px] max-sm:grid-cols-[minmax(0,1fr)_90px_70px_22px] max-sm:gap-2 max-sm:px-2.5"
+          >
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-[#f2f4f6] text-[10px] font-bold text-[#526074]">
+                {initials(member.name)}
+              </div>
+
+              <div className="min-w-0">
+                <strong className="block truncate text-xs">
+                  {member.name}
+                </strong>
+
+                {member.email && (
+                  <small className="mt-0.5 block truncate text-[10px] text-[#718096]">
+                    {member.email}
+                  </small>
+                )}
+              </div>
+            </div>
+
+            <span
+              className={[
+                "w-fit rounded-full px-2 py-1 text-[10px] font-bold",
+                member.role === "Owner"
+                  ? "bg-[#edf1fb] text-[#34518e]"
+                  : "bg-[#f2f4f6] text-[#5b6575]",
+              ].join(" ")}
+            >
+              {member.role}
+            </span>
+
+            <span
+              className={[
+                "text-[11px]",
+                member.status === "Active"
+                  ? "text-[#13875e]"
+                  : "text-[#5266a4]",
+              ].join(" ")}
+            >
+              {member.status}
+            </span>
+
+            {member.canRemove ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  aria-label={`Actions for ${member.name}`}
+                  className="cursor-pointer border-0 bg-transparent text-[17px] text-[#4e5a6c]"
+                  onClick={() => dispatch(toggleMemberMenu(member.id))}
+                >
+                  ⋮
+                </button>
+
+                <MemberMenu
+                  memberId={member.id}
+                  status={member.status}
+                />
+              </div>
+            ) : (
+              <span />
+            )}
+          </div>
+        ))}
+      </section>
+    </>
+  );
+}
+
+function MemberMenu({
+  memberId,
+  status,
+}: {
+  memberId: string;
+  status: "Active" | "Invited";
+}) {
+  const dispatch = useAppDispatch();
+  const openId = useAppSelector(
+    (state) => state.employerSettings.memberMenuOpenId,
+  );
+
+  if (openId !== memberId) return null;
+
+  return (
+    <div className="absolute right-0 top-7 z-10 w-[145px] rounded-lg border border-[#dfe4ea] bg-white p-1 shadow-[0_10px_28px_rgba(17,24,39,0.12)]">
+      {status === "Invited" && (
+        <button
+          type="button"
+          className="block w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-[11px] hover:bg-[#f4f6f8]"
+          onClick={() => dispatch(resendInvite(memberId))}
+        >
+          Resend invite
+        </button>
+      )}
+
+      <button
+        type="button"
+        className="block w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-[11px] text-[#c0392b] hover:bg-[#f4f6f8]"
+        onClick={() => dispatch(askRemoveMember(memberId))}
+      >
+        Remove member
+      </button>
+    </div>
+  );
+}

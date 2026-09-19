@@ -1,0 +1,313 @@
+"use client";
+
+import { useState } from "react";
+import {
+  Clock3,
+  FileText,
+  LockKeyholeOpen,
+  Phone,
+  X,
+} from "lucide-react";
+
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { showAdminFeedback } from "@/store/admin";
+import { DetailSkeleton } from "@/components/common/loading";
+
+import {
+  selectAdminDisputes,
+} from "@/store/admin/disputes/selectors";
+import {
+  useAssignAdminDisputeMutation,
+  useGetAdminDisputeQuery,
+  useResolveAdminDisputeMutation,
+} from "@/store/api/admin-api";
+
+import { useDisputes } from "../hooks/use-disputes";
+
+import { StateBadge } from "../../shared/status-badge";
+
+export function DisputeDrawer() {
+  const dispatch = useAppDispatch();
+  const { openId } = useAppSelector(selectAdminDisputes);
+  const detailQuery = useGetAdminDisputeQuery(openId ?? "", { skip: !openId });
+  const [assignDispute, assignState] = useAssignAdminDisputeMutation();
+  const [resolveDispute, resolveState] = useResolveAdminDisputeMutation();
+
+  const { closeDispute } = useDisputes();
+
+  const [resolutionNote, setResolutionNote] =
+    useState("");
+
+  if (!openId) {
+    return null;
+  }
+
+  const detail = detailQuery.data;
+  const selectedDispute = {
+    title: detail ? `${detail.kind[0]}${detail.kind.slice(1).toLowerCase()} dispute` : "Loading dispute",
+    parties: detail ? `${detail.party} · ${detail.tenant_id ?? detail.raised_by}` : "",
+    raised: detail ? new Date(detail.created_at).toLocaleString() : "",
+    status: detail?.state === "IN_REVIEW" ? "Investigating" : detail ? `${detail.state[0]}${detail.state.slice(1).toLowerCase()}` : "Pending",
+    claim: detail?.description ?? "",
+    evidence: detail ? [
+      ...(detail.links.application ? [{ label: "Application", meta: `${detail.links.application.id} · ${detail.links.application.stage}` }] : []),
+      ...(detail.links.candidate_id ? [{ label: "Candidate", meta: detail.links.candidate_id }] : []),
+      ...Object.entries(detail.links.live_integrity_signals).map(([severity, count]) => ({ label: `${severity} integrity signals`, meta: String(count) })),
+    ] : [],
+  };
+  const actionLoading = assignState.isLoading || resolveState.isLoading;
+
+  const finish = async (outcome: "RESOLVED" | "REJECTED") => {
+    if (!resolutionNote.trim()) return;
+    await resolveDispute({ disputeId: openId, outcome, resolution: resolutionNote.trim() }).unwrap();
+    dispatch(showAdminFeedback(outcome === "RESOLVED" ? "Dispute resolved." : "Dispute rejected."));
+    setResolutionNote("");
+    closeDispute();
+  };
+
+  return (
+    <>
+      {/* ================================================================
+          BACKDROP
+          ================================================================ */}
+
+      <div
+        className="fixed inset-0 z-40 bg-black/30"
+        aria-hidden="true"
+        onClick={closeDispute}
+      />
+
+      {/* ================================================================
+          DRAWER
+          ================================================================ */}
+
+      <aside
+        className="fixed right-0 top-0 z-50 flex h-full w-[520px] max-w-full flex-col bg-white shadow-[0_30px_70px_-24px_rgba(0,0,0,0.5)]"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Dispute review"
+      >
+        {/* ============================================================
+            HEADER
+            ============================================================ */}
+
+        <div className="flex flex-none items-start gap-3 border-b border-[#e5e8ee] px-4 py-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <h2 className="text-[18px] font-bold leading-[23px] tracking-[-0.012em] text-[#172033] [text-wrap:pretty]">
+              {selectedDispute.title}
+            </h2>
+
+            <p className="text-[12px] font-normal leading-[17px] text-[#7b8494]">
+              {selectedDispute.parties} · raised{" "}
+              {selectedDispute.raised}
+            </p>
+          </div>
+
+          {/* Close */}
+
+          <button
+            type="button"
+            onClick={closeDispute}
+            aria-label="Close"
+            title="Close"
+            className="grid h-8 w-8 flex-none cursor-pointer place-items-center rounded-lg text-[#7b8494] transition-colors hover:bg-[#f5f6f8] hover:text-[#172033]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* ============================================================
+            SCROLLABLE BODY
+            ============================================================ */}
+
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
+          {detailQuery.isLoading ? <DetailSkeleton sections={3} /> : null}
+          {detailQuery.error ? <p className="rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not load dispute details.</p> : null}
+          {/* ==========================================================
+              STATUS
+              ========================================================== */}
+
+          <div className="flex">
+            <StateBadge
+              state={selectedDispute.status}
+            />
+          </div>
+
+          {/* ==========================================================
+              CLAIM
+              ========================================================== */}
+
+          <section className="flex flex-col gap-2">
+            <span className="text-[11px] font-bold leading-[14px] tracking-[0.06em] text-[#7b8494]">
+              CLAIM
+            </span>
+
+            <p className="text-[13px] font-normal leading-[18px] text-[#3e4757] [text-wrap:pretty]">
+              {selectedDispute.claim}
+            </p>
+          </section>
+
+          {/* ==========================================================
+              EVIDENCE
+              ========================================================== */}
+
+          <section className="flex flex-col gap-3">
+            <span className="text-[11px] font-bold leading-[14px] tracking-[0.06em] text-[#7b8494]">
+              EVIDENCE ON FILE
+            </span>
+
+            <div className="flex flex-col gap-2">
+              {selectedDispute.evidence.map(
+                (evidence, index) => (
+                  <div
+                    key={evidence.label}
+                    className="flex items-center gap-3 rounded-[10px] border border-[#e5e8ee] px-4 py-3"
+                  >
+                    {/* ==================================================
+                        ICON
+                        ================================================== */}
+
+                    <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-[#f0f2f5] text-[#172033]">
+                      {getEvidenceIcon(
+                        evidence.label,
+                        index,
+                      )}
+                    </span>
+
+                    {/* ==================================================
+                        CONTENT
+                        ================================================== */}
+
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="text-[13px] font-semibold leading-[17px] text-[#172033]">
+                        {evidence.label}
+                      </span>
+
+                      <span className="text-[11px] font-normal leading-[14px] text-[#7b8494]">
+                        {evidence.meta}
+                      </span>
+                    </span>
+                  </div>
+                ),
+              )}
+            </div>
+          </section>
+
+          {/* ==========================================================
+              RESOLUTION NOTE
+              ========================================================== */}
+
+          <label className="flex flex-col gap-2">
+            <span className="text-[13px] font-semibold leading-[17px] text-[#172033]">
+              Resolution note
+            </span>
+
+            <textarea
+              rows={3}
+              value={resolutionNote}
+              onChange={(event) =>
+                setResolutionNote(
+                  event.target.value,
+                )
+              }
+              placeholder="Shared with both parties and written to the audit trail"
+              aria-label="Resolution note"
+              className="w-full resize-y rounded-[10px] border border-[#e5e8ee] px-4 py-3 text-[13px] font-medium leading-[18px] text-[#172033] outline-none placeholder:text-[#7b8494] focus:border-[#315c9f] focus:ring-1 focus:ring-[#315c9f]"
+            />
+          </label>
+        </div>
+
+        {/* ============================================================
+            FOOTER
+            ============================================================ */}
+
+        <div className="flex flex-none gap-[10px] border-t border-[#e5e8ee] p-4">
+          {/* Request Evidence */}
+
+          <button
+            type="button"
+            disabled={actionLoading || !detail || detail.state !== "OPEN"}
+            onClick={() => void assignDispute(openId).unwrap().then(() => dispatch(showAdminFeedback("Dispute assigned to you.")))}
+            className="flex-1 cursor-pointer rounded-lg border border-[#e5e8ee] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#172033] transition-colors hover:bg-[#f8f9fb]"
+          >
+            {assignState.isLoading ? "Assigning..." : "Assign to me"}
+          </button>
+
+          <button
+            type="button"
+            disabled={actionLoading || !resolutionNote.trim() || !detail || ["RESOLVED", "REJECTED"].includes(detail.state)}
+            onClick={() => void finish("REJECTED")}
+            className="flex-1 cursor-pointer rounded-lg border border-[#c92f3f] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#c92f3f] transition-colors hover:bg-[#fff7f7] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Reject
+          </button>
+
+          {/* Record Resolution */}
+
+          <button
+            type="button"
+            disabled={actionLoading || !resolutionNote.trim() || !detail || ["RESOLVED", "REJECTED"].includes(detail.state)}
+            onClick={() => void finish("RESOLVED")}
+            className="flex-[1.4] cursor-pointer rounded-lg border-0 bg-[#5b4fcf] px-3 py-3 text-[13px] font-semibold leading-[17px] text-white transition-colors hover:bg-[#4f44bc]"
+          >
+            {resolveState.isLoading ? "Saving..." : "Resolve"}
+          </button>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+/* ==========================================================================
+   EVIDENCE ICON
+   ========================================================================== */
+
+function getEvidenceIcon(
+  label: string,
+  index: number,
+) {
+  const normalized = label.toLowerCase();
+
+  if (
+    normalized.includes("call") ||
+    normalized.includes("phone")
+  ) {
+    return (
+      <Phone className="h-4 w-4" />
+    );
+  }
+
+  if (
+    normalized.includes("record")
+  ) {
+    return (
+      <LockKeyholeOpen className="h-4 w-4" />
+    );
+  }
+
+  if (
+    normalized.includes("seen") ||
+    normalized.includes("time") ||
+    normalized.includes("clock")
+  ) {
+    return (
+      <Clock3 className="h-4 w-4" />
+    );
+  }
+
+  if (index === 0) {
+    return (
+      <Phone className="h-4 w-4" />
+    );
+  }
+
+  if (index === 1) {
+    return (
+      <LockKeyholeOpen className="h-4 w-4" />
+    );
+  }
+
+  return (
+    <FileText className="h-4 w-4" />
+  );
+}

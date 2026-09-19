@@ -9,6 +9,40 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-18 — Admin Portal API integration
+
+Replaced the Admin Portal's operational fixtures with typed RTK Query calls to
+the existing `/api/v1/admin` routes. Dashboard counts, KYB and integrity queues,
+disputes and audit events, employer and college search/drill-down, suspension,
+reinstatement and college seat allocation now use backend data. Mutations expose
+loading, error and shared success feedback states.
+
+Admin tabs currently open without a frontend login gate. For local integration,
+the shared API client sends only `NEXT_PUBLIC_API_BEARER_TOKEN` from the frontend
+environment; the Admin login route and Cognito session override were removed by
+request. The backend still validates the token and resolves its staff membership.
+Candidate listing, historical dashboard metrics and settings mutations are shown
+as unavailable because the backend deliberately exposes no such APIs.
+
+Validation: focused Admin TypeScript and ESLint checks pass. Browser checks verify
+live loading/error/unsupported states and removal of mock records and demo header
+controls. Full `tsc`/build are
+still blocked by 17 pre-existing errors in `recent-activity.tsx` and college
+billing selectors; repository-wide ESLint has four pre-existing portal/college
+errors. The running backend is healthy, but the configured local bearer returns
+`invalid_token` and Docker is unavailable, so authenticated success responses
+were not exercised against the live backend.
+
+## 2026-09-17 — Applicant API Redux integration
+
+Connected the existing employer applications pipeline to the backend employer
+application resource. The page now loads published jobs and their applications,
+opens application details, moves stages, and proposes hires through RTK Query;
+the API adapter lives under `fontend/store/employer/applications` and hydrates
+the existing Redux slice. The separate applicant store module was removed.
+
+Validation: `npx tsc --noEmit` and focused ESLint both pass.
+
 ## State at a glance
 
 | | |

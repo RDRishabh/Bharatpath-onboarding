@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --navy: #131a26;
+  --indigo: #3566b8;
+  --indigo-weak: #8aaad6;
+  --indigo-bg: #edf2fa;
+  --border-card: #e7e9ee;
+  --border-hair: #e7e9ee;
+  --ink-muted: #5d6673;
+  --amber-bg: #f8f1e4;
+  --amber-ink: #8c681d;
+  --green-bg: #eaf5ef;
+  --green-ink: #23805d;
+}
+
+@keyframes bpFadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* =========================================================
+   Skeleton shimmer — the single loading placeholder surface
+   used by every portal (admin / employer / college).
+========================================================= */
+@keyframes bpSkeletonShimmer {
+  0% {
+    background-position: -160% 0;
+  }
+
+  100% {
+    background-position: 160% 0;
+  }
+}
+
+.bp-skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: #eceef2;
+  background-image: linear-gradient(
+    90deg,
+    rgba(236, 238, 242, 0) 0%,
+    rgba(255, 255, 255, 0.72) 50%,
+    rgba(236, 238, 242, 0) 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: bpSkeletonShimmer 1.6s ease-in-out infinite;
+}
+
+/* Respect reduced-motion: keep the placeholder, drop the sweep. */
+@media (prefers-reduced-motion: reduce) {
+  .bp-skeleton {
+    animation: none;
+    background-image: none;
+  }
+
+  .animate-spin {
+    animation-duration: 1.6s;
+  }
+}
+
+/* General Sans */
+@font-face {
+  font-family: "General Sans";
+  src: url("../assets/fonts/GeneralSans-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "General Sans";
+  src: url("../assets/fonts/GeneralSans-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "General Sans";
+  src: url("../assets/fonts/GeneralSans-Semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "General Sans";
+  src: url("../assets/fonts/GeneralSans-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Make Tailwind font-sans use General Sans */
+  --font-sans: "General Sans", sans-serif;
+
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "General Sans", sans-serif;
+}
+
+/* Custom sleek scrollbar */
+.bp-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+.bp-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.bp-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bp-scrollbar::-webkit-scrollbar-thumb {
+  background: #dfe2e8;
+  border-radius: 9999px;
+}
+
+.bp-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #b8bcc4;
+}

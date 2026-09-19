@@ -1,0 +1,48 @@
+"use client";
+
+import { useCancelEmployerSubscriptionMutation, useCheckoutEmployerSubscriptionMutation, useCreateEmployerMandateMutation, useGetEmployerPlansQuery, useGetEmployerSubscriptionQuery } from "@/store/employer/billing";
+
+export function SubscriptionTab() {
+  const { data: subscription, isLoading } = useGetEmployerSubscriptionQuery();
+  const { data: plans = [], isLoading: plansLoading } = useGetEmployerPlansQuery();
+  const [checkout, checkoutState] = useCheckoutEmployerSubscriptionMutation();
+  const [cancel, cancelState] = useCancelEmployerSubscriptionMutation();
+  const [createMandate, mandateState] = useCreateEmployerMandateMutation();
+
+  const buy = async (planCode: string) => {
+    const result = await checkout(planCode).unwrap();
+    if (result.redirect_url) window.location.assign(result.redirect_url);
+  };
+  const mandate = async () => {
+    const result = await createMandate().unwrap();
+    window.location.assign(result.authorisation_url);
+  };
+
+  if (isLoading || plansLoading) return <p className="text-xs text-[#718096]">Loading subscription…</p>;
+
+  return (
+    <div className="max-w-[760px] space-y-4">
+      <section className="rounded-xl border border-[#e0e4e9] bg-white p-5">
+        <h2 className="text-[13px] font-bold">Current subscription</h2>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+          <strong>{subscription?.state ?? "NONE"}</strong>
+          <span className={subscription?.has_access ? "text-[#13875e]" : "text-[#b42318]"}>{subscription?.has_access ? "Employer access active" : "Employer access inactive"}</span>
+          {subscription?.current_period_end && <span className="text-[#718096]">Until {new Date(subscription.current_period_end).toLocaleDateString("en-IN")}</span>}
+        </div>
+        <div className="mt-4 flex gap-2">
+          {subscription?.has_access && !subscription.cancel_at && <button disabled={cancelState.isLoading} onClick={() => void cancel()} className="rounded-lg border px-3 py-2 text-xs font-semibold">Cancel renewal</button>}
+          {subscription?.has_access && !subscription.renews_automatically && <button disabled={mandateState.isLoading} onClick={() => void mandate()} className="rounded-lg bg-[#151b2b] px-3 py-2 text-xs font-semibold text-white">Enable UPI AutoPay</button>}
+        </div>
+      </section>
+      <div className="grid gap-3 md:grid-cols-3">
+        {plans.map((plan) => <section key={plan.code} className="rounded-xl border border-[#e0e4e9] bg-white p-5">
+          <h3 className="text-sm font-bold">{plan.period}</h3>
+          <p className="mt-2 text-2xl font-bold">₹{(plan.price_minor / 100).toLocaleString("en-IN")}</p>
+          <p className="mt-1 text-xs text-[#718096]">{plan.months} month{plan.months === 1 ? "" : "s"}{plan.seat_allowance ? ` · ${plan.seat_allowance} seats` : ""}</p>
+          <button disabled={checkoutState.isLoading} onClick={() => void buy(plan.code)} className="mt-4 w-full rounded-lg bg-[#5b4ed0] px-3 py-2 text-xs font-bold text-white">Choose plan</button>
+        </section>)}
+      </div>
+      {(checkoutState.isError || cancelState.isError || mandateState.isError) && <p className="text-xs text-[#b42318]">The billing request could not be completed.</p>}
+    </div>
+  );
+}
