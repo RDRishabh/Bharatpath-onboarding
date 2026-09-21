@@ -3,7 +3,7 @@
 import {
   Armchair,
   ChevronRight,
-  FlaskConical,
+  // FlaskConical, // kept for the temporarily disabled DEMO STATE control
 } from "lucide-react";
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -65,7 +65,7 @@ export function PortalHeader({
   const {
     title,
     subtitle,
-    badge,
+    // badge, // kept for the temporarily disabled DEMO STATE control
     stat,
     action,
   } = useHeaderContent();
@@ -159,16 +159,17 @@ export function PortalHeader({
    * ==========================================
    */
 
-  const resolvedBadge = badge ?? {
-    icon: FlaskConical,
-    label:
-      portal &&
-      portal in PORTAL_BADGE_LABEL
-        ? PORTAL_BADGE_LABEL[
-            portal as PortalType
-          ]
-        : "DEMO STATE",
-  };
+  // Temporarily disabled with the DEMO STATE control below (kept for later).
+  // const resolvedBadge = badge ?? {
+  //   icon: FlaskConical,
+  //   label:
+  //     portal &&
+  //     portal in PORTAL_BADGE_LABEL
+  //       ? PORTAL_BADGE_LABEL[
+  //           portal as PortalType
+  //         ]
+  //       : "DEMO STATE",
+  // };
 
   /*
    * ==========================================
@@ -290,10 +291,10 @@ export function PortalHeader({
         </div>
 
         {/* ==========================================
-            DEMO STATE
+            DEMO STATE — temporarily disabled (kept for later)
             ========================================== */}
 
-        {!isAdmin && <button
+        {/* {!isAdmin && <button
           type="button"
           onClick={onDemoStateClick}
           aria-label="Open demo state options"
@@ -331,7 +332,7 @@ export function PortalHeader({
           >
             {resolvedBadge.label}
           </span>
-        </button>}
+        </button>} */}
 
         {/* ==========================================
             EMPLOYER CREDITS
