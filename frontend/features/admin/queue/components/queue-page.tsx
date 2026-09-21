@@ -4,6 +4,7 @@ import { usePageHeader } from "@/components/layout/header-context";
 
 import { DataTable } from "@/components/ui/table";
 import type { ColumnDef } from "@/components/ui/table";
+import { ErrorState } from "@/components/ui";
 
 import { RiskBadge } from "../../shared/status-badge";
 
@@ -224,10 +225,7 @@ export function QueuePage() {
 
         <div className="pt-4">
           {error ? (
-            <div className="mb-3 flex items-center justify-between rounded-lg border border-[#f0c8cc] bg-[#fff7f7] px-4 py-3 text-[12px] text-[#9f2432]" role="alert">
-              <span>Could not load this queue.</span>
-              <button type="button" onClick={() => void refresh()} className="font-semibold underline">Retry</button>
-            </div>
+            <ErrorState error={error} fallback="Could not load this queue." onRetry={() => void refresh()} className="mb-3" />
           ) : null}
           <DataTable<QueueItem>
             columns={columns}

@@ -12,6 +12,7 @@ import {
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { showAdminFeedback } from "@/store/admin";
 import { DetailSkeleton } from "@/components/common/loading";
+import { ErrorState } from "@/components/ui";
 
 import {
   selectAdminDisputes,
@@ -56,13 +57,29 @@ export function DisputeDrawer() {
     ] : [],
   };
   const actionLoading = assignState.isLoading || resolveState.isLoading;
+  const actionError = assignState.error || resolveState.error;
 
   const finish = async (outcome: "RESOLVED" | "REJECTED") => {
     if (!resolutionNote.trim()) return;
-    await resolveDispute({ disputeId: openId, outcome, resolution: resolutionNote.trim() }).unwrap();
+    try {
+      await resolveDispute({ disputeId: openId, outcome, resolution: resolutionNote.trim() }).unwrap();
+    } catch {
+      // Surfaced to the operator through `actionError` below.
+      return;
+    }
     dispatch(showAdminFeedback(outcome === "RESOLVED" ? "Dispute resolved." : "Dispute rejected."));
     setResolutionNote("");
     closeDispute();
+  };
+
+  const assign = async () => {
+    try {
+      await assignDispute(openId).unwrap();
+    } catch {
+      // Surfaced to the operator through `actionError` below.
+      return;
+    }
+    dispatch(showAdminFeedback("Dispute assigned to you."));
   };
 
   return (
@@ -122,7 +139,7 @@ export function DisputeDrawer() {
 
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
           {detailQuery.isLoading ? <DetailSkeleton sections={3} /> : null}
-          {detailQuery.error ? <p className="rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not load dispute details.</p> : null}
+          {detailQuery.error ? <ErrorState error={detailQuery.error} fallback="Could not load dispute details." /> : null}
           {/* ==========================================================
               STATUS
               ========================================================== */}
@@ -221,13 +238,16 @@ export function DisputeDrawer() {
             FOOTER
             ============================================================ */}
 
-        <div className="flex flex-none gap-[10px] border-t border-[#e5e8ee] p-4">
+        <div className="flex flex-none flex-col gap-[10px] border-t border-[#e5e8ee] p-4">
+          {actionError ? <ErrorState error={actionError} fallback="The action could not be completed. Try again." /> : null}
+
+          <div className="flex gap-[10px]">
           {/* Request Evidence */}
 
           <button
             type="button"
             disabled={actionLoading || !detail || detail.state !== "OPEN"}
-            onClick={() => void assignDispute(openId).unwrap().then(() => dispatch(showAdminFeedback("Dispute assigned to you.")))}
+            onClick={() => void assign()}
             className="flex-1 cursor-pointer rounded-lg border border-[#e5e8ee] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#172033] transition-colors hover:bg-[#f8f9fb]"
           >
             {assignState.isLoading ? "Assigning..." : "Assign to me"}
@@ -252,6 +272,7 @@ export function DisputeDrawer() {
           >
             {resolveState.isLoading ? "Saving..." : "Resolve"}
           </button>
+          </div>
         </div>
       </aside>
     </>

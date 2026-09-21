@@ -7,6 +7,7 @@ import {
   useSaveCollegeOnboardingMutation,
   useSubmitCollegeOnboardingMutation,
 } from "@/store/college/settings/settings.api";
+import { getApiErrorMessage } from "@/lib/api/error-message";
 
 /** One `{ field, code }` problem returned by the server's 422. */
 interface OnboardingIssue {
@@ -90,7 +91,7 @@ export function useCollegeOnboarding() {
       if (issues.length > 0) {
         applyIssues(issues);
       } else {
-        setFormError("Could not save. Please try again.");
+        setFormError(getApiErrorMessage(error, "Could not save. Please try again."));
       }
     }
   }, [saveOnboarding, answers, applyIssues]);
@@ -108,7 +109,7 @@ export function useCollegeOnboarding() {
         applyIssues(issues);
         setFormError("Some answers still need attention.");
       } else {
-        setFormError("Could not submit. Please try again.");
+        setFormError(getApiErrorMessage(error, "Could not submit. Please try again."));
       }
     }
   }, [saveOnboarding, submitOnboarding, answers, applyIssues]);

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { DetailSkeleton } from "@/components/common/loading";
+import { ErrorState } from "@/components/ui";
 import { showAdminFeedback } from "@/store/admin";
 import { useAppDispatch } from "@/store/hooks";
 import {
@@ -96,10 +97,15 @@ export function QueueDrawer() {
     decision: "APPROVED" | "REJECTED" | "MORE_INFO_REQUIRED" | "CLEARED" | "CONFIRMED",
   ) => {
     if ((decision === "REJECTED" || decision === "MORE_INFO_REQUIRED") && !note.trim()) return;
-    if (isKyb) {
-      await decideKyb({ submissionId: item.id, decision: decision as "APPROVED" | "REJECTED" | "MORE_INFO_REQUIRED", reason: note.trim() || undefined }).unwrap();
-    } else {
-      await resolveSignal({ signalId: item.id, outcome: decision as "CLEARED" | "CONFIRMED", note: note.trim() || undefined }).unwrap();
+    try {
+      if (isKyb) {
+        await decideKyb({ submissionId: item.id, decision: decision as "APPROVED" | "REJECTED" | "MORE_INFO_REQUIRED", reason: note.trim() || undefined }).unwrap();
+      } else {
+        await resolveSignal({ signalId: item.id, outcome: decision as "CLEARED" | "CONFIRMED", note: note.trim() || undefined }).unwrap();
+      }
+    } catch {
+      // Surfaced to the operator through `actionError` below.
+      return;
     }
     dispatch(showAdminFeedback(isKyb ? "KYB decision saved." : "Integrity decision saved."));
     setNote("");
@@ -244,7 +250,7 @@ export function QueueDrawer() {
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           {detailLoading ? <DetailSkeleton sections={2} /> : null}
           {!detailLoading && (kybDetail.error || integrityDetail.error) ? (
-            <p className="rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not load review details.</p>
+            <ErrorState error={kybDetail.error || integrityDetail.error} fallback="Could not load review details." />
           ) : null}
           <div className="flex flex-col gap-5">
             {/* ======================================================
@@ -427,7 +433,7 @@ export function QueueDrawer() {
                 aria-label="Decision note"
                 className="w-full resize-y rounded-[10px] border border-[#e5e7eb] px-4 py-3 text-[13px] font-medium leading-[18px] text-[#172033] outline-none transition-colors placeholder:text-[#7b8494] focus:border-[#315c9f]"
               />
-              {actionError ? <span className="text-[11px] text-[#c92f3f]">The decision could not be saved. Try again.</span> : null}
+              {actionError ? <ErrorState error={actionError} fallback="The decision could not be saved. Try again." /> : null}
             </label>
           </div>
         </div>

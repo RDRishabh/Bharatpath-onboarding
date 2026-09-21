@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Skeleton } from "@/components/common/loading";
+import { ErrorState } from "@/components/ui";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   askRemoveMember,
@@ -107,8 +108,8 @@ export function TeamTab() {
             ))}
           </div>
         ) : isError ? (
-          <div className="px-[18px] py-5 text-xs text-[#c0392b]">
-            Unable to load team members. Please try again.
+          <div className="px-[18px] py-5">
+            <ErrorState fallback="Unable to load team members. Please try again." />
           </div>
         ) : displayedMembers.length === 0 ? (
           <div className="px-[18px] py-5 text-xs text-[#718096]">

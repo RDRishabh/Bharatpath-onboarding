@@ -11,6 +11,7 @@ import {
 
 import { useDashboard } from "../hooks/use-dashboard";
 import { CardSkeletonGrid, ListSkeleton } from "@/components/common/loading";
+import { ErrorState } from "@/components/ui";
 
 export function AdminDashboard() {
   usePageHeader(
@@ -34,7 +35,7 @@ export function AdminDashboard() {
       {/* ================================================================ */}
 
       {isLoading ? <CardSkeletonGrid count={4} /> : <DashboardMetrics metrics={metrics} />}
-      {error ? <p className="rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Some dashboard data could not be loaded.</p> : null}
+      {error ? <ErrorState error={error} fallback="Some dashboard data could not be loaded." /> : null}
 
       {/* ================================================================ */}
       {/* Main content                                                     */}

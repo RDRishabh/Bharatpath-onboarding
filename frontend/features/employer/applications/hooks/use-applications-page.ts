@@ -34,13 +34,13 @@ export function useApplicationsPage() {
   const { data: jobs = EMPTY_JOBS } = useGetEmployerJobsQuery({
     status: "PUBLISHED",
   });
-  const [loadApplications] =
+  const [loadApplications, applicationsState] =
     useLazyGetEmployerApplicationsQuery();
   const [loadApplication] =
     useLazyGetEmployerApplicationQuery();
-  const [moveApplication] =
+  const [moveApplication, moveState] =
     useMoveEmployerApplicationMutation();
-  const [proposeHire] =
+  const [proposeHire, proposeState] =
     useProposeEmployerHireMutation();
 
   const applications = useAppSelector(
@@ -89,7 +89,7 @@ export function useApplicationsPage() {
       if (active) {
         dispatch(replaceApplications(pages.flat()));
       }
-    });
+    }).catch(() => undefined);
 
     return () => {
       active = false;
@@ -153,7 +153,8 @@ export function useApplicationsPage() {
         .unwrap()
         .then((application) => {
           dispatch(replaceApplication(application));
-        });
+        })
+        .catch(() => undefined);
     },
     [dispatch, loadApplication],
   );
@@ -204,7 +205,8 @@ export function useApplicationsPage() {
         .unwrap()
         .then((application) => {
           dispatch(replaceApplication(application));
-        });
+        })
+        .catch(() => undefined);
     },
     [dispatch, moveApplication, selectedApplication],
   );
@@ -239,7 +241,8 @@ export function useApplicationsPage() {
         .unwrap()
         .then((updatedApplication) => {
           dispatch(replaceApplication(updatedApplication));
-        });
+        })
+        .catch(() => undefined);
     },
     [applications, dispatch, moveApplication],
   );
@@ -284,7 +287,8 @@ export function useApplicationsPage() {
         .unwrap()
         .then((application) => {
           dispatch(replaceApplication(application));
-        });
+        })
+        .catch(() => undefined);
     }, [dispatch, proposeHire, selectedApplication]);
 
   /*
@@ -298,6 +302,10 @@ export function useApplicationsPage() {
     jobFilter,
     jobOptions,
     selectedApplication,
+    error:
+      applicationsState.error ??
+      moveState.error ??
+      proposeState.error,
 
     handleJobFilterChange,
     handleOpenApplication,

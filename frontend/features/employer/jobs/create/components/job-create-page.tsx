@@ -128,8 +128,8 @@ export function JobCreatePage({
       else await createJob(values).unwrap();
       showToast("Draft saved");
       window.setTimeout(() => router.push("/employer/jobs"), 450);
-    } catch {
-      showToast("Could not save the job");
+    } catch (error) {
+      showToast(getApiErrorMessage(error, "Could not save the job"));
     }
   };
 
@@ -149,8 +149,8 @@ export function JobCreatePage({
       await publish(saved.id).unwrap();
       showToast("Job published");
       window.setTimeout(() => router.push("/employer/jobs"), 650);
-    } catch {
-      showToast("Could not publish the job");
+    } catch (error) {
+      showToast(getApiErrorMessage(error, "Could not publish the job"));
     }
   };
 

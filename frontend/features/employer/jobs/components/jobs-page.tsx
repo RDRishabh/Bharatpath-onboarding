@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dropdown } from "@/components/ui/dropdown";
+import { ErrorState } from "@/components/ui";
 import { usePageHeader } from "@/components/layout/header-context";
 
 import { JobsTable } from "./jobs-table";
@@ -44,6 +45,7 @@ export function JobsPage() {
         data: employerJobs = [],
         isLoading,
         isError,
+        error,
     } = useGetEmployerJobsQuery();
 
     const search = useAppSelector(selectJobsSearch);
@@ -245,13 +247,13 @@ export function JobsPage() {
                 </div>
 
                 {isError ? (
-                    <div className="px-5 py-14 text-center">
-                        <p className="text-[14px] font-semibold text-[#303747]">
-                            Couldn&apos;t load jobs
-                        </p>
-                        <p className="mt-1 text-[12px] text-[#777f90]">
-                            Something went wrong while fetching your job postings.
-                        </p>
+                    <div className="px-5 py-14">
+                        <ErrorState
+                            variant="block"
+                            error={error}
+                            title="Couldn't load jobs"
+                            fallback="Something went wrong while fetching your job postings."
+                        />
                     </div>
                 ) : (
                     <JobsTable
