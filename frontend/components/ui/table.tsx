@@ -7,6 +7,7 @@ import React, {
   TdHTMLAttributes,
   ThHTMLAttributes,
   ReactNode,
+  useEffect,
   useState,
 } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
@@ -219,18 +220,22 @@ export interface TablePaginationProps {
   totalCount: number;
   pageSize: number;
   onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
   itemLabel?: string;
   className?: string;
 }
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 export function TablePagination({
   currentPage,
   totalCount,
   pageSize,
   onPageChange,
+  onPageSizeChange,
   itemLabel = "items",
   className = "",
-}: TablePaginationProps) {
+}: Readonly<TablePaginationProps>) {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const startIndex = (currentPage - 1) * pageSize;
   const startDisplay = totalCount === 0 ? 0 : startIndex + 1;
@@ -247,9 +252,26 @@ export function TablePagination({
         {itemLabel ? ` ${itemLabel}` : ""}
       </span>
 
-      {/* PAGINATION CONTROLS: < [2] of 2 > */}
-      {totalPages > 1 && (
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-4">
+        <label className="flex items-center gap-2 whitespace-nowrap text-[13px] text-[#777f90]">
+          <span>Rows per page</span>
+          <select
+            value={pageSize}
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+            aria-label="Rows per page"
+            className="h-8 rounded-[8px] border border-[#e2e5eb] bg-white px-2 text-[13px] font-semibold text-[#151b2b] outline-none focus:border-[#8f86df] focus:ring-2 focus:ring-[#5b4fcf]/10"
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* PAGINATION CONTROLS: < [2] of 2 > */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1.5">
           {/* PREV */}
           <button
             type="button"
@@ -281,8 +303,9 @@ export function TablePagination({
           >
             <ChevronRight size={14} />
           </button>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -309,6 +332,7 @@ export interface DataTableProps<T> {
   pageSize?: number;
   currentPage?: number;
   onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
   emptyTitle?: string;
   emptySubtitle?: string;
   isLoading?: boolean;
@@ -324,9 +348,10 @@ export function DataTable<T>({
   data,
   keyExtractor = (_, i) => i,
   totalCount,
-  pageSize = 5,
+  pageSize = 10,
   currentPage = 1,
   onPageChange,
+  onPageSizeChange,
   emptyTitle,
   emptySubtitle,
   isLoading = false,
@@ -334,18 +359,36 @@ export function DataTable<T>({
   itemLabel = "items",
   className = "",
   header,
-}: DataTableProps<T>) {
+}: Readonly<DataTableProps<T>>) {
   const [localPage, setLocalPage] = useState(1);
+  const [localPageSize, setLocalPageSize] = useState(pageSize);
   const page = onPageChange ? currentPage : localPage;
   const setPage = onPageChange ?? setLocalPage;
+  const effectivePageSize = onPageSizeChange ? pageSize : localPageSize;
   const total = totalCount ?? data.length;
+  const totalPages = Math.max(1, Math.ceil(total / effectivePageSize));
 
-  const startIndex = (page - 1) * pageSize;
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, setPage, totalPages]);
+
+  function handlePageSizeChange(nextPageSize: number) {
+    if (onPageSizeChange) {
+      onPageSizeChange(nextPageSize);
+    } else {
+      setLocalPageSize(nextPageSize);
+    }
+    setPage(1);
+  }
+
+  const startIndex = (page - 1) * effectivePageSize;
   const rowsToDisplay = onPageChange
     ? data
-    : data.slice(startIndex, startIndex + pageSize);
+    : data.slice(startIndex, startIndex + effectivePageSize);
 
-  const skeletonRowCount = skeletonRows ?? Math.min(pageSize, 6);
+  const skeletonRowCount = skeletonRows ?? Math.min(effectivePageSize, 6);
 
   const columnKey = (col: ColumnDef<T>, fallback: number) =>
     col.id ?? (col.accessorKey ? String(col.accessorKey) : `col-${fallback}`);
@@ -403,8 +446,9 @@ export function DataTable<T>({
         <TablePagination
           currentPage={page}
           totalCount={total}
-          pageSize={pageSize}
+          pageSize={effectivePageSize}
           onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
           itemLabel={itemLabel}
         />
       }

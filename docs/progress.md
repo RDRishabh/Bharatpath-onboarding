@@ -9,6 +9,18 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-21 — Frontend table page sizes
+
+Added a shared rows-per-page selector to every frontend data table with 10 as
+the default and 25, 50 and 100 as options. Page-size changes return to the first
+page, filtered result sets clamp invalid page numbers, and tables with fewer
+than ten records retain accurate counts and controls. College table queries now
+request the backend's 100-row maximum so the larger selections have data.
+
+Validation: the changed pagination files pass TypeScript checking. Full
+`npx tsc --noEmit` remains blocked by 19 pre-existing errors in recent activity,
+job creation and college billing selector files.
+
 ## 2026-09-18 — Admin Portal API integration
 
 Replaced the Admin Portal's operational fixtures with typed RTK Query calls to

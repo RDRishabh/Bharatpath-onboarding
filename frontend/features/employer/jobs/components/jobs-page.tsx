@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dropdown } from "@/components/ui/dropdown";
@@ -21,7 +21,7 @@ import type { JobsStatusFilter } from "@/store/employer/jobs";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import type { EmployerJob } from "../types";
 
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 10;
 
 export function JobsPage() {
     const router = useRouter();
@@ -55,6 +55,7 @@ export function JobsPage() {
     const currentPage = useAppSelector(
         selectJobsCurrentPage
     );
+    const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
     const statusOptions = [
         {
@@ -107,18 +108,18 @@ export function JobsPage() {
 
     const totalPages = Math.max(
         1,
-        Math.ceil(filteredJobs.length / PAGE_SIZE)
+        Math.ceil(filteredJobs.length / pageSize)
     );
 
     const paginatedJobs = useMemo(() => {
         const start =
-            (currentPage - 1) * PAGE_SIZE;
+            (currentPage - 1) * pageSize;
 
         return filteredJobs.slice(
             start,
-            start + PAGE_SIZE
+            start + pageSize
         );
-    }, [filteredJobs, currentPage]);
+    }, [filteredJobs, currentPage, pageSize]);
 
     function handleSearch(value: string) {
         dispatch(setJobsSearch(value));
@@ -259,10 +260,11 @@ export function JobsPage() {
                     <JobsTable
                         jobs={paginatedJobs}
                         currentPage={currentPage}
-                        pageSize={PAGE_SIZE}
+                        pageSize={pageSize}
                         totalCount={filteredJobs.length}
                         isLoading={isLoading}
                         onPageChange={handlePageChange}
+                        onPageSizeChange={setPageSize}
                         onViewApplicants={handleViewApplicants}
                         onEditJob={handleEditJob}
                     />

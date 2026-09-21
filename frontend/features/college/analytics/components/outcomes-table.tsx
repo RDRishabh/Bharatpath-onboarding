@@ -28,7 +28,7 @@ export function PlacementsByLocationTable({
       columns={COLUMNS}
       data={placements}
       keyExtractor={(row) => row.location}
-      pageSize={6}
+      pageSize={10}
       itemLabel=""
       emptyTitle="No placements yet"
       emptySubtitle="Platform-sourced hires will appear here as students are hired."

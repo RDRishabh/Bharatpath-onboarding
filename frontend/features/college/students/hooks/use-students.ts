@@ -51,7 +51,7 @@ function mapStudent(student: VisibleStudent): CollegeStudent {
  * real ways of reaching students (referral codes and roster CSV imports).
  */
 export function useStudents() {
-  const studentsQuery = useGetCollegeStudentsQuery();
+  const studentsQuery = useGetCollegeStudentsQuery({ limit: 100 });
   const seatsQuery = useGetCollegeSeatsQuery();
   const referralCodesQuery = useGetReferralCodesQuery();
   const rosterImportsQuery = useGetRosterImportsQuery();

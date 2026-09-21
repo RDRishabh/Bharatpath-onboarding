@@ -94,7 +94,7 @@ export function EmployersTab({
       data={users}
       keyExtractor={(user) => user.id}
       totalCount={users.length}
-      pageSize={5}
+      pageSize={10}
       itemLabel=""
       emptyTitle="No employers found"
       emptySubtitle=""

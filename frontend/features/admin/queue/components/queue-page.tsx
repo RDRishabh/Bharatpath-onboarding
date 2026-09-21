@@ -233,7 +233,7 @@ export function QueuePage() {
             keyExtractor={(item) =>
               item.id
             }
-            pageSize={4}
+            pageSize={10}
             totalCount={items.length}
             itemLabel=""
             isLoading={isLoading}
