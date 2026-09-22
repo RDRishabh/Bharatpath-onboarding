@@ -89,7 +89,7 @@ export function CandidatesTab({
       data={users}
       keyExtractor={(user) => user.id}
       totalCount={users.length}
-      pageSize={5}
+      pageSize={10}
       itemLabel=""
       emptyTitle="No candidates found"
       emptySubtitle="Candidate listing is not available from the Admin API. Candidate drill-down remains available when a candidate ID is known."

@@ -4,16 +4,20 @@ import {
   ApplicationPipeline,
   ApplicationFilter,
   ApplicationDrawer,
+  ApplicationsPipelineSkeleton,
 } from "@/features/employer/applications";
+import { ErrorState } from "@/components/ui";
 
 import { useApplicationsPage } from "../hooks/use-applications-page";
 
 export function ApplicationsPageContent() {
   const {
     applications,
+    isLoading,
     jobFilter,
     jobOptions,
     selectedApplication,
+    error,
 
     handleJobFilterChange,
     handleOpenApplication,
@@ -52,6 +56,14 @@ export function ApplicationsPageContent() {
           options={jobOptions}
           onChange={handleJobFilterChange}
         />
+
+        {error ? (
+          <ErrorState
+            error={error}
+            fallback="Something went wrong with that action. Please try again."
+            className="mt-3"
+          />
+        ) : null}
       </div>
 
       {/* =====================================================
@@ -65,13 +77,17 @@ export function ApplicationsPageContent() {
           overflow-hidden
         "
       >
-        <ApplicationPipeline
-          applications={applications}
-          onApplicationClick={
-            handleOpenApplication
-          }
-          onApplicationDrop={handleMoveToColumn}
-        />
+        {isLoading ? (
+          <ApplicationsPipelineSkeleton />
+        ) : (
+          <ApplicationPipeline
+            applications={applications}
+            onApplicationClick={
+              handleOpenApplication
+            }
+            onApplicationDrop={handleMoveToColumn}
+          />
+        )}
       </div>
 
       {/* =====================================================

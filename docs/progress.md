@@ -405,6 +405,30 @@ Indian form.
   mobile app talks to **Supabase**, not this backend, and calls zero of the 53
   `/candidate` endpoints.
 
+## 2026-09-22 — Dashboard empty-data fallbacks
+
+Employer, college and admin dashboards now keep their full dashboard layouts
+visible when one or more API requests fail, using the existing zero, empty-list
+and unavailable values instead of replacing the page with an error panel. The
+employer dashboard also stops loading correctly when there are no jobs or the
+jobs request fails, and clears application counts when those requests fail.
+
+Validation: focused ESLint passes for all changed dashboard files. Browser checks
+against live 500 responses confirm that employer, college and admin each retain
+their full dashboard UI with empty values and no blocking error panel.
+
+## 2026-09-21 — Frontend table page sizes
+
+Added a shared rows-per-page selector to every frontend data table with 10 as
+the default and 25, 50 and 100 as options. Page-size changes return to the first
+page, filtered result sets clamp invalid page numbers, and tables with fewer
+than ten records retain accurate counts and controls. College table queries now
+request the backend's 100-row maximum so the larger selections have data.
+
+Validation: the changed pagination files pass TypeScript checking. Full
+`npx tsc --noEmit` remains blocked by 19 pre-existing errors in recent activity,
+job creation and college billing selector files.
+
 ## 2026-09-18 — Admin Portal API integration
 
 Replaced the Admin Portal's operational fixtures with typed RTK Query calls to

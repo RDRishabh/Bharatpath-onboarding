@@ -7,6 +7,7 @@ import { usePageHeader } from "@/components/layout/header-context";
 import {
   BarChart,
   Button,
+  ErrorState,
   Panel,
   ProgressList,
   StatCard,
@@ -33,7 +34,7 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 export function AnalyticsDashboard() {
-  const { data } = useAnalytics();
+  const { data, isError } = useAnalytics();
 
   const headerAction = useMemo(
     () => (
@@ -76,6 +77,10 @@ export function AnalyticsDashboard() {
       className="mx-auto max-w-[1280px] space-y-5"
       style={{ fontFamily: "'General Sans', sans-serif" }}
     >
+      {isError ? (
+        <ErrorState fallback="Some analytics data could not be loaded. Please refresh and try again." />
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {data.metrics.map((metric) => (
           <StatCard

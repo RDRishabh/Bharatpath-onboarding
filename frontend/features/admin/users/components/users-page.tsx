@@ -6,6 +6,8 @@ import { usePageHeader } from "@/components/layout/header-context";
 
 import { useUsers } from "../hooks/use-users";
 
+import { ErrorState } from "@/components/ui";
+
 import { CandidatesTab } from "./candidates-tab";
 import { EmployersTab } from "./employers-tab";
 import { InstitutionsTab } from "./institutions-tab";
@@ -96,7 +98,7 @@ export function UsersPage() {
       {/* TAB CONTENT                                                       */}
       {/* ================================================================ */}
 
-      {error ? <p className="mb-3 rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not load organisations.</p> : null}
+      {error ? <ErrorState error={error} fallback="Could not load organisations." className="mb-3" /> : null}
 
       {segment === "candidates" && (
         <CandidatesTab

@@ -3,9 +3,8 @@
 import {
   Armchair,
   ChevronRight,
-  FlaskConical,
+  // FlaskConical, // kept for the temporarily disabled DEMO STATE control
 } from "lucide-react";
-import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -17,19 +16,12 @@ import {
   PortalType,
 } from "@/config/portal";
 
-import {
-  selectCreditPack,
-  selectEmployerCreditBalance,
-  selectEmployerCreditPacks,
-  selectSelectedCreditPack,
-  selectSelectedCreditPackId,
-  addCredits,
-} from "@/store/employer/billing";
+import { useGetEmployerSubscriptionQuery } from "@/store/employer/billing";
+import { setActiveTab } from "@/store/employer/settings";
 
 import { NotificationCenter } from "@/features/notifications";
 
-import { CreditsButton } from "@/features/employer/billing/components/credits-button";
-import { BuyCreditsModal } from "@/features/employer/billing/components/buy-credits-modal";
+import { SubscriptionStatusButton } from "@/features/employer/billing/components/subscription-status-button";
 
 import { useHeaderContent } from "./header-context";
 
@@ -65,7 +57,7 @@ export function PortalHeader({
   const {
     title,
     subtitle,
-    badge,
+    // badge, // kept for the temporarily disabled DEMO STATE control
     stat,
     action,
   } = useHeaderContent();
@@ -100,43 +92,29 @@ export function PortalHeader({
 
   /*
    * ==========================================
-   * EMPLOYER BILLING
-   * ==========================================
-   */
-
-  const creditBalance = useAppSelector(
-    selectEmployerCreditBalance,
-  );
-
-  const creditPacks = useAppSelector(
-    selectEmployerCreditPacks,
-  );
-
-  const selectedPackId = useAppSelector(
-    selectSelectedCreditPackId,
-  );
-
-  const selectedPack = useAppSelector(
-    selectSelectedCreditPack,
-  );
-
-  /*
-   * ==========================================
-   * BUY CREDITS MODAL
-   * ==========================================
-   */
-
-  const [isBuyCreditsOpen, setIsBuyCreditsOpen] =
-    useState(false);
-
-  /*
-   * ==========================================
    * PORTAL CHECK
    * ==========================================
    */
 
   const isEmployer =
     portal === PORTAL_TYPES.EMPLOYER;
+
+  /*
+   * ==========================================
+   * EMPLOYER SUBSCRIPTION
+   *
+   * The header billing widget reflects the real
+   * subscription (GET /employer/subscription).
+   * Skipped entirely outside the employer portal.
+   * ==========================================
+   */
+
+  const {
+    data: subscription,
+    isLoading: isSubscriptionLoading,
+  } = useGetEmployerSubscriptionQuery(undefined, {
+    skip: !isEmployer,
+  });
 
   const isAdmin =
     portal === PORTAL_TYPES.ADMIN;
@@ -159,53 +137,30 @@ export function PortalHeader({
    * ==========================================
    */
 
-  const resolvedBadge = badge ?? {
-    icon: FlaskConical,
-    label:
-      portal &&
-      portal in PORTAL_BADGE_LABEL
-        ? PORTAL_BADGE_LABEL[
-            portal as PortalType
-          ]
-        : "DEMO STATE",
-  };
+  // Temporarily disabled with the DEMO STATE control below (kept for later).
+  // const resolvedBadge = badge ?? {
+  //   icon: FlaskConical,
+  //   label:
+  //     portal &&
+  //     portal in PORTAL_BADGE_LABEL
+  //       ? PORTAL_BADGE_LABEL[
+  //           portal as PortalType
+  //         ]
+  //       : "DEMO STATE",
+  // };
 
   /*
    * ==========================================
-   * CREDITS HANDLERS
+   * BILLING
+   *
+   * The widget routes to the real billing surface
+   * (Settings → Subscription), not a mock credit modal.
    * ==========================================
    */
 
-  const handleOpenCredits = () => {
-    setIsBuyCreditsOpen(true);
-  };
-
-  const handleCloseCredits = () => {
-    setIsBuyCreditsOpen(false);
-  };
-
-  const handleSelectPack = (
-    packId: string,
-  ) => {
-    dispatch(selectCreditPack(packId));
-  };
-
-  /*
-   * ==========================================
-   * PAYMENT
-   * ==========================================
-   */
-
-  const handlePay = () => {
-    if (!selectedPack) {
-      return;
-    }
-
-    dispatch(
-      addCredits(selectedPack.credits),
-    );
-
-    setIsBuyCreditsOpen(false);
+  const handleOpenBilling = () => {
+    dispatch(setActiveTab("subscription"));
+    router.push("/employer/settings");
   };
 
   /*
@@ -290,10 +245,10 @@ export function PortalHeader({
         </div>
 
         {/* ==========================================
-            DEMO STATE
+            DEMO STATE — temporarily disabled (kept for later)
             ========================================== */}
 
-        {!isAdmin && <button
+        {/* {!isAdmin && <button
           type="button"
           onClick={onDemoStateClick}
           aria-label="Open demo state options"
@@ -331,16 +286,17 @@ export function PortalHeader({
           >
             {resolvedBadge.label}
           </span>
-        </button>}
+        </button>} */}
 
         {/* ==========================================
             EMPLOYER CREDITS
             ========================================== */}
 
         {isEmployer && (
-          <CreditsButton
-            credits={creditBalance}
-            onClick={handleOpenCredits}
+          <SubscriptionStatusButton
+            subscription={subscription}
+            isLoading={isSubscriptionLoading}
+            onClick={handleOpenBilling}
           />
         )}
 
@@ -502,21 +458,6 @@ export function PortalHeader({
           </button>
         )}
       </header>
-
-      {/* ==========================================
-          EMPLOYER BUY CREDITS MODAL
-          ========================================== */}
-
-      {isEmployer && (
-        <BuyCreditsModal
-          open={isBuyCreditsOpen}
-          packs={creditPacks}
-          selectedPackId={selectedPackId}
-          onSelectPack={handleSelectPack}
-          onClose={handleCloseCredits}
-          onPay={handlePay}
-        />
-      )}
     </>
   );
 }

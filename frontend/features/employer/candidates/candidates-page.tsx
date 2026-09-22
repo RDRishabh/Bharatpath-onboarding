@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { ListSkeleton } from "@/components/common/loading";
+import { ErrorState } from "@/components/ui";
 import { usePageHeader } from "@/components/layout/header-context";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -100,14 +101,15 @@ export function CandidatesPage() {
               <CandidateCard
                 key={candidate.candidateId}
                 candidate={candidate}
-                onReveal={() => void revealCandidate(candidate.candidateId).unwrap().then(setRevealed)}
+                onReveal={() => void revealCandidate(candidate.candidateId).unwrap().then(setRevealed).catch(() => undefined)}
               />
             ))}
 
             {error && (
-              <div className="rounded-[12px] border border-[#f0caca] bg-[#fff7f7] p-10 text-center text-[12px] text-[#9b3d3d]">
-                Candidates could not be loaded. Check your employer subscription and API connection.
-              </div>
+              <ErrorState
+                error={error}
+                fallback="Candidates could not be loaded. Check your employer subscription and API connection."
+              />
             )}
 
             {!isLoading && !error && candidates.length === 0 && (
@@ -183,7 +185,7 @@ export function CandidatesPage() {
       />
       {(revealed || revealState.isFetching || revealState.isError) && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
         <section className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-          {revealState.isFetching ? <p className="text-sm">Opening candidate…</p> : revealState.isError ? <p className="text-sm text-[#b42318]">This profile could not be opened.</p> : revealed && <>
+          {revealState.isFetching ? <p className="text-sm">Opening candidate…</p> : revealState.isError ? <ErrorState error={revealState.error} fallback="This profile could not be opened." /> : revealed && <>
             <h2 className="text-lg font-bold">{revealed.full_name ?? "Candidate"}</h2>
             <p className="mt-1 text-sm text-[#647083]">Score {revealed.score} · {revealed.band}</p>
             <div className="mt-4 space-y-1 text-sm"><p>{revealed.email ?? "No email shared"}</p><p>{revealed.phone ?? "No phone shared"}</p></div>

@@ -153,7 +153,7 @@ export function RosterRowsModal({
               columns={columns}
               data={data ?? []}
               totalCount={(data ?? []).length}
-              pageSize={25}
+              pageSize={10}
               keyExtractor={(row) => String(row.rowNumber)}
               itemLabel="rows"
               isLoading={isLoading || isFetching}

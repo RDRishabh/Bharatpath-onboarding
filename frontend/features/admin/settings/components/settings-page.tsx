@@ -4,6 +4,8 @@ import { usePageHeader } from "@/components/layout/header-context";
 
 import { useSettings } from "../hooks/use-settings";
 
+import { ErrorState } from "@/components/ui";
+
 import { SettingsTabs } from "./settings-tabs";
 import { KybApprovalTab } from "./kyb-approval-tab";
 import { PlatformTab } from "./platform-tab";
@@ -28,7 +30,7 @@ export function SettingsPage() {
         onChange={setTab}
       />
 
-      {error ? <p className="mt-4 rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not read the current KYB mode.</p> : null}
+      {error ? <ErrorState error={error} fallback="Could not read the current KYB mode." className="mt-4" /> : null}
 
       {state.tab === "approval" ? (
         <KybApprovalTab

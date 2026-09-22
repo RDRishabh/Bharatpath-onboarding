@@ -1,6 +1,7 @@
 "use client";
 
 import { usePageHeader } from "@/components/layout/header-context";
+import { ErrorState } from "@/components/ui";
 
 import { useDisputes } from "../hooks/use-disputes";
 
@@ -89,7 +90,7 @@ export function DisputesPage() {
               ========================================================== */}
 
           <div className="min-w-0">
-            {error ? <p className="mb-3 rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Could not load disputes.</p> : null}
+            {error ? <ErrorState error={error} fallback="Could not load disputes." className="mb-3" /> : null}
             {state.tab === "open" && (
               <OpenDisputesTab
                 disputes={openDisputes}

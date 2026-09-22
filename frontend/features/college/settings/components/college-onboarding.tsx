@@ -3,6 +3,7 @@
 import { CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui";
 import { FormSkeleton } from "@/components/common/loading";
 import type {
   OnboardingField,
@@ -206,11 +207,12 @@ export function CollegeOnboarding() {
 
   if (isError || !form) {
     return (
-      <div
-        className="w-full max-w-[640px] rounded-[12px] border border-[#e1e5eb] bg-white p-5 text-[13px] font-medium text-[#64748b]"
-        style={{ fontFamily: "'General Sans', sans-serif" }}
-      >
-        Could not load the onboarding form. Please refresh and try again.
+      <div className="w-full max-w-[640px]">
+        <ErrorState
+          variant="block"
+          title="Could not load the onboarding form"
+          message="Please refresh and try again."
+        />
       </div>
     );
   }
@@ -276,9 +278,7 @@ export function CollegeOnboarding() {
       {!isSubmitted && (
         <div className="flex flex-col gap-3">
           {formError && (
-            <p className="text-[13px] font-medium leading-[17px] text-[#e02424]">
-              {formError}
-            </p>
+            <ErrorState message={formError} />
           )}
           {savedAt !== null && !formError && (
             <p className="text-[13px] font-medium leading-[17px] text-[#23805d]">

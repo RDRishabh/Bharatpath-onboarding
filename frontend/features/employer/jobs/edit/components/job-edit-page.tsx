@@ -4,6 +4,7 @@ import { JobCreatePage } from "@/features/employer/jobs/create";
 import type { CreateJobFormValues } from "@/features/employer/jobs/create";
 import type { EmployerJobApiResponse } from "@/features/employer/jobs/types";
 import { useGetEmployerJobQuery } from "@/store/employer/jobs";
+import { ErrorState } from "@/components/ui";
 
 function mapApiJobToFormValues(
   job: EmployerJobApiResponse,
@@ -35,6 +36,7 @@ export function JobEditPage({ jobId }: JobEditPageProps) {
     data: job,
     isLoading,
     isError,
+    error,
   } = useGetEmployerJobQuery(jobId);
 
   if (isLoading) {
@@ -49,10 +51,12 @@ export function JobEditPage({ jobId }: JobEditPageProps) {
 
   if (isError || !job) {
     return (
-      <main className="grid min-h-full place-items-center bg-[#f7f8fa]">
-        <p className="text-sm font-medium text-[#b42318]">
-          Couldn&apos;t load this job.
-        </p>
+      <main className="grid min-h-full place-items-center bg-[#f7f8fa] p-6">
+        <ErrorState
+          variant="block"
+          error={error}
+          fallback="Couldn't load this job."
+        />
       </main>
     );
   }

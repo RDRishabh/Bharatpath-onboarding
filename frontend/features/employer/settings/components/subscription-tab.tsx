@@ -1,6 +1,8 @@
 "use client";
 
 import { useCancelEmployerSubscriptionMutation, useCheckoutEmployerSubscriptionMutation, useCreateEmployerMandateMutation, useGetEmployerPlansQuery, useGetEmployerSubscriptionQuery } from "@/store/employer/billing";
+import { ErrorState } from "@/components/ui";
+import { Spinner } from "@/components/common/loading";
 
 export function SubscriptionTab() {
   const { data: subscription, isLoading } = useGetEmployerSubscriptionQuery();
@@ -10,15 +12,28 @@ export function SubscriptionTab() {
   const [createMandate, mandateState] = useCreateEmployerMandateMutation();
 
   const buy = async (planCode: string) => {
-    const result = await checkout(planCode).unwrap();
-    if (result.redirect_url) window.location.assign(result.redirect_url);
+    try {
+      const result = await checkout(planCode).unwrap();
+      if (result.redirect_url) window.location.assign(result.redirect_url);
+    } catch {
+      // Surfaced through the billing error banner below.
+    }
   };
   const mandate = async () => {
-    const result = await createMandate().unwrap();
-    window.location.assign(result.authorisation_url);
+    try {
+      const result = await createMandate().unwrap();
+      window.location.assign(result.authorisation_url);
+    } catch {
+      // Surfaced through the billing error banner below.
+    }
   };
 
-  if (isLoading || plansLoading) return <p className="text-xs text-[#718096]">Loading subscription…</p>;
+  if (isLoading || plansLoading)
+    return (
+      <div className="flex items-center py-6">
+        <Spinner label="Loading subscription…" />
+      </div>
+    );
 
   return (
     <div className="max-w-[760px] space-y-4">
@@ -42,7 +57,7 @@ export function SubscriptionTab() {
           <button disabled={checkoutState.isLoading} onClick={() => void buy(plan.code)} className="mt-4 w-full rounded-lg bg-[#5b4ed0] px-3 py-2 text-xs font-bold text-white">Choose plan</button>
         </section>)}
       </div>
-      {(checkoutState.isError || cancelState.isError || mandateState.isError) && <p className="text-xs text-[#b42318]">The billing request could not be completed.</p>}
+      {(checkoutState.isError || cancelState.isError || mandateState.isError) && <ErrorState error={checkoutState.error || cancelState.error || mandateState.error} fallback="The billing request could not be completed." />}
     </div>
   );
 }

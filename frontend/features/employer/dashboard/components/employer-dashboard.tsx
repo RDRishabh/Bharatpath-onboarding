@@ -22,7 +22,7 @@ export function EmployerDashboard() {
     "Overview of your hiring activity and account status",
   );
 
-  const { data, isLoading, error } = useDashboard();
+  const { data, isLoading } = useDashboard();
 
   /*
    * ==========================================
@@ -41,26 +41,6 @@ export function EmployerDashboard() {
           <Skeleton height={300} radius={12} />
           <Skeleton height={520} radius={12} />
         </div>
-      </div>
-    );
-  }
-
-  /*
-   * ==========================================
-   * ERROR STATE
-   * ==========================================
-   */
-
-  if (error || !data) {
-    return (
-      <div className="rounded-xl border border-[#e5e7eb] bg-white p-6">
-        <p className="text-sm font-medium text-[#111827]">
-          Unable to load dashboard.
-        </p>
-
-        <p className="mt-1 text-sm text-[#64748b]">
-          Please try again.
-        </p>
       </div>
     );
   }

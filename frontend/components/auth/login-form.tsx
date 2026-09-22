@@ -14,6 +14,7 @@ import { useAppDispatch } from "@/store/hooks";
 import { setUser } from "@/store/common/slices/auth.slice";
 import { setTenant } from "@/store/common/slices/tenant.slice";
 import { PORTAL_TYPES } from "@/config/portal";
+import { ErrorState } from "@/components/ui";
 
 export function LoginForm() {
   const router = useRouter();
@@ -101,8 +102,8 @@ export function LoginForm() {
           className="rounded-2xl border border-[#e5e7ec] bg-white p-6 shadow-sm sm:p-8"
         >
           {serverError && (
-            <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {serverError}
+            <div className="mb-5">
+              <ErrorState message={serverError} />
             </div>
           )}
 

@@ -17,6 +17,7 @@ interface JobsTableProps {
   totalCount: number;
   isLoading?: boolean;
   onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
   onViewApplicants: (job: EmployerJob) => void;
   onEditJob: (job: EmployerJob) => void;
 }
@@ -106,6 +107,7 @@ export function JobsTable({
   totalCount,
   isLoading = false,
   onPageChange,
+  onPageSizeChange,
   onViewApplicants,
   onEditJob,
 }: JobsTableProps) {
@@ -273,6 +275,7 @@ export function JobsTable({
       pageSize={pageSize}
       currentPage={currentPage}
       onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
       itemLabel="jobs"
       isLoading={isLoading}
       emptyTitle={

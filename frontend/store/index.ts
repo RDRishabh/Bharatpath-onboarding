@@ -20,6 +20,7 @@ import {
 import employerSettingsReducer from "./employer/settings/settings-slice";
 import { employerCandidatesReducer } from "./employer/candidates";
 import { adminReducer } from "./admin";
+import { studentReducer } from "./student";
 
 export const store = configureStore({
   reducer: {
@@ -55,6 +56,19 @@ export const store = configureStore({
      */
 
     collegeSettings: collegeSettingsReducer,
+
+    /*
+     * ==========================================
+     * STUDENT PORTAL STATE
+     *
+     * The candidate-facing mobile app. Holds
+     * saved jobs, the application board,
+     * notifications and feed filters — all
+     * seeded from static mock data.
+     * ==========================================
+     */
+
+    student: studentReducer,
 
     /*
      * ==========================================

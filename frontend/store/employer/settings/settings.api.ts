@@ -90,6 +90,24 @@ export const employerSettingsApi = baseApi.injectEndpoints({
       query: () => ({ url: "/employer/reference", method: "GET" }),
     }),
 
+    createEmployerOrganisation: builder.mutation<
+      CompanyProfile,
+      { legalName: string; businessType?: string; industry?: string }
+    >({
+      query: ({ legalName, businessType, industry }) => ({
+        url: "/employer/organisation",
+        method: "POST",
+        body: {
+          legal_name: legalName,
+          employer_type: businessType || null,
+          industry: industry || null,
+        },
+      }),
+      transformResponse: (response: EmployerOrganisationResponse) =>
+        mapEmployerOrganisation(response),
+      invalidatesTags: [{ type: "Team", id: "ORGANISATION" }],
+    }),
+
     getEmployerOrganisation: builder.query<CompanyProfile, void>({
       query: () => ({
         url: "/employer/organisation",
@@ -149,6 +167,7 @@ export const employerSettingsApi = baseApi.injectEndpoints({
 export const {
   useGetEmployerTeamQuery,
   useGetEmployerOrganisationQuery,
+  useCreateEmployerOrganisationMutation,
   useUpdateEmployerOrganisationMutation,
   useGetEmployerReferenceQuery,
   useAddEmployerTeamMemberMutation,

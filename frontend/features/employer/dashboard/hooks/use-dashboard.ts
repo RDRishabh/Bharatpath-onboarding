@@ -8,27 +8,31 @@ import type { EmployerDashboardData } from "../types";
 
 const EMPTY_JOBS: EmployerJob[] = [];
 
-export function useDashboard(): { data: EmployerDashboardData | null; isLoading: boolean; error: Error | null } {
+export function useDashboard(): { data: EmployerDashboardData; isLoading: boolean } {
   const { data: jobsData, isLoading: jobsLoading, error: jobsError } = useGetEmployerJobsQuery();
-  const jobs = jobsData ?? EMPTY_JOBS;
+  const jobs = jobsError ? EMPTY_JOBS : jobsData ?? EMPTY_JOBS;
   const [loadApplications] = useLazyGetEmployerApplicationsQuery();
   const [counts, setCounts] = useState<Record<string, number>>({});
-  const [applicationsLoading, setApplicationsLoading] = useState(true);
-  const [applicationsError, setApplicationsError] = useState<Error | null>(null);
+  // Stays true until every job's applications have been counted, so the
+  // dashboard shows the skeleton instead of a flash of zero applicants.
+  const [countsLoading, setCountsLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     if (jobsLoading) return () => { active = false; };
-    if (jobsError || jobs.length === 0) return () => { active = false; };
+    if (jobsError || jobs.length === 0) {
+      setCounts({});
+      setCountsLoading(false);
+      return () => { active = false; };
+    }
+    setCountsLoading(true);
     void Promise.all(jobs.map(async (job) => {
       const response = await loadApplications({ jobId: job.id, limit: 100 }).unwrap();
       return [job.id, response.items.length] as const;
     })).then((entries) => {
-      if (active) setCounts(Object.fromEntries(entries));
+      if (active) { setCounts(Object.fromEntries(entries)); setCountsLoading(false); }
     }).catch(() => {
-      if (active) setApplicationsError(new Error("Failed to load employer applications"));
-    }).finally(() => {
-      if (active) setApplicationsLoading(false);
+      if (active) { setCounts({}); setCountsLoading(false); }
     });
     return () => { active = false; };
   }, [jobs, jobsError, jobsLoading, loadApplications]);
@@ -50,7 +54,6 @@ export function useDashboard(): { data: EmployerDashboardData | null; isLoading:
 
   return {
     data,
-    isLoading: jobsLoading || (!jobsError && jobs.length > 0 && applicationsLoading),
-    error: jobsError ? new Error("Failed to load employer jobs") : applicationsError,
+    isLoading: jobsLoading || countsLoading,
   };
 }

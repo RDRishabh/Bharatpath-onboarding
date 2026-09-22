@@ -81,7 +81,7 @@ export function OpenDisputesTab({
       columns={columns}
       data={disputes}
       keyExtractor={(item) => item.id}
-      pageSize={5}
+      pageSize={10}
       totalCount={disputes.length}
       itemLabel=""
       emptyTitle="No open disputes"

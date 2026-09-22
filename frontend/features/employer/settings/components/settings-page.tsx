@@ -99,7 +99,7 @@ export function EmployerSettingsPage() {
                 disabled={isRemoving}
                 onClick={() => {
                   if (!settings.removeMemberId) return;
-                  void removeMember(settings.removeMemberId).unwrap().then(() => dispatch(confirmRemoveMember()));
+                  void removeMember(settings.removeMemberId).unwrap().then(() => dispatch(confirmRemoveMember())).catch(() => undefined);
                 }}
               >
                 Remove member

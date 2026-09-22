@@ -24,7 +24,6 @@ export function AdminDashboard() {
     platformTotals,
     intakeCleared,
     isLoading,
-    error,
   } = useDashboard();
 
   return (
@@ -34,7 +33,6 @@ export function AdminDashboard() {
       {/* ================================================================ */}
 
       {isLoading ? <CardSkeletonGrid count={4} /> : <DashboardMetrics metrics={metrics} />}
-      {error ? <p className="rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">Some dashboard data could not be loaded.</p> : null}
 
       {/* ================================================================ */}
       {/* Main content                                                     */}
@@ -55,7 +53,7 @@ export function AdminDashboard() {
           <PlatformTotals items={platformTotals} />
 
           {intakeCleared.length > 0 ? <IntakeClearedChart data={intakeCleared} /> : (
-            <section className="rounded-[12px] border border-[#e5e7ec] bg-white p-5 text-[12px] text-[#777f90]">Historical intake and clearance metrics are not exposed by the Admin API.</section>
+            <section className="rounded-xl border border-[#e5e7ec] bg-white p-5 text-[12px] text-[#777f90]">Historical intake and clearance metrics are not exposed by the Admin API.</section>
           )}
         </div>
       </div>

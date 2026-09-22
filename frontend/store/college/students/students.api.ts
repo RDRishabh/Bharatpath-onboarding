@@ -336,6 +336,7 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
           url: `/college/roster-imports/${args.importId}/rows`,
           method: "GET",
           params: {
+            limit: 100,
             ...(args.rowState
               ? { row_state: args.rowState }
               : {}),

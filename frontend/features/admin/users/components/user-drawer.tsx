@@ -4,6 +4,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 
 import { DetailSkeleton } from "@/components/common/loading";
+import { ErrorState } from "@/components/ui";
 import { showAdminFeedback } from "@/store/admin";
 import { useAppDispatch } from "@/store/hooks";
 import {
@@ -41,19 +42,27 @@ export function UserDrawer() {
   const status = detail?.status;
 
   const updateStatus = async () => {
-    if (status === "SUSPENDED") {
-      await reinstateTenant(selectedId).unwrap();
-      dispatch(showAdminFeedback("Organisation reinstated."));
-    } else if (reason.trim().length >= 3) {
-      await suspendTenant({ tenantId: selectedId, reason: reason.trim() }).unwrap();
-      dispatch(showAdminFeedback("Organisation suspended."));
-      setReason("");
+    try {
+      if (status === "SUSPENDED") {
+        await reinstateTenant(selectedId).unwrap();
+        dispatch(showAdminFeedback("Organisation reinstated."));
+      } else if (reason.trim().length >= 3) {
+        await suspendTenant({ tenantId: selectedId, reason: reason.trim() }).unwrap();
+        dispatch(showAdminFeedback("Organisation suspended."));
+        setReason("");
+      }
+    } catch {
+      // Surfaced to the operator through `error` below.
     }
   };
 
   const saveSeats = async () => {
-    await allocateSeats({ tenantId: selectedId, seats }).unwrap();
-    dispatch(showAdminFeedback("Seat allocation updated."));
+    try {
+      await allocateSeats({ tenantId: selectedId, seats }).unwrap();
+      dispatch(showAdminFeedback("Seat allocation updated."));
+    } catch {
+      // Surfaced to the operator through `error` below.
+    }
   };
 
   return (
@@ -70,7 +79,7 @@ export function UserDrawer() {
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           {isLoading ? <DetailSkeleton sections={4} /> : null}
-          {error ? <p className="mb-4 rounded-lg border border-[#f0c8cc] bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]" role="alert">The organisation details or action could not be completed.</p> : null}
+          {error ? <ErrorState error={error} fallback="The organisation details or action could not be completed." className="mb-4" /> : null}
           {detail ? (
             <div className="space-y-5 text-[13px]">
               <section className="grid grid-cols-2 gap-3 rounded-lg border border-[#e5e7eb] p-4">
