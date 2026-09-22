@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/common/loading";
-import { ErrorState } from "@/components/ui";
+import { ErrorState, TablePagination } from "@/components/ui";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   askRemoveMember,
@@ -42,6 +42,23 @@ export function TeamTab() {
       dispatch(replaceTeamMembers(team));
     }
   }, [dispatch, team]);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const totalCount = displayedMembers.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pagedMembers = displayedMembers.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize,
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return (
     <>
@@ -115,7 +132,7 @@ export function TeamTab() {
           <div className="px-[18px] py-5 text-xs text-[#718096]">
             No team members found.
           </div>
-        ) : displayedMembers.map((member) => (
+        ) : pagedMembers.map((member) => (
           <div
             key={member.id}
             className="grid min-h-[57px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] border-t border-[#edf0f3] px-[18px] max-sm:grid-cols-[minmax(0,1fr)_90px_70px_22px] max-sm:gap-2 max-sm:px-2.5"
@@ -181,6 +198,20 @@ export function TeamTab() {
             )}
           </div>
         ))}
+
+        {!isLoading && !isError && totalCount > 0 && (
+          <TablePagination
+            currentPage={safePage}
+            totalCount={totalCount}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setCurrentPage(1);
+            }}
+            itemLabel="members"
+          />
+        )}
       </section>
     </>
   );

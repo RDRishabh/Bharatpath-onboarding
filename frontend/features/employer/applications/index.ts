@@ -8,6 +8,8 @@ export { ApplicationFilter } from "./components/application-filter";
 
 export { ApplicationDrawer } from "./components/application-drawer";
 
+export { ApplicationsPipelineSkeleton } from "./components/applications-pipeline-skeleton";
+
 export {
   ApplicationsPageContent,
 } from "./components/applications-page-content";

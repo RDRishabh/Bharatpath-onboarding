@@ -1,6 +1,6 @@
 import { CardSkeletonGrid, Skeleton } from "@/components/common/loading";
 
-export default function EmployerRootLoading() {
+export default function EmployerOverviewLoading() {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <CardSkeletonGrid count={4} />

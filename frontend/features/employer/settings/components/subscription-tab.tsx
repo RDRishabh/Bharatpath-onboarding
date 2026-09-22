@@ -2,6 +2,7 @@
 
 import { useCancelEmployerSubscriptionMutation, useCheckoutEmployerSubscriptionMutation, useCreateEmployerMandateMutation, useGetEmployerPlansQuery, useGetEmployerSubscriptionQuery } from "@/store/employer/billing";
 import { ErrorState } from "@/components/ui";
+import { Spinner } from "@/components/common/loading";
 
 export function SubscriptionTab() {
   const { data: subscription, isLoading } = useGetEmployerSubscriptionQuery();
@@ -27,7 +28,12 @@ export function SubscriptionTab() {
     }
   };
 
-  if (isLoading || plansLoading) return <p className="text-xs text-[#718096]">Loading subscription…</p>;
+  if (isLoading || plansLoading)
+    return (
+      <div className="flex items-center py-6">
+        <Spinner label="Loading subscription…" />
+      </div>
+    );
 
   return (
     <div className="max-w-[760px] space-y-4">

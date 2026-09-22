@@ -16,7 +16,6 @@ import {
 
 import { usePageHeader } from "@/components/layout/header-context";
 import { CardSkeletonGrid } from "@/components/common/loading";
-import { ErrorState } from "@/components/ui";
 import { MetricCard } from "../../../../components/common/dashboard/metric-card";
 import { useDashboard } from "../hooks/use-dashboard";
 import { ScoreDistribution } from "./score-distribution";
@@ -26,7 +25,7 @@ function formatMetric(value: number | null): string | number {
 }
 
 export function CollegeDashboard() {
-  const { data, isLoading, isError } = useDashboard();
+  const { data, isLoading } = useDashboard();
 
   usePageHeader(
     "Dashboard",
@@ -46,10 +45,6 @@ export function CollegeDashboard() {
 
   return (
     <div className="flex flex-col gap-4">
-      {isError ? (
-        <ErrorState fallback="Some dashboard data could not be loaded. Please refresh and try again." />
-      ) : null}
-
       {/* Metrics */}
       {isLoading ? (
         <CardSkeletonGrid count={4} />

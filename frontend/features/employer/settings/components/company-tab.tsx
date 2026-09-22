@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { Skeleton } from "@/components/common/loading";
 import { ErrorState } from "@/components/ui";
+import { AppSelect } from "@/components/ui/app-select";
 import {
   saveCompanyProfile,
   replaceCompanyProfile,
@@ -17,6 +18,10 @@ import {
 
 const inputClass =
   "min-h-[43px] w-full rounded-[9px] border border-[#dfe4ea] bg-white px-3.5 text-[13px] text-[#111827] outline-none transition focus:border-[#526cc8] focus:ring-4 focus:ring-[#526cc8]/10 disabled:bg-[#f1f3f5] disabled:text-[#687385]";
+
+// Match the native inputs above: 43px tall, same radius, border and text size.
+const selectClass =
+  "[&>button]:min-h-[43px] [&>button]:rounded-[9px] [&>button]:border-[#dfe4ea] [&>button>span]:text-[13px] [&>button>span]:font-normal [&>button>span]:text-[#111827]";
 
 function Field({
   label,
@@ -83,13 +88,17 @@ export function CompanyTab() {
   }, [dispatch, organisation]);
 
   const update =
-    (field: keyof typeof company) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    (field: keyof typeof company) => (event: ChangeEvent<HTMLInputElement>) =>
       dispatch(
         updateCompanyField({
           field,
           value: event.target.value,
         }),
       );
+
+  const updateValue =
+    (field: keyof typeof company) => (value: string) =>
+      dispatch(updateCompanyField({ field, value }));
 
   if (isLoading) {
     return <CompanyTabSkeleton />;
@@ -108,6 +117,22 @@ export function CompanyTab() {
       })
       .catch(() => undefined);
   };
+
+  const businessTypeOptions = [
+    { value: "", label: "Not specified" },
+    ...(reference?.employer_types ?? []).map((item) => ({
+      value: item.code,
+      label: item.label,
+    })),
+  ];
+
+  const industryOptions = [
+    { value: "", label: "Not specified" },
+    ...(reference?.industries ?? []).map((item) => ({
+      value: item.code,
+      label: item.label,
+    })),
+  ];
 
   return (
     <section className="max-w-[600px] rounded-xl border border-[#e0e4e9] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.02)]">
@@ -144,25 +169,27 @@ export function CompanyTab() {
         </Field>
 
         <Field label="Business type">
-          <select
+          <AppSelect
             value={company.businessType}
-            onChange={update("businessType")}
-            className={inputClass}
-          >
-            <option value="">Not specified</option>
-            {reference?.employer_types.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
-          </select>
+            onChange={updateValue("businessType")}
+            options={businessTypeOptions}
+            placeholder="Not specified"
+            ariaLabel="Business type"
+            className={selectClass}
+          />
         </Field>
 
         <Field label="Industry">
-          <select
+          <AppSelect
             value={company.industry}
-            onChange={update("industry")}
-            className={inputClass}
-          >
-            <option value="">Not specified</option>
-            {reference?.industries.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
-          </select>
+            onChange={updateValue("industry")}
+            options={industryOptions}
+            placeholder="Not specified"
+            ariaLabel="Industry"
+            className={selectClass}
+            searchable
+            searchPlaceholder="Search industries"
+          />
         </Field>
       </div>
 

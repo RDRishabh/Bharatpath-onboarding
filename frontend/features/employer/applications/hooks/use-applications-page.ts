@@ -31,9 +31,10 @@ const EMPTY_JOBS: EmployerJob[] = [];
 
 export function useApplicationsPage() {
   const dispatch = useAppDispatch();
-  const { data: jobs = EMPTY_JOBS } = useGetEmployerJobsQuery({
-    status: "PUBLISHED",
-  });
+  const { data: jobs = EMPTY_JOBS, isLoading: jobsLoading } =
+    useGetEmployerJobsQuery({
+      status: "PUBLISHED",
+    });
   const [loadApplications, applicationsState] =
     useLazyGetEmployerApplicationsQuery();
   const [loadApplication] =
@@ -46,6 +47,14 @@ export function useApplicationsPage() {
   const applications = useAppSelector(
     selectFilteredEmployerApplications,
   );
+
+  // Applications are aggregated across one lazy query per published job, so a
+  // still-fetching first load has no rows yet. Show the pipeline skeleton then.
+  const isLoading =
+    jobsLoading ||
+    (jobs.length > 0 &&
+      applications.length === 0 &&
+      (applicationsState.isUninitialized || applicationsState.isFetching));
 
   const jobOptions = useMemo(
     () => [
@@ -299,6 +308,7 @@ export function useApplicationsPage() {
 
   return {
     applications,
+    isLoading,
     jobFilter,
     jobOptions,
     selectedApplication,

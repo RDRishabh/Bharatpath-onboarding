@@ -9,6 +9,18 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-22 — Dashboard empty-data fallbacks
+
+Employer, college and admin dashboards now keep their full dashboard layouts
+visible when one or more API requests fail, using the existing zero, empty-list
+and unavailable values instead of replacing the page with an error panel. The
+employer dashboard also stops loading correctly when there are no jobs or the
+jobs request fails, and clears application counts when those requests fail.
+
+Validation: focused ESLint passes for all changed dashboard files. Browser checks
+against live 500 responses confirm that employer, college and admin each retain
+their full dashboard UI with empty values and no blocking error panel.
+
 ## 2026-09-21 — Frontend table page sizes
 
 Added a shared rows-per-page selector to every frontend data table with 10 as

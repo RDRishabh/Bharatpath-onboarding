@@ -40,6 +40,7 @@ export function NotificationBell() {
         limit: 10,
       },
       {
+        skip: USE_MOCK_NOTIFICATIONS,
         pollingInterval: 30_000,
         refetchOnFocus: true,
         refetchOnReconnect: true,
