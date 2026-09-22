@@ -25,6 +25,12 @@ from fastapi import status
 from app.core.errors import AppError
 from app.core.logging import get_logger
 from app.modules.resume.domain import DOCX
+from app.modules.resume.hidden_text import (
+    NOT_ANALYSED,
+    HiddenTextReport,
+    find_hidden_runs,
+    find_hidden_text,
+)
 from app.settings import Settings, get_settings
 
 logger = get_logger(__name__)
@@ -32,7 +38,12 @@ logger = get_logger(__name__)
 #: Bump when the extraction *logic* changes in a way that alters output --
 #: not when an unrelated line moves. Library versions are appended
 #: automatically, so a pypdf upgrade is already visible without touching this.
-EXTRACTOR_REVISION: Final = "1"
+#:
+#: 2 (2026-09-22): hidden-text analysis added (blockers E5). **`text` is
+#: unchanged**, so this is not a re-score -- the bump records that the
+#: extractor now produces a field older extractions do not have, which is
+#: what lets a reader tell "analysed, clean" from "never analysed".
+EXTRACTOR_REVISION: Final = "2"
 
 #: A CV is a handful of pages. A document far past that is either not a CV or
 #: is an attempt to burn worker time, and either way it is not worth parsing
@@ -82,6 +93,17 @@ class ExtractedDocument:
     page_count: int
     parser: str
     parser_version: str
+    #: Text the document renders but a reader cannot see (blockers E5).
+    #:
+    #: **Additive, and `text` above is unchanged by it.** pypdf's ordinary
+    #: extraction returns hidden and visible text alike -- it has no notion of
+    #: the difference -- so `text` is byte-identical to what it was before
+    #: this field existed, no score moves, and nothing needs re-scoring.
+    #:
+    #: `NOT_ANALYSED` when the parser cannot tell (Textract, which re-renders
+    #: the page and so cannot see how text was drawn). That is deliberately
+    #: distinct from an empty result: "nobody looked" is not "nothing found".
+    hidden: HiddenTextReport = NOT_ANALYSED
 
 
 @runtime_checkable
@@ -132,10 +154,11 @@ class LocalResumeParser:
         bucket: str | None = None,
         key: str | None = None,
     ) -> ExtractedDocument:
+        hidden = NOT_ANALYSED
         if mime == "application/pdf":
-            text, pages = self._pdf(content)
+            text, pages, hidden = self._pdf(content)
         elif mime == DOCX:
-            text, pages = self._docx(content)
+            text, pages, hidden = self._docx(content)
         elif mime == "application/msword":
             # Legacy OLE2 .doc. Refused at upload since 2026-09-15 (blockers
             # E3); this branch remains for files accepted before that, so they
@@ -149,9 +172,10 @@ class LocalResumeParser:
             page_count=pages,
             parser=self.name,
             parser_version=self.version,
+            hidden=hidden,
         )
 
-    def _pdf(self, content: bytes) -> tuple[str, int]:
+    def _pdf(self, content: bytes) -> tuple[str, int, HiddenTextReport]:
         try:
             reader = pypdf.PdfReader(io.BytesIO(content))
             if reader.is_encrypted:
@@ -159,14 +183,23 @@ class LocalResumeParser:
                 # It needs a message they can act on, not a 500.
                 raise EncryptedDocumentError()
             pages = reader.pages[:MAX_PAGES]
-            return "\n".join(page.extract_text() or "" for page in pages), len(reader.pages)
+            # **This line produces the scored text and must stay as it is.**
+            # The hidden-text pass below is separate and additive; folding the
+            # two into one traversal would risk changing `text` by a character
+            # and silently moving every score (invariant 1).
+            text = "\n".join(page.extract_text() or "" for page in pages)
         except UnreadableDocumentError:
             raise
         except Exception as exc:  # pypdf raises a wide range on malformed input
             logger.warning("pdf_extract_failed", error=str(exc))
             raise UnreadableDocumentError(params={"mime": "application/pdf"}) from exc
 
-    def _docx(self, content: bytes) -> tuple[str, int]:
+        # Outside the try, deliberately: `find_hidden_text` never raises, and
+        # putting it inside would let a detector bug surface to the candidate
+        # as an unreadable CV.
+        return text, len(reader.pages), find_hidden_text(pages)
+
+    def _docx(self, content: bytes) -> tuple[str, int, HiddenTextReport]:
         try:
             document = docx.Document(io.BytesIO(content))
         except Exception as exc:
@@ -190,7 +223,7 @@ class LocalResumeParser:
 
         # .docx has no page count without rendering it; pagination is decided
         # by the renderer, not stored in the file. 0 means "not applicable".
-        return "\n".join(parts), 0
+        return "\n".join(parts), 0, find_hidden_runs(document)
 
 
 #: Below this, extracted text is treated as nothing at all. A CV with fewer

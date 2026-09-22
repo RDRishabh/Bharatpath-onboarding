@@ -59,6 +59,18 @@ ENVIRONMENT=local \
 AUTH_ALLOW_LOCAL_TOKENS=true \
   "${PYTHON:-python}" scripts/seed_catalogue.py
 
+# The eight tunables (view caps, expiry, analytics floors, nudges, renewal,
+# integrity thresholds, streak rules, the KYB switch). Every reader falls
+# back to a code default when the row is absent, so this is not required for
+# the suite to pass -- it is here so local looks like a deployment, where the
+# numbers are rows somebody can read and change without a deploy.
+echo "==> configuration defaults"
+DATABASE_URL="postgresql+asyncpg://bharatpath_migrator:bharatpath_migrator@localhost:5432/${DB}" \
+REDIS_URL="redis://localhost:6379/0" \
+ENVIRONMENT=local \
+AUTH_ALLOW_LOCAL_TOKENS=true \
+  "${PYTHON:-python}" scripts/seed_config.py
+
 POLICIES=$(psql_run -tAc "SELECT count(*) FROM pg_policies WHERE schemaname='public'")
 TABLES=$(psql_run -tAc "SELECT count(*) FROM pg_tables WHERE schemaname='public'")
 echo "==> done: ${TABLES} tables, ${POLICIES} row-level security policies"

@@ -11,8 +11,15 @@ what makes a product look untrustworthy to the audience it is aimed at, and
 this product asks people for money and their CV. **Every non-English bundle
 needs a native-speaker pass before launch.**
 
-Eight locales: the client asked for 6-8, and eight covers roughly three
-quarters of India by first language.
+Nine locales. The client named six on 2026-09-22 -- English, Hindi, Bengali,
+Kannada, Marathi and Punjabi -- and those are `PRIORITY_LOCALES`, held to
+full coverage by a test. Gujarati, Tamil and Telugu predate that list and are
+kept, with the core strings only; every other key falls back to English.
+
+**Punjabi had no file at all until 2026-09-22.** It was not in
+`SUPPORTED_LOCALES` either, so `load_bundle("pa")` returned `{}` and every
+string fell back to English without complaint -- which is the failure mode
+this module was built to avoid, one level up.
 
 ---
 
@@ -57,6 +64,7 @@ SUPPORTED_LOCALES: Final[tuple[Locale, ...]] = (
     Locale("hi", "हिन्दी", "Hindi"),
     Locale("bn", "বাংলা", "Bengali"),
     Locale("mr", "मराठी", "Marathi"),
+    Locale("pa", "ਪੰਜਾਬੀ", "Punjabi"),
     Locale("te", "తెలుగు", "Telugu"),
     Locale("ta", "தமிழ்", "Tamil"),
     Locale("gu", "ગુજરાતી", "Gujarati"),
@@ -64,6 +72,24 @@ SUPPORTED_LOCALES: Final[tuple[Locale, ...]] = (
 )
 
 LOCALE_CODES: Final[frozenset[str]] = frozenset(loc.code for loc in SUPPORTED_LOCALES)
+
+#: The six the client named on 2026-09-22, and the only ones held to full
+#: coverage by `tests/unit/test_locales.py`.
+#:
+#: The other three shipped before that list existed. They are kept -- removing
+#: a language somebody may already have chosen is a product decision, not a
+#: tidy-up -- but they carry the core strings only, and fall back to English
+#: per key for the rest. `missing_keys(locale)` says exactly what is absent.
+#:
+#: Punjabi is new here. It had no bundle at all until 2026-09-22, so asking
+#: for it returned an empty dict and every string fell back to English
+#: silently -- a supported-looking language that translated nothing.
+PRIORITY_LOCALES: Final[tuple[str, ...]] = ("en", "hi", "bn", "kn", "mr", "pa")
+
+#: Bundles carry a `_meta` object that is documentation, not a string: who
+#: wrote the translations and whether anyone qualified has checked them.
+#: `load_bundle` strips it, so it can never be rendered by accident.
+META_KEY: Final = "_meta"
 
 #: `{name}` placeholders. Used to check that a translation kept every variable
 #: its English source had -- a Hindi OTP message that lost `{code}` sends a
@@ -84,6 +110,10 @@ def load_bundle(locale: str) -> dict[str, str]:
     if locale not in LOCALE_CODES or not path.is_file():
         return {}
     data: dict[str, str] = json.loads(path.read_text(encoding="utf-8"))
+    # `_meta` describes the bundle; it is not a string anything renders.
+    # Dropping it here rather than at each call site means a new reader
+    # cannot accidentally treat it as a translation.
+    data.pop(META_KEY, None)
     return data
 
 

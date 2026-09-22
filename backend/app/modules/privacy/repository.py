@@ -243,6 +243,31 @@ async def expired_exports(
 # ---------------------------------------------------------------------------
 
 
+async def sign_in_to_destroy(
+    session: AsyncSession, *, user_id: uuid.UUID
+) -> tuple[str, str] | None:
+    """`(pool, cognito_sub)` for the account being erased, or None.
+
+    **Read before the cascade, for the same reason as the S3 keys.**
+    `erase_candidate` replaces `cognito_sub` with its SHA-256, so afterwards
+    there is no identifier left to delete the Cognito user by -- only a hash
+    that addresses nothing. Collecting it after the fact collects nothing.
+
+    None when the row carries no subject at all: an account created by staff
+    that nobody ever signed in to has a `users` row and no Cognito user, and
+    there is nothing to destroy.
+    """
+    row = (
+        await session.execute(
+            text("SELECT pool, cognito_sub FROM users WHERE id = :user_id"),
+            {"user_id": str(user_id)},
+        )
+    ).first()
+    if row is None or not row.cognito_sub:
+        return None
+    return (str(row.pool), str(row.cognito_sub))
+
+
 async def erasable_object_keys(
     session: AsyncSession, *, user_id: uuid.UUID
 ) -> list[tuple[str, str]]:

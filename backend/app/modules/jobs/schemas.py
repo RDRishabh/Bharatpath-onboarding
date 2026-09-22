@@ -21,7 +21,9 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
+
+from app.core.schemas import ApiSchema
 
 WorkMode = Literal["ONSITE", "HYBRID", "REMOTE"]
 JobStatus = Literal["DRAFT", "PUBLISHED", "PAUSED", "CLOSED"]
@@ -33,8 +35,9 @@ _MAX_MINOR = 2_147_483_647
 Skill = Annotated[str, Field(min_length=1, max_length=80)]
 
 
-class _Base(BaseModel):
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
+class _Base(ApiSchema):
+    """Every schema in this module. `ApiSchema` strips the control
+    characters Postgres cannot store -- see `app/core/schemas.py`."""
 
 
 class CreateJobRequest(_Base):

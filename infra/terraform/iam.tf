@@ -95,10 +95,18 @@ data "aws_iam_policy_document" "app" {
   # Against Cognito. The API verifies tokens against the public JWKS, which
   # needs no credentials at all; the reads look a user up by sub.
   #
-  # AdminCreateUser is the one write (2026-09-18): staff creating an account
-  # for someone, and an owner adding a colleague, make a Cognito user whose
-  # temporary password Cognito emails (`app/core/auth/directory.py`). Nothing
-  # here can set or read a password, confirm a user or delete one.
+  # Two writes, both in `app/core/auth/directory.py`:
+  #
+  #   AdminCreateUser (2026-09-18) -- staff creating an account for someone,
+  #   and an owner adding a colleague. Cognito emails the temporary password;
+  #   we never see it.
+  #
+  #   AdminDeleteUser (2026-09-22, blockers E32) -- the erasure destroying the
+  #   sign-in itself. Without it an erased person's Cognito user survived, so
+  #   signing in again with the same address was refused forever rather than
+  #   starting fresh.
+  #
+  # Nothing here can set or read a password, or confirm a user.
   statement {
     sid    = "CognitoAccounts"
     effect = "Allow"
@@ -107,6 +115,7 @@ data "aws_iam_policy_document" "app" {
       "cognito-idp:AdminGetUser",
       "cognito-idp:ListUsers",
       "cognito-idp:AdminCreateUser",
+      "cognito-idp:AdminDeleteUser",
     ]
     resources = [
       aws_cognito_user_pool.candidates.arn,
@@ -114,15 +123,17 @@ data "aws_iam_policy_document" "app" {
     ]
   }
 
-  # Notifications by email (`NOTIFICATIONS_EMAIL_PROVIDER=ses`), from the
-  # client's domain only. Present once `email_domain` is set.
+  # Notifications by email (`NOTIFICATIONS_EMAIL_PROVIDER=ses`). Scoped to the
+  # one identity that exists -- the client's domain, or the single verified
+  # mailbox standing in for it (E38). Absent until one of them is set, so a
+  # leaked key cannot send mail as anybody.
   dynamic "statement" {
     for_each = local.email_enabled ? [1] : []
     content {
       sid       = "SendEmail"
       effect    = "Allow"
       actions   = ["ses:SendEmail"]
-      resources = [aws_sesv2_email_identity.domain[0].arn]
+      resources = [local.email_identity_arn]
     }
   }
 }

@@ -93,6 +93,39 @@ async def _as_migrator(sql: str, **params: Any) -> None:
         await session.execute(text(sql), params)
 
 
+async def _scalar_as_migrator(sql: str, **params: Any) -> Any:
+    """As above, for a statement with a RETURNING clause."""
+    async with sessions(_seed_url())() as session, session.begin():
+        return await session.scalar(text(sql), params)
+
+
+async def _live_expiry_version() -> str:
+    """The rules version the sweep SHOULD stamp, read straight from the table.
+
+    `code-v1` when no row exists, `config-vN` when one does. Both are correct,
+    and which applies depends on whether `scripts/seed_config.py` has run --
+    which it now does on every deploy and in `reset_local_db.sh`.
+
+    Asserting the literal `code-v1` (as this file did until 2026-09-22) was
+    really asserting "no config row exists anywhere", i.e. that the platform
+    runs on defaults that live only in code. That stopped being true the day
+    the defaults became rows, which is the point of seeding them.
+
+    Deliberately raw SQL rather than the service's own reader, so this is an
+    independent check: it proves the sweep stamped the version of the row it
+    actually used, not merely that it agrees with itself.
+    """
+    async with sessions(_seed_url())() as session:
+        version = await session.scalar(
+            text(
+                "SELECT version FROM config_values "
+                "WHERE key = 'applications.expiry' AND effective_from <= now() "
+                "ORDER BY version DESC LIMIT 1"
+            )
+        )
+    return "code-v1" if version is None else f"config-v{version}"
+
+
 async def _stage(application_id: str) -> str:
     async with sessions(_seed_url())() as session:
         return str(
@@ -501,7 +534,10 @@ async def test_an_abandoned_application_expires_and_nothing_else_does(
 
     last = (await _events(abandoned["id"]))[-1]
     assert last[:5] == ("STAGE_CHANGED", "SUBMITTED", "EXPIRED", "SYSTEM", None)
-    assert last[5] == "expiry_rules=code-v1"
+    # The event records WHICH rules expired it, so a dispute months later can
+    # name them. Compared against the live row rather than a literal -- see
+    # `_live_expiry_version`.
+    assert last[5] == f"expiry_rules={await _live_expiry_version()}"
     assert "applications.application_expired" in [t for t, _ in await _outbox(abandoned["id"])]
 
     board = await client.get(
@@ -534,16 +570,31 @@ async def test_the_sweep_releases_candidates_across_employers(client: Any, mint_
     assert await _stage(b["id"]) == "EXPIRED"
 
 
-async def _config(value: object) -> str:
+async def _config(value: object) -> tuple[str, int]:
+    """Insert an `applications.expiry` row that outranks whatever is there.
+
+    **Not `version = 1`.** This used to hardcode it, and broke the day
+    `scripts/seed_config.py` started writing the defaults as rows -- which is
+    what a real deployment looks like, so the test was asserting against a
+    database state that only ever existed locally. `coalesce(max(version), 0)`
+    is the pattern the rest of the suite already uses (`test_candidate_reveal`,
+    `test_college_analytics`, `test_kyb`).
+
+    Returns the version too, because the service stamps `config-v{version}`
+    onto the event and the caller has to assert against the real one.
+    """
     row = str(uuid.uuid4())
-    await _as_migrator(
+    version = await _scalar_as_migrator(
         "INSERT INTO config_values (id, key, value, version, effective_from) "
-        "VALUES (:i, 'applications.expiry', CAST(:v AS jsonb), 1, :f)",
+        "SELECT :i, 'applications.expiry', CAST(:v AS jsonb), "
+        "coalesce(max(version), 0) + 1, :f "
+        "FROM config_values WHERE key = 'applications.expiry' "
+        "RETURNING version",
         i=row,
         v=json.dumps(value),
         f=datetime(2026, 1, 1, tzinfo=UTC),
     )
-    return row
+    return row, int(version)
 
 
 async def test_the_expiry_period_is_config(client: Any, mint_token: Any) -> None:
@@ -551,12 +602,16 @@ async def test_the_expiry_period_is_config(client: Any, mint_token: Any) -> None
     await _age(a["id"], 10)
     assert await _expire(a["employer"]["tenant_id"]) == 0, "ten days is inside the default"
 
-    row = await _config({"inactive_days": 7})
+    row, version = await _config({"inactive_days": 7})
     try:
         assert await _expire(a["employer"]["tenant_id"]) == 1
     finally:
         await _as_migrator("DELETE FROM config_values WHERE id = :i", i=row)
-    assert (await _events(a["id"]))[-1][5] == "expiry_rules=config-v1"
+    # The event records WHICH rules expired it, so a dispute about an expiry
+    # months later can name the row. Asserted against the version actually
+    # inserted rather than a literal, which is what broke when the defaults
+    # became rows.
+    assert (await _events(a["id"]))[-1][5] == f"expiry_rules=config-v{version}"
 
 
 async def test_a_malformed_expiry_period_stops_the_sweep(client: Any, mint_token: Any) -> None:
@@ -564,7 +619,7 @@ async def test_a_malformed_expiry_period_stops_the_sweep(client: Any, mint_token
 
     a = await _applied(client, mint_token)
     await _age(a["id"], 40)
-    row = await _config({"inactive_days": 1})
+    row, _ = await _config({"inactive_days": 1})
     try:
         with pytest.raises(ExpiryRulesInvalidError):
             await _expire(a["employer"]["tenant_id"])

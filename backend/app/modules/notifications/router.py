@@ -23,6 +23,8 @@ from app.modules.notifications.schemas import (
     InboxItem,
     InboxPage,
     PreferencesResponse,
+    UnsubscribeRequest,
+    UnsubscribeResponse,
     UpdatePreferencesRequest,
 )
 
@@ -70,3 +72,30 @@ async def update_preferences(
 )
 async def mark_read(notification_id: uuid.UUID, user: CurrentUser, session: DbSession) -> InboxItem:
     return await service.mark_read(session, ctx=user, notification_id=notification_id)
+
+
+@router.post(
+    "/unsubscribe",
+    response_model=UnsubscribeResponse,
+    summary="Stop incomplete-profile reminders, from the link in an email",
+    description=(
+        "**Unauthenticated, by design.** The caller is somebody who read an "
+        "email and does not want more of them; requiring a sign-in to stop "
+        "reminders is what makes people press the spam button instead. The "
+        "token names one account and this one action, and can only turn "
+        "nudges *off*.\n\n"
+        "POST rather than GET because mail clients and security scanners "
+        "prefetch links in email, and a GET would unsubscribe people who "
+        "never clicked. This is the RFC 8058 one-click endpoint named by the "
+        "`List-Unsubscribe-Post` header."
+    ),
+)
+async def unsubscribe_from_nudges(
+    payload: UnsubscribeRequest, session: DbSession
+) -> UnsubscribeResponse:
+    # The same answer whether the token was good, expired, forged or for an
+    # account that no longer exists. Distinguishing them would let an
+    # unauthenticated caller probe for valid tokens and for who has an
+    # account -- and the reader cannot act on the difference anyway.
+    await service.unsubscribe_by_token(session, token=payload.token)
+    return UnsubscribeResponse()

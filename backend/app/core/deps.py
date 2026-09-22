@@ -8,10 +8,24 @@ differently and return different error codes:
   2. `require_role(...)`          - role read from OUR memberships table
   3. `require_active_subscription`- pay-first, all three audiences (R13)
   4. `require_active_access_window` - the employer's paid period (R14)
-     and, separately, `require_kyb_approved` where the config demands it (R15)
 
 Conflating 3 and 4, or 4 and KYB, produces an error message that tells the user
 the wrong thing to do about it.
+
+**The KYB gate (invariant 8 / R15) is deliberately NOT a dependency here.**
+It cannot be: deciding it means reading `employers.kyb_status`, and
+`app.core` may not import `app.modules` -- the `core-depends-on-nothing`
+contract in `.importlinter`. A `require_kyb_approved` dependency lived here
+as an unimplemented stub that raised unconditionally from Day 4 until
+2026-09-22; nothing ever depended on it, because by Day 10 the check had
+been built where it can actually read the row:
+
+  * `jobs.service.publish_job`        - invariant 8, re-checked on resume
+  * `discovery.service._verified_employer` - search and the reveal (SRS 1.14.1)
+
+plus the `guard_job_publish` trigger, which refuses a PUBLISHED row for an
+unapproved employer for every writer including the migrator. Add the next
+one beside those, not here.
 """
 
 from __future__ import annotations
@@ -33,7 +47,6 @@ from app.core.db import get_db
 from app.core.entitlements import has_active_college_seat, has_active_subscription
 from app.core.errors import (
     AccessWindowExpiredError,
-    KybRequiredError,
     PermissionDeniedError,
     SubscriptionRequiredError,
     UnauthenticatedError,
@@ -350,19 +363,6 @@ def client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-async def require_kyb_approved(user: CurrentUser) -> TenantContext:
-    """Invariant 8 / PRD rule 7. Enforced at service AND database level.
-
-    `kyb.require_approval` defaults to off (R15), which makes this pass
-    trivially in production. The gate, the Postgres trigger and the invariant
-    test all stay - the config flag is the only thing that changed, and the
-    test runs with the flag ON so the gate stays genuinely exercised.
-
-    TODO(Day 10): read kyb_status and the config flag.
-    """
-    raise KybRequiredError()
-
-
 def get_request_id(request: Request) -> str | None:
     return getattr(request.state, "request_id", None)
 
@@ -384,7 +384,6 @@ __all__ = [
     "current_user",
     "require_active_access_window",
     "require_active_subscription",
-    "require_kyb_approved",
     "require_role",
     "require_tenant",
 ]

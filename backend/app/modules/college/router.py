@@ -128,6 +128,7 @@ def _import(view: service.ImportView) -> RosterImportResponse:
         valid_rows=r.valid_rows,
         invalid_rows=r.invalid_rows,
         duplicate_rows=r.duplicate_rows,
+        unreachable_rows=view.unreachable_rows,
         ignored_columns=list(r.ignored_columns),
         created_at=r.created_at,
         committed_at=r.committed_at,
