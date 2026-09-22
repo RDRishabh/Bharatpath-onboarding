@@ -13,7 +13,7 @@ export function ApplicationsPipelineSkeleton() {
           <section
             key={column.id}
             aria-label={`Loading ${column.label} applications`}
-            className="flex h-full min-h-0 w-52 shrink-0 flex-col overflow-hidden rounded-[11px] border border-[#e1e5eb] bg-[#f5f7f9]"
+            className="flex h-full min-h-0 w-64 shrink-0 flex-col overflow-hidden rounded-[11px] border border-[#e1e5eb] bg-[#f5f7f9]"
           >
             <div className="flex items-center gap-2 px-3 py-3">
               <Skeleton width={76} height={11} radius={5} />

@@ -18,6 +18,7 @@ import {
   toggleCandidateFilter,
   useSearchEmployerCandidatesQuery,
   useLazyRevealEmployerCandidateQuery,
+  useRevealEmployerCandidatesQuery,
   type RevealedCandidateResponse,
 } from "@/store/employer/candidates";
 
@@ -54,6 +55,31 @@ export function CandidatesPage() {
   const nextCursor = data?.nextCursor ?? null;
   const [revealCandidate, revealState] = useLazyRevealEmployerCandidateQuery();
   const [revealed, setRevealed] = useState<RevealedCandidateResponse | null>(null);
+
+  // Masking off: reveal every visible candidate and show the real data.
+  const candidateIds = useMemo(
+    () => candidates.map((candidate) => candidate.candidateId),
+    [candidates],
+  );
+  const { data: revealedMap } = useRevealEmployerCandidatesQuery(candidateIds, {
+    skip: candidateIds.length === 0,
+  });
+  const displayedCandidates = useMemo(
+    () =>
+      candidates.map((candidate) => {
+        const match = revealedMap?.[candidate.candidateId];
+        return match
+          ? {
+              ...candidate,
+              fullName: match.full_name,
+              phone: match.phone,
+              email: match.email,
+              score: match.score,
+            }
+          : candidate;
+      }),
+    [candidates, revealedMap],
+  );
 
   /* =====================================================
      PAGE
@@ -100,7 +126,7 @@ export function CandidatesPage() {
             {!isLoading && candidates.map((candidate) => (
               <CandidateCard
                 key={candidate.candidateId}
-                candidate={candidate}
+                candidate={displayedCandidates.find((item) => item.candidateId === candidate.candidateId) ?? candidate}
                 onReveal={() => void revealCandidate(candidate.candidateId).unwrap().then(setRevealed).catch(() => undefined)}
               />
             ))}

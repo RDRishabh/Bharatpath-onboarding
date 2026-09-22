@@ -129,6 +129,17 @@ export function CandidateCard({
   const remainingSkills =
     Math.max(candidate.skills.length - 5, 0);
 
+  const displayName = candidate.fullName ?? "Masked candidate";
+  const initials = candidate.fullName
+    ? candidate.fullName
+        .split(" ")
+        .filter(Boolean)
+        .map((word) => word[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : null;
+
   return (
     <article
       className="
@@ -160,13 +171,22 @@ export function CandidateCard({
           backgroundColor: avatarBackground,
         }}
       >
-        <EyeOff
-          size={18}
-          strokeWidth={2}
-          style={{
-            color: avatarIconColor,
-          }}
-        />
+        {initials ? (
+          <span
+            className="text-[13px] font-bold leading-none"
+            style={{ color: avatarIconColor }}
+          >
+            {initials}
+          </span>
+        ) : (
+          <EyeOff
+            size={18}
+            strokeWidth={2}
+            style={{
+              color: avatarIconColor,
+            }}
+          />
+        )}
       </span>
 
       {/* =====================================================
@@ -207,7 +227,7 @@ export function CandidateCard({
               text-[#202a3b]
             "
           >
-            Masked candidate
+            {displayName}
           </span>
 
           {/* Score band */}
@@ -253,6 +273,16 @@ export function CandidateCard({
             </AddonPill>
           )}
         </span>
+
+        {/* -------------------------------------------------
+            CONTACT (shown once revealed)
+            ------------------------------------------------- */}
+        {(candidate.phone || candidate.email) && (
+          <span className="flex flex-wrap items-center gap-x-[12px] gap-y-[2px] text-[12px] leading-[17px] text-[#4a5568]">
+            {candidate.phone && <span>{candidate.phone}</span>}
+            {candidate.email && <span>{candidate.email}</span>}
+          </span>
+        )}
 
         {/* -------------------------------------------------
             LOCATION / EXPERIENCE / SALARY

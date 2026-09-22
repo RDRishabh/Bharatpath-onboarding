@@ -18,5 +18,6 @@ export {
   employerCandidatesApi,
   useSearchEmployerCandidatesQuery,
   useLazyRevealEmployerCandidateQuery,
+  useRevealEmployerCandidatesQuery,
 } from "./candidates.api";
 export type { RevealedCandidateResponse } from "./candidates.api";

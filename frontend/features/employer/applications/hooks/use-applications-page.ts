@@ -24,6 +24,7 @@ import {
   useProposeEmployerHireMutation,
 } from "@/store/employer/applications";
 import { useGetEmployerJobsQuery } from "@/store/employer/jobs";
+import { useRevealEmployerCandidatesQuery } from "@/store/employer/candidates";
 import type { EmployerJob } from "@/features/employer/jobs/types";
 import type { ApplicationColumnDefinition } from "../types";
 
@@ -55,6 +56,42 @@ export function useApplicationsPage() {
     (jobs.length > 0 &&
       applications.length === 0 &&
       (applicationsState.isUninitialized || applicationsState.isFetching));
+
+  // Masking off: reveal every applicant and show the real name and score.
+  const revealIds = useMemo(
+    () => Array.from(new Set(applications.map((application) => application.candidate.id))),
+    [applications],
+  );
+  const { data: revealedApplicants } = useRevealEmployerCandidatesQuery(revealIds, {
+    skip: revealIds.length === 0,
+  });
+  const displayedApplications = useMemo(
+    () =>
+      applications.map((application) => {
+        const match = revealedApplicants?.[application.candidate.id];
+        if (!match?.full_name) {
+          return application;
+        }
+        const initials = match.full_name
+          .split(" ")
+          .filter(Boolean)
+          .map((word) => word[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase();
+        return {
+          ...application,
+          candidate: {
+            ...application.candidate,
+            name: match.full_name,
+            initials,
+            unlocked: true,
+            exactScore: match.score,
+          },
+        };
+      }),
+    [applications, revealedApplicants],
+  );
 
   const jobOptions = useMemo(
     () => [
@@ -307,7 +344,7 @@ export function useApplicationsPage() {
    */
 
   return {
-    applications,
+    applications: displayedApplications,
     isLoading,
     jobFilter,
     jobOptions,
