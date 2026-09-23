@@ -9,6 +9,7 @@ export {
   setMeetingLink,
   confirmEmployerHire,
   replaceApplications,
+  appendApplications,
   replaceApplication,
 } from "./applications.slice";
 

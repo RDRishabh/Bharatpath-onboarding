@@ -63,11 +63,6 @@ export function StudentHeader({
   const { data: profile } = useGetStudentProfileQuery();
   const { data: notificationPage } = useGetNotificationsQuery(
     { limit: 1 },
-    {
-      pollingInterval: 30_000,
-      refetchOnFocus: true,
-      refetchOnReconnect: true,
-    },
   );
   const unread = notificationPage?.unreadCount ?? 0;
   const { title, subtitle } = sectionFor(pathname);

@@ -53,7 +53,7 @@ export function AdminDashboard() {
           <PlatformTotals items={platformTotals} />
 
           {intakeCleared.length > 0 ? <IntakeClearedChart data={intakeCleared} /> : (
-            <section className="rounded-xl border border-[#e5e7ec] bg-white p-5 text-[12px] text-[#777f90]">Historical intake and clearance metrics are not exposed by the Admin API.</section>
+            <section className="rounded-xl border border-[#e5e7ec] bg-white p-5 text-[12px] text-[#777f90]">No queue throughput has been recorded for the last 14 days yet.</section>
           )}
         </div>
       </div>

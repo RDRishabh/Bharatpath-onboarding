@@ -14,9 +14,10 @@ interface JobsTableProps {
   jobs: EmployerJob[];
   currentPage: number;
   pageSize: number;
-  totalCount: number;
+  hasNextPage: boolean;
   isLoading?: boolean;
-  onPageChange: (page: number) => void;
+  onNextPage: () => void;
+  onPreviousPage: () => void;
   onPageSizeChange: (pageSize: number) => void;
   onViewApplicants: (job: EmployerJob) => void;
   onEditJob: (job: EmployerJob) => void;
@@ -104,9 +105,10 @@ export function JobsTable({
   jobs,
   currentPage,
   pageSize,
-  totalCount,
+  hasNextPage,
   isLoading = false,
-  onPageChange,
+  onNextPage,
+  onPreviousPage,
   onPageSizeChange,
   onViewApplicants,
   onEditJob,
@@ -271,10 +273,12 @@ export function JobsTable({
       columns={columns}
       data={jobs}
       keyExtractor={(job) => job.id}
-      totalCount={totalCount}
+      paginationMode="cursor"
       pageSize={pageSize}
       currentPage={currentPage}
-      onPageChange={onPageChange}
+      hasNextPage={hasNextPage}
+      onNextPage={onNextPage}
+      onPreviousPage={onPreviousPage}
       onPageSizeChange={onPageSizeChange}
       itemLabel="jobs"
       isLoading={isLoading}

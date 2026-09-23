@@ -1,8 +1,8 @@
 import {
   BriefcaseBusiness,
-  IndianRupee,
+  CalendarDays,
+  CalendarCheck,
   ListChecks,
-  LockOpen,
 } from "lucide-react";
 
 import { MetricCard } from "@/components/common/dashboard/metric-card";
@@ -17,7 +17,7 @@ export function DashboardStats({
   stats,
 }: DashboardStatsProps) {
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-4 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
       <MetricCard
         title="Active jobs"
         value={stats.activeJobs}
@@ -26,24 +26,26 @@ export function DashboardStats({
       />
 
       <MetricCard
-        title="Total applicants"
-        value={stats.totalApplicants}
+        title="Applicants in pipeline"
+        value={stats.applicantsInPipeline}
         icon={ListChecks}
         tone="green"
       />
 
       <MetricCard
-        title="Candidates unlocked"
-        value={stats.candidatesUnlocked}
-        icon={LockOpen}
-        tone="purple"
+        title="Interviews in progress"
+        value={stats.interviewsInProgress}
+        icon={CalendarCheck}
+        tone="orange"
       />
 
       <MetricCard
-        title="Credit balance"
-        value={stats.creditBalance}
-        icon={IndianRupee}
-        tone="orange"
+        title="Access ends"
+        value={stats.accessEnds ?? "—"}
+        icon={CalendarDays}
+        tone="purple"
+        status={stats.hasAccess ? "Active access" : "No active access"}
+        statusTone={stats.hasAccess ? "success" : "warning"}
       />
     </div>
   );

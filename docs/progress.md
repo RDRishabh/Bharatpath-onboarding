@@ -53,6 +53,11 @@ board's `p`, so a `/candidate/jobs` cursor is refused here rather than
 silently misread. No new index: jobs per tenant are few and
 `ix_jobs_tenant_status` bounds the scan.
 
+`main` paginated the same route independently, with the same shape and cursor
+key, and added `q`, a server-side search over title and location. The merge
+takes `main`'s implementation. This branch contributes the tests in
+`test_jobs.py`, which pass against it.
+
 ## 2026-09-23 — the admin console can list candidates
 
 Reported: `GET /admin/tenants?type=CANDIDATE` answers 422. That is correct,

@@ -126,11 +126,26 @@ async def create_job(
     return job
 
 
+def _employer_job_cursor_of(job: Any) -> str:
+    return encode_cursor({"c": job.created_at.isoformat(), "i": str(job.id)})
+
+
+def _employer_jobs_after(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    payload = decode_cursor(cursor)
+    try:
+        return datetime.fromisoformat(str(payload["c"])), uuid.UUID(str(payload["i"]))
+    except (KeyError, ValueError) as exc:
+        raise ValidationError(code="invalid_cursor") from exc
+
+
 async def list_jobs(
     session: AsyncSession,
     *,
     ctx: TenantContext,
     status: str | None,
+    query: str | None = None,
     cursor: str | None = None,
     limit: int | None = None,
 ) -> Page[JobListItem]:
@@ -140,9 +155,6 @@ async def list_jobs(
     employer's list is the screen every other employer screen is reached
     from, and it is the one place where reading the pipeline per row would
     turn one request into one per job.
-
-    Keyset-paginated on `(created_at, id)`, one row past the page fetched so
-    the last page carries no cursor.
     """
     tenant_id = await _bind(session, ctx)
     page_size = clamp_limit(limit)
@@ -150,7 +162,8 @@ async def list_jobs(
         session,
         tenant_id=tenant_id,
         status=status,
-        after=_after(cursor, key="c"),
+        query=query.strip() or None if query is not None else None,
+        after=_employer_jobs_after(cursor),
         limit=page_size + 1,
     )
     jobs, more = rows[:page_size], len(rows) > page_size
@@ -167,11 +180,7 @@ async def list_jobs(
             )
             for job in jobs
         ],
-        next_cursor=(
-            encode_cursor({"c": jobs[-1].created_at.isoformat(), "i": str(jobs[-1].id)})
-            if more and jobs
-            else None
-        ),
+        next_cursor=_employer_job_cursor_of(jobs[-1]) if more and jobs else None,
     )
 
 
@@ -344,14 +353,12 @@ def _cursor_of(job: Any) -> str:
     return encode_cursor({"p": job.published_at.isoformat(), "i": str(job.id)})
 
 
-def _after(cursor: str | None, *, key: str = "p") -> tuple[datetime, uuid.UUID] | None:
-    """`key` names the timestamp: `p` (published) on the board, `c` (created)
-    on the employer's list, so one list's cursor is refused by the other."""
+def _after(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
     if cursor is None:
         return None
     payload = decode_cursor(cursor)
     try:
-        return datetime.fromisoformat(str(payload[key])), uuid.UUID(str(payload["i"]))
+        return datetime.fromisoformat(str(payload["p"])), uuid.UUID(str(payload["i"]))
     except (KeyError, ValueError) as exc:
         raise ValidationError(code="invalid_cursor") from exc
 

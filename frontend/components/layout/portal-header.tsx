@@ -57,6 +57,7 @@ export function PortalHeader({
   const {
     title,
     subtitle,
+    breadcrumbs,
     // badge, // kept for the temporarily disabled DEMO STATE control
     stat,
     action,
@@ -206,6 +207,52 @@ export function PortalHeader({
             gap-[2px]
           "
         >
+          {breadcrumbs && breadcrumbs.length > 0 ? (
+            <nav
+              aria-label="Breadcrumb"
+              className="flex min-w-0 items-center gap-[6px] text-[12px] leading-[16px]"
+              style={{ fontFamily: "'General Sans', sans-serif" }}
+            >
+              {breadcrumbs.map((crumb, index) => {
+                const isLast = index === breadcrumbs.length - 1;
+
+                return (
+                  <span
+                    key={`${crumb.label}-${index}`}
+                    className="flex min-w-0 items-center gap-[6px]"
+                  >
+                    {crumb.href && !isLast ? (
+                      <button
+                        type="button"
+                        onClick={() => router.push(crumb.href as string)}
+                        className="shrink-0 cursor-pointer font-[500] text-[#3566b8] hover:underline"
+                      >
+                        {crumb.label}
+                      </button>
+                    ) : (
+                      <span
+                        className={
+                          isLast
+                            ? "truncate font-[500] text-[#5D6673]"
+                            : "shrink-0 text-[#5D6673]"
+                        }
+                      >
+                        {crumb.label}
+                      </span>
+                    )}
+
+                    {!isLast ? (
+                      <ChevronRight
+                        size={13}
+                        className="shrink-0 text-[#9aa2b1]"
+                      />
+                    ) : null}
+                  </span>
+                );
+              })}
+            </nav>
+          ) : null}
+
           <h1
             className="
               m-0

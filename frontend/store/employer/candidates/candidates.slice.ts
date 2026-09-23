@@ -20,7 +20,7 @@ const initialState: EmployerCandidatesState = {
 	},
 	currentPage: 1,
 	cursorHistory: [""],
-	pageSize: 10,
+	pageSize: 4,
 };
 
 const candidatesSlice = createSlice({

@@ -13,6 +13,9 @@ interface ApplicationColumnProps {
   column: ApplicationColumnDefinition;
 
   applications: EmployerApplication[];
+  hasNextPage: boolean;
+  isLoadingMore: boolean;
+  onLoadMore: () => void;
 
   onApplicationClick: (
     id: string,
@@ -27,10 +30,23 @@ interface ApplicationColumnProps {
 export function ApplicationColumn({
   column,
   applications,
+  hasNextPage,
+  isLoadingMore,
+  onLoadMore,
   onApplicationClick,
   onApplicationDrop,
 }: ApplicationColumnProps) {
   const [isDropTarget, setIsDropTarget] = useState(false);
+
+  const loadNextPageNearEnd = (element: HTMLDivElement) => {
+    if (
+      hasNextPage &&
+      !isLoadingMore &&
+      element.scrollHeight - element.scrollTop - element.clientHeight <= 96
+    ) {
+      onLoadMore();
+    }
+  };
 
   const handleDrop = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -109,7 +125,16 @@ export function ApplicationColumn({
       </div>
 
       {/* BODY */}
-      <div className="bp-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
+      <div
+        className="bp-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3"
+        aria-busy={isLoadingMore}
+        onScroll={(event) => loadNextPageNearEnd(event.currentTarget)}
+        onWheel={(event) => {
+          if (event.deltaY > 0) {
+            loadNextPageNearEnd(event.currentTarget);
+          }
+        }}
+      >
         {applications.length > 0 ? (
           applications.map(
             (application) => (

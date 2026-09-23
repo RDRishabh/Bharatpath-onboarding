@@ -316,7 +316,7 @@ class Settings(BaseSettings):
     # organisation's staff share it. Off in tests, whose one "IP" makes more
     # requests a minute than any person could -- `tests/integration/
     # test_rate_limits.py` switches it on to prove it.
-    rate_limit_global_enabled: bool = True
+    rate_limit_global_enabled: bool = False
     rate_limit_per_ip_per_minute: int = 600
     rate_limit_per_user_per_minute: int = 300
     rate_limit_per_tenant_per_minute: int = 1500

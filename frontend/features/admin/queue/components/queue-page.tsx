@@ -28,6 +28,9 @@ export function QueuePage() {
     items,
     kybCount,
     integrityCount,
+    kybHasMore,
+    integrityHasMore,
+    pagination,
     isLoading,
     error,
     isActing,
@@ -159,11 +162,11 @@ export function QueuePage() {
   > = [
     [
       "kyb",
-      `KYB · ${kybCount}`,
+      `KYB · ${kybCount}${kybHasMore ? "+" : ""}`,
     ],
     [
       "integrity",
-      `Integrity · ${integrityCount}`,
+      `Integrity · ${integrityCount}${integrityHasMore ? "+" : ""}`,
     ],
   ];
 
@@ -233,9 +236,14 @@ export function QueuePage() {
             keyExtractor={(item) =>
               item.id
             }
-            pageSize={10}
-            totalCount={items.length}
-            itemLabel=""
+            paginationMode="cursor"
+            pageSize={pagination.pageSize}
+            currentPage={pagination.currentPage}
+            hasNextPage={pagination.hasNextPage}
+            onNextPage={pagination.onNextPage}
+            onPreviousPage={pagination.onPreviousPage}
+            onPageSizeChange={pagination.onPageSizeChange}
+            itemLabel={isKyb ? "submissions" : "flags"}
             isLoading={isLoading}
             emptyTitle={
               isKyb

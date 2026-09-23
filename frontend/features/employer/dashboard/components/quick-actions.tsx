@@ -10,12 +10,14 @@ interface QuickActionsProps {
   onPostJob?: () => void;
   onSearchCandidates?: () => void;
   onReviewApplications?: () => void;
+  disabled?: boolean;
 }
 
 export function QuickActions({
   onPostJob,
   onSearchCandidates,
   onReviewApplications,
+  disabled = false,
 }: QuickActionsProps) {
   const actions = [
     {
@@ -99,6 +101,7 @@ export function QuickActions({
             <button
               key={action.label}
               type="button"
+              disabled={disabled}
               onClick={action.onClick}
               className={`
                 flex
@@ -112,9 +115,10 @@ export function QuickActions({
                 bg-white
                 px-2
                 text-center
-                cursor-pointer
                 transition-colors
-                hover:bg-[#f8fafc]
+                ${disabled
+                  ? "cursor-not-allowed opacity-55"
+                  : "cursor-pointer hover:bg-[#f8fafc]"}
                 ${action.cardClass}
               `}
             >

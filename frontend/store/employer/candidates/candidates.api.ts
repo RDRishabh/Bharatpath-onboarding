@@ -115,4 +115,5 @@ export const {
   useSearchEmployerCandidatesQuery,
   useLazyRevealEmployerCandidateQuery,
   useRevealEmployerCandidatesQuery,
+  useLazyRevealEmployerCandidatesQuery,
 } = employerCandidatesApi;

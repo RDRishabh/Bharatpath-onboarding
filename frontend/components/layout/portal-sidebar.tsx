@@ -31,6 +31,8 @@ import {
   clearUser,
 } from "@/store/common/slices/auth.slice";
 
+import { clearStoredToken } from "@/lib/auth/token";
+
 import { ConfirmModal } from "@/components/ui";
 
 /*
@@ -175,10 +177,11 @@ export function PortalSidebar({
    */
 
   const handleLogout = () => {
+    clearStoredToken();
     dispatch(clearUser());
     dispatch(clearTenant());
 
-    router.push("/login");
+    router.push("/api/auth/logout");
   };
 
   return (

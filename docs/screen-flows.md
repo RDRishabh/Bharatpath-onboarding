@@ -896,23 +896,24 @@ server still returns 403 if called.
 ### 3.6 Screens
 
 #### D1 · Dashboard — mockup "Dashboard"
-- **Tiles:** Active jobs (published count) · Applicants in pipeline · Access
-  ends (date). A "Profiles opened" tile would need an API that does not exist yet.
+- **Tiles:** Active jobs (published count) · Applicants in pipeline ·
+  Interviews in progress · Access ends (date). A "Profiles opened" tile would
+  need an API that does not exist yet.
 - **Quick actions:** Post a job · Search candidates · Review applications.
   Disable them without an active subscription (the banner explains why).
 - **Top jobs by applicants**, as in the mockup.
-- **Recent activity:** needs an activity feed API, which is not built. Hide the
-  block or keep it static behind a flag. Replace "You unlocked…" and "purchased
-  a credit pack" items.
+- **Recent activity:** keep the right-hand panel from the approved layout, but
+  show its empty state until an activity-feed API exists. Never restore the
+  static "You unlocked…" or "purchased a credit pack" items.
 - Empty (new org): "Post your first job" hero card.
 
 #### J1 · Jobs list — mockup "Jobs"
-`GET /employer/jobs?status=&limit=&cursor=` → `{ items, next_cursor }`
+`GET /employer/jobs?status=&q=&limit=&cursor=`. Use `next_cursor` for the
+Next control; do not download the full list and paginate it in the browser.
 
 - Filters: All · **Published** · Draft · **Paused** · Closed. Search by title
-  or location (client-side over the pages loaded so far — the list is
-  cursor-paginated, so "next" follows `next_cursor` and there are no page
-  numbers or total).
+  or location with `q` (server-side, so it covers every page, not just the
+  ones loaded). There are no page numbers or total.
 - Columns: Job (title + initials) · Status · Location · Pay (monthly range, or
   LPA as mockup) · Applicants · Viewed · Shortlisted · Interview · Hired ·
   Rejected · Actions.

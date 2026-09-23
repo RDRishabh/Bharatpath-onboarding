@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback } from "react";
+
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 
 import {
@@ -15,9 +17,14 @@ import {
 import {
   type AuditEventRow,
   type DisputeRow,
-  useGetAdminAuditEventsQuery,
+  useLazyGetAdminAuditEventsQuery,
   useGetAdminDisputesQuery,
 } from "@/store/api/admin-api";
+import {
+  tablePagination,
+  useCursorPagination,
+} from "@/lib/pagination/use-cursor-pagination";
+import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 
 import type { AuditIcon, AuditItem, Dispute, DisputeStatus, DisputeTab } from "../types";
 
@@ -62,16 +69,31 @@ export function useDisputes() {
     selectAdminDisputes,
   );
 
-  const openQuery = useGetAdminDisputesQuery({ limit: 100 });
+  const openPage = useCursorPagination();
+  const openQuery = useGetAdminDisputesQuery({
+    limit: openPage.pageSize,
+    cursor: openPage.cursor,
+  });
   const resolvedQuery = useGetAdminDisputesQuery({ state: "RESOLVED", limit: 100 });
   const rejectedQuery = useGetAdminDisputesQuery({ state: "REJECTED", limit: 100 });
-  const auditQuery = useGetAdminAuditEventsQuery({ limit: 10 });
+  const [fetchAudit] = useLazyGetAdminAuditEventsQuery();
+  const audit = useCursorLoadMore<AuditEventRow>(
+    useCallback(
+      async (cursor) => {
+        const page = await fetchAudit({ limit: 10, cursor }).unwrap();
+        return { items: page.items, nextCursor: page.next_cursor };
+      },
+      [fetchAudit],
+    ),
+    [],
+  );
+  const openNextCursor = openQuery.data?.next_cursor ?? null;
   const openDisputes = (openQuery.data?.items ?? []).map(disputeView);
   const resolvedDisputes = [
     ...(resolvedQuery.data?.items ?? []),
     ...(rejectedQuery.data?.items ?? []),
   ].map(disputeView);
-  const auditItems = (auditQuery.data?.items ?? []).map(auditView);
+  const auditItems = audit.items.map(auditView);
 
   return {
     state,
@@ -84,11 +106,21 @@ export function useDisputes() {
 
     isLoading: openQuery.isLoading || resolvedQuery.isLoading || rejectedQuery.isLoading,
 
-    auditLoading: auditQuery.isLoading,
+    auditLoading: audit.isLoading,
+
+    auditLoadingMore: audit.isLoadingMore,
+
+    auditHasMore: audit.hasMore,
+
+    loadMoreAudit: audit.loadMore,
 
     error: openQuery.error || resolvedQuery.error || rejectedQuery.error,
 
     openCount: openDisputes.length,
+
+    openHasMore: Boolean(openNextCursor),
+
+    openPagination: tablePagination(openPage, openNextCursor),
 
     resolvedCount:
       resolvedDisputes.length,

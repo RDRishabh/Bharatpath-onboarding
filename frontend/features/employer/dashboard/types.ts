@@ -1,8 +1,9 @@
 export interface EmployerDashboardStats {
   activeJobs: number;
-  totalApplicants: number;
-  candidatesUnlocked: number;
-  creditBalance: number;
+  applicantsInPipeline: number;
+  interviewsInProgress: number;
+  accessEnds: string | null;
+  hasAccess: boolean;
 }
 
 export interface EmployerTopJob {
@@ -11,21 +12,7 @@ export interface EmployerTopJob {
   applicants: number;
 }
 
-export type EmployerActivityType =
-  | "link"
-  | "upload"
-  | "hire"
-  | "invoice";
-
-export interface RecentActivity {
-  id: string;
-  text: string;
-  time: string;
-  type: EmployerActivityType;
-}
-
 export interface EmployerDashboardData {
   stats: EmployerDashboardStats;
   topJobs: EmployerTopJob[];
-  recentActivity: RecentActivity[];
 }

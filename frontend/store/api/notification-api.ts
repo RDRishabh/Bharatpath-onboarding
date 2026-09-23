@@ -1,5 +1,7 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 
+import { getStoredToken } from "@/lib/auth/token";
+
 import type {
   Notification,
   NotificationInboxItem,
@@ -48,7 +50,8 @@ export const notificationApi = createApi({
     prepareHeaders: (headers) => {
       headers.set("Accept", "application/json");
 
-      const bearerToken = process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
+      const bearerToken =
+        getStoredToken() ?? process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
       if (bearerToken) {
         headers.set("Authorization", `Bearer ${bearerToken}`);
       }

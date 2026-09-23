@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue } from "react";
+import { useCallback, useDeferredValue } from "react";
 import { Check, Search } from "lucide-react";
 
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -11,9 +11,10 @@ import {
   setJobSearch,
   setJobWorkMode,
   toggleQualifiedOnly,
-  useGetStudentJobsQuery,
+  useLazyGetStudentJobsQuery,
 } from "@/store/student";
 import { getApiErrorMessage } from "@/lib/api/error-message";
+import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 import { EmptyState, JobCard } from "@/features/student/components";
 import { StudentPage } from "@/features/student/shell";
 
@@ -25,12 +26,22 @@ export function JobFeed() {
   const deferredSearch = useDeferredValue(search);
   const qualifiedOnly = useAppSelector(selectJobQualifiedOnly);
   const workMode = useAppSelector(selectJobWorkMode);
-  const jobs = useGetStudentJobsQuery({
-    q: deferredSearch.trim() || undefined,
-    workMode: workMode ?? undefined,
-    eligibleOnly: qualifiedOnly,
-    limit: 50,
-  });
+  const [fetchJobs] = useLazyGetStudentJobsQuery();
+
+  const jobs = useCursorLoadMore(
+    useCallback(
+      (cursor: string | undefined) =>
+        fetchJobs({
+          q: deferredSearch.trim() || undefined,
+          workMode: workMode ?? undefined,
+          eligibleOnly: qualifiedOnly,
+          cursor,
+          limit: 20,
+        }).unwrap(),
+      [fetchJobs, deferredSearch, workMode, qualifiedOnly],
+    ),
+    [deferredSearch, workMode, qualifiedOnly],
+  );
 
   return (
     <StudentPage>
@@ -71,7 +82,7 @@ export function JobFeed() {
 
         <div className="flex items-baseline justify-between">
           <span className="text-[11px] font-bold uppercase leading-4 tracking-[0.12em] text-[#5F6B80]">
-            {jobs.data?.items.length ?? 0} jobs
+            {jobs.items.length} jobs
           </span>
         </div>
 
@@ -85,12 +96,27 @@ export function JobFeed() {
             title="Jobs unavailable"
             message={getApiErrorMessage(jobs.error, "Could not load jobs.")}
           />
-        ) : jobs.data?.items.length ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {jobs.data.items.map((job) => (
-              <JobCard key={job.id} job={job} />
-            ))}
-          </div>
+        ) : jobs.items.length ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {jobs.items.map((job) => (
+                <JobCard key={job.id} job={job} />
+              ))}
+            </div>
+
+            {jobs.hasMore ? (
+              <div className="flex justify-center pt-1">
+                <button
+                  type="button"
+                  onClick={jobs.loadMore}
+                  disabled={jobs.isLoadingMore}
+                  className="rounded-full border border-[#E7E0D4] bg-white px-5 py-2.5 text-[13px] font-semibold text-[#0A1931] transition-colors hover:bg-[#F7F3EC] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {jobs.isLoadingMore ? "Loading…" : "Load more"}
+                </button>
+              </div>
+            ) : null}
+          </>
         ) : (
           <EmptyState
             icon={<Search size={22} />}

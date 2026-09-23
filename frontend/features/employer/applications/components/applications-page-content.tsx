@@ -1,12 +1,18 @@
 "use client";
 
+import { useMemo } from "react";
+
 import {
   ApplicationPipeline,
   ApplicationFilter,
   ApplicationDrawer,
   ApplicationsPipelineSkeleton,
 } from "@/features/employer/applications";
-import { CursorPagination, ErrorState } from "@/components/ui";
+import { ErrorState } from "@/components/ui";
+import {
+  usePageHeader,
+  type Breadcrumb,
+} from "@/components/layout/header-context";
 
 import { useApplicationsPage } from "../hooks/use-applications-page";
 
@@ -14,18 +20,16 @@ export function ApplicationsPageContent() {
   const {
     applications,
     isLoading,
+    isLoadingMore,
     jobFilter,
     jobOptions,
-    currentPage,
-    pageSize,
+    selectedJobTitle,
     hasNextPage,
     selectedApplication,
     error,
 
     handleJobFilterChange,
-    handlePageSizeChange,
-    handlePreviousPage,
-    handleNextPage,
+    handleLoadMore,
     handleOpenApplication,
     handleCloseApplication,
     handleMoveStage,
@@ -33,6 +37,25 @@ export function ApplicationsPageContent() {
     handleMeetingLinkChange,
     handleConfirmHire,
   } = useApplicationsPage();
+
+  // When a specific job is in focus (a stage number was clicked on the jobs
+  // table), show `Jobs > {job} > Applications`, matching the approved design.
+  const breadcrumbs = useMemo<Breadcrumb[] | undefined>(() => {
+    if (jobFilter === "all" || !selectedJobTitle) {
+      return undefined;
+    }
+    return [
+      { label: "Jobs", href: "/employer/jobs" },
+      { label: selectedJobTitle },
+      { label: "Applications" },
+    ];
+  }, [jobFilter, selectedJobTitle]);
+
+  usePageHeader(
+    "Applications",
+    "Track applicants through your hiring pipeline",
+    { breadcrumbs },
+  );
 
   return (
     <div
@@ -88,6 +111,9 @@ export function ApplicationsPageContent() {
         ) : (
           <ApplicationPipeline
             applications={applications}
+            hasNextPage={hasNextPage}
+            isLoadingMore={isLoadingMore}
+            onLoadMore={handleLoadMore}
             onApplicationClick={
               handleOpenApplication
             }
@@ -95,19 +121,6 @@ export function ApplicationsPageContent() {
           />
         )}
       </div>
-
-      <CursorPagination
-        currentPage={currentPage}
-        itemCount={applications.length}
-        pageSize={pageSize}
-        hasNextPage={hasNextPage}
-        isLoading={isLoading}
-        onPreviousPage={handlePreviousPage}
-        onNextPage={handleNextPage}
-        onPageSizeChange={handlePageSizeChange}
-        itemLabel={applications.length === 1 ? "application" : "applications"}
-        className="mt-3 shrink-0 rounded-[11px] border border-[#e1e5eb]"
-      />
 
       {/* =====================================================
           APPLICATION DRAWER
