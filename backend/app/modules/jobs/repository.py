@@ -64,11 +64,22 @@ async def get_job(session: AsyncSession, *, tenant_id: uuid.UUID, job_id: uuid.U
 
 
 async def list_jobs(
-    session: AsyncSession, *, tenant_id: uuid.UUID, status: str | None, limit: int
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    status: str | None,
+    after: tuple[datetime, uuid.UUID] | None,
+    limit: int,
 ) -> list[Job]:
+    """A page of the organisation's jobs, newest first, keyset-paginated."""
     query = select(Job).where(Job.tenant_id == tenant_id)
     if status is not None:
         query = query.where(Job.status == status)
+    if after is not None:
+        query = query.where(
+            tuple_(Job.created_at, Job.id)
+            < tuple_(literal(after[0], Job.created_at.type), literal(after[1], Job.id.type))
+        )
     result = await session.execute(
         query.order_by(Job.created_at.desc(), Job.id.desc()).limit(limit)
     )

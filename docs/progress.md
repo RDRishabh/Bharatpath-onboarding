@@ -9,6 +9,24 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-23 — `GET /employer/jobs` is paginated
+
+Reported by the frontend: `?limit=10` returned every job. The route never
+declared `limit`, so FastAPI dropped it, and the service always read up to a
+fixed 100 (`MAX_JOB_LIST`, now gone). It was the only list in the API without
+a cursor.
+
+It now takes `limit` (1–100, default 50) and `cursor`, keyset on
+`(created_at, id)`, and returns `Page[JobListItem]`. **That is a breaking
+change to the response** — a bare array became `{ items, next_cursor, total }`
+— made in the backend only, by decision; the frontend in `frontend/` still
+reads an array (`store/employer/jobs/jobs.api.ts`) and is the frontend
+developer's to move. The dashboard and applications screens that want every
+job must follow `next_cursor`. The cursor's timestamp key is `c`, not the
+board's `p`, so a `/candidate/jobs` cursor is refused here rather than
+silently misread. No new index: jobs per tenant are few and
+`ix_jobs_tenant_status` bounds the scan.
+
 ## 2026-09-23 — the admin console can list candidates
 
 Reported: `GET /admin/tenants?type=CANDIDATE` answers 422. That is correct,

@@ -208,7 +208,7 @@ ahead of `/{job_id}` to avoid a path collision.
 | Method | Path | Auth | Body/Params | Response | Notes |
 |---|---|---|---|---|
 | POST | `/employer/jobs` | OWNER/RECRUITER + active subscription | `CreateJobRequest` | `JobResponse` (201) | Draft |
-| GET | `/employer/jobs` | any employer role + active subscription | `status` | `list[JobResponse]` | Newest first |
+| GET | `/employer/jobs` | any employer role + active subscription | `status`, `cursor`, `limit` (≤100, default 50) | `Page[JobListItem]` | Newest first, each with pipeline counts |
 | GET | `/employer/jobs/threshold-preview` | OWNER/RECRUITER + active subscription | `min_score` (700–990, stepped, rate-limited per org) | `ThresholdPreviewResponse` | Rounded/coarse count only, floored under ten — never exact, so a threshold can't be used to binary-search one candidate's score |
 | GET | `/employer/jobs/{job_id}` | any employer role + active subscription | path | `JobResponse` | 404 cross-org |
 | PATCH | `/employer/jobs/{job_id}` | OWNER/RECRUITER + active subscription | path + `UpdateJobRequest` | `JobResponse` | 409 once published/closed — pause first |

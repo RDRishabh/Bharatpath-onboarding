@@ -208,7 +208,7 @@ async def test_the_jobs_list_carries_each_jobs_pipeline_counts(
 
     listed = await client.get(f"{API}/employer/jobs", headers=employer["headers"])
     assert listed.status_code == 200, listed.text
-    rows = {row["id"]: row["application_counts"] for row in listed.json()}
+    rows = {row["id"]: row["application_counts"] for row in listed.json()["items"]}
 
     counts = rows[busy["id"]]
     # Each application is at one stage, so the stages sum to the total: the

@@ -418,7 +418,8 @@ async def test_routes_without_an_id_only_ever_return_the_callers_own_tenant(
     assert a["member_id"] in team_a
 
     jobs_a = {
-        j["id"] for j in (await client.get(f"{API}/employer/jobs", headers=a["headers"])).json()
+        j["id"]
+        for j in (await client.get(f"{API}/employer/jobs", headers=a["headers"])).json()["items"]
     }
     assert b["job_id"] not in jobs_a
     assert a["job_id"] in jobs_a

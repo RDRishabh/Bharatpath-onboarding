@@ -77,7 +77,7 @@ async def create_job(
 
 @router.get(
     "",
-    response_model=list[JobListItem],
+    response_model=Page[JobListItem],
     dependencies=[Readers, PayingEmployer],
     summary="The organisation's jobs, newest first, each with its pipeline counts",
 )
@@ -85,10 +85,17 @@ async def list_jobs(
     user: CurrentUser,
     session: DbSession,
     status_filter: Annotated[JobStatus | None, Query(alias="status")] = None,
-) -> list[JobListItem]:
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=MAX_PAGE_SIZE)] = None,
+) -> Page[JobListItem]:
     """`application_counts` is where each job's applications stand now, so the
-    list draws its funnel without a request per row."""
-    return await service.list_jobs(session, ctx=user, status=status_filter)
+    list draws its funnel without a request per row.
+
+    A page of `limit` jobs (default 50, at most 100). Pass `next_cursor` back as
+    `cursor` for the next; it is `null` on the last page. No total."""
+    return await service.list_jobs(
+        session, ctx=user, status=status_filter, cursor=cursor, limit=limit
+    )
 
 
 @router.get(

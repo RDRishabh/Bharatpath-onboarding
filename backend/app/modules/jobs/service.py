@@ -69,7 +69,6 @@ logger = get_logger(__name__)
 #: The number lives in `app.core.ratelimit.STATIC_POLICIES` (Day 20), beside
 #: every other limit, so it can be held as one of the two tightest.
 THRESHOLD_PREVIEWS_PER_HOUR: Final = STATIC_POLICIES["jobs.threshold_preview"].limit
-MAX_JOB_LIST: Final = 100
 
 
 class JobNotFoundError(NotFoundError):
@@ -128,31 +127,52 @@ async def create_job(
 
 
 async def list_jobs(
-    session: AsyncSession, *, ctx: TenantContext, status: str | None
-) -> list[JobListItem]:
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    status: str | None,
+    cursor: str | None = None,
+    limit: int | None = None,
+) -> Page[JobListItem]:
     """The organisation's jobs, newest first, each with its pipeline counts.
 
     The counts are a second aggregate over the page, not a query per job. An
     employer's list is the screen every other employer screen is reached
     from, and it is the one place where reading the pipeline per row would
     turn one request into one per job.
+
+    Keyset-paginated on `(created_at, id)`, one row past the page fetched so
+    the last page carries no cursor.
     """
     tenant_id = await _bind(session, ctx)
-    jobs = await repository.list_jobs(
-        session, tenant_id=tenant_id, status=status, limit=MAX_JOB_LIST
+    page_size = clamp_limit(limit)
+    rows = await repository.list_jobs(
+        session,
+        tenant_id=tenant_id,
+        status=status,
+        after=_after(cursor, key="c"),
+        limit=page_size + 1,
     )
+    jobs, more = rows[:page_size], len(rows) > page_size
     counts = await repository.stage_counts(
         session, tenant_id=tenant_id, job_ids=[job.id for job in jobs]
     )
-    return [
-        JobListItem(
-            **JobResponse.model_validate(job).model_dump(),
-            application_counts=ApplicationStageCounts(
-                total=sum(counts[job.id].values()), by_stage=counts[job.id]
-            ),
-        )
-        for job in jobs
-    ]
+    return Page[JobListItem](
+        items=[
+            JobListItem(
+                **JobResponse.model_validate(job).model_dump(),
+                application_counts=ApplicationStageCounts(
+                    total=sum(counts[job.id].values()), by_stage=counts[job.id]
+                ),
+            )
+            for job in jobs
+        ],
+        next_cursor=(
+            encode_cursor({"c": jobs[-1].created_at.isoformat(), "i": str(jobs[-1].id)})
+            if more and jobs
+            else None
+        ),
+    )
 
 
 async def get_job(session: AsyncSession, *, ctx: TenantContext, job_id: uuid.UUID) -> Any:
@@ -315,12 +335,14 @@ def _cursor_of(job: Any) -> str:
     return encode_cursor({"p": job.published_at.isoformat(), "i": str(job.id)})
 
 
-def _after(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
+def _after(cursor: str | None, *, key: str = "p") -> tuple[datetime, uuid.UUID] | None:
+    """`key` names the timestamp: `p` (published) on the board, `c` (created)
+    on the employer's list, so one list's cursor is refused by the other."""
     if cursor is None:
         return None
     payload = decode_cursor(cursor)
     try:
-        return datetime.fromisoformat(str(payload["p"])), uuid.UUID(str(payload["i"]))
+        return datetime.fromisoformat(str(payload[key])), uuid.UUID(str(payload["i"]))
     except (KeyError, ValueError) as exc:
         raise ValidationError(code="invalid_cursor") from exc
 

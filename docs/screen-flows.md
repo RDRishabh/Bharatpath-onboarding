@@ -907,10 +907,12 @@ server still returns 403 if called.
 - Empty (new org): "Post your first job" hero card.
 
 #### J1 · Jobs list — mockup "Jobs"
-`GET /employer/jobs?status=`
+`GET /employer/jobs?status=&limit=&cursor=` → `{ items, next_cursor }`
 
 - Filters: All · **Published** · Draft · **Paused** · Closed. Search by title
-  or location (client-side over the list).
+  or location (client-side over the pages loaded so far — the list is
+  cursor-paginated, so "next" follows `next_cursor` and there are no page
+  numbers or total).
 - Columns: Job (title + initials) · Status · Location · Pay (monthly range, or
   LPA as mockup) · Applicants · Viewed · Shortlisted · Interview · Hired ·
   Rejected · Actions.

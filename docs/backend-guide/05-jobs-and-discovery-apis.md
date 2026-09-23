@@ -109,11 +109,16 @@ below — never smuggled into a create or edit body.
 
 **Auth required:** any employer role (Owner/Recruiter/Viewer) + active subscription.
 
-**Request:** optional query param `?status=DRAFT` (one of `DRAFT`,
-`PUBLISHED`, `PAUSED`, `CLOSED`) to filter. No body.
+**Request:** no body. Query params, all optional:
+- `status` — one of `DRAFT`, `PUBLISHED`, `PAUSED`, `CLOSED`, to filter.
+- `limit` — page size, 1–100, default 50.
+- `cursor` — the `next_cursor` from the previous page.
 
-**Response** — `200 OK`, array of `JobListItem`, newest first. That is every
-field of `JobResponse` from §1, **plus the job's pipeline counts**:
+**Response** — `200 OK`, a `Page[JobListItem]`, newest first:
+`{ "items": [...], "next_cursor": "..." | null, "total": null }`. Keep
+passing `next_cursor` back as `cursor` until it is `null`. There is no total
+and no page numbers — it is a cursor, like every other list here. Each item is
+every field of `JobResponse` from §1, **plus the job's pipeline counts**:
 
 ```json
 {
@@ -127,6 +132,11 @@ field of `JobResponse` from §1, **plus the job's pipeline counts**:
   }
 }
 ```
+
+**Until 2026-09-23 this was a bare array** of up to 100 jobs and `limit` was
+silently ignored (the route never declared it). A client that reads the body
+as an array must now read `.items`. A cursor is tied to this list: one from
+`/candidate/jobs` is refused with `422 invalid_cursor`.
 
 Only ever the caller's own organisation's jobs — there's no parameter that
 could reach another tenant's.
