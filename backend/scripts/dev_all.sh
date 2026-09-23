@@ -44,13 +44,13 @@ WORKER_PID=""
 cleanup() {
   echo ""
   echo "→ shutting down (api=$API_PID worker=$WORKER_PID)"
+  [ -n "$WORKER_PID" ] && pkill -P "$WORKER_PID" 2>/dev/null || true
   [ -n "$WORKER_PID" ] && kill "$WORKER_PID" 2>/dev/null || true
+  [ -n "$API_PID" ]    && pkill -P "$API_PID" 2>/dev/null || true
   [ -n "$API_PID" ]    && kill "$API_PID"    2>/dev/null || true
-  # Give them a moment, then force-kill anything still alive.
   sleep 1
   [ -n "$WORKER_PID" ] && kill -9 "$WORKER_PID" 2>/dev/null || true
   [ -n "$API_PID" ]    && kill -9 "$API_PID"    2>/dev/null || true
-  wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -62,12 +62,8 @@ if command -v lsof >/dev/null 2>&1; then
 fi
 
 # --- Start the worker + outbox relay ----------------------------------------
-# dev_workers.sh runs the worker in the background itself and then blocks on
-# the relay loop, so we can run the whole script in the background.
-"$PYTHON_BIN" -m celery -A app.worker.celery_app worker \
-  --loglevel=info \
-  --pool=solo \
-  > "$WORKER_LOG" 2>&1 &
+# dev_workers.sh runs the celery worker and loops the outbox relay every 2s.
+bash scripts/dev_workers.sh > "$WORKER_LOG" 2>&1 &
 WORKER_PID=$!
 
 # --- Start the API ----------------------------------------------------------
@@ -84,8 +80,9 @@ echo "Ctrl-C stops both. Tail logs with:"
 echo "  tail -f ${API_LOG} ${WORKER_LOG}"
 echo ""
 
-# Wait for either child to exit. If one dies, cleanup kills the other.
-wait -n "$API_PID" "$WORKER_PID"
-EXIT_CODE=$?
+# Wait for either child to exit. Portable loop for macOS (Bash 3.2+).
+while kill -0 "$API_PID" 2>/dev/null && kill -0 "$WORKER_PID" 2>/dev/null; do
+  sleep 1
+done
 echo "→ a child exited (api or worker); shutting down" >&2
-exit "$EXIT_CODE"
+exit 1
