@@ -75,6 +75,7 @@ from app.modules.admin.schemas import (
     CollegeDrilldown,
     CollegeLinkSummary,
     CreateDiscountCodeRequest,
+    CreateSearchFilterOptionRequest,
     DiscountCodeResponse,
     DiscountCodesPage,
     DiscountRedemptionRow,
@@ -104,6 +105,8 @@ from app.modules.admin.schemas import (
     ProvisionEmployerRequest,
     ResumeSummary,
     ScoreSummary,
+    SearchFilterOptionResponse,
+    SearchFilterOptionsPage,
     SeatAllocationResponse,
     SeatSummary,
     SignalCount,
@@ -113,6 +116,7 @@ from app.modules.admin.schemas import (
     TenantRow,
     TenantsPage,
     ThroughputDay,
+    UpdateSearchFilterOptionRequest,
     WaitingItem,
 )
 from app.modules.billing import service as billing_service
@@ -120,6 +124,8 @@ from app.modules.billing.domain import DISCOUNT_POLICY_VERSION
 from app.modules.college import service as college_service
 from app.modules.college.schemas import CreateCollegeRequest
 from app.modules.discovery import service as discovery_service
+from app.modules.discovery.catalogue import FILTER_CATALOGUE_VERSION
+from app.modules.discovery.domain import FilterKind
 from app.modules.employer import service as employer_service
 from app.modules.employer.schemas import CreateOrganisationRequest
 from app.modules.identity import service as identity_service
@@ -1623,4 +1629,133 @@ async def dashboard(
             ThroughputDay(date=day, intake=came, cleared=went)
             for day, came, went in throughput_series(intake, cleared, now=now)
         ],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Search filter options (2026-09-24)
+# ---------------------------------------------------------------------------
+# The catalogue is `discovery`'s; the console writes the audit row beside
+# each change. Not a cross-tenant read, so no `_reveal`: the rows name nobody.
+def _filter_option(row: Any) -> SearchFilterOptionResponse:
+    return SearchFilterOptionResponse.model_validate(row)
+
+
+async def _audit_filter_option(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    action: AuditAction,
+    row: Any,
+    request_id: str | None,
+    metadata: dict[str, Any],
+) -> None:
+    await audit_event(
+        session,
+        action=action,
+        actor_id=ctx.user_id,
+        actor_role=ctx.role,
+        target_type="search_filter_option",
+        target_id=row.id,
+        request_id=request_id,
+        metadata={"kind": row.kind, **metadata},
+    )
+
+
+async def create_search_filter_options(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    items: list[CreateSearchFilterOptionRequest],
+    request_id: str | None = None,
+) -> list[SearchFilterOptionResponse]:
+    """All or none, one audit row per option created."""
+    rows = await discovery_service.create_filter_options(
+        session,
+        options=[
+            discovery_service.NewFilterOption(
+                kind=item.kind,
+                label=item.label,
+                aliases=tuple(item.aliases),
+                state_code=item.state_code,
+                featured=item.featured,
+                sort_order=item.sort_order,
+            )
+            for item in items
+        ],
+        created_by=ctx.user_id,
+    )
+    for row in rows:
+        await _audit_filter_option(
+            session,
+            ctx=ctx,
+            action=AuditAction.SEARCH_FILTER_OPTION_CREATED,
+            row=row,
+            request_id=request_id,
+            metadata={"imported": len(rows) > 1},
+        )
+    return [_filter_option(row) for row in rows]
+
+
+async def update_search_filter_option(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    option_id: uuid.UUID,
+    payload: UpdateSearchFilterOptionRequest,
+    request_id: str | None = None,
+) -> SearchFilterOptionResponse:
+    """Idempotent: a change that moves nothing writes no audit row."""
+    row, moved = await discovery_service.update_filter_option(
+        session,
+        option_id=option_id,
+        changes=discovery_service.FilterOptionChanges(
+            label=payload.label,
+            aliases=None if payload.aliases is None else tuple(payload.aliases),
+            state_code=payload.state_code,
+            featured=payload.featured,
+            sort_order=payload.sort_order,
+            active=payload.active,
+        ),
+        updated_by=ctx.user_id,
+    )
+    if moved:
+        await _audit_filter_option(
+            session,
+            ctx=ctx,
+            action=AuditAction.SEARCH_FILTER_OPTION_UPDATED,
+            row=row,
+            request_id=request_id,
+            metadata={"fields": moved},
+        )
+    return _filter_option(row)
+
+
+async def get_search_filter_option(
+    session: AsyncSession, *, option_id: uuid.UUID
+) -> SearchFilterOptionResponse:
+    return _filter_option(await discovery_service.get_filter_option(session, option_id=option_id))
+
+
+async def list_search_filter_options(
+    session: AsyncSession,
+    *,
+    kind: FilterKind | None,
+    query: str | None,
+    include_inactive: bool,
+    cursor: str | None,
+    limit: int | None,
+) -> SearchFilterOptionsPage:
+    rows, next_cursor = await discovery_service.list_filter_options(
+        session,
+        kind=kind,
+        query=query,
+        include_inactive=include_inactive,
+        cursor=cursor,
+        limit=limit,
+    )
+    return SearchFilterOptionsPage(
+        items=[_filter_option(row) for row in rows],
+        next_cursor=next_cursor,
+        catalogue_version=FILTER_CATALOGUE_VERSION,
     )

@@ -98,6 +98,13 @@ class AuditAction(StrEnum):
     DISCOUNT_CODE_CREATED = "discount_code_created"
     DISCOUNT_CODE_DISABLED = "discount_code_disabled"
 
+    # Search filter options (2026-09-24). What employers are offered to
+    # filter by; not private, but a change to it changes every search, so
+    # staff's edits are on the record. Metadata holds the kind and the
+    # fields that moved.
+    SEARCH_FILTER_OPTION_CREATED = "search_filter_option_created"
+    SEARCH_FILTER_OPTION_UPDATED = "search_filter_option_updated"
+
     # Colleges (Day 17). A seat is a student's paid access, and a referral
     # code is a credential that attaches students to a roster: issuing,
     # revoking and allocating are all privileged.

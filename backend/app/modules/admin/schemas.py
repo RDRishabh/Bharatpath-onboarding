@@ -597,3 +597,67 @@ class AdminDashboard(_Base):
     oldest_waiting: list[WaitingItem]
     #: Fourteen IST days ending today, oldest first, over the queues shown.
     throughput: list[ThroughputDay]
+
+
+# ---------------------------------------------------------------------------
+# Search filter options (2026-09-24)
+# ---------------------------------------------------------------------------
+FilterKind = Literal["SKILL", "CITY"]
+
+
+class CreateSearchFilterOptionRequest(_Base):
+    """A skill or a city employers can pick. A city needs `state_code`; a
+    skill has none. Aliases are other spellings that choosing it also
+    searches -- "Bangalore" for Bengaluru, "Excel" for MS Excel."""
+
+    kind: FilterKind
+    label: str = Field(min_length=1, max_length=100)
+    aliases: list[str] = Field(default_factory=list, max_length=10)
+    state_code: str | None = Field(default=None, min_length=2, max_length=2)
+    featured: bool = Field(default=False, description="Shown on the panel before typing.")
+    sort_order: int = Field(default=0, ge=0, le=10_000, description="Lower is shown first.")
+
+
+class ImportSearchFilterOptionsRequest(_Base):
+    """All or none: one bad item refuses the lot, naming its index."""
+
+    items: list[CreateSearchFilterOptionRequest] = Field(min_length=1, max_length=500)
+
+
+class UpdateSearchFilterOptionRequest(_Base):
+    """Only the fields sent change. `aliases` replaces the whole list.
+    `active: false` hides an option; options are never deleted."""
+
+    label: str | None = Field(default=None, min_length=1, max_length=100)
+    aliases: list[str] | None = Field(default=None, max_length=10)
+    state_code: str | None = Field(default=None, min_length=2, max_length=2)
+    featured: bool | None = None
+    sort_order: int | None = Field(default=None, ge=0, le=10_000)
+    active: bool | None = None
+
+
+class SearchFilterOptionResponse(_Base):
+    id: uuid.UUID
+    kind: FilterKind
+    label: str
+    key: str
+    aliases: list[str]
+    state_code: str | None
+    featured: bool
+    sort_order: int
+    active: bool
+    created_by: uuid.UUID | None
+    updated_by: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SearchFilterOptionsPage(_Base):
+    items: list[SearchFilterOptionResponse]
+    next_cursor: str | None
+    #: `placeholder-...` while the starter lists are ours, not the client's.
+    catalogue_version: str
+
+
+class ImportSearchFilterOptionsResponse(_Base):
+    items: list[SearchFilterOptionResponse]

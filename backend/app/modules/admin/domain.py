@@ -49,6 +49,7 @@ Capability = Literal[
     "discounts",
     "discounts_read",
     "dashboard",
+    "search_filters",
 ]
 
 #: `capability -> the staff roles that hold it`. PLATFORM_ADMIN holds all of
@@ -86,6 +87,10 @@ CONSOLE_ROLES: Final[dict[Capability, frozenset[str]]] = {
     # of them the queues their other capabilities already open, and platform
     # totals, which are counts and name nobody.
     "dashboard": frozenset({PLATFORM_ADMIN, KYB_REVIEWER, INTEGRITY_REVIEWER, SUPPORT_AGENT}),
+    # 2026-09-24. The skills and cities employers filter by. Support edits
+    # them too (client, 2026-09-24): an option is a suggestion that names
+    # nobody and prices nothing, and every change is audited.
+    "search_filters": frozenset({PLATFORM_ADMIN, SUPPORT_AGENT}),
 }
 
 
