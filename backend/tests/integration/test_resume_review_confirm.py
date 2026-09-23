@@ -9,6 +9,7 @@ conditional UPDATE. Testing either against a mock would prove the mock.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 from sqlalchemy import text
@@ -418,3 +419,126 @@ async def test_history_holds_only_this_candidates_versions(candidate: uuid.UUID)
     async with factory() as session:
         history = await service.list_versions(session, user_id=uuid.uuid4())
     assert history == []
+
+
+# --- the review screen's sections ---------------------------------------------
+API = "/api/v1/candidate/resume"
+
+SECTIONED = (
+    "Priya Deshmukh\nPune, Maharashtra\n\n"
+    "EDUCATION\nB.Sc Microbiology\nFergusson College, Pune  2022-2025  68%\n\n"
+    "Skills: Microbial culturing, Lab reporting, MS-Ofice, Teem work\n\n"
+    "Experience\nQuality control intern, Serum Labs, 2024. Ran 40 assays a week."
+)
+
+
+async def test_a_section_edit_is_a_text_edit_through_the_same_gate(
+    candidate: uuid.UUID,
+) -> None:
+    """A new, unconfirmed version holding text -- so scoring reads it exactly
+    as it reads an upload, prose included."""
+    original = await _paste(candidate, SECTIONED)
+    await _confirm(candidate, original.id)
+
+    edited = await _edit(
+        candidate,
+        original.id,
+        sections=[
+            {"kind": "header", "body": "Priya Deshmukh\nPune, Maharashtra"},
+            {"kind": "education", "heading": "EDUCATION", "body": "B.Sc Microbiology, 68%"},
+            {"kind": "skills", "heading": "Skills:", "body": "MS Office, Teamwork"},
+            {"kind": "experience", "body": "Quality control intern. Ran 40 assays a week."},
+        ],
+    )
+
+    assert edited.source == "EDIT"
+    assert edited.supersedes_id == original.id
+    assert edited.confirmed_at is None
+    assert edited.parsed["raw_text"].split("\n") == [
+        "Priya Deshmukh",
+        "Pune, Maharashtra",
+        "",
+        "EDUCATION",
+        "B.Sc Microbiology, 68%",
+        "",
+        "Skills:",
+        "MS Office, Teamwork",
+        "",
+        "Experience",
+        "Quality control intern. Ran 40 assays a week.",
+    ]
+    assert edited.parsed["extractor"]["parser"] == "candidate-edit"
+
+
+async def test_the_review_screen_edits_a_cv_section_by_section(
+    client: Any, mint_token: Any
+) -> None:
+    headers, _ = mint_token(pool="CANDIDATE", subject=f"sections-{uuid.uuid4()}")
+    pasted = await client.post(f"{API}/text", json={"text": SECTIONED}, headers=headers)
+    assert pasted.status_code == 201, pasted.text
+    version_id = pasted.json()["resume_version_id"]
+
+    review = await client.get(f"{API}/versions/{version_id}", headers=headers)
+    assert review.status_code == 200, review.text
+    sections = review.json()["sections"]
+    assert [s["kind"] for s in sections] == ["header", "education", "skills", "experience"]
+    skills = sections[2]
+    assert [(i["text"], i["unclear"], i["suggestion"]) for i in skills["items"]] == [
+        ("Microbial culturing", False, None),
+        ("Lab reporting", False, None),
+        ("MS-Ofice", True, "MS Office"),
+        ("Teem work", True, "Teamwork"),
+    ]
+    assert sections[1]["items"] is None
+
+    # The client fixes the two chips and sends every section back.
+    skills["body"] = "Microbial culturing, Lab reporting, MS Office, Teamwork"
+    edit = await client.post(
+        f"{API}/versions/{version_id}/edit",
+        json={
+            "sections": [
+                {"kind": s["kind"], "heading": s["heading"], "body": s["body"]} for s in sections
+            ]
+        },
+        headers=headers,
+    )
+    assert edit.status_code == 201, edit.text
+    assert edit.json()["confirmed"] is False
+
+    again = await client.get(f"{API}/versions/{edit.json()['resume_version_id']}", headers=headers)
+    fixed = again.json()["sections"]
+    assert [s["kind"] for s in fixed] == ["header", "education", "skills", "experience"]
+    assert not any(i["unclear"] for i in fixed[2]["items"])
+    assert fixed[1]["body"] == sections[1]["body"], "an untouched section changed"
+
+
+async def test_a_structured_version_has_no_sections(client: Any, mint_token: Any) -> None:
+    """Its fields are already in `parsed`; a text view of them would be a
+    second, disagreeing copy."""
+    headers, _ = mint_token(pool="CANDIDATE", subject=f"sections-{uuid.uuid4()}")
+    manual = await client.post(
+        f"{API}/manual",
+        json={"full_name": "Priya Deshmukh", "skills": ["Microbial culturing"]},
+        headers=headers,
+    )
+    assert manual.status_code == 201, manual.text
+
+    review = await client.get(
+        f"{API}/versions/{manual.json()['resume_version_id']}", headers=headers
+    )
+    assert review.json()["sections"] is None
+
+
+async def test_a_section_edit_that_would_not_read_back_is_a_422(
+    client: Any, mint_token: Any
+) -> None:
+    headers, _ = mint_token(pool="CANDIDATE", subject=f"sections-{uuid.uuid4()}")
+    pasted = await client.post(f"{API}/text", json={"text": SECTIONED}, headers=headers)
+    version_id = pasted.json()["resume_version_id"]
+
+    refused = await client.post(
+        f"{API}/versions/{version_id}/edit",
+        json={"sections": [{"kind": "skills", "heading": "Education", "body": "x" * 60}]},
+        headers=headers,
+    )
+    assert refused.status_code == 422
