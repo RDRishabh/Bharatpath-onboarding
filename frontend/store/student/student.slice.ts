@@ -5,11 +5,9 @@ import {
 
 import type {
   JobApplication,
-  StudentNotification,
 } from "@/features/student/types";
 import {
   jobApplications as seedApplications,
-  studentNotifications as seedNotifications,
   findJob,
 } from "@/features/student/data";
 
@@ -17,9 +15,8 @@ import {
  * ==========================================================================
  * STUDENT PORTAL — REDUX SLICE
  *
- * All state that would come from backend APIs later lives here, seeded from
- * static mock data. Every interaction (save a job, apply, withdraw, mark a
- * notification read, filter, search) is a local reducer — no network calls.
+ * Local state for student interactions that have not yet moved to API-owned
+ * state, including saved jobs, application display state and feed controls.
  * ==========================================================================
  */
 
@@ -36,9 +33,6 @@ export interface StudentState {
   /** Live application board, seeded from mock and grown by "Apply". */
   applications: JobApplication[];
 
-  /** Notifications with per-item read state. */
-  notifications: StudentNotification[];
-
   /** Job feed controls. */
   jobSearch: string;
   jobQualifiedOnly: boolean;
@@ -50,20 +44,16 @@ export interface StudentState {
   /** Share card: reveal the exact number, or just the band. */
   shareExact: boolean;
 
-  /** Notification permission (the onboarding "allow" toggle). */
-  notificationsEnabled: boolean;
 }
 
 const initialState: StudentState = {
   savedJobIds: [],
   applications: seedApplications,
-  notifications: seedNotifications,
   jobSearch: "",
   jobQualifiedOnly: true,
   jobCategory: null,
   boardFilter: "all",
   shareExact: false,
-  notificationsEnabled: true,
 };
 
 const studentSlice = createSlice({
@@ -133,32 +123,6 @@ const studentSlice = createSlice({
       }
     },
 
-    /* ---- Notifications ---- */
-    markNotificationRead: (
-      state,
-      action: PayloadAction<string>,
-    ) => {
-      const notif = state.notifications.find(
-        (item) => item.id === action.payload,
-      );
-      if (notif) {
-        notif.read = true;
-      }
-    },
-
-    markAllNotificationsRead: (state) => {
-      state.notifications.forEach((notif) => {
-        notif.read = true;
-      });
-    },
-
-    setNotificationsEnabled: (
-      state,
-      action: PayloadAction<boolean>,
-    ) => {
-      state.notificationsEnabled = action.payload;
-    },
-
     /* ---- Job feed filters ---- */
     setJobSearch: (
       state,
@@ -198,9 +162,6 @@ export const {
   toggleSavedJob,
   applyToJob,
   withdrawApplication,
-  markNotificationRead,
-  markAllNotificationsRead,
-  setNotificationsEnabled,
   setJobSearch,
   toggleQualifiedOnly,
   setJobCategory,

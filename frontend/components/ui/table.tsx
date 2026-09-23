@@ -312,6 +312,84 @@ export function TablePagination({
   );
 }
 
+export interface CursorPaginationProps {
+  currentPage: number;
+  itemCount: number;
+  pageSize: number;
+  hasNextPage: boolean;
+  isLoading?: boolean;
+  onPreviousPage: () => void;
+  onNextPage: () => void;
+  onPageSizeChange: (pageSize: number) => void;
+  itemLabel?: string;
+  className?: string;
+}
+
+export function CursorPagination({
+  currentPage,
+  itemCount,
+  pageSize,
+  hasNextPage,
+  isLoading = false,
+  onPreviousPage,
+  onNextPage,
+  onPageSizeChange,
+  itemLabel = "items",
+  className = "",
+}: Readonly<CursorPaginationProps>) {
+  return (
+    <div
+      className={`flex items-center justify-between border-t border-[#e7e9ee] bg-white px-6 py-3 ${className}`}
+      style={{ fontFamily: "'General Sans', sans-serif" }}
+    >
+      <span className="text-[13px] text-[#777f90]">
+        Page {currentPage} · {itemCount} {itemLabel}
+      </span>
+
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 whitespace-nowrap text-[13px] text-[#777f90]">
+          <span>Rows per page</span>
+          <AppSelect
+            value={String(pageSize)}
+            onChange={(value) => onPageSizeChange(Number(value))}
+            options={PAGE_SIZE_SELECT_OPTIONS}
+            ariaLabel="Rows per page"
+            className="w-18.5 [&>button]:h-8 [&>button]:px-2"
+            menuClassName="!min-w-18.5"
+            menuPlacement="top"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={currentPage <= 1 || isLoading}
+            onClick={onPreviousPage}
+            aria-label="Previous page"
+            className="grid h-7 w-7 cursor-pointer place-items-center rounded-[8px] border border-[#e2e5eb] text-[#5d6673] transition-colors hover:bg-[#f8f9fb] disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ChevronLeft size={14} />
+          </button>
+
+          <span className="grid h-7 min-w-7 select-none place-items-center rounded-[8px] border border-[#e2e5eb] bg-white px-2 text-[13px] font-semibold text-[#151b2b]">
+            {currentPage}
+          </span>
+
+          <button
+            type="button"
+            disabled={!hasNextPage || isLoading}
+            onClick={onNextPage}
+            aria-label="Next page"
+            className="grid h-7 w-7 cursor-pointer place-items-center rounded-[8px] border border-[#e2e5eb] text-[#5d6673] transition-colors hover:bg-[#f8f9fb] disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 
 /* =========================================================

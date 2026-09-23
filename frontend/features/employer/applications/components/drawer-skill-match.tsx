@@ -11,13 +11,19 @@ export function SkillMatchSection({
   otherCandidateSkills,
   missingSkills,
 }: SkillMatchSectionProps) {
+  const hasSkills =
+    matchedSkills.length > 0 ||
+    otherCandidateSkills.length > 0 ||
+    missingSkills.length > 0;
+
   return (
     <div className="flex flex-col gap-2">
       <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#687384]">
         Skill match
       </span>
 
-      <div className="flex flex-wrap gap-2">
+      {hasSkills ? (
+        <div className="flex flex-wrap gap-2">
         {matchedSkills.map((skill) => (
           <span
             key={`matched-${skill}`}
@@ -46,7 +52,12 @@ export function SkillMatchSection({
             {skill}
           </span>
         ))}
-      </div>
+        </div>
+      ) : (
+        <p className="rounded-lg border border-dashed border-[#dfe3e9] bg-[#f8f9fb] px-3 py-3 text-[12px] leading-5 text-[#687384]">
+          Skill comparison is unavailable because no candidate or job skills were provided.
+        </p>
+      )}
     </div>
   );
 }

@@ -463,8 +463,10 @@ their full dashboard UI with empty values and no blocking error panel.
 Added a shared rows-per-page selector to every frontend data table with 10 as
 the default and 25, 50 and 100 as options. Page-size changes return to the first
 page, filtered result sets clamp invalid page numbers, and tables with fewer
-than ten records retain accurate counts and controls. College table queries now
-request the backend's 100-row maximum so the larger selections have data.
+than ten records retain accurate counts and controls. The selector now uses the
+reusable custom `AppSelect` menu and opens upward from table footers to avoid
+clipping. College table queries request the backend's 100-row maximum so the
+larger selections have data.
 
 Validation: the changed pagination files pass TypeScript checking. Full
 `npx tsc --noEmit` remains blocked by 19 pre-existing errors in recent activity,

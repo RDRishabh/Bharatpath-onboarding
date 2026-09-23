@@ -27,8 +27,8 @@ export function ApplicationFilter({
       <span className="text-[12px] font-medium text-[#777f90]">
         {total}{" "}
         {total === 1
-          ? "in pipeline"
-          : "in pipeline"}
+          ? "application on this page"
+          : "applications on this page"}
       </span>
     </div>
   );

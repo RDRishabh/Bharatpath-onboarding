@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 
 import { useAppDispatch } from "@/store/hooks";
@@ -13,26 +12,8 @@ import {
   useGetNotificationsQuery,
 } from "@/store/api/notification-api";
 
-import {
-  MOCK_NOTIFICATIONS,
-} from "../mock-notifications";
-
-const USE_MOCK_NOTIFICATIONS = true;
-
 export function NotificationBell() {
   const dispatch = useAppDispatch();
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    const handleUpdate = () => setTick((tick) => tick + 1);
-    window.addEventListener("bharatpath-notifications-updated", handleUpdate);
-    return () => {
-      window.removeEventListener(
-        "bharatpath-notifications-updated",
-        handleUpdate,
-      );
-    };
-  }, []);
 
   const { data } =
     useGetNotificationsQuery(
@@ -40,20 +21,13 @@ export function NotificationBell() {
         limit: 10,
       },
       {
-        skip: USE_MOCK_NOTIFICATIONS,
         pollingInterval: 30_000,
         refetchOnFocus: true,
         refetchOnReconnect: true,
       },
     );
 
-  const unreadCount =
-    USE_MOCK_NOTIFICATIONS
-      ? MOCK_NOTIFICATIONS.filter(
-          (notification) =>
-            !notification.read,
-        ).length
-      : data?.unreadCount ?? 0;
+  const unreadCount = data?.unreadCount ?? 0;
 
   return (
     <button

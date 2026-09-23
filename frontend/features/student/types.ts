@@ -143,17 +143,6 @@ export interface JobApplication {
   timeline: ApplicationStage[];
 }
 
-export type NotificationType = "view" | "application" | "job" | "system";
-
-export interface StudentNotification {
-  id: string;
-  type: NotificationType;
-  title: string;
-  description: string;
-  time: string;
-  read: boolean;
-}
-
 export interface AddOnCard {
   id: string;
   key: "attribute" | "interview";

@@ -6,6 +6,7 @@ export interface EmployerCandidatesState {
 	filters: CandidateFiltersState;
 	currentPage: number;
 	cursorHistory: string[];
+	pageSize: number;
 }
 
 const initialState: EmployerCandidatesState = {
@@ -19,6 +20,7 @@ const initialState: EmployerCandidatesState = {
 	},
 	currentPage: 1,
 	cursorHistory: [""],
+	pageSize: 10,
 };
 
 const candidatesSlice = createSlice({
@@ -53,6 +55,14 @@ const candidatesSlice = createSlice({
 				state.filters.addons = values.includes(value)
 					? values.filter((item) => item !== value)
 					: [...values, value];
+			} else if (
+				action.payload.key === "locations" ||
+				action.payload.key === "experiences"
+			) {
+				const key = action.payload.key;
+				state.filters[key] = state.filters[key].includes(action.payload.value)
+					? []
+					: [action.payload.value];
 			} else {
 				const key = action.payload.key;
 				const values = state.filters[key];
@@ -73,6 +83,11 @@ const candidatesSlice = createSlice({
 				state.currentPage -= 1;
 			}
 		},
+		setCandidatePageSize: (state, action: PayloadAction<number>) => {
+			state.pageSize = action.payload;
+			state.currentPage = 1;
+			state.cursorHistory = [""];
+		},
 	},
 });
 
@@ -83,6 +98,7 @@ export const {
 	toggleCandidateFilter,
 	goToNextCandidatePage,
 	goToPreviousCandidatePage,
+	setCandidatePageSize,
 } = candidatesSlice.actions;
 
 export default candidatesSlice.reducer;

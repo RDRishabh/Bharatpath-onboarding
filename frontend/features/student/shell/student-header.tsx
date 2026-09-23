@@ -4,8 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, Bell } from "lucide-react";
 
-import { useAppSelector } from "@/store/hooks";
-import { selectUnreadCount } from "@/store/student";
+import { useGetNotificationsQuery } from "@/store/api/notification-api";
 import { studentProfile } from "@/features/student/data";
 
 /*
@@ -60,7 +59,15 @@ export function StudentHeader({
   onOpenDrawer: () => void;
 }) {
   const pathname = usePathname();
-  const unread = useAppSelector(selectUnreadCount);
+  const { data: notificationPage } = useGetNotificationsQuery(
+    { limit: 1 },
+    {
+      pollingInterval: 30_000,
+      refetchOnFocus: true,
+      refetchOnReconnect: true,
+    },
+  );
+  const unread = notificationPage?.unreadCount ?? 0;
   const { title, subtitle } = sectionFor(pathname);
 
   return (

@@ -152,7 +152,7 @@ export function JobsTable({
       header: "Location",
       cell: (job: EmployerJob) => (
         <span className="whitespace-nowrap text-[#777f90]">
-          {job.location}
+          {job.location.trim() || "Location not specified"}
         </span>
       ),
     },

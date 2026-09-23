@@ -19,7 +19,11 @@ export function PaymentTab() {
       </div>
 
       <div className="mb-3">
-        {methods.map((method) => (
+        {methods.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-[#dfe3e9] bg-[#f8f9fb] px-3 py-4 text-center text-xs leading-5 text-[#718096]">
+            No payment methods have been added yet.
+          </p>
+        ) : methods.map((method) => (
           <div
             key={method.id}
             className="flex min-h-[59px] items-center gap-2.5 rounded-[10px] bg-[#f2f4f6] px-3"

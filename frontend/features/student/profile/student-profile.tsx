@@ -13,11 +13,12 @@ import {
   Bell,
 } from "lucide-react";
 
-import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { useAppSelector } from "@/store/hooks";
+import { selectApplications } from "@/store/student";
 import {
-  setNotificationsEnabled,
-  selectApplications,
-} from "@/store/student";
+  useGetNotificationPreferencesQuery,
+  useUpdateNotificationPreferencesMutation,
+} from "@/store/api/notification-api";
 import { studentProfile, studentScore } from "@/features/student/data";
 import { SectionEyebrow } from "@/features/student/components";
 import { StudentPage } from "@/features/student/shell";
@@ -31,11 +32,22 @@ import { StudentPage } from "@/features/student/shell";
 
 export function StudentProfile() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const applications = useAppSelector(selectApplications);
-  const notificationsEnabled = useAppSelector(
-    (state) => state.student.notificationsEnabled,
-  );
+  const { data: notificationPreferences, isLoading: preferencesLoading } =
+    useGetNotificationPreferencesQuery();
+  const [updateNotificationPreferences, { isLoading: preferencesUpdating }] =
+    useUpdateNotificationPreferencesMutation();
+  const notificationsEnabled = notificationPreferences?.push_enabled ?? false;
+
+  const togglePushNotifications = async () => {
+    try {
+      await updateNotificationPreferences({
+        push_enabled: !notificationsEnabled,
+      }).unwrap();
+    } catch (error) {
+      console.error("Failed to update notification preferences:", error);
+    }
+  };
 
   return (
     <StudentPage>
@@ -102,19 +114,18 @@ export function StudentProfile() {
             <div className="flex items-center gap-3 rounded-2xl border border-[#E7E0D4] bg-white p-4">
               <Bell size={20} className="text-[#0A1931]" />
               <span className="flex flex-1 flex-col">
-                <span className="text-[15px] font-medium text-[#0A1931]">Notifications</span>
+                <span className="text-[15px] font-medium text-[#0A1931]">Push notifications</span>
                 <span className="text-[12px] text-[#5F6B80]">
-                  Employer views, application updates, near-miss jobs
+                  Allow notification alerts on supported devices
                 </span>
               </span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={notificationsEnabled}
-                aria-label="Toggle notifications"
-                onClick={() =>
-                  dispatch(setNotificationsEnabled(!notificationsEnabled))
-                }
+                aria-label="Toggle push notifications"
+                disabled={preferencesLoading || preferencesUpdating}
+                onClick={() => void togglePushNotifications()}
                 className={[
                   "flex h-7 w-12 items-center rounded-full p-1 transition-colors",
                   notificationsEnabled

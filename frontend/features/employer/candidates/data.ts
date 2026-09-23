@@ -21,9 +21,9 @@ export const SKILLS = [
 export const LOCATIONS = ["Pune", "Nashik", "Aurangabad"];
 
 export const EXPERIENCE_DEFS = [
-  { key: "0-2", label: "0–2 yrs" },
-  { key: "3-5", label: "3–5 yrs" },
-  { key: "6+", label: "6+ yrs" },
+  { key: "1", label: "1+ yrs" },
+  { key: "3", label: "3+ yrs" },
+  { key: "6", label: "6+ yrs" },
 ];
 
 export const ADDONS: { key: CandidateBadge; label: string }[] = [

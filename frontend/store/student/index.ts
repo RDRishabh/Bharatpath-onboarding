@@ -25,12 +25,6 @@ export const selectHasApplied =
   (jobId: string) => (state: RootState) =>
     state.student.applications.some((app) => app.jobId === jobId);
 
-export const selectNotifications = (state: RootState) =>
-  state.student.notifications;
-
-export const selectUnreadCount = (state: RootState) =>
-  state.student.notifications.filter((notif) => !notif.read).length;
-
 export const selectJobSearch = (state: RootState) =>
   state.student.jobSearch;
 

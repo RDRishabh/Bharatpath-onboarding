@@ -11,3 +11,6 @@ export const selectEmployerCandidatePage = (state: RootState) =>
 
 export const selectEmployerCandidateCursor = (state: RootState) =>
 	state.employerCandidates.cursorHistory[state.employerCandidates.currentPage - 1] ?? "";
+
+export const selectEmployerCandidatePageSize = (state: RootState) =>
+	state.employerCandidates.pageSize;

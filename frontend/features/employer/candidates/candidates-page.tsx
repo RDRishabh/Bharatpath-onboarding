@@ -1,10 +1,9 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 
 import { ListSkeleton } from "@/components/common/loading";
-import { ErrorState } from "@/components/ui";
+import { CursorPagination, ErrorState } from "@/components/ui";
 import { usePageHeader } from "@/components/layout/header-context";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -13,6 +12,8 @@ import {
   selectEmployerCandidateCursor,
   selectEmployerCandidateFilters,
   selectEmployerCandidatePage,
+  selectEmployerCandidatePageSize,
+  setCandidatePageSize,
   setCandidateSearch,
   toggleCandidateBand,
   toggleCandidateFilter,
@@ -24,46 +25,61 @@ import {
 
 import { CandidateCard } from "./candidate-card";
 import { CandidateFilters } from "./candidate-filters";
+import type { Candidate } from "./types";
 
-const PAGE_SIZE = 4;
+const EMPTY_CANDIDATES: Candidate[] = [];
 
 export function CandidatesPage() {
   usePageHeader(
     "Candidates",
-    "Search the masked candidate pool by score, skills and location"
+    "Search candidates by score, skills and location"
   );
 
   const dispatch = useAppDispatch();
   const filters = useAppSelector(selectEmployerCandidateFilters);
   const page = useAppSelector(selectEmployerCandidatePage);
   const cursor = useAppSelector(selectEmployerCandidateCursor);
+  const pageSize = useAppSelector(selectEmployerCandidatePageSize);
+  const deferredSearch = useDeferredValue(filters.search.trim());
   const query = useMemo(() => ({
-    q: filters.search.trim() || undefined,
+    q: deferredSearch || undefined,
     band: filters.bands.length ? filters.bands : undefined,
     skill: filters.skills.length ? filters.skills : undefined,
     badge: filters.addons.length ? filters.addons : undefined,
     city: filters.locations[0],
     min_experience_years: filters.experiences.length
-      ? Math.min(...filters.experiences.map((value) => value === "6+" ? 6 : value === "3-5" ? 3 : 0))
+      ? Number(filters.experiences[0])
       : undefined,
     cursor: cursor || undefined,
-    limit: PAGE_SIZE,
-  }), [cursor, filters]);
+    limit: pageSize,
+  }), [
+    cursor,
+    deferredSearch,
+    filters.addons,
+    filters.bands,
+    filters.experiences,
+    filters.locations,
+    filters.skills,
+    pageSize,
+  ]);
 
   const { data, error, isLoading, isFetching } = useSearchEmployerCandidatesQuery(query);
-  const candidates = data?.items ?? [];
+  const candidates = data?.items ?? EMPTY_CANDIDATES;
   const nextCursor = data?.nextCursor ?? null;
   const [revealCandidate, revealState] = useLazyRevealEmployerCandidateQuery();
   const [revealed, setRevealed] = useState<RevealedCandidateResponse | null>(null);
 
-  // Masking off: reveal every visible candidate and show the real data.
+  // Reveal every visible candidate before rendering cards so masked search
+  // results never flash while the full profiles load.
   const candidateIds = useMemo(
     () => candidates.map((candidate) => candidate.candidateId),
     [candidates],
   );
-  const { data: revealedMap } = useRevealEmployerCandidatesQuery(candidateIds, {
-    skip: candidateIds.length === 0,
-  });
+  const { data: revealedMap, isFetching: candidatesRevealing } =
+    useRevealEmployerCandidatesQuery(candidateIds, {
+      skip: candidateIds.length === 0,
+    });
+  const isCandidateListLoading = isLoading || candidatesRevealing;
   const displayedCandidates = useMemo(
     () =>
       candidates.map((candidate) => {
@@ -119,11 +135,11 @@ export function CandidatesPage() {
 
           <div className="flex h-full flex-col gap-3">
 
-            {isLoading && (
+            {isCandidateListLoading && (
               <ListSkeleton rows={6} trailing />
             )}
 
-            {!isLoading && candidates.map((candidate) => (
+            {!isCandidateListLoading && candidates.map((candidate) => (
               <CandidateCard
                 key={candidate.candidateId}
                 candidate={displayedCandidates.find((item) => item.candidateId === candidate.candidateId) ?? candidate}
@@ -138,7 +154,7 @@ export function CandidatesPage() {
               />
             )}
 
-            {!isLoading && !error && candidates.length === 0 && (
+            {!isCandidateListLoading && !error && candidates.length === 0 && (
               <div className="rounded-[12px] border border-dashed border-[#dfe3e9] bg-white p-10 text-center text-[12px] text-[#737d8c]">
                 No candidates match the selected filters.
               </div>
@@ -153,50 +169,22 @@ export function CandidatesPage() {
             FIXED — NEVER SCROLLS
             ------------------------------------------------- */}
 
-        <div className="flex h-[58px] shrink-0 items-center justify-between border-t border-[#e6e8ed] bg-white px-4">
-
-          {/* Count */}
-          <span className="text-[11px] text-[#647083]">
-            Page {page} · {candidates.length} candidates
-          </span>
-
-          {/* Controls */}
-          <div className="flex items-center gap-2">
-
-            {/* Previous */}
-            <button
-              type="button"
-              disabled={page <= 1 || isFetching}
-              onClick={() => dispatch(goToPreviousCandidatePage())}
-              className="grid h-8 w-8 place-items-center rounded-[8px] border border-[#e1e5ea] text-[#687386] transition hover:bg-[#f7f8fa] disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={15} />
-            </button>
-
-            {/* Current page */}
-            <span className="grid h-8 min-w-8 place-items-center rounded-[8px] border border-[#e1e5ea] px-2 text-[11px] font-semibold text-[#283247]">
-              {page}
-            </span>
-
-            {/* Total pages */}
-            <span className="text-[11px] text-[#687386]">
-              {isFetching ? "Loading" : ""}
-            </span>
-
-            {/* Next */}
-            <button
-              type="button"
-              disabled={!nextCursor || isFetching}
-              onClick={() => nextCursor && dispatch(goToNextCandidatePage(nextCursor))}
-              className="grid h-8 w-8 place-items-center rounded-[8px] border border-[#e1e5ea] text-[#687386] transition hover:bg-[#f7f8fa] disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="Next page"
-            >
-              <ChevronRight size={15} />
-            </button>
-
-          </div>
-        </div>
+        <CursorPagination
+          currentPage={page}
+          itemCount={candidates.length}
+          pageSize={pageSize}
+          hasNextPage={Boolean(nextCursor)}
+          isLoading={isFetching}
+          onPreviousPage={() => dispatch(goToPreviousCandidatePage())}
+          onNextPage={() => {
+            if (nextCursor) {
+              dispatch(goToNextCandidatePage(nextCursor));
+            }
+          }}
+          onPageSizeChange={(size) => dispatch(setCandidatePageSize(size))}
+          itemLabel={candidates.length === 1 ? "candidate" : "candidates"}
+          className="h-[58px] shrink-0 px-4"
+        />
       </main>
 
       {/* =================================================
@@ -215,7 +203,24 @@ export function CandidatesPage() {
             <h2 className="text-lg font-bold">{revealed.full_name ?? "Candidate"}</h2>
             <p className="mt-1 text-sm text-[#647083]">Score {revealed.score} · {revealed.band}</p>
             <div className="mt-4 space-y-1 text-sm"><p>{revealed.email ?? "No email shared"}</p><p>{revealed.phone ?? "No phone shared"}</p></div>
-            <div className="mt-4 flex flex-wrap gap-1">{revealed.skills.map((skill) => <span key={skill} className="rounded-full bg-[#f2f4f7] px-2 py-1 text-xs">{skill}</span>)}</div>
+            <div className="mt-4">
+              <h3 className="text-xs font-bold uppercase text-[#687384]">Skills</h3>
+              {revealed.skills.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {revealed.skills.map((skill) => <span key={skill} className="rounded-full bg-[#f2f4f7] px-2 py-1 text-xs">{skill}</span>)}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-[#8a92a0]">No skills were provided.</p>
+              )}
+            </div>
+            <div className="mt-4">
+              <h3 className="text-xs font-bold uppercase text-[#687384]">Completed add-ons</h3>
+              <p className="mt-2 text-sm text-[#8a92a0]">
+                {revealed.badges.length > 0
+                  ? revealed.badges.map((badge) => badge === "MOCK_INTERVIEW_COMPLETED" ? "Mock interview" : "Course completed").join(", ")
+                  : "No completed add-ons."}
+              </p>
+            </div>
           </>}
           <button type="button" onClick={() => { setRevealed(null); revealState.reset(); }} className="mt-5 rounded-lg border px-3 py-2 text-xs font-semibold">Close</button>
         </section>

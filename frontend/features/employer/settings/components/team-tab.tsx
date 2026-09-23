@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Skeleton } from "@/components/common/loading";
+import { AppSelect } from "@/components/ui/app-select";
 import { ErrorState, TablePagination } from "@/components/ui";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -13,7 +14,23 @@ import {
   toggleMemberMenu,
   useGetEmployerTeamQuery,
 } from "@/store/employer/settings";
-import { UserPlus } from "lucide-react";
+import type { TeamMember } from "@/store/employer/settings";
+import { Search, UserPlus } from "lucide-react";
+
+const EMPTY_TEAM: TeamMember[] = [];
+
+const ROLE_OPTIONS = [
+  { value: "all", label: "All roles" },
+  { value: "Owner", label: "Owner" },
+  { value: "Recruiter", label: "Recruiter" },
+  { value: "View only", label: "View only" },
+];
+
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "Active", label: "Active" },
+  { value: "Invited", label: "Invited" },
+];
 
 function initials(name: string) {
   return name
@@ -35,7 +52,7 @@ export function TeamTab() {
   } = useGetEmployerTeamQuery();
 
   // Do not expose a stale in-memory value before this tab's API request resolves.
-  const displayedMembers = team ? members : [];
+  const displayedMembers = team ? members : EMPTY_TEAM;
 
   useEffect(() => {
     if (team) {
@@ -45,20 +62,33 @@ export function TeamTab() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  const totalCount = displayedMembers.length;
+  const filteredMembers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return displayedMembers.filter((member) => {
+      const matchesSearch =
+        !query ||
+        member.name.toLowerCase().includes(query) ||
+        member.email.toLowerCase().includes(query);
+      const matchesRole = roleFilter === "all" || member.role === roleFilter;
+      const matchesStatus =
+        statusFilter === "all" || member.status === statusFilter;
+
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [displayedMembers, roleFilter, search, statusFilter]);
+
+  const totalCount = filteredMembers.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const safePage = Math.min(currentPage, totalPages);
-  const pagedMembers = displayedMembers.slice(
+  const pagedMembers = filteredMembers.slice(
     (safePage - 1) * pageSize,
     safePage * pageSize,
   );
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   return (
     <>
@@ -95,6 +125,48 @@ export function TeamTab() {
         </button>
       </div>
 
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-52 flex-1 sm:max-w-72">
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#777f90]"
+          />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder="Search team members"
+            aria-label="Search team members"
+            className="h-9 w-full rounded-lg border border-[#e1e5ea] bg-white pl-9 pr-3 text-xs text-[#151b2b] outline-none placeholder:text-[#8a919d] focus:border-[#b7b1ee] focus:ring-2 focus:ring-[#5b4fcf]/10"
+          />
+        </div>
+
+        <AppSelect
+          value={roleFilter}
+          onChange={(value) => {
+            setRoleFilter(value);
+            setCurrentPage(1);
+          }}
+          options={ROLE_OPTIONS}
+          ariaLabel="Filter team members by role"
+          className="w-32"
+        />
+
+        <AppSelect
+          value={statusFilter}
+          onChange={(value) => {
+            setStatusFilter(value);
+            setCurrentPage(1);
+          }}
+          options={STATUS_OPTIONS}
+          ariaLabel="Filter team members by status"
+          className="w-32"
+        />
+      </div>
+
       <section className="overflow-visible rounded-xl border border-[#e0e4e9] bg-white shadow-[0_1px_2px_rgba(17,24,39,0.02)]">
         <div className="grid min-h-[37px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] bg-[#f4f6f8] px-[18px] text-[10px] font-extrabold text-[#657083] max-sm:grid-cols-[minmax(0,1fr)_90px_70px_22px] max-sm:gap-2 max-sm:px-2.5">
           <span>MEMBER</span>
@@ -128,9 +200,9 @@ export function TeamTab() {
           <div className="px-[18px] py-5">
             <ErrorState fallback="Unable to load team members. Please try again." />
           </div>
-        ) : displayedMembers.length === 0 ? (
+        ) : filteredMembers.length === 0 ? (
           <div className="px-[18px] py-5 text-xs text-[#718096]">
-            No team members found.
+            No team members match the selected filters.
           </div>
         ) : pagedMembers.map((member) => (
           <div

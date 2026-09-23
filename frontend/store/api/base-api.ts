@@ -7,11 +7,30 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://localhost:8099/api/v1";
 
+function serializeParams(params: Record<string, unknown>) {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) {
+      continue;
+    }
+
+    const values = Array.isArray(value) ? value : [value];
+    for (const item of values) {
+      searchParams.append(key, String(item));
+    }
+  }
+
+  return searchParams.toString();
+}
+
 export const baseApi = createApi({
   reducerPath: "api",
 
   baseQuery: fetchBaseQuery({
     baseUrl: API_URL,
+
+    paramsSerializer: serializeParams,
 
     credentials: "include",
 
