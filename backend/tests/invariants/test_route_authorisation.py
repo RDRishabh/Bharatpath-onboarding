@@ -44,6 +44,21 @@ PUBLIC: dict[tuple[str, str], str] = {
         "and writes nothing. It grants nothing itself either -- it stores the "
         "callback for processing."
     ),
+    ("POST", "/api/v1/notifications/unsubscribe"): (
+        "The RFC 8058 one-click unsubscribe named by the List-Unsubscribe "
+        "header on a nudge email (blockers E30). The caller is somebody who "
+        "read an email and wants no more of them; requiring a sign-in to stop "
+        "reminders is what makes people press the spam button instead, which "
+        "costs the sending domain's reputation and takes every other message "
+        "with it. "
+        "Authenticated instead by a signed token that names one account and "
+        "one purpose, checked before anything is read or written. It can only "
+        "turn nudges OFF -- never on, never another preference, and it reads "
+        "nothing back, so the worst a stolen token does is stop reminders its "
+        "holder was already getting. The response is identical for a good "
+        "token, an expired one and one naming a deleted account, so it cannot "
+        "be used to probe for either."
+    ),
     ("POST", "/api/v1/auth/dev/token"): (
         "Local development only. The route is not registered at all unless "
         "AUTH_ALLOW_LOCAL_TOKENS is set, and Settings refuses that flag outside "

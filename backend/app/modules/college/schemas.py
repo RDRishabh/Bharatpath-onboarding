@@ -25,8 +25,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
+from app.core.schemas import ApiSchema
 from app.modules.college.domain import (
     CODE_LENGTH,
     MAX_CODE_USES,
@@ -48,8 +49,9 @@ InstitutionType = Literal[
 ]
 
 
-class _Base(BaseModel):
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
+class _Base(ApiSchema):
+    """Every schema in this module. `ApiSchema` strips the control
+    characters Postgres cannot store -- see `app/core/schemas.py`."""
 
 
 # --- the organisation ------------------------------------------------------------
@@ -162,6 +164,15 @@ class RosterImportResponse(_Base):
     valid_rows: int
     invalid_rows: int
     duplicate_rows: int
+    unreachable_rows: int = Field(
+        default=0,
+        description=(
+            "Valid rows no invitation can be delivered to. A roster row needs a "
+            "phone or an email, and with SMS deferred a phone-only row is "
+            "committed, invited, and then silently dropped. Ask these students "
+            "for email addresses before committing."
+        ),
+    )
     ignored_columns: list[str]
     created_at: datetime
     committed_at: datetime | None

@@ -9,6 +9,443 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-23 — the employer's jobs list carries its own funnel
+
+Raised by the frontend team against the jobs screen: the table draws a column
+per pipeline stage, and there was no way to fill any of them but
+`GET /employer/applications?job_id=…` once per row. Thirteen jobs, thirteen
+requests, and nothing on screen until the last returns — so the columns were
+rendering as zeros instead.
+
+`GET /employer/jobs` now answers `JobListItem`: `JobResponse` plus
+`application_counts` (`total`, and `by_stage` with every stage present).
+**One aggregate across the page, not one query per job** — that is the whole
+point of the change, and a `stage_counts` call per row would have satisfied
+the frontend's ask while leaving the cost exactly where it was.
+
+`by_stage` is **where applications are now, not where they have been**, so it
+sums to `total`. The funnel reading — "reached this stage at some point" —
+needs `application_events` and does not sum to anything; if the client ever
+wants it, that is a different endpoint and a much heavier query. Said plainly
+in the response docstring and in `backend-guide/05`, because the two readings
+differ only on rows that have moved, which is to say not at all on a fresh
+test fixture.
+
+**The counts are on the list and nowhere else.** Adding them to `JobResponse`
+would put them on `create`, `publish`, `pause` and `close` as well, where they
+are either a guaranteed zero or an extra query nobody asked for.
+
+### The direction of the dependency, which is the only interesting part
+
+`applications.service` already imports `jobs.service`. Reaching back the other
+way — `jobs` calling `applications` for the counts — makes the two modules
+mutually dependent, and that mutual import is exactly what `module-privacy`
+exists to prevent: it is what would make either one unextractable later.
+
+So `jobs.repository` reads the `applications` table as a `table()` construct
+rather than through its ORM model, and takes the stage names from
+`applications.domain`, which is pure and imports nothing. Same shape as
+`discovery` reading `scores` because it may not import `scoring`. Nothing new
+in the graph: `lint-imports` keeps all ten contracts.
+
+---
+
+## 2026-09-22 (later still) — E32, E35, E30, and a fuzzer that earned its keep
+
+Four items asked for: schemathesis, E32, E30, E31/E35.
+
+### E32 — the erasure destroys the sign-in
+
+`AdminDeleteUser`, plus the IAM grant. **Called before the database cascade,
+and that ordering is the whole design.** `erase_candidate` replaces
+`cognito_sub` with its SHA-256, so once it has run there is no identifier
+left to delete by — only a hash that addresses nothing in the pool. Putting
+the call first means every step before the cascade is retryable, so a Cognito
+outage releases the request back to RECEIVED with the person's data intact
+and still erasable. The other order destroys the data and leaves a sign-in
+nothing can ever name.
+
+Idempotent on `UserNotFoundException`, because the sweep retries and a second
+attempt must not fail on work the first one finished. An account nobody ever
+signed in to has no Cognito user, and none is asked for.
+
+### E35 — the college is told before it commits, not after
+
+A phone-only roster row is valid, is committed, is invited, and is then
+recorded SKIPPED `NO_CONTACT`. The college had no way of knowing that a third
+of their students would hear nothing.
+
+The preview now reports `unreachable_rows`. **The count is derived, not
+hardcoded**: `notifications.domain.roster_invitation_contact_fields()` reads
+`plan_for` and DLT readiness, so the day SMS returns it answers
+`{email, phone}` by itself and the warning disappears without anyone
+remembering to remove it. A constant would have to be remembered by whoever
+turns SMS back on, which is exactly the sort of thing nobody remembers.
+Recomputed on every read, because which channels work is a fact about the
+deployment and not about the file.
+
+Whether email should be *required* at import is left alone: it refuses data a
+college has, so it is their decision.
+
+### E31 — closed, and narrower than it read
+
+No code. The sweep is scheduled and the numbers are rows now, and the
+remaining clause — "the nudge SMS is SERVICE_EXPLICIT and needs recorded DND
+consent" — is **moot**: `NUDGE_TEMPLATES` is IN_APP and EMAIL only and a test
+holds it that way, so no nudge goes near a DND number. Recorded as closed
+with the condition that it returns with SMS, rather than inventing work to
+fill the item.
+
+### E30 — two of three
+
+**Orphaned PENDING rows**, swept hourly. A worker that dies between the
+decision transaction and the send leaves committed PENDING rows nobody owns.
+An event-sourced message gets another chance when the outbox redelivers it;
+**a nudge never does**, because its sequence number is already claimed — so
+those rows sat for ever, with no error anywhere saying so. The sweep
+re-resolves the contact rather than reading it back, because nothing stores
+it; that is also a correctness win, since a message for somebody since
+deleted now resolves to nothing and is dropped rather than sent to a
+stranger.
+
+**Unsubscribe**, RFC 8058. Two decisions worth recording:
+
+- *Headers, not a link in the body.* The body is a translated template, so a
+  visible link would mean a new variable in nine locale bundles and a
+  `TEMPLATES_VERSION` bump. `List-Unsubscribe` is what Gmail and Outlook
+  actually read to draw their own button anyway.
+- *POST, not GET.* Mail clients and scanners prefetch links in email. A GET
+  would unsubscribe people who never clicked, and we would never know.
+
+The endpoint is unauthenticated and is in the `PUBLIC` allowlist with the
+argument for it: requiring a sign-in to stop reminders is what makes people
+press the spam button instead, which costs the sending domain's reputation
+and takes every other message with it. The token turns nudges *off* and can
+do nothing else.
+
+PyJWT *warned* that the signing key was under 32 bytes; `Settings` now
+refuses to boot on one. A short HMAC key is a forgeable token, and the
+damage being small is not a reason to ship it.
+
+**Not done: bounce and complaint feedback.** `BOUNCED` and `COMPLAINED` exist
+as reasons and nothing writes them. The safe transport is SES → SNS → SQS,
+IAM-authenticated, rather than a public webhook needing SNS signature
+verification that cannot be tested against real SNS here — and none of it can
+be exercised until SES leaves the sandbox with a real domain (**E38**). It
+belongs with that work, and pretending otherwise would put an untestable
+pipeline in front of a service that is not sending.
+
+### schemathesis — the gate that was never met, and what it found
+
+The dependency had been declared since Day 15 with **no test using it**. 157
+operations are now fuzzed with hostile input, authenticated as a real
+candidate so the input reaches handlers rather than bouncing off
+`current_user`.
+
+Three real findings on the first runs:
+
+1. **Every operation documented only its success code and 422.** Not one
+   documented 401, 403, 404, 409 or 429, all of which this API returns
+   constantly — the suite asserts them by the hundred. The four client teams
+   generate their code from that document, and a generated client that treats
+   an undocumented status as a transport error retries a 409 or shows a crash
+   for a 403. Fixed in one place, over the finished schema.
+2. **Fixing that surfaced a second thing.** Mutating `app.openapi_schema`
+   once did nothing: FastAPI 0.141 regenerates the schema when the route set
+   has changed since it last built one, so post-processing before the final
+   route was registered is silently discarded and the served document is the
+   unmodified one. It has to wrap `app.openapi`.
+3. **A 500 on a pasted CV containing a NUL byte.** Postgres cannot store
+   `\x00` in text or JSONB at all, so it passed validation, passed the
+   service, and died in the asyncpg driver — on input any candidate can send,
+   and trivially reachable by pasting out of a corrupted PDF, which is the
+   exact population that endpoint serves. `normalise_pasted_text` now strips
+   C0 controls and DEL, keeping tab, newline and carriage return. Three
+   regression tests, including one holding normalisation idempotent, because
+   invariant 1 means the stored text is what is scored.
+
+**It also found something that is not a bug**, and the check is excluded with
+the reason: `positive_data_acceptance` fails an operation that refuses
+schema-compliant input, and this API refuses plenty, correctly. `city: ""` and
+`state_code: "00"` satisfy everything JSON Schema can express and are still
+not a city and not a state. Including that check would mean either permanent
+failures or watering down the validators to satisfy a test.
+
+**The suite is not green on the fuzzer yet** and it is marked `contract`
+rather than reported as passing (**E43**). A full run is about fifteen
+minutes.
+
+## 2026-09-22 (later) — E5: the CV reads text the employer cannot see
+
+`HIDDEN_TEXT` is one of only **two** rules allowed to reach HIGH, and HIGH is
+what removes a candidate from employer search before anyone has looked at
+them. It could not fire at any input: `ResumeClaims.hidden_text` defaulted to
+`""` and nothing ever populated it. So white-on-white keyword stuffing — the
+most widely documented way of gaming a CV screen — produced **no signal at
+all**, and the candidate reached employers with it.
+
+### What was actually broken, which was narrower than the blocker said
+
+Worth writing down, because the register overstated it and the correction
+changes how the risk reads.
+
+`INJECTED_INSTRUCTIONS` **always fired.** pypdf's `extract_text()` returns
+hidden and visible text in one string — it has no notion of the difference —
+so an injection buried in white text was already in `raw_text` and the
+pattern already matched. What was missing was *which*: the rule's
+`in_hidden_text` evidence was hardcoded False by the empty default, so a
+reviewer could not tell a deliberate injection from a candidate quoting the
+phrase in a line about prompt engineering. **That distinction is the entire
+basis for rating the rule HIGH**, so it mattered — but detection was not
+absent, and E5 said it was.
+
+What was genuinely absent is hidden text that is *not* an injection: a block
+of invented seniority and keywords in white-on-white, which matches no
+pattern and now raises `HIDDEN_TEXT` on length alone.
+
+### How it reads the page
+
+`app/modules/resume/hidden_text.py`. pypdf gives two callbacks on one pass:
+`visitor_operand_before` sees every operator, so a small graphics state
+tracks fill colour, text render mode and a `q`/`Q` stack; `visitor_text` then
+delivers each chunk and the state is read as it stands.
+
+**That ordering was verified, not assumed**, and it is the thing the design
+rests on. pypdf flushes an accumulated chunk when the text position jumps,
+*before* applying what comes next — so in `rg white / Tj / Tm / rg black /
+Tj / ET` the first chunk arrives while the state is still white. The one case
+it merges is two `Tj` with a colour change and no reposition between, which
+is attributed to the later colour: a miss, never a false positive. For a rule
+that hides people that is the right way round.
+
+Four reasons are reported: invisible render mode (`3 Tr`, `7 Tr`), near-white
+fill (`rg`/`g`/`k`/`scn`, luminance ≥ 0.92), sub-point type *after* the text
+and current transformation matrices, and off-page beyond an inch outside the
+MediaBox. .docx gets Word's own `w:vanish` and white runs.
+
+### The scored text does not move
+
+`raw_text` is still produced by the same plain `extract_text()` call, and the
+hidden analysis is a **separate second pass**. Byte-identical output, so no
+score changes and nothing needs re-scoring — which matters, because CLAUDE.md
+is explicit that changing the parser is a re-score rather than an upgrade.
+A test asserts it against pypdf's own output rather than a literal.
+
+That the model still reads the hidden keywords is deliberate, not an
+oversight: integrity signals never move a score (SRS 1.4.5). The remedy for a
+gamed CV is a HIGH signal and a human, not a quietly different number.
+
+`EXTRACTOR_REVISION` goes to 2 anyway. The text is unchanged, so this is not
+a re-score; the bump records that the extractor now produces a field older
+extractions do not have.
+
+### Built to miss rather than to guess
+
+A false positive here costs a real candidate real work, so two cases are
+refused on purpose and are tested as carefully as the true positives:
+
+- **An OCR text layer over a scan.** A candidate who scanned their CV and ran
+  it through Acrobat has an invisible text layer over the page image — every
+  character is mode 3. That is what a searchable scan *is*. Invisible-mode
+  text is therefore reported only when it is a *minority* of the document.
+  The discriminator is scoped to render mode alone: no scanner produces
+  white-on-white, so a wholly white document is still reported.
+- **Light-grey body text**, and white text on a coloured banner. The
+  luminance floor is 0.92, and the rule's own 80-character threshold does the
+  rest — a name and job title reversed out of a header are nowhere near it.
+
+### Three things found while building
+
+- **`analysed=False` is not "nothing found".** A stored `""` from a
+  successful pass means the CV is clean; a failed pass means nobody knows.
+  `HiddenTextReport` keeps them apart and `hidden_text_of` collapses them
+  only when handing text to the rules — a rule firing on our own missing data
+  would suppress candidates for a reason that has nothing to do with them.
+  The same distinction `scanner.py` insists on with PENDING and CLEAN.
+- **The detector never raises.** It is called outside the parser's `try`, so
+  a bug in it cannot surface to a candidate as an unreadable CV.
+- **The test payload was 79 characters** against a threshold of 80. Every
+  detector test passed while the rule they exist for fired at nothing. There
+  is now a test asserting the fixture clears the threshold.
+
+### Owed
+
+**CVs parsed before today carry no analysis** and are not re-checked.
+`was_analysed` returns False for them, so nothing reads them as clean. A
+re-run over existing versions is a decision, not a migration — it would raise
+HIGH signals against candidates who are already live.
+
+Not covered, and recorded rather than implied: text hidden by an `ExtGState`
+fill alpha (`/ca 0`), which needs the named resource resolved; and white text
+over a dark filled rectangle, which needs the rectangles tracked to rule out.
+
+## 2026-09-22 — The scheduler, the AWS deployment, config as rows, six languages
+
+A day of closing gaps that an audit surfaced rather than building features.
+Four of them were the same shape: **something that looked done and drove
+nothing.**
+
+### The scheduler (blockers E4) — the one that mattered
+
+`app/worker.py` said periodic work ran "via EventBridge Scheduler hitting a
+trigger endpoint - NOT Celery Beat", because "SQS has no native ETA/countdown".
+The premise is true and the conclusion does not follow. SQS cannot hold a
+delayed message, so `apply_async(countdown=...)` and `eta=` are unusable on
+this broker — but **Beat never asks the broker to delay anything**. It is a
+clock in its own process that publishes a task when it is due, as an ordinary
+immediate send.
+
+The trigger endpoint that docstring described was never built. There is no such
+path among the 141. So from Day 12 until today **nothing ran any of the seven
+sweeps**: no payment settled, no notification was dispatched, no re-score fired,
+and no accepted deletion request was ever carried out — the last of which is a
+promise to a user, not a missing feature.
+
+Built: `app/tasks/schedule.py`, one table like `routing.py`. Relay every 30s
+(it is the latency between paying and being subscribed); five hourly sweeps
+staggered across the hour because three take a lock; partitions daily at 00:00
+IST. Every entry carries `expires`, so a worker that was down comes back to one
+useful tick rather than sixty pointless ones.
+
+`tests/unit/test_beat_schedule.py` — 29 tests. The failure it exists for is the
+one that produced E4: a misspelt task name in a schedule is not an error at
+import, at boot, or when beat publishes it. It is a message a worker discards in
+silence, forever.
+
+**Run exactly one beat process.** It is a clock, not a worker; two run every
+sweep twice. The sweeps are idempotent, so that wastes work rather than
+corrupting anything — but it is still a misconfiguration.
+
+### Configuration is rows now, not invisible defaults
+
+Eight documents steer things a customer feels — how many candidates an employer
+may open in an hour, how long an application survives silence, when a college
+cohort is too small to report. **None of them had a row anywhere**: not in the
+baseline migration, not in `reset_local_db.sh`, not in any deploy step. Every
+reader fell back to a default in code, so production ran on numbers invisible
+unless you read the source, all of them ours rather than the client's.
+
+`scripts/seed_config.py` writes all eight. Two properties worth keeping:
+
+- **The values are not retyped.** Each document is built from the module's own
+  default object and then parsed back through that module's own strict reader
+  before anything is written. A default that changes in code changes here too.
+- **Version 1 only, never an update.** A key that already has a row is left
+  alone. A seed script that overwrites a deliberate number on every deploy is
+  worse than no seed script.
+
+**Running the script found three broken tests, which is the point.** Seeding
+is not a no-op even when every value equals the code default:
+
+- Two inserted their config row at a hardcoded `version = 1`, which the seed
+  now occupies (`UniqueViolationError`). The rest of the suite already used
+  `coalesce(max(version), 0) + 1`; `test_pipeline.py` was the outlier.
+- The third asserted `expiry_rules=code-v1` on the expiry event. `code-v1` is
+  the in-code default, stamped **only when no row exists** -- so that test was
+  really asserting *"the platform runs on numbers that live only in source"*,
+  which is the condition this work exists to end. It now reads the live row
+  with independent raw SQL and compares, which is a stronger assertion than
+  the literal was: it proves the sweep stamped the version of the row it
+  actually used. Verified in **both** states -- 19 passed with the row present
+  (`config-v1`) and 19 with it absent (`code-v1`), the latter being what CI
+  sees, since CI runs migrations and never seeds.
+
+`tests/unit/test_config_seed.py` runs every document through the real reader.
+The dangerous failure is not a missing row but a bad one: the readers are
+strict on purpose, so one misspelt key is a 500 on the college dashboard —
+found in production, by a customer. The key-discovery test initially found
+seven of eight (integrity declares its key without `: Final`), which is why it
+now carries a guard against passing vacuously.
+
+### The AWS deployment
+
+One EC2 host, docker compose, default VPC. Deliberately not production — the
+trade is written out in `aws-deployment.md` §1.3, and the one that matters is
+**no database backups**. Roughly $20-25/month against $90-140 for the real
+shape, and §7 is the migration to ECS Fargate + ALB + RDS + ElastiCache with a
+note of what carries over unchanged (the Dockerfile, the IAM policy document,
+the beat schedule, every setting).
+
+Three things worth recording:
+
+- **An instance role, not an access key.** The same policy document the IAM
+  user gets, attached to a role the instance assumes. No `AWS_ACCESS_KEY_ID`
+  anywhere on the box — and the `host_env_file` output says why, because adding
+  one would *override* the role with a long-lived secret on a public host.
+- **Remote state, at last.** `infra/bootstrap/` makes the S3 bucket and the
+  DynamoDB lock table; the main module migrates into them. The old local state
+  held the app IAM secret in plaintext on one laptop, and made drift invisible
+  — the Cognito changes of 2026-09-18 were written, never applied, and nothing
+  said so for four days (E7 looked closed and was not).
+- **The prod compose file mounts `init_db_roles.sql`.** Missed on the first
+  draft and caught before it shipped: without it Postgres starts with only the
+  superuser, and the tempting fix — pointing `DATABASE_URL` at it — makes every
+  RLS policy decoration while `\d+` still lists them.
+
+### Six languages (E39)
+
+The client named English, Hindi, Bengali, Kannada, Marathi and Punjabi.
+
+**Punjabi had no bundle and was not in `SUPPORTED_LOCALES`**, so `load_bundle`
+returned `{}` and every string fell back to English silently — a
+supported-looking language that translated nothing.
+
+Worse, and not specific to Punjabi: of 159 keys the product renders, **127 were
+in no bundle at all**. Every form label, interview question, questionnaire
+prompt and notification body carried a translation key and had no translation
+anywhere, in any language, including English. `translate` falls back to the key
+itself, so those render as `interview.q.about_you`.
+
+Now: English carries all 159 as the source; the five other priority locales
+carry all 159 translated; Gujarati, Tamil and Telugu keep their 32 and fall back
+per key (they predate the client's list, and removing a language somebody may
+have chosen is a product decision, not a tidy-up).
+
+`tests/unit/test_locales.py` holds key parity, placeholder parity — a Hindi
+pre-debit notice that lost `{amount}` tells somebody money will leave their
+account without saying how much — and the `needs_native_speaker_pass` flag,
+which is asserted so it cannot be dropped quietly. **We wrote these. They need
+a speaker of each to read them.**
+
+Two things the work turned up: `notifications/schemas.py` carries a hardcoded
+`LocaleCode` literal with an assertion against `LOCALE_CODES`, and it caught
+the missing `pa` immediately — a good pattern. And the pre-existing translation
+tests in `test_content_placeholders.py` duplicated the new ones, so they were
+moved into `test_locales.py`, with an `UNTRANSLATABLE` allowlist for GSTIN, TAN,
+CIN and AISHE — statutory identifiers that must stay unrecognisable-free on an
+Indian form.
+
+### Also
+
+- **`require_kyb_approved` deleted** from `app/core/deps.py`. A stub that
+  raised unconditionally from Day 4, exported and called by nothing. It could
+  never have been implemented there: deciding it means reading
+  `employers.kyb_status`, and `app.core` may not import `app.modules`. The real
+  gate was built in the services on Day 10, where it can read the row.
+- **S3 lifecycle on export archives** (E34 closed). Seven days, plus
+  non-current versions after one — versioning is on, so without the second line
+  the archive is still one API call away. The rule is the backstop; the 48h
+  sweep is the promise, and is now scheduled.
+- **Interview audio has no rule, on purpose** (E22). The retention period is
+  counsel's answer, not a number we pick because it looks reasonable. The
+  resource is written and commented out rather than left as a decision somebody
+  later mistakes for one.
+- **SES can verify a single mailbox** while the client has no domain (E38
+  narrowed). The catch that matters is not DKIM, it is the **sandbox**: until
+  production access is granted you can send only to verified addresses, so no
+  real candidate receives anything.
+- **`blockers.md` E24 was stale** — it said no speech model or evaluator was
+  chosen, four days after Sarvam and OpenAI were chosen and live-tested.
+
+### Owed, and not started
+
+- `terraform apply` — **the AWS access key in `~/.aws` is dead**
+  (`InvalidClientTokenId`), so nothing in this entry has been applied. All of
+  it is authored and statically validated only.
+- The frontend and mobile app are another team's (see the audit above): the
+  mobile app talks to **Supabase**, not this backend, and calls zero of the 53
+  `/candidate` endpoints.
+
 ## 2026-09-22 — Dashboard empty-data fallbacks
 
 Employer, college and admin dashboards now keep their full dashboard layouts
@@ -76,7 +513,7 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 | **Tests** | 2419 on 2026-09-18 (sign-up, accounts, discount codes), not yet pushed. 2324 on 2026-09-17 (Day 20). 2247 (Day 19). 2079 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
 | **Coverage** | 84% |
 | **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | **The twenty days are done**, and the client's sign-up decisions of 2026-09-18 are built. Outstanding: `terraform apply` for the Cognito changes (planned, not applied), the client's sending domain and SES production access (E38), the three discount-policy answers (E36), business MFA (E37), the sweeps' schedules (E4), a payment gateway (D3), AWS service activation (E2), and the decisions in `blockers.md`. DLT and Twilio (D1, D2) are deferred by the client. |
+| **Next** | **The twenty days are done.** 2026-09-22 closed the scheduler gap (E4), seeded configuration as rows, added the six-language set and wrote the single-host AWS deployment. **Nothing is applied to AWS**: the access key in `~/.aws` is dead, so the immediate next step is a new admin key and `terraform plan`. Then: SES production access (E38), a payment gateway (D3), a native-speaker pass on eight bundles (E39, C5), AWS service activation for Textract and GuardDuty (E2), and the decisions in `blockers.md`. The frontend and mobile app are another team's — the mobile app is wired to Supabase and calls none of this backend. |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a

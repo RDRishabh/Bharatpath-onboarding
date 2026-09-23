@@ -105,19 +105,44 @@ async def run_erasures(*, now: datetime, limit: int = SWEEP_BATCH) -> dict[str, 
 
 
 async def erase_one(*, dsr_id: uuid.UUID, user_id: uuid.UUID, now: datetime) -> str:
-    """Claim, delete the objects, run the cascade. `erased`, `skipped` or `failed`."""
+    """Claim, destroy what lives outside the database, then run the cascade.
+
+    `erased`, `skipped` or `failed`.
+
+    **The order is the whole design.** Every step before the cascade is
+    retryable, because the cascade is what makes its own inputs unreachable:
+    the S3 keys and the Cognito subject both live on rows it deletes or
+    empties. So anything that fails here releases the request back to
+    RECEIVED and the next sweep starts again from a state where the pointers
+    still exist. Run the cascade first and a failure afterwards is permanent
+    -- there is nothing left to name the object or the sign-in.
+
+    That is also why both outward steps are idempotent: a retry re-deletes an
+    object that is already gone and a Cognito user that is already absent,
+    and neither counts as an error.
+    """
     from app.core import storage
+    from app.core.auth.directory import get_account_directory
     from app.core.db import get_session_factory
     from app.modules.privacy import service
 
     factory = get_session_factory()
     async with factory() as session, session.begin():
-        keys = await service.begin_erasure(session, dsr_id=dsr_id, user_id=user_id)
-    if keys is None:
+        targets = await service.begin_erasure(session, dsr_id=dsr_id, user_id=user_id)
+    if targets is None:
         return "skipped"
     try:
-        for kind, key in keys:
+        for kind, key in targets.object_keys:
             await storage.delete_object(bucket=_bucket(kind), key=key)
+
+        # The sign-in itself (blockers E32). Before this, an erasure left the
+        # Cognito user standing, so someone erased and later signing in with
+        # the same address presented a subject whose hash we still held and
+        # was refused forever instead of starting fresh.
+        if targets.sign_in is not None:
+            pool, subject = targets.sign_in
+            await get_account_directory().delete_user(pool=pool, subject=subject)  # type: ignore[arg-type]
+
         async with factory() as session, session.begin():
             await service.complete_erasure(session, dsr_id=dsr_id, user_id=user_id, now=now)
     except Exception as exc:

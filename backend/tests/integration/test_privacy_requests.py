@@ -517,3 +517,124 @@ async def test_erase_candidate_refuses_business_accounts_and_no_policy(
                 await session.execute(
                     text("SELECT erase_candidate(:u, :p)"), {"u": str(user_id), "p": policy}
                 )
+
+
+# ===========================================================================
+# The sign-in itself (blockers E32, closed 2026-09-22)
+# ===========================================================================
+# Before this, an erasure emptied the `users` row and left the Cognito user
+# standing. `cognito_sub` is replaced by its SHA-256 rather than nulled, so a
+# token issued before the erasure still matched the DELETED row and was
+# refused -- which is right. But so was a *fresh* sign-in with the same
+# address, because Cognito handed back the same subject and its hash was
+# still on file. The person was locked out permanently instead of being able
+# to start again, and only support could fix it.
+async def test_an_erasure_destroys_the_cognito_user(
+    client: Any, mint_token: Any, fake_s3: FakeExportS3
+) -> None:
+    from app.core.auth.directory import get_account_directory
+    from app.tasks.privacy_requests import erase_one
+
+    directory = get_account_directory()
+    me = await _candidate(mint_token, scored=False)
+
+    requested = await client.post(f"{PRIVACY}/deletion", headers=me["headers"])
+    assert requested.status_code == 202, requested.text
+    dsr_id = uuid.UUID(requested.json()["id"])
+
+    before = len(directory.deleted)
+    assert await erase_one(dsr_id=dsr_id, user_id=me["id"], now=datetime.now(UTC)) == "erased"
+
+    asked = directory.deleted[before:]
+    assert [d["subject"] for d in asked] == [me["subject"]], (
+        "the erasure did not ask for the sign-in to be destroyed"
+    )
+    assert asked[0]["pool"] == "CANDIDATE"
+
+
+async def test_the_subject_is_read_before_the_cascade_destroys_it() -> None:
+    """**Why the order is what it is.** `erase_candidate` replaces
+    `cognito_sub` with its SHA-256, so after the cascade there is no
+    identifier left to delete the Cognito user by -- only a hash that
+    addresses nothing in the pool. Reading it afterwards reads the hash and
+    would ask Cognito to delete a user that does not exist.
+    """
+    from app.core.auth.users import erased_subject
+    from app.modules.privacy import repository
+
+    user_id, subject = uuid.uuid4(), f"local-test-{uuid.uuid4()}"
+    await _exec(
+        "INSERT INTO users (id, cognito_sub, pool, status, locale) "
+        "VALUES (:u, :s, 'CANDIDATE', 'ACTIVE', 'en')",
+        u=str(user_id),
+        s=subject,
+    )
+    async with sessions(_seed_url())() as session:
+        assert await repository.sign_in_to_destroy(session, user_id=user_id) == (
+            "CANDIDATE",
+            subject,
+        )
+
+    # Simulate what the cascade leaves behind.
+    await _exec(
+        "UPDATE users SET cognito_sub = :hashed WHERE id = :u",
+        u=str(user_id),
+        hashed=erased_subject(subject),
+    )
+    async with sessions(_seed_url())() as session:
+        after = await repository.sign_in_to_destroy(session, user_id=user_id)
+    assert after is not None
+    assert after[1] != subject, "reading after the cascade yields the hash, which deletes nothing"
+
+
+async def test_an_account_nobody_ever_signed_in_to_has_no_sign_in_to_destroy() -> None:
+    """A staff-created account that was never used has a `users` row and no
+    Cognito user. Asking Cognito to delete nothing would be an error we would
+    then have to special-case, so it is simply not asked."""
+    from app.modules.privacy import repository
+
+    user_id = uuid.uuid4()
+    await _exec(
+        "INSERT INTO users (id, pool, email, status, locale) "
+        "VALUES (:u, 'CANDIDATE', :e, 'ACTIVE', 'en')",
+        u=str(user_id),
+        e=f"{uuid.uuid4().hex[:12]}@example.test",
+    )
+    async with sessions(_seed_url())() as session:
+        assert await repository.sign_in_to_destroy(session, user_id=user_id) is None
+
+
+async def test_a_failed_cognito_delete_leaves_the_data_intact_for_a_retry(
+    client: Any, mint_token: Any, fake_s3: FakeExportS3, monkeypatch: Any
+) -> None:
+    """**The reason the Cognito call precedes the cascade.**
+
+    Every step before the cascade is retryable, because the cascade is what
+    makes its own inputs unreachable. So a Cognito outage releases the request
+    back to RECEIVED with the person's data still present and still erasable,
+    rather than destroying the data and leaving a sign-in nothing can name.
+    """
+    from app.core.auth import directory as directory_module
+    from app.tasks.privacy_requests import erase_one
+
+    me = await _candidate(mint_token, scored=False)
+    requested = await client.post(f"{PRIVACY}/deletion", headers=me["headers"])
+    dsr_id = uuid.UUID(requested.json()["id"])
+
+    class Refusing(directory_module.LocalAccountDirectory):
+        async def delete_user(self, *, pool: Any, subject: str) -> None:
+            raise directory_module.DirectoryError("cognito_ServiceUnavailable")
+
+    monkeypatch.setattr(directory_module, "get_account_directory", lambda: Refusing())
+
+    assert await erase_one(dsr_id=dsr_id, user_id=me["id"], now=datetime.now(UTC)) == "failed"
+
+    async with sessions(_seed_url())() as session:
+        state = await session.scalar(
+            text("SELECT state FROM dsr_requests WHERE id = :d"), {"d": str(dsr_id)}
+        )
+        status = await session.scalar(
+            text("SELECT status FROM users WHERE id = :u"), {"u": str(me["id"])}
+        )
+    assert state == "RECEIVED", "a failure must return the request to the queue"
+    assert status == "ACTIVE", "the person must still be erasable on the next sweep"

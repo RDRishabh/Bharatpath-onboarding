@@ -28,6 +28,7 @@ from app.modules.notifications.templates import (
     MAX_VARIABLE_CHARS,
     MessageTemplate,
     is_dlt_ready,
+    template_by_code,
 )
 
 IST: Final = timezone(timedelta(hours=5, minutes=30), "IST")
@@ -291,6 +292,50 @@ def delivery_decision(
     if not provider_configured:
         return "SKIPPED", "PROVIDER_UNCONFIGURED"
     return "PENDING", None
+
+
+# ---------------------------------------------------------------------------
+# What a roster invitation can actually reach (blockers E35)
+# ---------------------------------------------------------------------------
+#: Channel -> the roster column that can carry it.
+_CONTACT_FIELD_FOR_CHANNEL: Final[dict[str, str]] = {"SMS": "phone", "EMAIL": "email"}
+
+#: The event a committed roster row raises.
+ROSTER_INVITATION_EVENT: Final = "college.invitation_sent"
+
+
+def roster_invitation_contact_fields() -> frozenset[str]:
+    """Which roster columns an invitation can actually be delivered to.
+
+    `{"email"}` today. A roster row needs a phone *or* an email, and an
+    invitation used to go to both -- but with SMS deferred (2026-09-18) a
+    phone-only row is recorded SKIPPED `NO_CONTACT` and the student never
+    hears anything, while the college has no way of knowing (blockers E35).
+    `college.service` uses this to say so at preview time, before they
+    commit.
+
+    **Derived from the plan and from DLT readiness, never hardcoded.** When
+    SMS returns -- a registered template id and a route in `plan_for` -- this
+    answers `{"email", "phone"}` on its own and the college's preview stops
+    warning about rows that are now perfectly reachable. A constant here
+    would have to be remembered by whoever turns SMS back on, which is
+    exactly the sort of thing nobody remembers.
+
+    Deliberately *not* a function of whether a provider is configured. That
+    is an operational state of one deployment; a roster is data, and a
+    college re-uploading their CSV because our SES key was missing would be
+    the wrong advice.
+    """
+    fields: set[str] = set()
+    for planned in plan_for(ROSTER_INVITATION_EVENT, {}):
+        for code in planned.templates:
+            template = template_by_code(code)
+            if template is None or not is_dlt_ready(template):
+                continue
+            field = _CONTACT_FIELD_FOR_CHANNEL.get(template.channel)
+            if field is not None:
+                fields.add(field)
+    return frozenset(fields)
 
 
 # ---------------------------------------------------------------------------

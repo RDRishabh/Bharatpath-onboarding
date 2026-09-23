@@ -13,8 +13,9 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import Field, field_validator
 
+from app.core.schemas import ApiSchema
 from app.modules.candidate.domain import (
     MAX_CITY_LENGTH,
     MAX_NAME_LENGTH,
@@ -26,8 +27,9 @@ from app.modules.discovery.domain import MAX_CARD_SKILLS, MAX_EXPERIENCE_YEARS, 
 from app.modules.discovery.schemas import Badge, ScoreBand
 
 
-class _Base(BaseModel):
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
+class _Base(ApiSchema):
+    """Every schema in this module. `ApiSchema` strips the control
+    characters Postgres cannot store -- see `app/core/schemas.py`."""
 
 
 class LocationRequest(_Base):

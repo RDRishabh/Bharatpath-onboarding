@@ -72,6 +72,48 @@ async def claim_pending(
     return result.scalar_one_or_none()
 
 
+async def orphaned_pending(
+    session: AsyncSession, *, cutoff: datetime, limit: int
+) -> list[Notification]:
+    """PENDING rows decided a while ago and never handed to a provider.
+
+    **How a message is orphaned.** `dispatch_event` decides every message in
+    one transaction and commits; `send_all` then sends each in its own. A
+    worker that dies in between leaves committed PENDING rows that no longer
+    have anybody to send them.
+
+    An event-sourced message gets another chance when the outbox redelivers
+    it -- `send` finds the row still PENDING and sends it. **A nudge does
+    not**: its sequence number is already claimed
+    (`uq_profile_nudges_sequence`), so the sweep will not generate it again
+    and nothing will ever pick the row up. This is the only path back for
+    those (blockers E30).
+
+    `cutoff` keeps the sweep away from messages a live worker is mid-way
+    through: a row decided seconds ago is far more likely to be in flight
+    than abandoned, and racing it wastes a provider call. Oldest first, so a
+    backlog drains in the order people were meant to hear.
+
+    **Account-addressed messages only.** A roster invitation addresses a
+    contact a college uploaded, and re-resolving it needs that college's
+    tenant bound -- which this row does not carry, and which would mean a new
+    cross-tenant read path for a case that already has a way back: an
+    invitation is event-sourced, so the outbox redelivers it. The nudge is
+    the one with no second chance, and the nudge has a `user_id`.
+    """
+    result = await session.execute(
+        select(Notification)
+        .where(
+            Notification.state == "PENDING",
+            Notification.created_at < cutoff,
+            Notification.user_id.is_not(None),
+        )
+        .order_by(Notification.created_at)
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
 async def pending_by_key(session: AsyncSession, *, dedupe_key: str) -> uuid.UUID | None:
     result = await session.execute(
         select(Notification.id).where(

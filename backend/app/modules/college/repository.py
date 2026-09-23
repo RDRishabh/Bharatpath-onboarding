@@ -518,6 +518,36 @@ async def send_pending(
     return [row[0] for row in result.all()]
 
 
+async def unreachable_valid_rows(
+    session: AsyncSession, *, import_id: uuid.UUID, contact_fields: frozenset[str]
+) -> int:
+    """Valid rows an invitation could not be delivered to (blockers E35).
+
+    A roster row needs a phone *or* an email. With SMS deferred a phone-only
+    row is perfectly valid, is committed, raises its event, and is then
+    recorded SKIPPED `NO_CONTACT` -- and until 2026-09-22 the college had no
+    way of knowing. This is what the preview reports so they can go and get
+    email addresses before committing rather than after.
+
+    `contact_fields` comes from `notifications.domain`, so when SMS returns
+    this counts zero on its own.
+    """
+    if not contact_fields:
+        # Nothing can be delivered at all. Every valid row is unreachable,
+        # and saying so is more use than a zero.
+        columns = "TRUE"
+    else:
+        columns = " AND ".join(f"{field} IS NULL" for field in sorted(contact_fields))
+    total = await session.scalar(
+        text(
+            f"SELECT count(*) FROM roster_entries "  # noqa: S608 - names, not values
+            f"WHERE import_id = :import_id AND row_state = 'VALID' AND ({columns})"
+        ),
+        {"import_id": str(import_id)},
+    )
+    return int(total or 0)
+
+
 async def invitation_rows(
     session: AsyncSession, *, tenant_id: uuid.UUID, import_id: uuid.UUID
 ) -> list[tuple[str | None, datetime | None]]:

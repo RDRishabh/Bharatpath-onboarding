@@ -1,0 +1,6 @@
+# This module's own state is local and stays local -- it is the chicken that
+# lays the egg. Two resources, no secrets; losing it costs an import.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl

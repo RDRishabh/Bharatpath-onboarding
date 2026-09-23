@@ -228,9 +228,31 @@ class Settings(BaseSettings):
     twilio_messaging_service_sid: str | None = None
     notifications_email_from: str | None = None
 
+    # -- unsubscribe (blockers E30) -----------------------------------------
+    # A nudge is the only message a person may reasonably not want, and until
+    # 2026-09-22 an email carried no way to stop them without signing in.
+    #
+    # **Both must be set or no link is offered**, which is the honest failure:
+    # a `List-Unsubscribe` header pointing at a URL we cannot serve, or a
+    # token we cannot verify, is worse than no header -- a mail client shows
+    # an Unsubscribe button that silently does nothing, and the complaint
+    # that follows costs more reputation than the nudge earned.
+    notifications_unsubscribe_secret: SecretStr | None = None
+    #: Public origin of this API, e.g. `https://api.bharatpath.in`. No
+    #: trailing slash.
+    public_api_base_url: str = ""
+
     # -- celery ------------------------------------------------------------
     celery_broker_url: str = "sqs://"
     celery_result_backend: str | None = None
+
+    # Where Celery Beat keeps the last-run time of each periodic task
+    # (`app/tasks/schedule.py`). It must survive a container restart: a beat
+    # that starts with no state treats every task as never-run and fires the
+    # lot at once, which on the daily partition sweep is harmless and on the
+    # erasure sweep is simply early. Put it on a mounted volume in any
+    # deployment -- `docs/aws-deployment.md`.
+    celery_beat_schedule_path: str = "/var/run/bharatpath/celerybeat-schedule"
 
     # -- cognito -----------------------------------------------------------
     # Two pools, matching the two authentication models the PRD requires.
@@ -343,6 +365,24 @@ class Settings(BaseSettings):
                 "AUTH_ALLOW_LOCAL_TOKENS must not be set in staging or production: "
                 "it enables a token issuer whose signing key this process generates "
                 "itself, so anyone who can reach the API could mint any identity."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _the_unsubscribe_secret_is_long_enough(self) -> Settings:
+        """A short HMAC key is a forgeable token, and PyJWT only warns.
+
+        RFC 7518 3.2 wants at least as many bits as the hash: 32 bytes for
+        HS256. The token this signs only turns somebody's reminders off, so
+        the damage is small -- but "small damage, easily forged" is still not
+        a thing to ship, and a boot-time refusal costs nothing next to
+        discovering it from a mailbox provider's complaint feed.
+        """
+        secret = self.notifications_unsubscribe_secret
+        if secret is not None and len(secret.get_secret_value().encode()) < 32:
+            raise ValueError(
+                "NOTIFICATIONS_UNSUBSCRIBE_SECRET must be at least 32 bytes (RFC 7518 3.2). "
+                'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
             )
         return self
 

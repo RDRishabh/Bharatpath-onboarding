@@ -23,13 +23,15 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
+from app.core.schemas import ApiSchema
 from app.modules.admin.domain import MAX_DISPUTE_DESCRIPTION, MAX_RESOLUTION, DisputeKind
 
 
-class _Base(BaseModel):
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
+class _Base(ApiSchema):
+    """Every schema in this module. `ApiSchema` strips the control
+    characters Postgres cannot store -- see `app/core/schemas.py`."""
 
 
 # ---------------------------------------------------------------------------

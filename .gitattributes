@@ -1,0 +1,28 @@
+# Line endings.
+#
+# Git on Windows defaults to `core.autocrlf=true`, which rewrites every text
+# file to CRLF on checkout. For a file that only Windows reads that is
+# harmless. For a file a *Linux container* runs it is not: the shell reads the
+# trailing \r as part of the last word, so `set -euo pipefail` becomes
+# `set -euo pipefail\r` and the script dies on line 3 with
+# "set: pipefail: invalid option name".
+#
+# That is not a theoretical failure. `scripts/init_localstack.sh` is mounted
+# into the LocalStack container as a ready hook; when it dies that way it
+# creates none of the six buckets, and the first presigned upload answers
+# `NoSuchBucket` -- which looks like a backend bug and is a checkout artefact.
+#
+# So: anything executed inside a container, or by Git Bash, is LF in the
+# working tree regardless of platform.
+*.sh    text eol=lf
+*.sql   text eol=lf
+*.bash  text eol=lf
+
+# Windows-native scripts want CRLF for the same reason, in reverse.
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# Everything else: normalise to LF in the repository, let Git decide the
+# working tree.
+*       text=auto

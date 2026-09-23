@@ -22,7 +22,9 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, Field
+
+from app.core.schemas import ApiSchema
 
 ApplicationStage = Literal[
     "SUBMITTED",
@@ -42,8 +44,9 @@ EventKind = Literal["STAGE_CHANGED", "INTERVIEW_SCHEDULED", "HIRE_PROPOSED", "HI
 Actor = Literal["CANDIDATE", "EMPLOYER", "SYSTEM"]
 
 
-class _Base(BaseModel):
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
+class _Base(ApiSchema):
+    """Every schema in this module. `ApiSchema` strips the control
+    characters Postgres cannot store -- see `app/core/schemas.py`."""
 
 
 class ApplyRequest(_Base):

@@ -52,9 +52,12 @@ from app.modules.jobs import repository
 from app.modules.jobs.domain import coarse_count, eligibility, is_editable, refuse_transition
 from app.modules.jobs.events import MODULE
 from app.modules.jobs.schemas import (
+    ApplicationStageCounts,
     BoardJobDetail,
     BoardJobSummary,
     CreateJobRequest,
+    JobListItem,
+    JobResponse,
     UpdateJobRequest,
 )
 from app.modules.scoring import service as scoring_service
@@ -124,11 +127,32 @@ async def create_job(
     return job
 
 
-async def list_jobs(session: AsyncSession, *, ctx: TenantContext, status: str | None) -> Any:
+async def list_jobs(
+    session: AsyncSession, *, ctx: TenantContext, status: str | None
+) -> list[JobListItem]:
+    """The organisation's jobs, newest first, each with its pipeline counts.
+
+    The counts are a second aggregate over the page, not a query per job. An
+    employer's list is the screen every other employer screen is reached
+    from, and it is the one place where reading the pipeline per row would
+    turn one request into one per job.
+    """
     tenant_id = await _bind(session, ctx)
-    return await repository.list_jobs(
+    jobs = await repository.list_jobs(
         session, tenant_id=tenant_id, status=status, limit=MAX_JOB_LIST
     )
+    counts = await repository.stage_counts(
+        session, tenant_id=tenant_id, job_ids=[job.id for job in jobs]
+    )
+    return [
+        JobListItem(
+            **JobResponse.model_validate(job).model_dump(),
+            application_counts=ApplicationStageCounts(
+                total=sum(counts[job.id].values()), by_stage=counts[job.id]
+            ),
+        )
+        for job in jobs
+    ]
 
 
 async def get_job(session: AsyncSession, *, ctx: TenantContext, job_id: uuid.UUID) -> Any:

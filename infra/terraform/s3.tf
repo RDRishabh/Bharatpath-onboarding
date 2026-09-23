@@ -81,3 +81,76 @@ resource "aws_s3_bucket_cors_configuration" "uploads" {
     max_age_seconds = 3000
   }
 }
+
+# ---------------------------------------------------------------------------
+# Lifecycle -- the two buckets that must forget things
+# ---------------------------------------------------------------------------
+# Added 2026-09-22, closing the infrastructure half of blockers E34 and E22.
+#
+# **A bucket rule and a sweep are not the same guarantee, and both are
+# wanted.** `privacy.expire_exports` deletes an archive after 48 hours and
+# clears the pointer on the request row, which the bucket cannot do -- the row
+# would otherwise name an object that is gone. But the sweep runs in our
+# worker, and a worker that is down, misconfigured or unscheduled (which it
+# was, from Day 20 until Beat existed) keeps nothing to its word. The rule
+# below is the floor underneath that: it holds even when nothing of ours runs.
+#
+# So the sweep is the product behaviour and the rule is the backstop. Neither
+# replaces the other, and the rule is deliberately the more generous of the
+# two so that it never deletes an object the sweep still expects to find.
+
+resource "aws_s3_bucket_lifecycle_configuration" "exports" {
+  bucket = aws_s3_bucket.this["exports"].id
+
+  # An export is a whole person's record in one object -- every field we hold
+  # about them, zipped, behind a 10-minute link. `EXPORT_RETENTION_HOURS` is
+  # 48 in `privacy/domain.py`; 7 days here is the backstop, not the promise,
+  # and it is longer on purpose. A rule that fired at 48h would race the sweep
+  # and delete archives it was about to account for.
+  rule {
+    id     = "expire-export-archives"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = 7
+    }
+
+    # Versioning is on for every bucket (invariant 1), so deleting an object
+    # leaves the old version behind. Without this the archive is still there,
+    # one API call away, and the rule would be theatre.
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+}
+
+# Interview audio: blockers E22. **This rule is commented out, deliberately.**
+#
+# Recordings of a candidate's voice are kept with no lifecycle rule today.
+# The retention period is a question for the client and their counsel -- how
+# long after evaluation may we keep somebody's voice? -- and it is not ours to
+# answer by picking a number that looks reasonable. A recording is also needed
+# for as long as a dispute about the session could be raised, which is the
+# same unanswered question as B3's retention period.
+#
+# Uncomment and set `interview_audio_retention_days` once that lands. Until
+# then the honest state is "kept indefinitely, and recorded as such", not a
+# rule somebody will later mistake for a decision.
+#
+# resource "aws_s3_bucket_lifecycle_configuration" "interview_audio" {
+#   bucket = aws_s3_bucket.this["interview_audio"].id
+#
+#   rule {
+#     id     = "expire-interview-audio"
+#     status = "Enabled"
+#     filter {}
+#     expiration { days = var.interview_audio_retention_days }
+#     noncurrent_version_expiration { noncurrent_days = 7 }
+#   }
+# }

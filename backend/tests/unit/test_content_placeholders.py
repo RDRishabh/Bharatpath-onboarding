@@ -19,15 +19,6 @@ from app.core.forms import (
     INDIAN_MOBILE_PATTERN,
     PAN_PATTERN,
 )
-from app.core.i18n import (
-    DEFAULT_LOCALE,
-    SUPPORTED_LOCALES,
-    load_bundle,
-    missing_keys,
-    placeholders,
-    translate,
-    translation_coverage,
-)
 from app.modules.college.forms import COLLEGE_FORM
 from app.modules.courses.catalogue import (
     ASSESSMENT_PASS_FRACTION,
@@ -515,90 +506,15 @@ def test_the_upi_pre_debit_notice_exists_and_says_when_and_how_much() -> None:
 
 
 # ===========================================================================
-# Translations
+# Translations -- moved to tests/unit/test_locales.py on 2026-09-22
 # ===========================================================================
-
-LOCALE_CODES = [loc.code for loc in SUPPORTED_LOCALES]
-
-
-def test_the_client_asked_for_six_to_eight_languages() -> None:
-    assert 6 <= len(SUPPORTED_LOCALES) <= 8
-
-
-@pytest.mark.parametrize("code", LOCALE_CODES)
-def test_every_locale_translates_every_english_key(code: str) -> None:
-    assert missing_keys(code) == (), f"{code} is missing {missing_keys(code)}"
-    assert translation_coverage(code) == 1.0
-
-
-@pytest.mark.parametrize("code", LOCALE_CODES)
-def test_no_locale_invents_a_key_english_does_not_have(code: str) -> None:
-    """A key that exists only in a translation is a key nothing renders."""
-    extra = set(load_bundle(code)) - set(load_bundle(DEFAULT_LOCALE))
-    assert not extra, f"{code} has keys nothing uses: {sorted(extra)}"
-
-
-@pytest.mark.parametrize("code", LOCALE_CODES)
-def test_every_translation_keeps_every_variable(code: str) -> None:
-    """**The failure this whole file exists for.** A Hindi OTP message that
-    lost `{code}` sends a sentence with no code in it, to a user who cannot
-    read the English one, and nothing else would catch it."""
-    english = load_bundle(DEFAULT_LOCALE)
-    bundle = load_bundle(code)
-    for key, source in english.items():
-        assert placeholders(bundle[key]) == placeholders(source), f"{code}:{key}"
-
-
-@pytest.mark.parametrize("code", LOCALE_CODES)
-def test_a_translation_is_not_just_the_english_copied(code: str) -> None:
-    if code == DEFAULT_LOCALE:
-        return
-    english = load_bundle(DEFAULT_LOCALE)
-    bundle = load_bundle(code)
-    identical = [k for k, v in bundle.items() if v == english[k]]
-    assert not identical, f"{code} left {identical} untranslated"
-
-
-def test_a_missing_string_falls_back_per_key_not_per_screen() -> None:
-    """Falling back to the whole English bundle means one untranslated key
-    silently reverts a screen, which is worse and harder to notice."""
-    assert translate("common.continue", "hi") != translate("common.continue", "en")
-
-
-def test_an_unknown_locale_renders_english_rather_than_failing() -> None:
-    """A user whose stored language no longer ships asked to look at a job, not
-    to choose a language."""
-    assert translate("common.continue", "xx") == "Continue"
-
-
-def test_a_missing_key_shows_the_key_rather_than_nothing() -> None:
-    """Ugly, obvious and greppable beats an empty string that looks like a
-    working screen with nothing on it."""
-    assert translate("nothing.here", "en") == "nothing.here"
-
-
-def test_substitution_works_and_never_raises() -> None:
-    assert "98765" in translate("auth.code_sent", "en", phone="98765")
-    # A caller that forgets a parameter gets a visibly wrong message, not a 500
-    # inside the code path that was trying to send it.
-    assert translate("auth.code_sent", "en") == "We have sent a code to {phone}"
-
-
-def test_the_eligibility_message_gives_no_reasoning() -> None:
-    """Blocker C10: the candidate is told the requirement is not met and
-    nothing else. The score is never explained."""
-    for code in LOCALE_CODES:
-        message = translate("eligibility.below_threshold", code)
-        assert not re.search(r"\d", message), f"{code} leaks a number"
-
-
-def test_every_locale_names_itself_in_its_own_script() -> None:
-    """A language picker written in English is unusable by the people who most
-    need it."""
-    for locale in SUPPORTED_LOCALES:
-        if locale.code != "en":
-            assert locale.endonym != locale.english_name
-            assert not locale.endonym.isascii()
+#
+# They outgrew a section of this file when the client named six languages and
+# 127 product keys (form labels, interview questions, notification bodies)
+# were added to the bundles. `test_locales.py` also holds the two rules this
+# section could not express: that only `PRIORITY_LOCALES` are held to full
+# coverage, and that every bundle must declare whether a native speaker has
+# actually read it.
 
 
 # ===========================================================================

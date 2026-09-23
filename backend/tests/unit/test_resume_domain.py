@@ -140,6 +140,35 @@ def test_normalisation_is_idempotent() -> None:
     assert normalise_pasted_text(once) == once
 
 
+def test_a_nul_byte_never_reaches_the_database() -> None:
+    """**Regression, found by the fuzzer on 2026-09-22.**
+
+    Postgres cannot store `\x00` in a text or JSONB value at all. A pasted CV
+    containing one passed validation, passed the service, and died in the
+    asyncpg driver as `A string literal cannot contain NUL (0x00)
+    characters` -- a 500, on input any candidate can send. It is trivially
+    reachable by pasting out of a corrupted PDF, which is exactly the
+    population this endpoint exists to serve.
+    """
+    assert "\x00" not in normalise_pasted_text("Priya Sharma\x00\nMicrobiology, Pune")
+
+
+def test_control_characters_are_stripped_and_real_whitespace_is_not() -> None:
+    """The sweep has to be narrow. Tab, newline and carriage return carry
+    layout a CV depends on; the rest cannot be typed deliberately, do not
+    survive rendering, and each is a way to make two CVs that look identical
+    store differently."""
+    assert normalise_pasted_text("a\x01b\x0bc\x7fd") == "abcd"
+    assert normalise_pasted_text("a\tb\nc\n\n\n\nd") == "a\tb\nc\n\nd"
+
+
+def test_stripping_controls_leaves_normalisation_idempotent() -> None:
+    """Invariant 1 again: the stored text is what is scored, so a second pass
+    over an already-stored value must not change it."""
+    once = normalise_pasted_text("a\x00\r\n\r\n  b\x0c  \n\n")
+    assert normalise_pasted_text(once) == once
+
+
 # --- legacy .doc (blockers E3, closed 2026-09-15) -------------------------------
 def test_a_legacy_doc_is_refused_at_upload_with_its_own_code() -> None:
     rejection = validate_upload(head=DOC, size_bytes=4096, max_bytes=MAX, allowed=ALLOWED)

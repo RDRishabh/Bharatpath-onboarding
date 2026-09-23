@@ -40,6 +40,7 @@ async def _detect(score_id: str) -> dict[str, Any]:
     from app.core.db import get_session_factory
     from app.modules.integrity import service as integrity_service
     from app.modules.resume import service as resume_service
+    from app.modules.resume.hidden_text import hidden_text_of
     from app.modules.resume.service import VersionNotFoundError
     from app.modules.scoring import service as scoring_service
 
@@ -68,7 +69,17 @@ async def _detect(score_id: str) -> dict[str, Any]:
             candidate_id=score.user_id,
             resume_version_id=score.resume_version_id,
             extracted=extracted,
+            # `raw_text` is everything pypdf read, hidden text included -- it
+            # has no notion of the difference, which is why the hidden part is
+            # identified separately rather than subtracted here. Passing the
+            # whole document as `visible_text` is therefore correct: it is
+            # what a reader plus a reader-of-the-file would between them see.
             visible_text=raw_text if isinstance(raw_text, str) else "",
+            # Blockers E5, closed 2026-09-22. Empty for versions created
+            # before then, for a failed analysis, and for a clean CV alike
+            # (`hidden_text_of`); the distinction lives in the stored record,
+            # not in what the rules are handed.
+            hidden_text=hidden_text_of(parsed),
             as_of=score.computed_at,
         )
 

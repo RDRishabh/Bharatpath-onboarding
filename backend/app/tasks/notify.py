@@ -55,3 +55,35 @@ async def send_all(outgoing: list[Any]) -> dict[str, int]:
         elif state == "FAILED":
             counts["failed"] += 1
     return counts
+
+
+@celery_app.task(name="notifications.send_orphaned", bind=True, max_retries=3)
+def send_orphaned(self: Any) -> dict[str, int]:
+    """Send messages a crashed worker decided and never handed to a provider.
+
+    Blockers E30. `dispatch_event` commits every message as PENDING in one
+    transaction and `send_all` then sends each in its own, so a worker that
+    dies in between leaves committed rows nobody owns.
+
+    An event-sourced message gets another chance when the outbox redelivers
+    it. **A nudge does not** -- its sequence number is already claimed, so
+    the nudge sweep will never generate it again and without this the row
+    would sit PENDING for ever, which is a person not hearing from us and no
+    error anywhere saying so.
+    """
+    import asyncio
+
+    return asyncio.run(run_orphaned())
+
+
+async def run_orphaned() -> dict[str, int]:
+    from app.core.db import get_session_factory
+    from app.modules.notifications import service
+
+    async with get_session_factory()() as session, session.begin():
+        outgoing = await service.orphaned_messages(session)
+
+    outcomes = await send_all(outgoing)
+    if outgoing:
+        logger.info("notifications_orphan_sweep", recovered=len(outgoing), **outcomes)
+    return {"recovered": len(outgoing), **outcomes}

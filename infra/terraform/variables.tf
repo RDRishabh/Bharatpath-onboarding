@@ -66,3 +66,103 @@ variable "dmarc_report_address" {
   type        = string
   default     = ""
 }
+
+# ---------------------------------------------------------------------------
+# Email without a domain (2026-09-22)
+# ---------------------------------------------------------------------------
+variable "email_sender_address" {
+  description = <<-DESC
+    A single mailbox to send from while the client has no domain (blockers
+    E38). SES verifies ONE address rather than a whole domain: it emails a
+    confirmation link to this address, and once somebody clicks it the
+    account may send `From:` that address and nothing else.
+
+    This is the stop-gap, not the destination. Set `email_domain` instead as
+    soon as the domain and its DNS exist -- an address identity cannot carry
+    DKIM alignment, so mail sent this way is markedly more likely to be
+    filtered as spam, and every message is From: a personal-looking mailbox.
+
+    Ignored when `email_domain` is set: a domain identity covers every
+    address at that domain, so both would be redundant.
+  DESC
+  type        = string
+  default     = ""
+}
+
+# ---------------------------------------------------------------------------
+# The single-host test deployment (2026-09-22) -- see ec2.tf
+# ---------------------------------------------------------------------------
+variable "deploy_ec2" {
+  description = <<-DESC
+    Create the EC2 test host. **Default false, and that matters:** everything
+    else in this module is free at idle, so the standing assumption has been
+    that nothing bills between sessions. An instance breaks that assumption,
+    so switching it on is a deliberate act.
+
+      terraform apply -var deploy_ec2=true
+      terraform apply -var deploy_ec2=false   # tears the host down again
+
+    The EBS data volume has `prevent_destroy`, so switching it off stops the
+    instance bill and keeps the database.
+  DESC
+  type        = bool
+  default     = false
+}
+
+variable "instance_type" {
+  description = <<-DESC
+    t3.small (2 vCPU, 2 GiB, ~$15/month in ap-south-1) runs the API, worker,
+    beat, Postgres and Redis together for a test environment.
+
+    x86_64 rather than Graviton on purpose -- `backend/Dockerfile` is built
+    wherever it is run, and an image built on an x86 machine will not start
+    on ARM. Move to t4g when images are built in CI for a pinned arch.
+
+    2 GiB is enough and not generous: Postgres and Redis take their share.
+    If the worker is OOM-killed under a real CV load, t3.medium is the step.
+  DESC
+  type        = string
+  default     = "t3.small"
+}
+
+variable "data_volume_size_gb" {
+  description = "Postgres's data directory. Separate from the root volume so replacing the instance does not destroy the database."
+  type        = number
+  default     = 20
+}
+
+variable "ssh_allowed_cidrs" {
+  description = <<-DESC
+    Who may reach port 22. **Narrow this.** The default is open because an
+    empty default locks the first person out of the host they just created,
+    but an internet-facing SSH port is the one rule here worth changing
+    before the instance has been up a day.
+
+      terraform apply -var 'ssh_allowed_cidrs=["203.0.113.4/32"]'
+
+    Session Manager works with no SSH at all (the instance role carries
+    AmazonSSMManagedInstanceCore), so `[]` is a real option.
+  DESC
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "ssh_public_key" {
+  description = "An OpenSSH public key for the host. Leave empty to use Session Manager only, which needs no key and no open port."
+  type        = string
+  default     = ""
+}
+
+variable "api_domain" {
+  description = <<-DESC
+    A hostname pointing at this instance's elastic IP. When set, Caddy gets a
+    real Let's Encrypt certificate for it automatically; when empty it serves
+    the IP over a self-signed certificate, which browsers and most HTTP
+    clients will refuse until told otherwise.
+
+    Anything resolvable works for a test environment -- it does not have to be
+    the client's production domain, and it is unrelated to `email_domain`.
+  DESC
+  type        = string
+  default     = ""
+}
