@@ -141,6 +141,30 @@ class SeatAllocationResponse(_Base):
 
 
 # ---------------------------------------------------------------------------
+# Candidates -- the list is how staff find someone to drill into. Audited,
+# because unlike an organisation list every row names a person.
+# ---------------------------------------------------------------------------
+class CandidateRow(_Base):
+    """Enough to tell two people apart and pick one. The score, the CV and
+    everything else the drill-down counts stay behind the drill-down, which
+    audits the one person opened."""
+
+    id: uuid.UUID
+    status: str
+    full_name: str | None
+    city: str | None
+    state_code: str | None
+    phone_masked: str | None
+    email_masked: str | None
+    created_at: datetime
+
+
+class CandidatesPage(_Base):
+    items: list[CandidateRow]
+    next_cursor: str | None
+
+
+# ---------------------------------------------------------------------------
 # Drill-downs -- every open is audited
 # ---------------------------------------------------------------------------
 class SubscriptionSummary(_Base):

@@ -35,6 +35,7 @@ from app.modules.admin.schemas import (
     AllocateSeatsRequest,
     AuditEventsPage,
     CandidateDrilldown,
+    CandidatesPage,
     CollegeDrilldown,
     CreateDiscountCodeRequest,
     DiscountCodeResponse,
@@ -324,6 +325,39 @@ async def allocate_seats(
 # ---------------------------------------------------------------------------
 # Drill-downs
 # ---------------------------------------------------------------------------
+@router.get(
+    "/candidates",
+    response_model=CandidatesPage,
+    dependencies=can("candidate_drilldown"),
+    summary="Candidate accounts, newest first (audited)",
+)
+async def list_candidates(
+    request: Request,
+    user: CurrentUser,
+    session: DbSession,
+    status_filter: Literal["ACTIVE", "SUSPENDED", "DELETED"] | None = Query(
+        default=None, alias="status"
+    ),
+    q: str | None = Query(default=None, max_length=100, description="Part of the full name"),
+    email: str | None = Query(default=None, max_length=320, description="The exact address"),
+    cursor: str | None = None,
+    limit: int | None = Limit,
+) -> CandidatesPage:
+    """Candidates are not tenants, so `GET /admin/tenants` never lists them;
+    this does. Whoever may open a candidate may find one -- the same
+    capability. Contacts are masked; open `/candidates/{user_id}` for the rest."""
+    return await service.list_candidates(
+        session,
+        ctx=user,
+        status=status_filter,
+        name_contains=q,
+        email=email,
+        cursor=cursor,
+        limit=limit,
+        request_id=get_request_id(request),
+    )
+
+
 @router.get(
     "/candidates/{user_id}",
     response_model=CandidateDrilldown,

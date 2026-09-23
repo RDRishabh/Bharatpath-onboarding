@@ -215,6 +215,49 @@ async def integrity_signal(reader: AsyncSession, *, signal_id: uuid.UUID) -> Row
     )
 
 
+async def candidates(
+    reader: AsyncSession,
+    *,
+    status: str | None,
+    name_contains: str | None,
+    email: str | None,
+    after: tuple[datetime, uuid.UUID] | None,
+    limit: int,
+) -> list[RowMapping]:
+    """Candidate accounts, newest first, keyset by `(created_at, id)` and
+    served by `ix_users_pool_created`. Business accounts are never listed:
+    `pool` is the filter, not a role, because a candidate holds no membership.
+    `email` is an exact match on the normalised address -- a lookup for
+    someone who wrote to support, not a way to enumerate a domain."""
+    name = None
+    if name_contains:
+        name = name_contains.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return await _rows(
+        reader,
+        """
+        SELECT u.id, u.status, u.phone, u.email, u.created_at,
+               p.full_name, p.city, p.state_code
+          FROM users u
+          LEFT JOIN candidate_profiles p ON p.user_id = u.id
+         WHERE u.pool = 'CANDIDATE'
+           AND (CAST(:status AS text) IS NULL OR u.status = CAST(:status AS text))
+           AND (CAST(:email AS text) IS NULL OR u.email = CAST(:email AS text))
+           AND (CAST(:name AS text) IS NULL
+                OR p.full_name ILIKE '%' || CAST(:name AS text) || '%' ESCAPE '\\')
+           AND (CAST(:after_at AS timestamptz) IS NULL
+                OR (u.created_at, u.id) < (CAST(:after_at AS timestamptz), CAST(:after_id AS uuid)))
+         ORDER BY u.created_at DESC, u.id DESC
+         LIMIT :limit
+        """,
+        status=status,
+        email=email,
+        name=name,
+        after_at=after[0] if after else None,
+        after_id=after[1] if after else None,
+        limit=limit,
+    )
+
+
 async def candidate_account(reader: AsyncSession, *, user_id: uuid.UUID) -> RowMapping | None:
     return await _one(
         reader,

@@ -1,6 +1,6 @@
-# 13 — The admin console and disputes: 29 endpoints, entirely missing from this series until now
+# 13 — The admin console and disputes: 30 endpoints, entirely missing from this series until now
 
-Module `admin`, two surfaces: **`/admin/*`** (27 routes — our own staff
+Module `admin`, two surfaces: **`/admin/*`** (28 routes — our own staff
 only) and **`/disputes`** (2 routes — where a candidate, employer or
 college raises one). **This entire module was recorded in the API
 checklist as having "no HTTP endpoints at all"** — true of `integrity`,
@@ -33,7 +33,7 @@ Four roles: `PLATFORM_ADMIN` (everything), `KYB_REVIEWER`,
 | `integrity` | Admin, Integrity Reviewer |
 | `tenants` (read) | Admin, KYB Reviewer, Support Agent |
 | `suspend`, `seats`, `audit_search`, `accounts`, `discounts` | **Admin only** |
-| `candidate_drilldown` | Admin, Support Agent, Integrity Reviewer |
+| `candidate_drilldown` (the candidate list and the drill-down) | Admin, Support Agent, Integrity Reviewer |
 | `employer_drilldown` | Admin, Support Agent, KYB Reviewer |
 | `college_drilldown`, `disputes`, `suppress_notifications`, `resend_invitation`, `discounts_read` | Admin, Support Agent |
 | `dashboard` | **Every** staff role (sections inside are gated by the rows above — §0.5) |
@@ -226,6 +226,13 @@ decision here is final — there's no re-open.
 { "items": [{ "id": "...", "type": "EMPLOYER", "name": "Acme Pvt Ltd", "status": "ACTIVE", "created_at": "..." }], "next_cursor": null }
 ```
 
+**There is no `?type=CANDIDATE`, and it answers `422`.** A candidate is not
+a tenant: they hold no membership and belong to no organisation, so there
+is no `tenants` row to list (`identity.domain.TENANT_TYPES` is `EMPLOYER`,
+`COLLEGE`, `PLATFORM`, and `PLATFORM` is never listed). Candidates are
+listed by [`GET /admin/candidates`](#get-admincandidates--find-a-candidate-audited),
+which is audited where this list is not, because every row names a person.
+
 ### `POST /admin/tenants/{id}/suspend` — stop an organisation operating, immediately
 
 **Auth:** `suspend` (Admin only).
@@ -302,6 +309,55 @@ back against its own plan, not a value trusted to grant access on its own.
 **The read-everything-about-one-entity screens.** Each is audited on
 every open, re-opens included — invariant 7′ applied to staff exactly as
 it's applied to an employer's candidate reveal.
+
+Employers and colleges are found through `GET /admin/tenants` (§3).
+Candidates are not tenants, so they have their own list, next.
+
+### `GET /admin/candidates` — find a candidate (audited)
+
+**Auth:** `candidate_drilldown` capability — whoever may open a candidate
+may find one (Admin, Support Agent, Integrity Reviewer; a KYB Reviewer gets
+`403`).
+
+**Request** — all optional:
+
+| Param | Meaning |
+|---|---|
+| `status` | `ACTIVE` \| `SUSPENDED` \| `DELETED` (an erased account: its row stays, emptied, so its name and contacts come back `null`) |
+| `q` | Part of the full name, case-insensitive, max 100 chars. `%` and `_` are matched literally, not as wildcards |
+| `email` | The **exact** address, case and surrounding spaces ignored — for "someone wrote to support from this address". Not a partial match, so it cannot enumerate a domain |
+| `cursor`, `limit` | Keyset paging, `limit` 1–100 (default as elsewhere) |
+
+Newest account first. **Only candidate accounts**: a business account
+(employer, college or staff) never appears, even searched for by its exact
+email.
+
+**Response** — `200 OK` (`CandidatesPage`):
+```json
+{
+  "items": [{
+    "id": "...", "status": "ACTIVE",
+    "full_name": "Priya Sharma", "city": "Pune", "state_code": "MH",
+    "phone_masked": "+91******3210", "email_masked": "p***@example.com",
+    "created_at": "2026-09-20T10:15:00Z"
+  }],
+  "next_cursor": "eyJ0Ijoi..."
+}
+```
+`full_name`, `city`, `state_code` are `null` until the candidate has given
+them. **Deliberately not on the row:** the score or band, the CV,
+subscription, applications — every one of those is behind the drill-down
+below, which audits the one person opened. The list is for picking
+someone, not for reading them.
+
+**Audited on every page**: one `admin_bypass_session_opened` row, target
+type `candidates`, metadata `{"view": "candidates", "status": ..., "by_name":
+true|false, "by_email": true|false}`. **The search terms themselves are not
+recorded** — a name or an email address is personal data, and the audit log
+holds ids. The row says *that* this person searched, not *for whom*.
+
+`422 invalid_cursor` for a mangled cursor; `422` (FastAPI's shape) for a
+bad `status`.
 
 ### `GET /admin/candidates/{user_id}` — `candidate_drilldown` capability
 
@@ -679,5 +735,6 @@ into the thousands the way the console's own queue might.
 | Can a Support Agent suspend a tenant or allocate seats? | No — both are `PLATFORM_ADMIN`-only capabilities. |
 | Does resolving a dispute automatically undo the thing it's about? | Never — it records an answer for the raiser; any actual fix happens through that module's own service, separately. |
 | Can staff read a candidate's raw stored score or their CV from a drill-down? | No — `display_value`/`band` only, and resume content is counted, never read. |
+| Why does `GET /admin/tenants?type=CANDIDATE` fail? | A candidate isn't a tenant. Use `GET /admin/candidates` (search by `q` name or exact `email`), then open one with `GET /admin/candidates/{user_id}`. |
 | Is any of this paywalled? | No — the console is internal, and disputing a payment must never itself require one. |
 | Where did HIRE disputes go before this doc existed? | Into the exact same table this doc covers — `POST .../hire/dispute` has always fed this queue; it was simply unread until Day 19. |

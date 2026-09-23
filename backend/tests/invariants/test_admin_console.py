@@ -134,6 +134,8 @@ ROUTE_CAPABILITY: dict[str, Any] = {
     "suspension_history": "tenants",
     "allocate_seats": "seats",
     "candidate_drilldown": "candidate_drilldown",
+    # 2026-09-23: whoever may open a candidate may find one.
+    "list_candidates": "candidate_drilldown",
     "employer_drilldown": "employer_drilldown",
     "college_drilldown": "college_drilldown",
     "suppress_notifications": "suppress_notifications",
@@ -195,6 +197,9 @@ async def test_no_audit_row_means_no_reveal(client: Any, mint_token: Any, monkey
     tenant_id = uuid.UUID(employer["tenant_id"])
     for call in (
         lambda s: admin_service.candidate_drilldown(s, ctx=ctx, user_id=candidate["id"]),
+        lambda s: admin_service.list_candidates(
+            s, ctx=ctx, status=None, name_contains=None, email=None, cursor=None, limit=None
+        ),
         lambda s: admin_service.employer_drilldown(s, ctx=ctx, tenant_id=tenant_id),
         lambda s: admin_service.college_drilldown(s, ctx=ctx, tenant_id=tenant_id),
         lambda s: admin_service.integrity_queue(

@@ -274,6 +274,7 @@ Covered in [13-admin-console-and-disputes-apis.md](13-admin-console-and-disputes
 | ✅ | POST | `/admin/tenants/{tenant_id}/reinstate` |
 | ✅ | GET | `/admin/tenants/{tenant_id}/suspensions` |
 | ✅ | PUT | `/admin/colleges/{tenant_id}/seats` |
+| ✅ | GET | `/admin/candidates` |
 | ✅ | GET | `/admin/candidates/{user_id}` |
 | ✅ | GET | `/admin/employers/{tenant_id}` |
 | ✅ | GET | `/admin/colleges/{tenant_id}` |

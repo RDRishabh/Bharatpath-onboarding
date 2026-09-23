@@ -27,7 +27,7 @@ Read in order. Each doc assumes the ones before it.
 | [10-college-apis.md](10-college-apis.md) | Onboarding, seats, referral codes, roster imports, and the two-scope consent model (ROSTER = counted, INDIVIDUAL = named) from both the college's and the student's side. |
 | [11-college-analytics-apis.md](11-college-analytics-apis.md) | Cohort overview and platform-sourced placements — the number-only companion to Day 10's `GET /college/students`, and why nothing here ever names a person. |
 | [12-engagement-streak-apis.md](12-engagement-streak-apis.md) | Daily check-in streaks and engagement points — a separate balance that can never move the 700–990 score, and why. |
-| [13-admin-console-and-disputes-apis.md](13-admin-console-and-disputes-apis.md) | The platform-staff console (28 endpoints) — KYB/integrity review, tenant suspension, seats, cross-module drill-downs, disputes, audit search, staff-made accounts, discount codes. Entirely missing from this series before this pass. |
+| [13-admin-console-and-disputes-apis.md](13-admin-console-and-disputes-apis.md) | The platform-staff console (30 endpoints) — KYB/integrity review, tenant suspension, seats, the candidate list and cross-module drill-downs, disputes, audit search, staff-made accounts, discount codes. Entirely missing from this series before this pass. |
 | [14-notifications-inbox-apis.md](14-notifications-inbox-apis.md) | The in-app inbox and per-channel notification preferences — the reading side of a module that only ever answers, never triggers a send. |
 | [15-privacy-and-data-rights-apis.md](15-privacy-and-data-rights-apis.md) | Export and erasure requests (DPDP Act rights): the 24-hour cooling-off window, the withdraw path, and the one-time-mint download link. |
 

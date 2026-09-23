@@ -9,6 +9,41 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-23 — the admin console can list candidates
+
+Reported: `GET /admin/tenants?type=CANDIDATE` answers 422. That is correct,
+since a candidate is not a tenant. The real gap was that the console had
+no way to *find* a candidate at all: `GET /admin/candidates/{user_id}` needed
+an id nobody could look up.
+
+**`GET /admin/candidates`**: candidate accounts, newest first, filtered by
+`status`, `q` (part of the full name) and `email` (the exact address).
+Rows carry id, status, name, city, state, masked phone and email, created_at.
+Documented in `backend-guide/13` §4.
+
+### Decisions worth knowing
+
+- **Same capability as the drill-down (`candidate_drilldown`)**: whoever
+  may open a candidate may find one. Not a new capability, so the two cannot
+  drift apart.
+- **Audited, where `/admin/tenants` is not**: every row names a person. One
+  `admin_bypass_session_opened` row per page, `view: candidates`. **The search
+  terms are not in the metadata**, only `by_name` / `by_email` flags; a
+  name or an address is personal data, and the audit log holds ids.
+- **The row is for picking, not reading**: no score, band, CV, subscription
+  or application counts. All of that stays behind the drill-down, which
+  audits the one person opened.
+- **`email` is exact, not partial**, so it cannot enumerate a domain. `q`
+  escapes `%` and `_`, like `/admin/tenants`.
+- **Index `ix_users_pool_created (pool, created_at, id)`** on `users`, and the
+  query is in `test_index_review.py` `HOT_PATHS`. **It is on the model, so
+  only a rebuilt database has it.** Locally it was created by hand
+  (`CREATE INDEX IF NOT EXISTS ...`). The EC2 database was built from the
+  baseline before this change and will not get it from `alembic upgrade`. It
+  needs the same statement run once, or the list scans `users` there.
+
+---
+
 ## 2026-09-23 — the admin console gets a dashboard endpoint
 
 Asked by the frontend team: KYB awaiting review, integrity flags, open

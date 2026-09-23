@@ -70,6 +70,8 @@ from app.modules.admin.schemas import (
     AuditEventRow,
     AuditEventsPage,
     CandidateDrilldown,
+    CandidateRow,
+    CandidatesPage,
     CollegeDrilldown,
     CollegeLinkSummary,
     CreateDiscountCodeRequest,
@@ -552,6 +554,66 @@ def _subscription(row: Any) -> SubscriptionSummary | None:
 
 def _suspension(row: Any) -> SuspensionSummary | None:
     return SuspensionSummary.model_validate(dict(row)) if row else None
+
+
+async def list_candidates(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    status: str | None,
+    name_contains: str | None,
+    email: str | None,
+    cursor: str | None,
+    limit: int | None,
+    request_id: str | None = None,
+) -> CandidatesPage:
+    """Candidate accounts, newest first -- the way in to a drill-down.
+
+    Candidates are not tenants, so `GET /admin/tenants` cannot list them. This
+    is audited where that is not: every row names a person. The search terms
+    stay out of the audit metadata (a name or an address is not an id); the
+    row records that a search was made, and by whom."""
+    size = clamp_limit(limit)
+    name = (name_contains or "").strip() or None
+    address = identity_service.normalise_email(email) if email and email.strip() else None
+    async with _reveal(
+        session,
+        ctx,
+        action=AuditAction.ADMIN_BYPASS_SESSION_OPENED,
+        target_type="candidates",
+        target_id=None,
+        request_id=request_id,
+        metadata={
+            "view": "candidates",
+            "status": status,
+            "by_name": name is not None,
+            "by_email": address is not None,
+        },
+    ) as reader:
+        rows = await repository.candidates(
+            reader,
+            status=status,
+            name_contains=name,
+            email=address,
+            after=_keyset(cursor),
+            limit=size,
+        )
+    return CandidatesPage(
+        items=[
+            CandidateRow(
+                id=r["id"],
+                status=r["status"],
+                full_name=r["full_name"],
+                city=r["city"],
+                state_code=r["state_code"],
+                phone_masked=mask_phone(r["phone"]),
+                email_masked=mask_email(r["email"]),
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ],
+        next_cursor=_next(rows, size, at="created_at"),
+    )
 
 
 async def candidate_drilldown(
