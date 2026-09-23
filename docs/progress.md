@@ -9,6 +9,47 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-23 — the employer's jobs list carries its own funnel
+
+Raised by the frontend team against the jobs screen: the table draws a column
+per pipeline stage, and there was no way to fill any of them but
+`GET /employer/applications?job_id=…` once per row. Thirteen jobs, thirteen
+requests, and nothing on screen until the last returns — so the columns were
+rendering as zeros instead.
+
+`GET /employer/jobs` now answers `JobListItem`: `JobResponse` plus
+`application_counts` (`total`, and `by_stage` with every stage present).
+**One aggregate across the page, not one query per job** — that is the whole
+point of the change, and a `stage_counts` call per row would have satisfied
+the frontend's ask while leaving the cost exactly where it was.
+
+`by_stage` is **where applications are now, not where they have been**, so it
+sums to `total`. The funnel reading — "reached this stage at some point" —
+needs `application_events` and does not sum to anything; if the client ever
+wants it, that is a different endpoint and a much heavier query. Said plainly
+in the response docstring and in `backend-guide/05`, because the two readings
+differ only on rows that have moved, which is to say not at all on a fresh
+test fixture.
+
+**The counts are on the list and nowhere else.** Adding them to `JobResponse`
+would put them on `create`, `publish`, `pause` and `close` as well, where they
+are either a guaranteed zero or an extra query nobody asked for.
+
+### The direction of the dependency, which is the only interesting part
+
+`applications.service` already imports `jobs.service`. Reaching back the other
+way — `jobs` calling `applications` for the counts — makes the two modules
+mutually dependent, and that mutual import is exactly what `module-privacy`
+exists to prevent: it is what would make either one unextractable later.
+
+So `jobs.repository` reads the `applications` table as a `table()` construct
+rather than through its ORM model, and takes the stage names from
+`applications.domain`, which is pure and imports nothing. Same shape as
+`discovery` reading `scores` because it may not import `scoring`. Nothing new
+in the graph: `lint-imports` keeps all ten contracts.
+
+---
+
 ## 2026-09-22 (later still) — E32, E35, E30, and a fuzzer that earned its keep
 
 Four items asked for: schemathesis, E32, E30, E31/E35.

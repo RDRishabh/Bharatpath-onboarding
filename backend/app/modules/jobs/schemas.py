@@ -24,6 +24,7 @@ from typing import Annotated, Literal
 from pydantic import Field, model_validator
 
 from app.core.schemas import ApiSchema
+from app.modules.applications.schemas import ApplicationStage
 
 WorkMode = Literal["ONSITE", "HYBRID", "REMOTE"]
 JobStatus = Literal["DRAFT", "PUBLISHED", "PAUSED", "CLOSED"]
@@ -102,6 +103,30 @@ class JobResponse(_Base):
     published_at: datetime | None = None
     closed_at: datetime | None = None
     created_at: datetime
+
+
+class ApplicationStageCounts(_Base):
+    """A job's pipeline, counted.
+
+    **Where the applications are now, not where they have been.** Each one is
+    at exactly one stage, so `by_stage` sums to `total`: someone shortlisted
+    after being viewed is counted under SHORTLISTED alone, not under both.
+    Every stage is present, zeros included.
+    """
+
+    total: int = Field(description="Every application ever filed on this job.")
+    by_stage: dict[ApplicationStage, int]
+
+
+class JobListItem(JobResponse):
+    """A job as the employer's list draws it: the job, and its funnel.
+
+    The counts are on the row rather than behind a request per job. A list of
+    thirteen jobs is thirteen more round trips otherwise, and the table needs
+    all of them before it can draw anything.
+    """
+
+    application_counts: ApplicationStageCounts
 
 
 EligibilityStatus = Literal["ELIGIBLE", "BELOW_THRESHOLD", "SCORE_PENDING"]

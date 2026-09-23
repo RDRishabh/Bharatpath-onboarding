@@ -112,9 +112,41 @@ below — never smuggled into a create or edit body.
 **Request:** optional query param `?status=DRAFT` (one of `DRAFT`,
 `PUBLISHED`, `PAUSED`, `CLOSED`) to filter. No body.
 
-**Response** — `200 OK`, array of `JobResponse` (same shape as §1), newest
-first. Only ever the caller's own organisation's jobs — there's no
-parameter that could reach another tenant's.
+**Response** — `200 OK`, array of `JobListItem`, newest first. That is every
+field of `JobResponse` from §1, **plus the job's pipeline counts**:
+
+```json
+{
+  "id": "...", "title": "Backend Engineer", "status": "PUBLISHED",
+  "application_counts": {
+    "total": 13,
+    "by_stage": {
+      "SUBMITTED": 4, "VIEWED": 3, "SHORTLISTED": 2, "INTERVIEW": 1,
+      "DECISION": 1, "HIRED": 1, "REJECTED": 1, "WITHDRAWN": 0, "EXPIRED": 0
+    }
+  }
+}
+```
+
+Only ever the caller's own organisation's jobs — there's no parameter that
+could reach another tenant's.
+
+**`by_stage` is where applications are now, not where they have been.**
+Each application sits at exactly one stage, so the nine numbers sum to
+`total`: someone shortlisted after being viewed is counted under
+`SHORTLISTED` alone, not under both. If you want a funnel in the "reached
+this stage at some point" sense, that is a different question and the data
+for it is `application_events`, not this.
+
+**Every stage is always present, zeros included** — you never have to tell
+an absent key from an empty stage. `total` counts every application ever
+filed on the job, withdrawn and expired ones as well.
+
+**This is why the list gives you the counts rather than making you ask per
+job.** The counts are one aggregate across the whole page, so a jobs table
+with a column per stage costs one request however many jobs the employer
+has. Don't loop `GET /employer/applications?job_id=…` over the rows to
+build the same numbers.
 
 ## 3. `GET /employer/jobs/{job_id}` — one job
 
@@ -122,8 +154,9 @@ parameter that could reach another tenant's.
 
 **Request:** no body, `job_id` in the path.
 
-**Response** — `200 OK`, a single `JobResponse` (same shape as §1). `404`
-(never `403`) for a job belonging to another organisation.
+**Response** — `200 OK`, a single `JobResponse` (same shape as §1, **without
+`application_counts`** — that is on the list only). `404` (never `403`) for a
+job belonging to another organisation.
 
 ## 4. `PATCH /employer/jobs/{job_id}` — edit
 
@@ -396,6 +429,76 @@ the record.
 There's **no batch/list form of this endpoint, and there's not meant to
 be one** — one candidate per call, always. Bulk export was explicitly
 decided against as a feature, not merely unbuilt.
+
+---
+
+## 10. The candidate's own profile — what a masked card and the reveal are built from
+
+`GET /candidate/profile`, `PUT /candidate/profile/location`, `PUT
+/candidate/profile/name` — mounted from the `candidate` module (the same
+module the reveal in §9 lives in), prefix `/candidate`. Three fields, and
+they're exactly the ones you've already seen on `MaskedCandidate` (§8:
+`city`, `state_code`) and `RevealedCandidate` (§9: those two plus
+`full_name`) — this is where a candidate actually sets them. Nothing here
+is paywalled: a lapsed subscriber loses access to *using* the product, not
+the ability to keep their own details correct, same reasoning as reading or
+withdrawing an application.
+
+### `GET /candidate/profile` — read it back
+
+**Auth required:** `CANDIDATE` role. **Request:** no body.
+
+**Response** — `200 OK` (`CandidateProfileResponse`):
+```json
+{ "full_name": "John Doe", "city": "Bengaluru", "state_code": "KA", "updated_at": "2026-09-17T10:00:00Z" }
+```
+**Before anything has ever been saved, this returns `200` with every field
+`null`** — not `404`. An empty profile is a normal state for a brand-new
+candidate, not a missing resource.
+
+### `PUT /candidate/profile/location` — set city / state
+
+**Request body** (`LocationRequest`) — both fields optional and
+independent, send `null` to clear either one on its own:
+```json
+{ "city": "Bengaluru", "state_code": "KA" }
+```
+`state_code` must be a real Indian state/UT code (`STATE_CODES`, from
+`app.core.reference.INDIAN_STATES`) — anything else is `422`. `city` is
+normalised (whitespace collapsed) and restricted to **letters (any script),
+spaces, and `. ' -` only** — no digit, no `@`, `422 validation_error`
+otherwise. That's not a typo-catcher, it's the same rule the masked-search
+card enforces a second time on the way out (§8): a city is shown to *every*
+employer who searches, so it must never be able to carry a phone number or
+an email address. It's a city, not an address — no street, no locality, no
+PIN code (a PIN code next to a band and a skill list narrows a masked card
+to a handful of real people).
+
+**Response** — `200 OK`, the updated `CandidateProfileResponse`. Reaches
+masked search on the *next* query — search reads the profile live, nothing
+is copied or cached anywhere in between.
+
+### `PUT /candidate/profile/name` — set the display name
+
+**Request body** (`NameRequest`):
+```json
+{ "full_name": "John Doe" }
+```
+Same alphabet rule as the city (letters/marks/spaces/`. ' -`, so "D'Souza"
+and "राहुल शर्मा" are both valid, a phone number is not), 1–200 characters
+after whitespace collapsing. `422` otherwise.
+
+**Response** — `200 OK`, the updated `CandidateProfileResponse`.
+
+**Why this exists at all, and why it's asked rather than parsed off a CV:**
+nothing else in the system stores a candidate's name — a resume is kept as
+extracted *content*, not identity, and a name is never guessed from it
+(invariant-adjacent: the resume module has no name field that scoring or
+anyone else can read as "the" name). This is asked directly at sign-up for
+exactly that reason. It's also never shown on a masked search card, only
+once revealed (§9) — `full_name` in `RevealedCandidate` falls back to
+whatever was typed on the structured resume form for anyone who signed up
+before this endpoint existed, but this is what every new candidate sets.
 
 ---
 

@@ -19,12 +19,15 @@ too.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Final
 
-from sqlalchemy import false, literal, or_, select, text, tuple_
+from sqlalchemy import String, column, false, func, literal, or_, select, table, text, tuple_
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.applications.domain import STAGES
 from app.modules.jobs.models import Job
 
 #: The fields an edit may change. `status`, `published_at` and `closed_at` are
@@ -70,6 +73,54 @@ async def list_jobs(
         query.order_by(Job.created_at.desc(), Job.id.desc()).limit(limit)
     )
     return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# The pipeline counts beside each job
+# ---------------------------------------------------------------------------
+# `applications` is the applications module's table, so it is read here as a
+# table rather than through its ORM model, and the stage names come from that
+# module's pure `domain` rather than being retyped. The dependency cannot run
+# the other way round: `applications.service` already imports `jobs.service`,
+# and a mutual import is what makes a module unextractable later.
+_applications = table(
+    "applications",
+    column("tenant_id", PGUUID(as_uuid=True)),
+    column("job_id", PGUUID(as_uuid=True)),
+    column("stage", String),
+)
+
+#: Every stage at zero. A stage missing from the map would leave a caller
+#: guessing whether nobody is at it or it has stopped existing.
+NO_APPLICATIONS: Final[dict[str, int]] = dict.fromkeys(STAGES, 0)
+
+
+async def stage_counts(
+    session: AsyncSession, *, tenant_id: uuid.UUID, job_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, dict[str, int]]:
+    """How many of each job's applications sit at each stage.
+
+    **One aggregate for the whole page, not one query per job.** The list is
+    what an employer lands on and it draws a funnel on every row, so a query
+    per row would make the page cost grow with the number of jobs they have.
+
+    The tenant predicate is belt and braces beside the RLS policy on
+    `applications`, in the same way every query in this file is.
+    """
+    counts = {job_id: dict(NO_APPLICATIONS) for job_id in job_ids}
+    if not counts:
+        return counts
+    rows = await session.execute(
+        select(_applications.c.job_id, _applications.c.stage, func.count())
+        .where(
+            _applications.c.tenant_id == tenant_id,
+            _applications.c.job_id.in_(list(counts)),
+        )
+        .group_by(_applications.c.job_id, _applications.c.stage)
+    )
+    for job_id, stage, at_stage in rows:
+        counts[job_id][stage] = at_stage
+    return counts
 
 
 async def apply_changes(session: AsyncSession, *, job: Job, changes: dict[str, Any]) -> Job:

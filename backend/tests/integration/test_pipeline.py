@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
+from app.modules.applications.domain import STAGES
 from tests.conftest import _seed_url, sessions
 from tests.integration.test_candidate_marketplace import (
     API,
@@ -183,6 +184,45 @@ async def test_a_jobs_applications_are_listed_oldest_first_and_by_stage(
     )
     assert [i["id"] for i in paged.json()["items"] + rest.json()["items"]] == [first["id"], second]
     assert rest.json()["next_cursor"] is None
+
+
+async def test_the_jobs_list_carries_each_jobs_pipeline_counts(
+    client: Any, mint_token: Any
+) -> None:
+    """The employer's list draws its funnel from the one request that fills it.
+
+    Without the counts on the row there is no way to fill those columns but a
+    call per job, which is what the list costs before this: thirteen jobs,
+    thirteen requests, and a table that cannot draw until the last returns.
+    """
+    employer = await _employer(client, mint_token)
+    busy, quiet = await _job(client, employer), await _job(client, employer)
+
+    filed = []
+    for _ in range(3):
+        applied = await _apply(client, await _candidate(mint_token), busy)
+        assert applied.status_code == 201, applied.text
+        filed.append({"employer": employer, "id": applied.json()["id"]})
+    await _walk(client, filed[0], "SHORTLISTED")
+    await _walk(client, filed[1], "REJECTED")
+
+    listed = await client.get(f"{API}/employer/jobs", headers=employer["headers"])
+    assert listed.status_code == 200, listed.text
+    rows = {row["id"]: row["application_counts"] for row in listed.json()}
+
+    counts = rows[busy["id"]]
+    # Each application is at one stage, so the stages sum to the total: the
+    # one that was shortlisted is counted there and not also under VIEWED.
+    assert counts["total"] == 3
+    assert sum(counts["by_stage"].values()) == counts["total"]
+    assert counts["by_stage"]["SUBMITTED"] == 1
+    assert counts["by_stage"]["SHORTLISTED"] == 1
+    assert counts["by_stage"]["REJECTED"] == 1
+    assert counts["by_stage"]["VIEWED"] == 0
+
+    # A job nobody has applied to says zero at every stage rather than leaving
+    # the client to tell an absent stage from an empty one.
+    assert rows[quiet["id"]] == {"total": 0, "by_stage": dict.fromkeys(STAGES, 0)}
 
 
 async def test_opening_an_application_records_viewed_once(client: Any, mint_token: Any) -> None:
