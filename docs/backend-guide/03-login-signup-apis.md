@@ -99,6 +99,15 @@ screens wrap them is purely a frontend/product choice.
 
 ### `POST /auth/otp/start`
 
+**This route does not exist at all unless `AUTH_PHONE_OTP_ENABLED=true`** —
+the same "genuinely absent, not just refused" pattern as `/auth/dev/token`
+in §3 below: it's registered at import time only when the flag is on, so
+while it's off the route is missing from the running app *and* from
+`openapi.json`, not just returning an error. **Phone OTP is deferred by the
+client (2026-09-18)** — candidates sign in a different way in the meantime
+(see [`docs/signup-and-accounts.md`](../signup-and-accounts.md)); this
+section describes what runs once the flag is switched back on.
+
 Public. No token needed — this is how a session *begins*.
 
 **Request body** (`OtpStartRequest`):
@@ -206,10 +215,22 @@ skips checks.
 
 ## 4. Employer signup
 
-The employer/college flow is two steps: **get an account** (done outside
-this API, by the platform team — the business Cognito pool is admin-create-
-only, no self-registration exists yet), then **create your organisation**
-through these endpoints.
+**As of 2026-09-18, anyone can self-register in the business pool** —
+`SignUp` + `ConfirmSignUp` straight against Cognito, exactly like the
+candidate pool, closing what used to be an admin-create-only restriction
+(blockers E7). The flow below (get a verified business account, then
+create your organisation through these endpoints) is unchanged either way
+— self-registration and platform-staff provisioning both land the caller
+at the same "verified business account, no organisation yet" starting
+point.
+
+**There is also a second way an employer or college account comes to
+exist: our own staff make one on someone's behalf**,
+`POST /admin/accounts/employers` / `/admin/accounts/colleges` — see
+[13-admin-console-and-disputes-apis.md §7](13-admin-console-and-disputes-apis.md#7-accounts-made-on-someones-behalf--adminaccounts-admintenantsidmembers).
+Cognito emails a temporary password instead of the person choosing one
+themselves, but from `GET /employer/reference` onward the sequence below is
+identical.
 
 ### `GET /employer/reference`
 

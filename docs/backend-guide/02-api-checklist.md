@@ -9,11 +9,13 @@ because nobody has regenerated it recently.
 **Status key:** ✅ fully walked through in conversation · 🟡 mentioned in
 passing, not walked through in detail · ⬜ not covered yet.
 
-Total: **121 endpoints** across 18 modules. Four modules — `admin`,
-`integrity`, `notifications`, `privacy` — currently expose **no** HTTP
-endpoints at all; they only run internally (background tasks, or triggered by
-other modules' events). That's not a gap in this doc — it's genuinely how the
-code is today.
+Total: **160 endpoints** across 21 modules. Only one module — `integrity` —
+exposes **no** HTTP endpoints at all; it only runs as a background task,
+triggered by other modules' events, and is never called directly. (An
+earlier version of this doc also filed `admin`, `notifications` and
+`privacy` here, incorrectly — all three have real, fully-built HTTP
+surfaces that simply hadn't been walked through yet. That was the biggest
+correction to come out of this pass.)
 
 ---
 
@@ -83,11 +85,15 @@ code is today.
 
 ## Candidate — profile (`candidate`, prefix `/candidate`)
 
+Covered in [05-jobs-and-discovery-apis.md §10](05-jobs-and-discovery-apis.md#10-the-candidates-own-profile--what-a-masked-card-and-the-reveal-are-built-from)
+— these three fields are exactly what feeds `MaskedCandidate` and
+`RevealedCandidate` there.
+
 | Status | Method | Path |
 |---|---|---|
-| ⬜ | GET | `/candidate/profile` |
-| ⬜ | PUT | `/candidate/profile/location` |
-| ⬜ | PUT | `/candidate/profile/name` |
+| ✅ | GET | `/candidate/profile` |
+| ✅ | PUT | `/candidate/profile/location` |
+| ✅ | PUT | `/candidate/profile/name` |
 
 ## Employer — masked search & reveal (`discovery` + `candidate`, prefix `/employer/discovery`)
 
@@ -188,11 +194,13 @@ code is today.
 
 ## Candidate — daily streaks (`engagement`, prefix `/candidate/streak`)
 
+Covered in [12-engagement-streak-apis.md](12-engagement-streak-apis.md).
+
 | Status | Method | Path |
 |---|---|---|
-| ⬜ | GET | `/candidate/streak/me` |
-| ⬜ | POST | `/candidate/streak/me/check-in` |
-| ⬜ | GET | `/candidate/streak/me/points` |
+| ✅ | GET | `/candidate/streak/me` |
+| ✅ | POST | `/candidate/streak/me/check-in` |
+| ✅ | GET | `/candidate/streak/me/points` |
 
 ## Candidate — linking to a college (`college`, prefix `/candidate/colleges`)
 
@@ -230,25 +238,112 @@ code is today.
 
 ## College — analytics (`analytics`, prefix `/college/analytics`)
 
+Covered in [11-college-analytics-apis.md](11-college-analytics-apis.md).
+
 | Status | Method | Path |
 |---|---|---|
-| ⬜ | GET | `/college/analytics/overview` |
-| ⬜ | GET | `/college/analytics/placements` |
+| ✅ | GET | `/college/analytics/overview` |
+| ✅ | GET | `/college/analytics/placements` |
 
 ## System
 
+Covered in [01-architecture.md §8](01-architecture.md#8-system-health-checks--for-infrastructure-not-for-the-app).
+No auth, no module, no client app ever calls these — a load balancer does.
+
 | Status | Method | Path |
 |---|---|---|
-| ⬜ | GET | `/api/v1/health` |
-| ⬜ | GET | `/api/v1/health/ready` |
+| ✅ | GET | `/api/v1/health` |
+| ✅ | GET | `/api/v1/health/ready` |
+
+## Admin console (`admin`, prefix `/admin`) — Day 19, staff only
+
+**This entire section was missing until this pass** — the module was
+recorded below as having no HTTP surface at all, which was never true.
+Covered in [13-admin-console-and-disputes-apis.md](13-admin-console-and-disputes-apis.md).
+
+| Status | Method | Path |
+|---|---|---|
+| ✅ | GET | `/admin/kyb/submissions` |
+| ✅ | GET | `/admin/kyb/submissions/{submission_id}` |
+| ✅ | POST | `/admin/kyb/submissions/{submission_id}/decision` |
+| ✅ | GET | `/admin/integrity/signals` |
+| ✅ | GET | `/admin/integrity/signals/{signal_id}` |
+| ✅ | POST | `/admin/integrity/signals/{signal_id}/resolve` |
+| ✅ | GET | `/admin/tenants` |
+| ✅ | POST | `/admin/tenants/{tenant_id}/suspend` |
+| ✅ | POST | `/admin/tenants/{tenant_id}/reinstate` |
+| ✅ | GET | `/admin/tenants/{tenant_id}/suspensions` |
+| ✅ | PUT | `/admin/colleges/{tenant_id}/seats` |
+| ✅ | GET | `/admin/candidates/{user_id}` |
+| ✅ | GET | `/admin/employers/{tenant_id}` |
+| ✅ | GET | `/admin/colleges/{tenant_id}` |
+| ✅ | POST | `/admin/users/{user_id}/notification-suppressions` |
+| ✅ | GET | `/admin/disputes` |
+| ✅ | GET | `/admin/disputes/{dispute_id}` |
+| ✅ | POST | `/admin/disputes/{dispute_id}/assign` |
+| ✅ | POST | `/admin/disputes/{dispute_id}/resolve` |
+| ✅ | GET | `/admin/audit-events` |
+| ✅ | POST | `/admin/accounts/candidates` |
+| ✅ | POST | `/admin/accounts/employers` |
+| ✅ | POST | `/admin/accounts/colleges` |
+| ✅ | POST | `/admin/tenants/{tenant_id}/members` |
+| ✅ | POST | `/admin/accounts/{user_id}/resend-invitation` |
+| ✅ | POST | `/admin/discount-codes` |
+| ✅ | GET | `/admin/discount-codes` |
+| ✅ | GET | `/admin/discount-codes/{code_id}` |
+| ✅ | POST | `/admin/discount-codes/{code_id}/disable` |
+| ✅ | GET | `/admin/discount-codes/{code_id}/redemptions` |
+
+## Disputes — raised by candidates, employers, colleges (`admin`, prefix `/disputes`)
+
+Mounted from the same `admin` module (it's where the console side, above,
+and the raiser side meet). Also covered in
+[13-admin-console-and-disputes-apis.md §9](13-admin-console-and-disputes-apis.md#9-disputes--where-the-three-external-parties-raise-and-read-their-own).
+
+| Status | Method | Path |
+|---|---|---|
+| ✅ | POST | `/disputes` |
+| ✅ | GET | `/disputes` |
+
+## Notifications (`notifications`, prefix `/notifications`)
+
+**Also missing until this pass.** Covered in
+[14-notifications-inbox-apis.md](14-notifications-inbox-apis.md).
+
+| Status | Method | Path |
+|---|---|---|
+| ✅ | GET | `/notifications` |
+| ✅ | POST | `/notifications/{notification_id}/read` |
+| ✅ | GET | `/notifications/preferences` |
+| ✅ | PATCH | `/notifications/preferences` |
+| ✅ | POST | `/notifications/unsubscribe` |
+
+## Privacy / data rights (`privacy`, prefix `/privacy`)
+
+**Also missing until this pass.** Covered in
+[15-privacy-and-data-rights-apis.md](15-privacy-and-data-rights-apis.md).
+
+| Status | Method | Path |
+|---|---|---|
+| ✅ | POST | `/privacy/requests/export` |
+| ✅ | POST | `/privacy/requests/deletion` |
+| ✅ | GET | `/privacy/requests` |
+| ✅ | GET | `/privacy/requests/{dsr_id}` |
+| ✅ | POST | `/privacy/requests/{dsr_id}/withdraw` |
+| ✅ | GET | `/privacy/requests/{dsr_id}/download` |
 
 ## No HTTP endpoints (internal-only)
 
-- **`admin`** — no platform-staff console exists yet (`docs/blockers.md`).
-- **`integrity`** — runs as a background task after scoring; never called directly.
-- **`notifications`** — sends SMS/emails triggered by other modules' events.
-- **`privacy`** — data-handling logic invoked internally, not a direct route.
+- **`integrity`** — runs as a background task after scoring; never called
+  directly. This is the only module for which "no HTTP endpoints" was ever
+  actually true — `admin`, `notifications` and `privacy` were incorrectly
+  filed here in earlier passes of this doc and each now has its own
+  section above.
 
 ---
 
-**Running tally:** 111 ✅ · 0 🟡 · 10 ⬜ (of 121)
+**Running tally:** 160 ✅ · 0 🟡 · 0 ⬜ (of 160) — every endpoint in the
+backend now has a walkthrough somewhere in this series. (Was 121 before
+this pass turned up the entire admin console, `/disputes`, `notifications`
+and `privacy` — 39 endpoints that a prior version of this checklist had
+marked as not existing.)

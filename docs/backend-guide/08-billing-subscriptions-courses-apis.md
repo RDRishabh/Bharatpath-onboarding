@@ -4,8 +4,8 @@ Three modules, one underlying idea: **nothing is ever granted by an API
 response.** A checkout call only ever returns "here's where to pay" — the
 actual subscription, course access, or interview session only becomes real
 later, when a signed callback from the payment gateway is processed. This
-doc covers `billing` (3 endpoints), `subscriptions` (5 endpoints × 3
-audiences = 15), and `courses` (2 endpoints) — 20 endpoints in total.
+doc covers `billing` (3 endpoints), `subscriptions` (6 endpoints × 3
+audiences = 18), and `courses` (2 endpoints) — 23 endpoints in total.
 
 ---
 
@@ -83,13 +83,17 @@ one.
   "purpose": "SUBSCRIPTION",
   "item_code": "EMPLOYER_QUARTERLY",
   "amount_minor": 999900,
+  "list_amount_minor": null,
   "currency": "INR",
   "failure_code": null,
   "created_at": "2026-09-17T10:00:00Z",
   "settled_at": null
 }
 ```
-`status` is one of `PENDING` / `SUCCEEDED` / `FAILED` / `REFUNDED`. **This is
+`list_amount_minor` is the price **before** a discount code was applied —
+`null` whenever this checkout didn't use one, in which case it equals
+`amount_minor` anyway. `status` is one of `PENDING` / `SUCCEEDED` /
+`FAILED` / `REFUNDED`. **This is
 the endpoint every checkout flow polls** — there's no webhook or push to the
 frontend, so the app is expected to call this every couple of seconds after
 redirecting the user to pay, until `status` moves off `PENDING`.
@@ -170,6 +174,7 @@ or
   "purpose": "SUBSCRIPTION",
   "item_code": "EMPLOYER_QUARTERLY",
   "amount_minor": 999900,
+  "list_amount_minor": null,
   "currency": "INR",
   "failure_code": null,
   "created_at": "2026-09-17T10:00:00Z",
@@ -186,7 +191,7 @@ drive the real logic without a real gateway sitting in AWS somewhere.
 
 ---
 
-## 4. Subscriptions — the same 5 endpoints, mounted three times
+## 4. Subscriptions — the same 6 endpoints, mounted three times
 
 **Why one set of code serves three different URL prefixes:** a subscription
 always belongs to *somebody* — a candidate's own, or an organisation's — so
@@ -246,6 +251,32 @@ everything else** — `GRACE` (an auto-renewal payment is being retried) still
 has `has_access: true` right up to `current_period_end`, so a momentary
 retry doesn't lock anyone out mid-grace.
 
+### `POST /{...}/subscription/checkout/discount-preview` — price a plan with a code, without buying
+
+**Auth required:** the "buy" role for that audience (same as checkout —
+previewing a price is gated exactly like spending money, not like reading
+one).
+
+**Request body** (`DiscountPreviewRequest`):
+```json
+{ "plan_code": "CANDIDATE_MONTHLY", "discount_code": "launch50" }
+```
+Both fields required — unlike checkout, a code isn't optional here; this
+endpoint exists specifically to answer "what would this code do."
+
+**Response** — `200 OK` (`DiscountPreviewResponse`):
+```json
+{ "list_amount_minor": 14900, "discount_minor": 2980, "amount_minor": 11920 }
+```
+**Writes nothing at all** — no payment row, no reservation, nothing that
+could be left dangling. It's refused with the **exact same** `422` codes
+checkout itself would raise for a bad code (below), sharing the same
+per-person rate limit as checkout (40 attempts an hour) so it can't be used
+to brute-force-guess a valid code either. **The code can still fail at
+actual checkout even after a successful preview** — nothing here holds or
+reserves anything, so a code that had one use left when previewed can be
+gone by the time checkout actually runs.
+
 ### `POST /{...}/subscription/checkout` — buy a period
 
 **Auth required:** the "buy" role for that audience (Owner / College Admin
@@ -253,23 +284,37 @@ retry doesn't lock anyone out mid-grace.
 
 **Request body** (`SubscriptionCheckoutRequest`):
 ```json
-{ "plan_code": "EMPLOYER_QUARTERLY" }
+{ "plan_code": "EMPLOYER_QUARTERLY", "discount_code": "launch50" }
 ```
+`discount_code` is optional and case-insensitive; omit it entirely for a
+full-price checkout.
 
 **Response** — `201 Created` (`CheckoutResponse`):
 ```json
-{ "payment_id": "9f2e...", "status": "PENDING", "amount_minor": 999900, "currency": "INR", "redirect_url": "https://gateway.example.com/pay/..." }
+{ "payment_id": "9f2e...", "status": "PENDING", "amount_minor": 11920, "list_amount_minor": 14900, "currency": "INR", "redirect_url": "https://gateway.example.com/pay/..." }
 ```
-**Nothing is granted here** — see §0. Calling checkout twice for the same
-plan/price within a short reuse window returns the **same** pending payment
-rather than opening a second one (so a user who double-clicks "pay" doesn't
-end up with two competing checkouts for the same thing).
+With a `discount_code`, `amount_minor` is already the **discounted**
+figure and `list_amount_minor` is what it would have been without the
+code — without one, `list_amount_minor` is `null`. **Nothing is granted
+here** — see §0; and the code itself only counts as used once this payment
+actually succeeds (a redemption row is written beside the grant, in the
+same step, never at checkout time — see
+[13-admin-console-and-disputes-apis.md §8](13-admin-console-and-disputes-apis.md#8-discount-codes--admindiscount-codes)
+for where codes are created and disabled). Calling checkout twice for the
+same plan/price within a short reuse window returns the **same** pending
+payment rather than opening a second one (so a user who double-clicks
+"pay" doesn't end up with two competing checkouts for the same thing).
 
 **Errors:**
 | Code | When |
 |---|---|
 | `403` | Caller has the read role but not the buy role for this audience |
 | `404 plan_not_found` | `plan_code` doesn't exist, or isn't sold to this audience |
+| `422 discount_code_invalid` | The code doesn't exist, doesn't parse, is `DISABLED`/`SCHEDULED`, or isn't sold to this audience |
+| `422 discount_code_expired` | Past `valid_until` |
+| `422 discount_code_exhausted` | `usage_limit` already reached — counting both actual redemptions and other fresh checkouts currently holding a use, so the last use can't be sold twice |
+| `422 discount_code_already_used` | This subscriber (this candidate, or this employer's/college's organisation) has already redeemed this code once — one use per subscriber |
+| `422 discount_exceeds_price` | The code would take the price to zero or below |
 
 ### `POST /{...}/subscription/cancel` — stop auto-renewing
 

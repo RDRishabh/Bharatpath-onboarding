@@ -155,8 +155,10 @@ points to miss.
 }
 ```
 This is a **summary view for the candidate to see what they shared** — a
-recap screen, not an admin tool. `409` if nothing's been submitted yet
-(§3's job first).
+recap screen, not an admin tool. `404 questionnaire_not_submitted` if
+nothing's been submitted yet (§3's job first) — a `NotFoundError`, not a
+conflict, because there's genuinely no report resource yet to conflict
+with.
 
 ---
 

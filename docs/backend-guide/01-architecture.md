@@ -346,6 +346,52 @@ enforced there specifically.
 
 ---
 
+## 8. System health checks — for infrastructure, not for the app
+
+Two endpoints outside every module, wired directly in `app/api/health.py`
+and mounted with no prefix: `GET /health` and `GET /health/ready`. Worth
+covering here rather than in a per-module doc because nothing else about
+them is module-shaped — no auth, no request body, no business logic, and no
+client app ever calls them. They exist for a load balancer or an
+orchestrator (ECS, Kubernetes) to ask "is this safe to send traffic to."
+
+**They answer two genuinely different questions, and conflating them is a
+real production failure mode**, per the file's own docstring:
+
+- **`GET /health` — liveness: "is the process itself alive at all?"**
+  ```json
+  { "status": "ok", "environment": "production" }
+  ```
+  Answers immediately, checks nothing external. If this stops responding,
+  the orchestrator's answer is "restart the container" — so it must never
+  fail just because a dependency is briefly having trouble, or a single
+  slow database blip turns into a restart-loop of an otherwise-healthy
+  process.
+
+- **`GET /health/ready` — readiness: "can it actually serve a request right
+  now?"** Pings Postgres (`SELECT 1`) and Redis, and reflects both:
+  ```json
+  { "status": "ok", "checks": { "database": { "status": "up" }, "redis": { "status": "up" } } }
+  ```
+  If either check fails, the whole response's `status` becomes
+  `"degraded"` and the HTTP status itself changes to `503` — not `200` with
+  a `degraded` field a caller might not bother inspecting:
+  ```json
+  { "status": "degraded", "checks": { "database": { "status": "down" }, "redis": { "status": "up" } } }
+  ```
+  The orchestrator's answer to a `503` here is different from liveness
+  failing: "stop sending this instance new traffic," not "restart it" — the
+  process itself is fine, just unable to reach something it depends on
+  right now, and restarting it wouldn't fix a database outage.
+
+**Neither check ever leaks connection details** — no host, no port, no
+credentials, no error message, just `"up"` or `"down"`. A health endpoint
+is deliberately reachable with no authentication (an orchestrator polling
+it every few seconds can't be expected to hold a token), so it's designed
+to say only exactly as much as "is it working," nothing more.
+
+---
+
 ## What's next
 
 This doc covered the shape every module shares. From here, the series goes
