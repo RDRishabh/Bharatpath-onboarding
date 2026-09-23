@@ -40,7 +40,7 @@ export function StudentAppShell({ children }: { children: ReactNode }) {
     dispatch(clearUser());
     dispatch(clearTenant());
     setLogoutOpen(false);
-    router.push("/login");
+    router.push("/api/auth/logout");
   };
 
   return (
@@ -115,4 +115,3 @@ export function StudentAppShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
-

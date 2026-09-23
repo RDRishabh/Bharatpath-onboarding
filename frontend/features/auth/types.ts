@@ -16,9 +16,14 @@ export interface AuthUser {
 
 export interface LoginRequest {
   email: string;
-  password: string;
 }
 
 export interface LoginResponse {
   user: AuthUser;
+  /** The portal that serves this account: student | employer | college | admin. */
+  portal: string;
+  /** The path to redirect to after a successful sign-in. */
+  path: string;
+  /** The authoritative backend membership role (e.g. EMPLOYER_OWNER). */
+  backendRole: string;
 }

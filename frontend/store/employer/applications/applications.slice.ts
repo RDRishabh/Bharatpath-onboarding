@@ -40,6 +40,20 @@ const applicationsSlice = createSlice({
       state.items = action.payload;
     },
 
+    appendApplications: (
+      state,
+      action: PayloadAction<EmployerApplicationApiModel[]>,
+    ) => {
+      const existingIds = new Set(
+        state.items.map((application) => application.id),
+      );
+      state.items.push(
+        ...action.payload.filter(
+          (application) => !existingIds.has(application.id),
+        ),
+      );
+    },
+
     replaceApplication: (
       state,
       action: PayloadAction<EmployerApplicationApiModel>,
@@ -173,6 +187,7 @@ const applicationsSlice = createSlice({
 
 export const {
   replaceApplications,
+  appendApplications,
   replaceApplication,
   setApplicationJobFilter,
   openApplication,

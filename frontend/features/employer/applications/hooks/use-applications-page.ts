@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   useAppDispatch,
@@ -17,6 +17,7 @@ import {
   moveApplicationStage,
   setMeetingLink,
   replaceApplications,
+  appendApplications,
   replaceApplication,
   useLazyGetEmployerApplicationsQuery,
   useLazyGetEmployerApplicationQuery,
@@ -24,15 +25,27 @@ import {
   useProposeEmployerHireMutation,
 } from "@/store/employer/applications";
 import { useGetEmployerJobsQuery } from "@/store/employer/jobs";
-import { useRevealEmployerCandidatesQuery } from "@/store/employer/candidates";
+import {
+  useLazyRevealEmployerCandidatesQuery,
+  type RevealedCandidateResponse,
+} from "@/store/employer/candidates";
 import type { EmployerJob } from "@/features/employer/jobs/types";
-import type { ApplicationColumnDefinition } from "../types";
+import type {
+  ApplicationColumnDefinition,
+  EmployerApplication,
+} from "../types";
 
 const EMPTY_JOBS: EmployerJob[] = [];
+const APPLICATIONS_BATCH_SIZE = 10;
 
 interface ApplicationPageCursor {
   jobIndex: number;
   cursor?: string;
+}
+
+interface ApplicationBatch {
+  items: EmployerApplication[];
+  nextCursor: ApplicationPageCursor | null;
 }
 
 const FIRST_APPLICATION_PAGE: ApplicationPageCursor = { jobIndex: 0 };
@@ -51,35 +64,32 @@ export function useApplicationsPage() {
     useMoveEmployerApplicationMutation();
   const [proposeHire, proposeState] =
     useProposeEmployerHireMutation();
+  const [revealApplicants] =
+    useLazyRevealEmployerCandidatesQuery();
 
   const jobFilter = useAppSelector(
     selectApplicationJobFilter,
   );
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [cursorHistory, setCursorHistory] = useState<ApplicationPageCursor[]>([
-    FIRST_APPLICATION_PAGE,
-  ]);
   const [nextCursor, setNextCursor] = useState<ApplicationPageCursor | null>(null);
+  const [isInitialLoading, setIsInitialLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
+  const requestGenerationRef = useRef(0);
+  const revealedApplicantsRef = useRef<
+    Record<string, RevealedCandidateResponse>
+  >({});
+  const [revealedApplicants, setRevealedApplicants] = useState<
+    Record<string, RevealedCandidateResponse>
+  >({});
 
   const applications = useAppSelector(
     selectFilteredEmployerApplications,
   );
 
-  // Reveal every applicant before rendering the pipeline so placeholder data
-  // never flashes during hydration or a full-page refresh.
-  const revealIds = useMemo(
-    () => Array.from(new Set(applications.map((application) => application.candidate.id))),
-    [applications],
-  );
-  const { data: revealedApplicants, isFetching: applicantsRevealing } =
-    useRevealEmployerCandidatesQuery(revealIds, {
-      skip: revealIds.length === 0,
-    });
   const displayedApplications = useMemo(
     () =>
       applications.map((application) => {
-        const match = revealedApplicants?.[application.candidate.id];
+        const match = revealedApplicants[application.candidate.id];
         if (!match?.full_name) {
           return application;
         }
@@ -113,15 +123,6 @@ export function useApplicationsPage() {
         : jobs.filter((job) => job.id === jobFilter),
     [jobFilter, jobs],
   );
-  const activeCursor = cursorHistory[currentPage - 1] ?? FIRST_APPLICATION_PAGE;
-
-  const isLoading =
-    jobsLoading ||
-    applicationsState.isFetching ||
-    applicantsRevealing ||
-    (jobs.length > 0 &&
-      applications.length === 0 &&
-      applicationsState.isUninitialized);
 
   const jobOptions = useMemo(
     () => [
@@ -134,21 +135,12 @@ export function useApplicationsPage() {
     [jobs],
   );
 
-  useEffect(() => {
-    let active = true;
-
-    if (pagedJobs.length === 0) {
-      dispatch(replaceApplications([]));
-      return () => {
-        active = false;
-      };
-    }
-
-    void (async () => {
-      const items = [];
-      let remaining = pageSize;
-      let jobIndex = activeCursor.jobIndex;
-      let cursor = activeCursor.cursor;
+  const loadApplicationBatch = useCallback(
+    async (start: ApplicationPageCursor): Promise<ApplicationBatch> => {
+      const items: EmployerApplication[] = [];
+      let remaining = APPLICATIONS_BATCH_SIZE;
+      let jobIndex = start.jobIndex;
+      let cursor = start.cursor;
       let followingCursor: ApplicationPageCursor | null = null;
 
       while (jobIndex < pagedJobs.length && remaining > 0) {
@@ -159,13 +151,15 @@ export function useApplicationsPage() {
           limit: remaining,
         }).unwrap();
 
-        items.push(...page.items.map((application) => ({
-          ...application,
-          candidate: {
-            ...application.candidate,
-            jobTitle: job.title,
-          },
-        })));
+        items.push(
+          ...page.items.map((application) => ({
+            ...application,
+            candidate: {
+              ...application.candidate,
+              jobTitle: job.title,
+            },
+          })),
+        );
         remaining -= page.items.length;
 
         if (page.nextCursor) {
@@ -179,23 +173,126 @@ export function useApplicationsPage() {
           jobIndex < pagedJobs.length ? { jobIndex } : null;
       }
 
-      if (active) {
-        dispatch(replaceApplications(items));
-        setNextCursor(followingCursor);
+      return { items, nextCursor: followingCursor };
+    },
+    [loadApplications, pagedJobs],
+  );
+
+  const revealApplicationBatch = useCallback(
+    async (
+      items: EmployerApplication[],
+    ): Promise<Record<string, RevealedCandidateResponse>> => {
+      const candidateIds = Array.from(
+        new Set(items.map((application) => application.candidate.id)),
+      ).filter((candidateId) => !revealedApplicantsRef.current[candidateId]);
+
+      if (candidateIds.length === 0) {
+        return {};
       }
-    })().catch(() => undefined);
+
+      return revealApplicants(candidateIds).unwrap();
+    },
+    [revealApplicants],
+  );
+
+  useEffect(() => {
+    const generation = requestGenerationRef.current + 1;
+    requestGenerationRef.current = generation;
+    loadingMoreRef.current = false;
+    setNextCursor(null);
+    setIsLoadingMore(false);
+    dispatch(replaceApplications([]));
+
+    if (pagedJobs.length === 0) {
+      setIsInitialLoading(false);
+      return;
+    }
+
+    let active = true;
+    setIsInitialLoading(true);
+
+    void (async () => {
+      const batch = await loadApplicationBatch(FIRST_APPLICATION_PAGE);
+      const revealed = await revealApplicationBatch(batch.items);
+
+      if (active && requestGenerationRef.current === generation) {
+        revealedApplicantsRef.current = {
+          ...revealedApplicantsRef.current,
+          ...revealed,
+        };
+        setRevealedApplicants((current) => ({
+          ...current,
+          ...revealed,
+        }));
+        dispatch(replaceApplications(batch.items));
+        setNextCursor(batch.nextCursor);
+      }
+    })()
+      .catch(() => undefined)
+      .finally(() => {
+        if (active && requestGenerationRef.current === generation) {
+          setIsInitialLoading(false);
+        }
+      });
 
     return () => {
       active = false;
     };
   }, [
-    activeCursor.cursor,
-    activeCursor.jobIndex,
     dispatch,
-    loadApplications,
-    pageSize,
-    pagedJobs,
+    loadApplicationBatch,
+    pagedJobs.length,
+    revealApplicationBatch,
   ]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (!nextCursor || loadingMoreRef.current) {
+      return;
+    }
+
+    const generation = requestGenerationRef.current;
+    loadingMoreRef.current = true;
+    setIsLoadingMore(true);
+
+    try {
+      const batch = await loadApplicationBatch(nextCursor);
+      const revealed = await revealApplicationBatch(batch.items);
+
+      if (requestGenerationRef.current !== generation) {
+        return;
+      }
+
+      revealedApplicantsRef.current = {
+        ...revealedApplicantsRef.current,
+        ...revealed,
+      };
+      setRevealedApplicants((current) => ({
+        ...current,
+        ...revealed,
+      }));
+      dispatch(appendApplications(batch.items));
+      setNextCursor(batch.nextCursor);
+    } catch {
+      // The RTK Query error is exposed by the hook and rendered by the page.
+    } finally {
+      if (requestGenerationRef.current === generation) {
+        loadingMoreRef.current = false;
+        setIsLoadingMore(false);
+      }
+    }
+  }, [
+    dispatch,
+    loadApplicationBatch,
+    nextCursor,
+    revealApplicationBatch,
+  ]);
+
+  const isLoading =
+    jobsLoading ||
+    isInitialLoading ||
+    (jobs.length > 0 &&
+      applications.length === 0 &&
+      applicationsState.isUninitialized);
 
   /*
    * ============================================================
@@ -234,40 +331,16 @@ export function useApplicationsPage() {
 
   const handleJobFilterChange = useCallback(
     (value: string) => {
-      setCurrentPage(1);
-      setCursorHistory([FIRST_APPLICATION_PAGE]);
-      setNextCursor(null);
+      if (value === jobFilter) {
+        return;
+      }
+      setIsInitialLoading(true);
       dispatch(
         setApplicationJobFilter(value),
       );
     },
-    [dispatch],
+    [dispatch, jobFilter],
   );
-
-  const handlePageSizeChange = useCallback((size: number) => {
-    setPageSize(size);
-    setCurrentPage(1);
-    setCursorHistory([FIRST_APPLICATION_PAGE]);
-    setNextCursor(null);
-  }, []);
-
-  const handlePreviousPage = useCallback(() => {
-    setNextCursor(null);
-    setCurrentPage((page) => Math.max(1, page - 1));
-  }, []);
-
-  const handleNextPage = useCallback(() => {
-    if (!nextCursor) {
-      return;
-    }
-
-    setCursorHistory((history) => [
-      ...history.slice(0, currentPage),
-      nextCursor,
-    ]);
-    setNextCursor(null);
-    setCurrentPage((page) => page + 1);
-  }, [currentPage, nextCursor]);
 
   /*
    * ============================================================
@@ -429,10 +502,9 @@ export function useApplicationsPage() {
   return {
     applications: displayedApplications,
     isLoading,
+    isLoadingMore,
     jobFilter,
     jobOptions,
-    currentPage,
-    pageSize,
     hasNextPage: nextCursor !== null,
     selectedApplication,
     error:
@@ -441,9 +513,7 @@ export function useApplicationsPage() {
       proposeState.error,
 
     handleJobFilterChange,
-    handlePageSizeChange,
-    handlePreviousPage,
-    handleNextPage,
+    handleLoadMore,
     handleOpenApplication,
     handleCloseApplication,
     handleMoveStage,

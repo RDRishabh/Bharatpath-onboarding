@@ -6,7 +6,7 @@ import {
   ApplicationDrawer,
   ApplicationsPipelineSkeleton,
 } from "@/features/employer/applications";
-import { CursorPagination, ErrorState } from "@/components/ui";
+import { ErrorState } from "@/components/ui";
 
 import { useApplicationsPage } from "../hooks/use-applications-page";
 
@@ -14,18 +14,15 @@ export function ApplicationsPageContent() {
   const {
     applications,
     isLoading,
+    isLoadingMore,
     jobFilter,
     jobOptions,
-    currentPage,
-    pageSize,
     hasNextPage,
     selectedApplication,
     error,
 
     handleJobFilterChange,
-    handlePageSizeChange,
-    handlePreviousPage,
-    handleNextPage,
+    handleLoadMore,
     handleOpenApplication,
     handleCloseApplication,
     handleMoveStage,
@@ -88,6 +85,9 @@ export function ApplicationsPageContent() {
         ) : (
           <ApplicationPipeline
             applications={applications}
+            hasNextPage={hasNextPage}
+            isLoadingMore={isLoadingMore}
+            onLoadMore={handleLoadMore}
             onApplicationClick={
               handleOpenApplication
             }
@@ -95,19 +95,6 @@ export function ApplicationsPageContent() {
           />
         )}
       </div>
-
-      <CursorPagination
-        currentPage={currentPage}
-        itemCount={applications.length}
-        pageSize={pageSize}
-        hasNextPage={hasNextPage}
-        isLoading={isLoading}
-        onPreviousPage={handlePreviousPage}
-        onNextPage={handleNextPage}
-        onPageSizeChange={handlePageSizeChange}
-        itemLabel={applications.length === 1 ? "application" : "applications"}
-        className="mt-3 shrink-0 rounded-[11px] border border-[#e1e5eb]"
-      />
 
       {/* =====================================================
           APPLICATION DRAWER

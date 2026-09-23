@@ -178,7 +178,7 @@ export function PortalSidebar({
     dispatch(clearUser());
     dispatch(clearTenant());
 
-    router.push("/login");
+    router.push("/api/auth/logout");
   };
 
   return (
