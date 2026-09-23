@@ -545,3 +545,203 @@ async def audit_events(
         after_id=after[1] if after else None,
         limit=limit,
     )
+
+
+# ---------------------------------------------------------------------------
+# The dashboard (bypass reader)
+# ---------------------------------------------------------------------------
+# Counts across every organisation, and the few oldest items in each queue.
+# "Waiting on us" means: a KYB submission SUBMITTED or UNDER_REVIEW, an
+# integrity signal OPEN, a dispute OPEN or IN_REVIEW. MORE_INFO_REQUIRED is
+# waiting on the employer and is counted apart.
+async def _aggregate(reader: AsyncSession, sql: str, **params: Any) -> RowMapping:
+    """The one row an aggregate without GROUP BY always returns."""
+    return (await _rows(reader, sql, **params))[0]
+
+
+async def platform_totals(reader: AsyncSession) -> RowMapping:
+    row = await _aggregate(
+        reader,
+        """
+        SELECT
+          (SELECT count(*) FROM users WHERE pool = 'CANDIDATE' AND status = 'ACTIVE')
+            AS candidates,
+          (SELECT count(*) FROM tenants WHERE type = 'EMPLOYER' AND status = 'ACTIVE')
+            AS employers,
+          (SELECT count(*) FROM tenants WHERE type = 'COLLEGE' AND status = 'ACTIVE')
+            AS colleges,
+          (SELECT count(*) FROM jobs WHERE status = 'PUBLISHED') AS jobs_published,
+          (SELECT count(*) FROM applications) AS applications,
+          (SELECT count(*) FROM applications WHERE stage = 'HIRED') AS hires
+        """,
+    )
+    return row
+
+
+async def kyb_backlog(reader: AsyncSession) -> RowMapping:
+    row = await _aggregate(
+        reader,
+        """
+        SELECT
+          count(*) FILTER (WHERE state IN ('SUBMITTED', 'UNDER_REVIEW')) AS awaiting_review,
+          count(*) FILTER (WHERE state = 'MORE_INFO_REQUIRED') AS awaiting_employer,
+          min(coalesce(submitted_at, created_at))
+            FILTER (WHERE state IN ('SUBMITTED', 'UNDER_REVIEW')) AS oldest_waiting_since
+          FROM kyb_submissions
+         WHERE state IN ('SUBMITTED', 'UNDER_REVIEW', 'MORE_INFO_REQUIRED')
+        """,
+    )
+    return row
+
+
+async def integrity_backlog(reader: AsyncSession) -> RowMapping:
+    """`candidates_held_back` is people with an OPEN HIGH signal: already out of
+    employer search, and waiting on nobody but a reviewer."""
+    row = await _aggregate(
+        reader,
+        """
+        SELECT
+          count(*) AS open,
+          count(*) FILTER (WHERE severity = 'HIGH') AS high,
+          count(*) FILTER (WHERE severity = 'MEDIUM') AS medium,
+          count(*) FILTER (WHERE severity = 'LOW') AS low,
+          count(DISTINCT candidate_id) FILTER (WHERE severity = 'HIGH') AS candidates_held_back,
+          min(created_at) AS oldest_waiting_since
+          FROM integrity_signals
+         WHERE state = 'OPEN'
+        """,
+    )
+    return row
+
+
+async def dispute_backlog(reader: AsyncSession) -> tuple[RowMapping, dict[str, int]]:
+    row = await _aggregate(
+        reader,
+        """
+        SELECT
+          count(*) FILTER (WHERE state = 'OPEN') AS open,
+          count(*) FILTER (WHERE state = 'IN_REVIEW') AS in_review,
+          count(*) FILTER (WHERE assigned_to IS NULL) AS unassigned,
+          min(created_at) AS oldest_waiting_since
+          FROM disputes
+         WHERE state IN ('OPEN', 'IN_REVIEW')
+        """,
+    )
+    by_kind = await _counts(
+        reader,
+        """
+        SELECT kind AS key, count(*) AS n FROM disputes
+         WHERE state IN ('OPEN', 'IN_REVIEW') GROUP BY kind
+        """,
+    )
+    return row, by_kind
+
+
+async def organisation_counts(reader: AsyncSession) -> list[RowMapping]:
+    return await _rows(
+        reader,
+        """
+        SELECT type, status, count(*) AS n FROM tenants
+         WHERE type IN ('EMPLOYER', 'COLLEGE') GROUP BY type, status
+        """,
+    )
+
+
+async def oldest_kyb(reader: AsyncSession, *, limit: int) -> list[RowMapping]:
+    return await _rows(
+        reader,
+        """
+        SELECT k.id, k.tenant_id, t.name AS organisation, k.state,
+               coalesce(k.submitted_at, k.created_at) AS waiting_since
+          FROM kyb_submissions k
+          JOIN tenants t ON t.id = k.tenant_id
+         WHERE k.state IN ('SUBMITTED', 'UNDER_REVIEW')
+         ORDER BY waiting_since, k.id
+         LIMIT :limit
+        """,
+        limit=limit,
+    )
+
+
+async def oldest_signals(reader: AsyncSession, *, limit: int) -> list[RowMapping]:
+    """Identifiers and the rule, as the queue shows them. Never the evidence."""
+    return await _rows(
+        reader,
+        """
+        SELECT id, candidate_id, rule_id, severity, created_at AS waiting_since
+          FROM integrity_signals
+         WHERE state = 'OPEN'
+         ORDER BY created_at, id
+         LIMIT :limit
+        """,
+        limit=limit,
+    )
+
+
+async def oldest_disputes(reader: AsyncSession, *, limit: int) -> list[RowMapping]:
+    """Kind and party, never the description: it is read by opening the dispute."""
+    return await _rows(
+        reader,
+        """
+        SELECT d.id, d.kind, d.party, d.tenant_id, t.name AS organisation,
+               d.created_at AS waiting_since
+          FROM disputes d
+          LEFT JOIN tenants t ON t.id = d.tenant_id
+         WHERE d.state IN ('OPEN', 'IN_REVIEW')
+         ORDER BY d.created_at, d.id
+         LIMIT :limit
+        """,
+        limit=limit,
+    )
+
+
+async def throughput(
+    reader: AsyncSession,
+    *,
+    since: datetime,
+    zone: str,
+    kyb: bool,
+    integrity: bool,
+    disputes: bool,
+) -> list[RowMapping]:
+    """Items that entered, and items that left, the queues named, per day in `zone`.
+
+    An auto-approved KYB submission never waited on anyone (R15), so it is
+    neither intake nor cleared. A KYB review that asks for more information
+    clears the item from our queue; resubmitting brings it back.
+    """
+    return await _rows(
+        reader,
+        """
+        WITH moves AS (
+          SELECT coalesce(submitted_at, created_at) AS at, 1 AS intake, 0 AS cleared
+            FROM kyb_submissions
+           WHERE CAST(:kyb AS boolean) AND NOT auto_approved
+             AND coalesce(submitted_at, created_at) >= :since
+          UNION ALL
+          SELECT reviewed_at, 0, 1 FROM kyb_submissions
+           WHERE CAST(:kyb AS boolean) AND NOT auto_approved AND reviewed_at >= :since
+          UNION ALL
+          SELECT created_at, 1, 0 FROM integrity_signals
+           WHERE CAST(:integrity AS boolean) AND created_at >= :since
+          UNION ALL
+          SELECT resolved_at, 0, 1 FROM integrity_signals
+           WHERE CAST(:integrity AS boolean) AND resolved_at >= :since
+          UNION ALL
+          SELECT created_at, 1, 0 FROM disputes
+           WHERE CAST(:disputes AS boolean) AND created_at >= :since
+          UNION ALL
+          SELECT resolved_at, 0, 1 FROM disputes
+           WHERE CAST(:disputes AS boolean) AND resolved_at >= :since
+        )
+        SELECT CAST(timezone(:zone, at) AS date) AS day,
+               sum(intake) AS intake, sum(cleared) AS cleared
+          FROM moves
+         GROUP BY 1
+        """,
+        since=since,
+        zone=zone,
+        kyb=kyb,
+        integrity=integrity,
+        disputes=disputes,
+    )

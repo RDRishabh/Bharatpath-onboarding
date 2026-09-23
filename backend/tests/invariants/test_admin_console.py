@@ -153,6 +153,8 @@ ROUTE_CAPABILITY: dict[str, Any] = {
     "list_discount_codes": "discounts_read",
     "get_discount_code": "discounts_read",
     "discount_redemptions": "discounts_read",
+    # 2026-09-23: the landing page, for all staff; its sections are gated inside.
+    "dashboard": "dashboard",
 }
 
 
@@ -198,6 +200,7 @@ async def test_no_audit_row_means_no_reveal(client: Any, mint_token: Any, monkey
         lambda s: admin_service.integrity_queue(
             s, ctx=ctx, state="OPEN", severity=None, cursor=None, limit=None
         ),
+        lambda s: admin_service.dashboard(s, ctx=ctx),
         lambda s: admin_service.search_audit(
             s,
             ctx=ctx,

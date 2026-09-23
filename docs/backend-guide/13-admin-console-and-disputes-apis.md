@@ -1,6 +1,6 @@
-# 13 — The admin console and disputes: 28 endpoints, entirely missing from this series until now
+# 13 — The admin console and disputes: 29 endpoints, entirely missing from this series until now
 
-Module `admin`, two surfaces: **`/admin/*`** (26 routes — our own staff
+Module `admin`, two surfaces: **`/admin/*`** (27 routes — our own staff
 only) and **`/disputes`** (2 routes — where a candidate, employer or
 college raises one). **This entire module was recorded in the API
 checklist as having "no HTTP endpoints at all"** — true of `integrity`,
@@ -36,6 +36,7 @@ Four roles: `PLATFORM_ADMIN` (everything), `KYB_REVIEWER`,
 | `candidate_drilldown` | Admin, Support Agent, Integrity Reviewer |
 | `employer_drilldown` | Admin, Support Agent, KYB Reviewer |
 | `college_drilldown`, `disputes`, `suppress_notifications`, `resend_invitation`, `discounts_read` | Admin, Support Agent |
+| `dashboard` | **Every** staff role (sections inside are gated by the rows above — §0.5) |
 
 **Every single route names its capability from this one table** — nowhere
 in the router are roles listed by hand per-route, so "can a Support Agent
@@ -59,6 +60,67 @@ whole point is reading across all of them. **A drill-down or an opened
 record never shows the stored raw score, a whole phone number/email, or a
 CV** — only `display_value`/`band` (the same number the person themself
 sees), `phone_masked`/`email_masked`, and resume *counts*, never content.
+
+---
+
+## 0.5 `GET /admin/dashboard` — the landing page, one request
+
+**Auth required:** any staff role (`dashboard` capability). **Audited:** one
+`admin_bypass_session_opened` row per load (`target_type: "admin_dashboard"`)
+— fewer than building the page from the queue endpoints, which write one
+each.
+
+**A queue section is `null` for a role that can't open that queue.** The
+page shows each person what their other capabilities already let them work:
+
+| Section | Shown to |
+|---|---|
+| `kyb` | Admin, KYB Reviewer |
+| `integrity` | Admin, Integrity Reviewer |
+| `disputes` | Admin, Support Agent |
+| `organisations` | Admin, KYB Reviewer, Support Agent (the `tenants` capability) |
+| `platform_totals`, `oldest_waiting`, `throughput` | Everyone — but the last two are drawn only from the queues that caller sees |
+
+**Response** — `200 OK`, `AdminDashboard`:
+```json
+{
+  "generated_at": "2026-09-23T10:15:00Z",
+  "kyb": { "review_required": false, "awaiting_review": 0, "awaiting_employer": 1,
+           "oldest_waiting_since": null },
+  "integrity": { "open": 7, "open_by_severity": { "HIGH": 2, "MEDIUM": 3, "LOW": 2 },
+                 "candidates_held_back": 2, "oldest_waiting_since": "2026-09-19T06:10:00Z" },
+  "disputes": { "open": 3, "in_review": 1, "unassigned": 2,
+                "by_kind": { "HIRE": 1, "PAYMENT": 2, "ACCOUNT": 1, "OTHER": 0 },
+                "oldest_waiting_since": "2026-09-20T11:00:00Z" },
+  "organisations": { "employers": { "active": 42, "suspended": 1, "closed": 0 },
+                     "colleges":  { "active": 6,  "suspended": 0, "closed": 0 } },
+  "platform_totals": { "candidates": 1840, "employers": 42, "colleges": 6,
+                       "jobs_published": 95, "applications": 3120, "hires": 58 },
+  "oldest_waiting": [
+    { "type": "INTEGRITY", "id": "...", "waiting_since": "2026-09-19T06:10:00Z",
+      "detail": "INJECTED_INSTRUCTIONS", "candidate_id": "9f2e...", "severity": "HIGH",
+      "organisation": null, "tenant_id": null, "party": null },
+    { "type": "DISPUTE", "id": "...", "waiting_since": "2026-09-20T11:00:00Z",
+      "detail": "PAYMENT", "party": "EMPLOYER", "organisation": "Acme Pvt Ltd",
+      "tenant_id": "...", "candidate_id": null, "severity": null }
+  ],
+  "throughput": [ { "date": "2026-09-10", "intake": 2, "cleared": 1 }, "... 14 entries ..." ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `kyb.awaiting_review` | `SUBMITTED` or `UNDER_REVIEW` — waiting on a reviewer. Always 0 while `review_required` is false (R15: every submission is approved on arrival) |
+| `kyb.awaiting_employer` | `MORE_INFO_REQUIRED` — waiting on the employer, not us |
+| `integrity.candidates_held_back` | People with an **OPEN HIGH** signal. They are already out of employer search, before anyone has looked — the most urgent number on the page |
+| `disputes.unassigned` | Open or in review, nobody assigned |
+| `organisations` / `platform_totals.employers` | "Active employers" is `organisations.employers.active` (or `platform_totals.employers`, which every role sees) |
+| `platform_totals.candidates` | Active candidate accounts. `hires` counts only hires confirmed by both sides |
+| `oldest_waiting` | Up to 5, oldest first, from the KYB, integrity and dispute queues the caller sees. `detail` is the KYB state, the integrity rule, or the dispute kind. **Ids, never a person's name**; open the item for the rest |
+| `throughput` | 14 **IST** days ending today (today is partial), zeros included. `intake` = items that entered those queues that day; `cleared` = items decided. Auto-approved KYB is neither |
+
+Everything is read live on each request, never cached: a reviewer who has just
+cleared an item should see it gone.
 
 ---
 

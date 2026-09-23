@@ -31,6 +31,7 @@ from app.modules.admin import service
 from app.modules.admin.domain import CONSOLE_ROLES, DISPUTE_RAISER_ROLES, Capability
 from app.modules.admin.schemas import (
     AddOrganisationMemberRequest,
+    AdminDashboard,
     AllocateSeatsRequest,
     AuditEventsPage,
     CandidateDrilldown,
@@ -73,6 +74,22 @@ def can(capability: Capability) -> list[Any]:
 
 
 Limit = Query(default=None, ge=1, le=100)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+@router.get(
+    "/dashboard",
+    response_model=AdminDashboard,
+    dependencies=can("dashboard"),
+    summary="The console's landing page: every queue the caller can open, counted (audited)",
+)
+async def dashboard(request: Request, user: CurrentUser, session: DbSession) -> AdminDashboard:
+    """A queue section (`kyb`, `integrity`, `disputes`, `organisations`) is
+    null for a role that cannot open that queue. `oldest_waiting` and
+    `throughput` are drawn from the queues shown. Days are IST."""
+    return await service.dashboard(session, ctx=user, request_id=get_request_id(request))
 
 
 # ---------------------------------------------------------------------------
