@@ -1,5 +1,13 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -10,71 +18,150 @@ import {
   CheckCircle,
   WarningCircle,
   PencilLine,
-  Plus,
+  ClipboardText,
 } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
-import { FixSkillModal } from './FixSkillModal';
-
-interface SkillItem {
-  id: string;
-  name: string;
-  original?: string;
-  isUnclear?: boolean;
-  suggestions?: string[];
-}
-
-const INITIAL_SKILLS: SkillItem[] = [
-  { id: '1', name: 'Microbial culturing' },
-  { id: '2', name: 'Lab reporting' },
-  { id: '3', name: 'MS Excel' },
-  {
-    id: '4',
-    name: 'MS-Ofice',
-    original: 'MS-Ofice',
-    isUnclear: true,
-    suggestions: ['MS Office', 'MS Excel', 'Office 365'],
-  },
-  {
-    id: '5',
-    name: 'Teem work',
-    original: 'Teem work',
-    isUnclear: true,
-    suggestions: ['Teamwork', 'Team Leadership', 'Collaboration'],
-  },
-];
+import { ManualResumeData } from './ManualResumeModal';
+import { ManualResumeModal } from './ManualResumeModal';
+import { PasteTextModal } from './PasteTextModal';
+import {
+  confirmResumeVersion,
+  editResumeVersion,
+  getResumeVersionDetails,
+  ResumeVersionDetailResponse,
+} from '@/services/api/resume';
+import { ApiError } from '@/services/api/client';
 
 interface ReviewDetailsScreenProps {
-  onConfirm?: () => void;
+  onConfirm?: (confirmedVersionId?: string) => void;
   onFixField?: (field: string) => void;
+  candidateName?: string;
+  candidateEmail?: string;
+  manualData?: ManualResumeData;
+  versionId?: string;
+  versionDetails?: ResumeVersionDetailResponse | null;
+  onVersionUpdated?: (
+    versionId: string,
+    versionDetails: ResumeVersionDetailResponse
+  ) => void;
 }
 
-export function ReviewDetailsScreen({ onConfirm, onFixField }: ReviewDetailsScreenProps) {
-  const [skills, setSkills] = useState<SkillItem[]>(INITIAL_SKILLS);
-  const [activeFixSkill, setActiveFixSkill] = useState<SkillItem | null>(null);
+export function ReviewDetailsScreen({
+  onConfirm,
+  onFixField,
+  candidateName = 'Priya Sharma',
+  candidateEmail = 'priya.sharma@example.com',
+  manualData,
+  versionId,
+  versionDetails,
+  onVersionUpdated,
+}: ReviewDetailsScreenProps) {
+  const [activeVersionId, setActiveVersionId] = useState(versionId);
+  const [details, setDetails] = useState(versionDetails);
+  const [isStructuredEditorOpen, setIsStructuredEditorOpen] = useState(false);
+  const [isTextEditorOpen, setIsTextEditorOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
-  const unclearSkills = skills.filter((s) => s.isUnclear);
-  const unclearCount = unclearSkills.length;
+  useEffect(() => {
+    setActiveVersionId(versionId);
+    setDetails(versionDetails);
+  }, [versionDetails, versionId]);
 
-  const handleOpenFixModal = (skill: SkillItem) => {
-    setActiveFixSkill(skill);
+  const parsed = details?.parsed;
+  const rawText = typeof parsed?.raw_text === 'string' ? parsed.raw_text : '';
+  const hasStructuredContent =
+    typeof parsed?.full_name === 'string' ||
+    Array.isArray(parsed?.education) ||
+    Array.isArray(parsed?.experience) ||
+    Array.isArray(parsed?.skills);
+
+  const structuredData = useMemo<ManualResumeData>(
+    () => ({
+      full_name: parsed?.full_name?.trim() || manualData?.full_name || candidateName,
+      headline: parsed?.headline || manualData?.headline,
+      experience: Array.isArray(parsed?.experience)
+        ? parsed.experience
+        : manualData?.experience || [],
+      education: Array.isArray(parsed?.education)
+        ? parsed.education
+        : manualData?.education || [],
+      skills: Array.isArray(parsed?.skills) ? parsed.skills : manualData?.skills || [],
+    }),
+    [candidateName, manualData, parsed]
+  );
+
+  const errorMessage = (error: unknown, fallback: string) =>
+    error instanceof ApiError
+      ? error.problem?.params?.detail || error.problem?.title || error.message
+      : error instanceof Error
+      ? error.message
+      : fallback;
+
+  const adoptEditedVersion = async (newVersionId: string) => {
+    const newDetails = await getResumeVersionDetails(newVersionId);
+    setActiveVersionId(newVersionId);
+    setDetails(newDetails);
+    onVersionUpdated?.(newVersionId, newDetails);
   };
 
-  const handleSaveSkill = (newValue: string) => {
-    if (!activeFixSkill) return;
-    setSkills((prev) =>
-      prev.map((s) =>
-        s.id === activeFixSkill.id
-          ? { ...s, name: newValue, isUnclear: false }
-          : s
-      )
+  const handleStructuredEdit = async (data: ManualResumeData) => {
+    if (!activeVersionId) return;
+    setConfirmError(null);
+    setIsSavingEdit(true);
+    try {
+      const created = await editResumeVersion(activeVersionId, { structured: data });
+      await adoptEditedVersion(created.resume_version_id);
+      setIsStructuredEditorOpen(false);
+    } catch (error) {
+      setConfirmError(errorMessage(error, 'Could not save your resume changes.'));
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleTextEdit = async (text: string) => {
+    if (!activeVersionId) return;
+    setConfirmError(null);
+    setIsSavingEdit(true);
+    try {
+      const created = await editResumeVersion(activeVersionId, { text });
+      await adoptEditedVersion(created.resume_version_id);
+      setIsTextEditorOpen(false);
+    } catch (error) {
+      setConfirmError(errorMessage(error, 'Could not save your resume changes.'));
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const confirmCurrentVersion = async () => {
+    setConfirmError(null);
+    if (activeVersionId) {
+      try {
+        setIsConfirming(true);
+        await confirmResumeVersion(activeVersionId);
+        onConfirm?.(activeVersionId);
+      } catch (error) {
+        setConfirmError(errorMessage(error, 'Could not confirm this resume version.'));
+      } finally {
+        setIsConfirming(false);
+      }
+    } else {
+      setConfirmError('Resume version is missing. Please return and submit your resume again.');
+    }
+  };
+
+  const handleConfirmClick = () => {
+    Alert.alert(
+      'Confirm this resume?',
+      'Your score will be calculated from exactly these details. Updating your resume later creates a new version and a new score.',
+      [
+        { text: 'Keep reviewing', style: 'cancel' },
+        { text: 'Confirm and score', onPress: confirmCurrentVersion },
+      ]
     );
-    setActiveFixSkill(null);
-  };
-
-  const handleRemoveSkill = () => {
-    if (!activeFixSkill) return;
-    setSkills((prev) => prev.filter((s) => s.id !== activeFixSkill.id));
-    setActiveFixSkill(null);
   };
 
   return (
@@ -89,175 +176,188 @@ export function ReviewDetailsScreen({ onConfirm, onFixField }: ReviewDetailsScre
           <View style={styles.titleSection}>
             <View style={styles.titleRow}>
               <Text style={styles.title}>Review details</Text>
-              {unclearCount > 0 ? (
-                <View style={styles.toFixBadge}>
-                  <WarningCircle size={14} color="#7A5C0E" weight="fill" />
-                  <Text style={styles.toFixBadgeText}>{unclearCount} to fix</Text>
-                </View>
-              ) : (
-                <View style={styles.allFixedBadge}>
-                  <CheckCircle size={14} color="#1F6B45" weight="fill" />
-                  <Text style={styles.allFixedBadgeText}>All clear</Text>
-                </View>
-              )}
+              <View style={styles.allFixedBadge}>
+                <CheckCircle size={14} color="#1F6B45" weight="fill" />
+                <Text style={styles.allFixedBadgeText}>
+                  {details?.source === 'EDIT' ? 'New version' : 'Ready to review'}
+                </Text>
+              </View>
             </View>
             <Text style={styles.subtitle}>Nothing is scored until you confirm.</Text>
           </View>
 
+          {confirmError ? (
+            <View style={styles.errorBanner}>
+              <WarningCircle size={17} color="#8F3B3B" weight="fill" />
+              <Text style={styles.errorBannerText}>{confirmError}</Text>
+            </View>
+          ) : null}
+
           {/* Cards List */}
           <View style={styles.cardsList}>
-            {/* Card 1: BASICS */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.detailCard,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={() => onFixField && onFixField('basics')}
-            >
-              <View style={styles.cardHeaderRow}>
-                <User size={16} color="#5F6B80" weight="bold" />
-                <Text style={styles.cardEyebrow}>BASICS</Text>
-                <CheckCircle size={18} color="#1F6B45" weight="fill" />
-                <View style={styles.pencilRight}>
-                  <PencilLine size={15} color="#566073" weight="bold" />
-                </View>
-              </View>
-
-              <View style={styles.keyValueList}>
-                <View style={styles.keyValueRow}>
-                  <Text style={styles.keyText}>Name</Text>
-                  <Text style={styles.valueText}>Priya Deshmukh</Text>
-                </View>
-                <View style={styles.keyValueRow}>
-                  <Text style={styles.keyText}>Phone</Text>
-                  <Text style={styles.valueText}>+91 98••• ••42</Text>
-                </View>
-                <View style={styles.keyValueRow}>
-                  <Text style={styles.keyText}>City</Text>
-                  <Text style={styles.valueText}>Pune, Maharashtra</Text>
-                </View>
-              </View>
-            </Pressable>
-
-            {/* Card 2: EDUCATION */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.detailCard,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={() => onFixField && onFixField('education')}
-            >
-              <View style={styles.cardHeaderRow}>
-                <GraduationCap size={16} color="#5F6B80" weight="bold" />
-                <Text style={styles.cardEyebrow}>EDUCATION</Text>
-                <CheckCircle size={18} color="#1F6B45" weight="fill" />
-                <View style={styles.pencilRight}>
-                  <PencilLine size={15} color="#566073" weight="bold" />
-                </View>
-              </View>
-
-              <View style={styles.eduList}>
-                <View style={styles.eduItem}>
-                  <Text style={styles.eduTitle}>B.Sc Microbiology</Text>
-                  <Text style={styles.eduSubtitle}>
-                    Fergusson College, Pune · 2022–2025 · 68%
-                  </Text>
-                </View>
-                <View style={styles.hairlineDivider} />
-                <View style={styles.eduItem}>
-                  <Text style={styles.eduTitle}>HSC Science</Text>
-                  <Text style={styles.eduSubtitle}>
-                    Maharashtra Board · 2022 · 74%
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
-
-            {/* Card 3: SKILLS */}
-            <View style={styles.detailCard}>
-              <View style={styles.cardHeaderRow}>
-                <Wrench size={16} color="#5F6B80" weight="bold" />
-                <Text style={styles.cardEyebrow}>SKILLS</Text>
-                {unclearCount > 0 ? (
-                  <View style={styles.unclearBadge}>
-                    <WarningCircle size={12} color="#7A5C0E" weight="fill" />
-                    <Text style={styles.unclearBadgeText}>{unclearCount} unclear</Text>
-                  </View>
-                ) : (
+            {rawText && !hasStructuredContent ? (
+              <View style={styles.detailCard}>
+                <View style={styles.cardHeaderRow}>
+                  <ClipboardText size={16} color="#5F6B80" weight="bold" />
+                  <Text style={styles.cardEyebrow}>EXTRACTED RESUME TEXT</Text>
                   <CheckCircle size={18} color="#1F6B45" weight="fill" />
-                )}
-                <View style={styles.pencilRight}>
-                  <PencilLine size={15} color="#566073" weight="bold" />
+                </View>
+                <Text style={styles.rawText}>{rawText}</Text>
+                <Text style={styles.rawTextHint}>
+                  The backend returned plain text. You can correct it or replace it with reviewed
+                  fields for education, experience, and skills.
+                </Text>
+                <View style={styles.rawActions}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.secondaryEditButton,
+                      pressed && styles.cardPressed,
+                    ]}
+                    onPress={() => setIsTextEditorOpen(true)}
+                  >
+                    <PencilLine size={14} color="#5E4DB2" weight="bold" />
+                    <Text style={styles.secondaryEditButtonText}>Correct text</Text>
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.primaryEditButton,
+                      pressed && styles.buttonPressed,
+                    ]}
+                    onPress={() => setIsStructuredEditorOpen(true)}
+                  >
+                    <Text style={styles.primaryEditButtonText}>Edit as fields</Text>
+                  </Pressable>
                 </View>
               </View>
-
-              <View style={styles.chipsWrapRow}>
-                {skills.map((skill) => {
-                  if (skill.isUnclear) {
-                    return (
-                      <Pressable
-                        key={skill.id}
-                        style={({ pressed }) => [
-                          styles.dashedChip,
-                          pressed && styles.chipPressed,
-                        ]}
-                        onPress={() => handleOpenFixModal(skill)}
-                      >
-                        <Text style={styles.dashedChipText}>{skill.name}</Text>
-                        <PencilLine size={12} color="#7A5C0E" weight="bold" />
-                      </Pressable>
-                    );
-                  }
-
-                  return (
-                    <Pressable
-                      key={skill.id}
-                      style={({ pressed }) => [
-                        styles.solidChip,
-                        pressed && styles.chipPressed,
-                      ]}
-                      onPress={() => handleOpenFixModal(skill)}
-                    >
-                      <Text style={styles.solidChipText}>{skill.name}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Card 4: EXPERIENCE & PROJECTS */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.detailCard,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={() => onFixField && onFixField('experience')}
-            >
-              <View style={styles.cardHeaderRow}>
-                <Flask size={16} color="#5F6B80" weight="bold" />
-                <Text style={styles.cardEyebrow}>EXPERIENCE & PROJECTS</Text>
-                <View style={styles.pencilRight}>
-                  <PencilLine size={15} color="#566073" weight="bold" />
-                </View>
-              </View>
-
-              <View style={styles.expList}>
-                <View style={styles.expItem}>
-                  <Text style={styles.expTitle}>Internship — Quality lab</Text>
-                  <Text style={styles.expSubtitle}>
-                    Sahyadri Dairy, Pune · 3 months, 2024
-                  </Text>
-                </View>
-                <View style={styles.hairlineDivider} />
-                <View style={styles.addMissingRow}>
-                  <Text style={styles.missingLabelText}>Final-year project missing</Text>
-                  <View style={styles.addButton}>
-                    <Plus size={12} color="#FFFFFF" weight="bold" />
-                    <Text style={styles.addButtonText}>Add</Text>
+            ) : (
+              <>
+                {/* Card 1: BASICS */}
+                <Pressable
+                  style={({ pressed }) => [styles.detailCard, pressed && styles.cardPressed]}
+                  onPress={() => setIsStructuredEditorOpen(true)}
+                >
+                  <View style={styles.cardHeaderRow}>
+                    <User size={16} color="#5F6B80" weight="bold" />
+                    <Text style={styles.cardEyebrow}>BASICS</Text>
+                    <CheckCircle size={18} color="#1F6B45" weight="fill" />
+                    <View style={styles.pencilRight}>
+                      <PencilLine size={15} color="#566073" weight="bold" />
+                    </View>
                   </View>
-                </View>
-              </View>
-            </Pressable>
+                  <View style={styles.keyValueList}>
+                    <View style={styles.keyValueRow}>
+                      <Text style={styles.keyText}>Name</Text>
+                      <Text style={styles.valueText}>{structuredData.full_name}</Text>
+                    </View>
+                    {structuredData.headline ? (
+                      <View style={styles.keyValueRow}>
+                        <Text style={styles.keyText}>Headline</Text>
+                        <Text style={styles.valueText}>{structuredData.headline}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </Pressable>
+
+                {/* Card 2: EDUCATION */}
+                <Pressable
+                  style={({ pressed }) => [styles.detailCard, pressed && styles.cardPressed]}
+                  onPress={() => setIsStructuredEditorOpen(true)}
+                >
+                  <View style={styles.cardHeaderRow}>
+                    <GraduationCap size={16} color="#5F6B80" weight="bold" />
+                    <Text style={styles.cardEyebrow}>EDUCATION</Text>
+                    <View style={styles.pencilRight}>
+                      <PencilLine size={15} color="#566073" weight="bold" />
+                    </View>
+                  </View>
+                  <View style={styles.eduList}>
+                    {structuredData.education.length ? (
+                      structuredData.education.map((edu, idx) => (
+                        <React.Fragment key={`edu-${idx}`}>
+                          {idx > 0 && <View style={styles.hairlineDivider} />}
+                          <View style={styles.eduItem}>
+                            <Text style={styles.eduTitle}>{edu.qualification}</Text>
+                            <Text style={styles.eduSubtitle}>
+                              {edu.institution}
+                              {edu.completed_year ? ` · ${edu.completed_year}` : ''}
+                            </Text>
+                          </View>
+                        </React.Fragment>
+                      ))
+                    ) : (
+                      <View style={styles.eduItem}>
+                        <Text style={styles.eduTitle}>No education added</Text>
+                        <Text style={styles.eduSubtitle}>Tap to add your qualification</Text>
+                      </View>
+                    )}
+                  </View>
+                </Pressable>
+
+                {/* Card 3: SKILLS */}
+                <Pressable
+                  style={({ pressed }) => [styles.detailCard, pressed && styles.cardPressed]}
+                  onPress={() => setIsStructuredEditorOpen(true)}
+                >
+                  <View style={styles.cardHeaderRow}>
+                    <Wrench size={16} color="#5F6B80" weight="bold" />
+                    <Text style={styles.cardEyebrow}>SKILLS</Text>
+                    <View style={styles.pencilRight}>
+                      <PencilLine size={15} color="#566073" weight="bold" />
+                    </View>
+                  </View>
+                  {structuredData.skills.length ? (
+                    <View style={styles.chipsWrapRow}>
+                      {structuredData.skills.map((skill, index) => (
+                        <View key={`${skill}-${index}`} style={styles.solidChip}>
+                          <Text style={styles.solidChipText}>{skill}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.eduSubtitle}>No skills added. Tap to add skills.</Text>
+                  )}
+                </Pressable>
+
+                {/* Card 4: EXPERIENCE & PROJECTS */}
+                <Pressable
+                  style={({ pressed }) => [styles.detailCard, pressed && styles.cardPressed]}
+                  onPress={() => setIsStructuredEditorOpen(true)}
+                >
+                  <View style={styles.cardHeaderRow}>
+                    <Flask size={16} color="#5F6B80" weight="bold" />
+                    <Text style={styles.cardEyebrow}>EXPERIENCE & PROJECTS</Text>
+                    <View style={styles.pencilRight}>
+                      <PencilLine size={15} color="#566073" weight="bold" />
+                    </View>
+                  </View>
+                  <View style={styles.expList}>
+                    {structuredData.experience.length ? (
+                      structuredData.experience.map((exp, idx) => (
+                        <React.Fragment key={`exp-${idx}`}>
+                          {idx > 0 && <View style={styles.hairlineDivider} />}
+                          <View style={styles.expItem}>
+                            <Text style={styles.expTitle}>{exp.title}</Text>
+                            <Text style={styles.expSubtitle}>
+                              {exp.employer} · {exp.start_year}–{exp.end_year || 'Present'}
+                            </Text>
+                            {exp.summary ? (
+                              <Text style={[styles.eduSubtitle, { marginTop: 4 }]}>
+                                {exp.summary}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </React.Fragment>
+                      ))
+                    ) : (
+                      <View style={styles.expItem}>
+                        <Text style={styles.expTitle}>No experience added</Text>
+                        <Text style={styles.expSubtitle}>Tap to add a role or project</Text>
+                      </View>
+                    )}
+                  </View>
+                </Pressable>
+              </>
+            )}
           </View>
         </ScrollView>
 
@@ -266,39 +366,47 @@ export function ReviewDetailsScreen({ onConfirm, onFixField }: ReviewDetailsScre
           <Pressable
             style={({ pressed }) => [
               styles.confirmButton,
-              pressed && styles.buttonPressed,
+              isConfirming && styles.buttonDisabled,
+              pressed && !isConfirming && styles.buttonPressed,
             ]}
-            onPress={onConfirm}
+            onPress={handleConfirmClick}
+            disabled={isConfirming}
           >
-            <Text style={styles.confirmButtonText}>Confirm</Text>
+            {isConfirming ? (
+              <View style={styles.buttonLoadingRow}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Text style={styles.confirmButtonText}>Confirming...</Text>
+              </View>
+            ) : (
+              <Text style={styles.confirmButtonText}>Confirm and score</Text>
+            )}
           </Pressable>
           <Text style={styles.bottomSubtext}>You can edit any of this later</Text>
         </View>
 
-        {/* Fix Skill Pop-Up Bottom Sheet Modal */}
-        {activeFixSkill ? (
-          <FixSkillModal
-            visible={!!activeFixSkill}
-            originalSkill={activeFixSkill.original || activeFixSkill.name}
-            initialValue={
-              activeFixSkill.suggestions
-                ? activeFixSkill.suggestions[0]
-                : activeFixSkill.name
-            }
-            suggestions={
-              Array.from(new Set(
-                activeFixSkill.suggestions || [
-                  activeFixSkill.name,
-                  'MS Excel',
-                  'Office 365',
-                ]
-              ))
-            }
-            onSave={handleSaveSkill}
-            onRemove={handleRemoveSkill}
-            onClose={() => setActiveFixSkill(null)}
-          />
-        ) : null}
+        <ManualResumeModal
+          visible={isStructuredEditorOpen}
+          initialData={structuredData}
+          initialFullName={candidateName}
+          title="Edit resume details"
+          subtitle="Saving creates a new resume version"
+          submitLabel="Save as new version"
+          isSubmitting={isSavingEdit}
+          onSubmit={handleStructuredEdit}
+          onClose={() => !isSavingEdit && setIsStructuredEditorOpen(false)}
+        />
+
+        <PasteTextModal
+          visible={isTextEditorOpen}
+          initialText={rawText}
+          title="Edit extracted resume"
+          subtitle="Saving creates a new resume version"
+          submitLabel="Save as new version"
+          showSampleAction={false}
+          isSubmitting={isSavingEdit}
+          onSubmit={handleTextEdit}
+          onClose={() => !isSavingEdit && setIsTextEditorOpen(false)}
+        />
       </View>
     </SafeAreaView>
   );
@@ -373,6 +481,23 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: Colors.text.primary, // #3A4761
   },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FDECEC',
+    borderWidth: 1,
+    borderColor: '#F8B4B4',
+    borderRadius: 12,
+    padding: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontFamily: 'GeneralSans-Medium',
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#8F3B3B',
+  },
   cardsList: {
     gap: Spacing.md, // 12px
   },
@@ -401,6 +526,52 @@ const styles = StyleSheet.create({
   },
   pencilRight: {
     marginLeft: 'auto',
+  },
+  rawText: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#0A1931',
+  },
+  rawTextHint: {
+    fontFamily: 'GeneralSans-Medium',
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#5E4DB2',
+  },
+  rawActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  secondaryEditButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#D9D0F5',
+    borderRadius: 12,
+    paddingVertical: 11,
+    backgroundColor: '#FFFFFF',
+  },
+  secondaryEditButtonText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 13,
+    color: '#5E4DB2',
+  },
+  primaryEditButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    paddingVertical: 11,
+    backgroundColor: '#5E4DB2',
+  },
+  primaryEditButtonText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 13,
+    color: '#FFFFFF',
   },
   keyValueList: {
     gap: Spacing.md, // 12px
@@ -558,6 +729,14 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill, // 999
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  buttonDisabled: {
+    backgroundColor: '#C8C1EC',
+  },
+  buttonLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   buttonPressed: {
     opacity: 0.9,

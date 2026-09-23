@@ -1,58 +1,148 @@
-import { supabase } from '../supabase';
-import { JobItem, JobApplication } from '@/types/job';
-import { mockJobs } from '@/mocks/mockData';
+/**
+ * BharatPath — Jobs Service
+ * Integrates with Backend /api/v1/candidate/jobs endpoints.
+ *
+ * The candidate job board. Both endpoints require CANDIDATE role + an active
+ * subscription (R13/R15). A lapsed subscriber gets 402 `subscription_required`.
+ *
+ * The board is cursor-paginated and `total` is deliberately `null` — the
+ * backend does not compute a total count for candidates. Use `next_cursor`
+ * for infinite scroll; never render "Showing X of Y".
+ *
+ * `eligibility` is the only signal a candidate gets about whether they can
+ * apply. The backend omits `min_score` from the response (R11 — the score is
+ * never explained, and the threshold/gap must never be shown).
+ */
+import { apiRequest, ApiError } from './client';
+import {
+  BoardJobSummary,
+  BoardJobDetail,
+  JobPage,
+  JobBoardQuery,
+  WorkMode,
+} from '@/types/job';
 
-export async function fetchRecommendedJobs(): Promise<JobItem[]> {
-  const { data, error } = await supabase.from('jobs').select('*');
-  if (error || !data || data.length === 0) {
-    // Fallback to rich mock data if table is not populated yet
-    return mockJobs as JobItem[];
-  }
-  return data as JobItem[];
+/** Build the query string for `GET /candidate/jobs`, omitting empty params. */
+function buildJobQuery(opts?: JobBoardQuery): string {
+  const params = new URLSearchParams();
+  if (opts?.q && opts.q.trim()) params.set('q', opts.q.trim());
+  if (opts?.location && opts.location.trim())
+    params.set('location', opts.location.trim());
+  if (opts?.work_mode) params.set('work_mode', opts.work_mode);
+  if (opts?.skill && opts.skill.trim()) params.set('skill', opts.skill.trim());
+  if (opts?.min_salary_minor != null)
+    params.set('min_salary_minor', String(opts.min_salary_minor));
+  if (opts?.eligible_only) params.set('eligible_only', 'true');
+  if (opts?.cursor) params.set('cursor', opts.cursor);
+  if (opts?.limit != null) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  return qs ? `/candidate/jobs?${qs}` : '/candidate/jobs';
 }
 
-export async function searchJobs(query: string): Promise<JobItem[]> {
-  const { data, error } = await supabase
-    .from('jobs')
-    .select('*')
-    .or(`title.ilike.%${query}%,company.ilike.%${query}%,location.ilike.%${query}%`);
-
-  if (error || !data || data.length === 0) {
-    const q = query.toLowerCase();
-    return (mockJobs as JobItem[]).filter(
-      (job) =>
-        job.title.toLowerCase().includes(q) ||
-        job.company.toLowerCase().includes(q) ||
-        job.location.toLowerCase().includes(q)
-    );
-  }
-  return data as JobItem[];
+/**
+ * Search the candidate job board.
+ *
+ * Pass a `cursor` from a previous response's `next_cursor` to load the next
+ * page. `limit` caps a page (1–100, backend default 50). The response's
+ * `total` is `null` — do not render a count.
+ */
+export async function searchJobs(opts?: JobBoardQuery): Promise<JobPage> {
+  const endpoint = buildJobQuery(opts);
+  return apiRequest<JobPage>(endpoint);
 }
 
-export async function applyToJob(jobId: string, userId: string): Promise<JobApplication | null> {
-  const application: Partial<JobApplication> = {
-    jobId,
-    userId,
-    appliedAt: new Date().toISOString(),
-    status: 'submitted',
-  };
-
-  const { data, error } = await supabase
-    .from('applications')
-    .insert(application)
-    .select()
-    .single();
-
-  if (error) {
-    console.warn('Apply to job warning:', error.message);
-    return {
-      id: `app_${Date.now()}`,
-      jobId,
-      userId,
-      appliedAt: new Date().toISOString(),
-      status: 'submitted',
-    };
-  }
-
-  return data as JobApplication;
+/**
+ * Fetch a single published job's detail.
+ *
+ * Returns `BoardJobDetail` (summary + `description`). 404 for anything not
+ * currently on the board (draft, paused, closed all look the same).
+ */
+export async function getJobDetail(jobId: string): Promise<BoardJobDetail> {
+  return apiRequest<BoardJobDetail>(`/candidate/jobs/${jobId}`);
 }
+
+/**
+ * Apply to a job — `POST /candidate/applications { job_id }`.
+ *
+ * The request body is just `{ job_id}`: no stage, no score, no tenant.
+ * Eligibility is re-checked server-side against the stored score.
+ *
+ * Returns the created `ApplicationResponse`:
+ *   - 201 — new application
+ *   - 200 — already applied (returns the existing application)
+ *
+ * Throws `ApiError` for:
+ *   - 403 `eligibility_below_threshold` — re-render detail as not eligible
+ *   - 409 `score_pending`              — score still calculating
+ *   - 409 `application_unavailable`     — job no longer accepting applications
+ *   - 404                              — job has closed
+ *   - 402 `subscription_required`       — paywall
+ */
+export async function applyToJob(jobId: string): Promise<{
+  id: string;
+  job_id: string;
+  job_title: string | null;
+  employer_name: string | null;
+  stage: string;
+  hire_confirmation: string;
+  interview: { interview_at: string; meeting_url: string } | null;
+  created_at: string;
+  updated_at: string;
+}> {
+  return apiRequest('/candidate/applications', {
+    method: 'POST',
+    body: { job_id: jobId },
+  });
+}
+
+// ─── Error helpers ─────────────────────────────────────────────
+
+/**
+ * Map an apply-flow `ApiError` to a user-facing message.
+ *
+ * Follows `docs/screen-flows.md` S18: never show the threshold number or the
+ * gap on `eligibility_below_threshold`; show a generic message for
+ * `application_unavailable` (also covers an account held back for review).
+ */
+export function applyErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    switch (error.code) {
+      case 'eligibility_below_threshold':
+        return 'Your score does not meet this employer’s requirement.';
+      case 'score_pending':
+        return 'Your score is still being calculated. Try again shortly.';
+      case 'application_unavailable':
+        return 'This job is no longer accepting applications.';
+      case 'subscription_required':
+        return 'Membership is required to apply.';
+      default:
+        if (error.status === 404) return 'This job has closed.';
+        if (error.status === 402) return 'Membership is required to apply.';
+        return error.problem.title || fallback;
+    }
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+/** Whether an apply error means the detail screen should re-render as not eligible. */
+export function isEligibilityError(error: unknown): boolean {
+  return (
+    error instanceof ApiError && error.code === 'eligibility_below_threshold'
+  );
+}
+
+/** Whether an apply error means the job is gone (closed / unavailable). */
+export function isJobGoneError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  return error.status === 404 || error.code === 'application_unavailable';
+}
+
+// ─── Re-exports for convenience ────────────────────────────────
+export type {
+  BoardJobSummary,
+  BoardJobDetail,
+  JobPage,
+  JobBoardQuery,
+  WorkMode,
+};

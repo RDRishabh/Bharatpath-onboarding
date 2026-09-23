@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -24,9 +25,7 @@ logger = get_logger(__name__)
 
 @celery_app.task(name="scoring.rescore_for_addons", bind=True, max_retries=5)
 def rescore_for_addons(self: Any, user_id: str) -> dict[str, Any]:
-    import asyncio
-
-    return asyncio.run(_rescore(user_id))
+    return run_async(_rescore(user_id))
 
 
 async def _rescore(user_id: str) -> dict[str, Any]:

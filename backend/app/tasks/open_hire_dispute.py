@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -20,9 +21,7 @@ logger = get_logger(__name__)
 
 @celery_app.task(name="admin.open_hire_dispute", bind=True, max_retries=3)
 def open_hire_dispute(self: Any, application_id: str, candidate_id: str) -> dict[str, str | None]:
-    import asyncio
-
-    return asyncio.run(run(application_id, candidate_id))
+    return run_async(run(application_id, candidate_id))
 
 
 async def run(application_id: str, candidate_id: str) -> dict[str, str | None]:

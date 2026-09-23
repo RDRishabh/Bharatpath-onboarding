@@ -32,8 +32,18 @@ docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
 .venv/Scripts/pytest.exe                # 2079 tests
-bash scripts/dev_api.sh                 # API on :8099
+bash scripts/dev_all.sh                # API + Celery worker, together
 ```
+
+**The API alone is not enough for resume parsing.** The parse flow is
+asynchronous: the upload endpoint writes a `resume_files` row and an outbox
+event, and a **Celery worker** (`resume.parse`) must pick it up. If only the
+API is running, uploads succeed but `parse_status` stays PENDING forever and
+the mobile app times out after 60s with _"parsing has not started. The resume
+parser worker may not be running."_ `scripts/dev_all.sh` starts both the API
+(:8099) and the worker + outbox relay together, with shared Ctrl-C cleanup.
+Logs: `/tmp/bp_api.log`, `/tmp/bp_workers.log`. Use it instead of
+`dev_api.sh` for any flow that touches resumes or scoring.
 
 **Run tests as CI does — bare `pytest`, not `python -m pytest`.** The latter puts
 the working directory on `sys.path`, which hides import errors that CI will catch.
@@ -59,7 +69,7 @@ pytest --cov=app
 
 - Add-on modules (`questionnaire`, `interview`, `courses`) **never** import
   `scoring` — this is invariant 4′, stopping an add-on awarding itself points.
-- Routers never *directly* import repositories; `router → service → repository`
+- Routers never _directly_ import repositories; `router → service → repository`
   is the intended path.
 - `app.core` never imports `app.modules` (one documented exception:
   `app/core/metadata.py`, which exists only to populate `Base.metadata`).
@@ -74,13 +84,13 @@ pytest --cov=app
 
 - **Cognito answers "who is this" and nothing else.** Role and tenant come from
   our `memberships` table on every request, cached 60s in Redis
-  (`app/core/auth/membership.py`). Token claims and Cognito groups are *not* the
+  (`app/core/auth/membership.py`). Token claims and Cognito groups are _not_ the
   authority: a revoked membership that stayed valid until token expiry is the
   tenant-isolation failure SRS §2.24.7 forbids.
 - `cognito_sub` is stored on `users` but **must never appear in an API response.**
 - Two pools: candidates (email + password) and business (email + password +
   mandatory software-token MFA). **No phone OTP and no SMS** (client,
-  2026-09-18) — see *Sign-up, accounts and discount codes* below. A token from
+  2026-09-18) — see _Sign-up, accounts and discount codes_ below. A token from
   the wrong pool is rejected, not half-trusted.
 - `AUTH_ALLOW_LOCAL_TOKENS=true` enables a dev-only provider that mints real
   RS256 tokens locally. `Settings` refuses to boot with it set outside local/CI.
@@ -99,8 +109,8 @@ attached to it.
 - **Scoring must trigger on `resume.version_confirmed`, never on
   `resume.version_created`.** The creation event is the obvious choice and it
   is wrong: it fires on every unconfirmed parse and every unconfirmed
-  correction, so consuming it bypasses the gate *while the whole suite still
-  passes* — the gate function stays intact and is simply never called.
+  correction, so consuming it bypasses the gate _while the whole suite still
+  passes_ — the gate function stays intact and is simply never called.
   `tests/invariants/test_confirm_gate.py` fails the build on it.
 - **Versions are append-only.** An edit creates a row chained by
   `supersedes_id`; the chain cannot fork (unique index) and `confirmed_at` is a
@@ -118,7 +128,7 @@ and bounded 0–4 ratings; Layers 2 and 3 are ordinary, versioned, tested code.
 **The model never sees the weights and never returns a total**, so it cannot
 aim at a target score and neither can anyone writing instructions into a CV.
 
-- **The model's output is an *input* to scoring, captured once and stored.**
+- **The model's output is an _input_ to scoring, captured once and stored.**
   `replay(score_id)` re-runs Layers 2 and 3 over the stored response and
   **never calls the model**, so a 2029 dispute about a 2026 score gets an
   exact answer. A mismatch raises rather than returning a different number.
@@ -140,12 +150,12 @@ aim at a target score and neither can anyone writing instructions into a CV.
 
 `pypdf` and `python-docx` read a normal CV for nothing. **Textract is called
 only when they fail or return almost no text**, which is what a scanned CV — a
-phone photo saved as a PDF — looks like: pypdf reports *success* and returns an
+phone photo saved as a PDF — looks like: pypdf reports _success_ and returns an
 empty string, so without OCR that candidate is scored as having no experience
 and nothing errors. The trigger is therefore a length floor
 (`MIN_USEFUL_CHARS`), not an exception.
 
-Textract bills per page with no free tier, so *not* calling it on the common
+Textract bills per page with no free tier, so _not_ calling it on the common
 path is a requirement, not an optimisation. `resume_textract_fallback_enabled`
 turns it off; scanned CVs then fail loudly rather than scoring as empty.
 Textract runs in `ap-south-1`, so text stays in India while **N2** is open.
@@ -154,25 +164,25 @@ Every extraction records `parser` and `parser_version`. This is not
 bookkeeping: invariant 1 requires a score to be replayable from the stored
 extraction chain, and a different parser produces different text and therefore
 a different score. Changing parser is a **re-score**, not an upgrade. See
-`docs/progress.md` → *Deferred by decision*.
+`docs/progress.md` → _Deferred by decision_.
 
 ## Placeholder content — ours, not the client's
 
 Produced 2026-09-12 under Round 7.10. **Every one of these carries a flag that a
 test asserts**, so a placeholder cannot quietly become the product:
 
-| Where | Flag |
-|---|---|
-| `subscriptions/catalogue.py` | `PLACEHOLDER_PRICING` |
-| `courses/catalogue.py` | `HAS_MEDIA`, every `asset_key is None` |
-| `notifications/templates.py` | every `dlt_template_id is None` — **an SMS cannot be sent without one**, and an unregistered body is dropped silently by the operator. `delivery_decision` enforces it |
-| `questionnaire/bank.py`, `interview/bank.py` | `BANK_VERSION` |
-| `kyb/forms.py`, `college/forms.py` | `FORM_VERSION` |
-| `app/core/i18n/locales/*.json` | non-English bundles still need a native-speaker pass |
-| `college/domain.py` | `CONSENT_VERSION` starts `placeholder-` — the words a student agrees to when linking to a college are ours, not counsel's |
-| `college/domain.py` | `INDIVIDUAL_CONSENT_VERSION` starts `placeholder-` — the words for letting a college see a student by name, and the field list they name (blockers E27) |
-| `analytics/domain.py` | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3 |
-| `billing/domain.py` | `DISCOUNT_POLICY_VERSION` starts `placeholder-` — no 100% code, first checkout only, one use per payer (blockers E36) |
+| Where                                        | Flag                                                                                                                                                                   |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `subscriptions/catalogue.py`                 | `PLACEHOLDER_PRICING`                                                                                                                                                  |
+| `courses/catalogue.py`                       | `HAS_MEDIA`, every `asset_key is None`                                                                                                                                 |
+| `notifications/templates.py`                 | every `dlt_template_id is None` — **an SMS cannot be sent without one**, and an unregistered body is dropped silently by the operator. `delivery_decision` enforces it |
+| `questionnaire/bank.py`, `interview/bank.py` | `BANK_VERSION`                                                                                                                                                         |
+| `kyb/forms.py`, `college/forms.py`           | `FORM_VERSION`                                                                                                                                                         |
+| `app/core/i18n/locales/*.json`               | non-English bundles still need a native-speaker pass                                                                                                                   |
+| `college/domain.py`                          | `CONSENT_VERSION` starts `placeholder-` — the words a student agrees to when linking to a college are ours, not counsel's                                              |
+| `college/domain.py`                          | `INDIVIDUAL_CONSENT_VERSION` starts `placeholder-` — the words for letting a college see a student by name, and the field list they name (blockers E27)                |
+| `analytics/domain.py`                        | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3                                                 |
+| `billing/domain.py`                          | `DISCOUNT_POLICY_VERSION` starts `placeholder-` — no 100% code, first checkout only, one use per payer (blockers E36)                                                  |
 
 Flipping one of these is a client decision, not a tidy-up.
 
@@ -187,7 +197,7 @@ SRS 1.4.5, enforced by the `integrity-never-imports-scoring` contract.
 `integrity/domain.py` raises signals; a human resolves them.
 
 **Severity is the design, not the rules.** HIGH removes a candidate from
-employer search *before* anyone has looked, so only two rules may reach it —
+employer search _before_ anyone has looked, so only two rules may reach it —
 injected instructions and hidden text, the two things nobody does by accident.
 Everything that could equally be a typo, an unusual career, or our own extractor
 misreading is MEDIUM or LOW. `test_only_the_two_deliberate_rules_can_ever_reach_high`
@@ -312,7 +322,7 @@ is where a third one would have to be argued for.
   `VISIBLE_CANDIDATES_CTE` on `(user_id, resume_version_id)`, so a suppressed
   candidate keeps a document and still never appears.
 - **Location is candidate-declared** (`candidate_profiles`, `PUT
-  /candidate/profile/location`) — nothing else in the schema has one. A city
+/candidate/profile/location`) — nothing else in the schema has one. A city
   refuses digits and `@` because every employer sees it; no address or PIN.
 - **Skills come from a CV, so they can carry a phone number.** Contact-like
   skills are dropped from the document (unsearchable) and again at the card.
@@ -346,7 +356,7 @@ is where a third one would have to be argued for.
   ids only. The view-event insert selects from the visibility CTE, so it cannot
   name someone the reveal would not show.
 - **Caps count distinct candidates per organisation over a rolling hour and
-  day**, under a per-tenant advisory lock, checked *before* the lookup so a
+  day**, under a per-tenant advisory lock, checked _before_ the lookup so a
   capped employer cannot probe ids. Re-opening costs nothing. Every number is
   `config_values` key `discovery.limits` (strict; a bad row is a 500, never
   the defaults), and the defaults are ours, not the client's.
@@ -361,7 +371,7 @@ is where a third one would have to be argued for.
   (E4). Rows in DEFAULT block creating their month — move them first.
 - **`RevealedCandidate` has `score` (display) and no raw field**, and
   `full_name` from `candidate_profiles` (asked at sign-up, `PUT
-  /candidate/profile/name`), else the structured form's; never guessed from a
+/candidate/profile/name`), else the structured form's; never guessed from a
   CV and never on a masked card. Its field list, "no employer schema has a raw field" and "export
   is not a feature" are invariant tests. No list endpoint may return it.
 - Discovery repository functions that do not use the CTE must be named in
@@ -578,8 +588,8 @@ is where a third one would have to be argued for.
   given one; half an erasure is not a smaller erasure, it is a corrupt account.
 - **`users` is emptied, never deleted.** It anchors every retained payment and
   audit row. `cognito_sub` is replaced by its **SHA-256, not nulled** — with
-  NULL, a token issued before the erasure finds no row and sign-in *creates a
-  new account from the erased person's credential*. `_by_subject` matches the
+  NULL, a token issued before the erasure finds no row and sign-in _creates a
+  new account from the erased person's credential_. `_by_subject` matches the
   hash and returns the DELETED row, so the answer is `account_inactive`. The
   Cognito user itself is not deleted yet (blockers E32).
 - **Objects before rows.** The S3 keys live on the rows the cascade destroys,
@@ -611,7 +621,7 @@ is where a third one would have to be argued for.
 - **The index review is a test, not a one-off.** `test_index_review.py` plans
   every hot query with `enable_seqscan = off` and holds every FK on a growing
   table to an index or a written exemption. `users` is exempt as a parent
-  *because* an erasure empties rather than deletes it.
+  _because_ an erasure empties rather than deletes it.
 
 ## Sign-up, accounts and discount codes — 2026-09-18
 
@@ -635,7 +645,7 @@ for app teams is `docs/signup-and-accounts.md`.
   `LocalAccountDirectory.sent`. An owner adding a never-signed-in colleague
   sends the same email. Staff never link a student to a college: that link is
   the student's consent.
-- **First sign-in adopts a pre-made row by email *and pool*** (`_adopt_unlinked`).
+- **First sign-in adopts a pre-made row by email _and pool_** (`_adopt_unlinked`).
   A contact already held by the other pool is 403 `account_contact_in_use`,
   not a 500.
 - **Discount codes live in `billing`.** A code lowers the checkout's
@@ -678,7 +688,7 @@ and the event routing table.
 
 Account `592033927084`, region `ap-south-1` (Mumbai — data residency, plan §13 N2
 is still open). Terraform in `infra/terraform`, applied 2026-09-11. See
-`infra/README.md` for what is deliberately *not* provisioned and why.
+`infra/README.md` for what is deliberately _not_ provisioned and why.
 
 Everything provisioned is ~free at idle. Postgres and Redis are **not** in AWS by
 design — docker locally, service containers in CI.

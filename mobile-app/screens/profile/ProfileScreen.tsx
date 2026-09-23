@@ -1,11 +1,19 @@
 /**
  * BharatPath — ProfileScreen ("You" Screen)
- * Exactly matches Screen 40 from BharatPath Handoff and Screenshot 1.
- * Features:
- * - Candidate PD badge, Name & phone/city
- * - 3 summary stat cards: Score (706, dark theme), Applied (6), Add-ons (2)
- * - MY INFORMATION section (Resume details, Attribute report, Interview report, Language)
- * - PRIVACY AND DATA section (Who has seen me [badge 3], Download my data [Working], Delete my account)
+ *
+ * Shows the candidate's real profile data from the backend:
+ *   - Name and location (city, state) from `GET /candidate/profile`
+ *   - Score + band from `GET /candidate/score/me` (dash while PENDING)
+ *   - Applied count from `GET /candidate/applications`
+ *   - Add-ons count (completed courses + completed interview sessions)
+ *
+ * The profile response carries no phone number, so the subtitle is the
+ * location only. The score is never invented — a dash means "still
+ * computing" and is the honest state while the scoring worker runs.
+ *
+ * Sections:
+ * - MY INFORMATION (Resume details, Attribute report, Interview report, Language)
+ * - PRIVACY AND DATA (Who has seen me, Download my data, Delete my account)
  * - Sticky bottom tab bar with "You" tab active
  */
 import React from 'react';
@@ -16,6 +24,7 @@ import {
   ScrollView,
   Pressable,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -35,11 +44,23 @@ import { Colors, Spacing } from '@/theme/tokens';
 import { BottomTabBar, TabName } from '@/components/navigation/BottomTabBar';
 
 export interface ProfileScreenProps {
+  /** Candidate's full name from `candidate_profiles.full_name`. */
   name?: string;
+  /** Avatar initials, derived from the name. */
   initials?: string;
-  phoneAndCity?: string;
+  /** "City, ST" subtitle from `GET /candidate/profile`. No phone number. */
+  locationLabel?: string;
+  /** Score band label (e.g. "Solid"). Currently unused on this card — the
+   *  score card shows only the number, not the band. Kept on the props for
+   *  callers that still pass it. */
+  bandName?: string;
+  /** Real score value. Undefined while PENDING or on error — show a dash. */
   score?: number;
+  /** True while the score is still being computed (PENDING) or loading. */
+  scorePending?: boolean;
+  /** Number of applications. Undefined while loading; 0 is a real zero. */
   appliedCount?: number;
+  /** Completed courses + completed interview sessions. Undefined while loading. */
   addonsCount?: number;
   activeTab?: TabName;
   onTabPress?: (tab: TabName, href: string) => void;
@@ -56,12 +77,14 @@ export interface ProfileScreenProps {
 }
 
 export function ProfileScreen({
-  name = 'Priya Deshmukh',
-  initials = 'PD',
-  phoneAndCity = '+91 98••• ••42 · Pune',
-  score = 706,
-  appliedCount = 6,
-  addonsCount = 2,
+  name,
+  initials,
+  locationLabel,
+  bandName,
+  score,
+  scorePending = true,
+  appliedCount,
+  addonsCount,
   activeTab = 'you',
   onTabPress,
   onScorePress,
@@ -75,6 +98,11 @@ export function ProfileScreen({
   onDownloadDataPress,
   onDeleteAccountPress,
 }: ProfileScreenProps) {
+  const displayName = name?.trim() || 'Candidate';
+  const displayInitials = initials?.trim() || '?';
+  const scoreDisplay = score != null ? String(score) : '—';
+  const appliedDisplay = appliedCount != null ? String(appliedCount) : '—';
+  const addonsDisplay = addonsCount != null ? String(addonsCount) : '—';
   return (
     <View style={styles.root}>
       <StatusBar style="dark" animated />
@@ -83,20 +111,22 @@ export function ProfileScreen({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Header with PD avatar badge and candidate info */}
+          {/* Header with avatar badge and candidate info */}
           <View style={styles.header}>
             <View style={styles.avatarBadge}>
-              <Text style={styles.avatarText}>{initials}</Text>
+              <Text style={styles.avatarText}>{displayInitials}</Text>
             </View>
             <View style={styles.userInfo}>
-              <Text style={styles.userName}>{name}</Text>
-              <Text style={styles.userSub}>{phoneAndCity}</Text>
+              <Text style={styles.userName}>{displayName}</Text>
+              {locationLabel ? (
+                <Text style={styles.userSub}>{locationLabel}</Text>
+              ) : null}
             </View>
           </View>
 
           {/* 3 Stat Cards: Score, Applied, Add-ons */}
           <View style={styles.statsRow}>
-            {/* Dark Score Card */}
+            {/* Dark Score Card — real value when READY, dash while PENDING */}
             <Pressable
               style={({ pressed }) => [
                 styles.statCardDark,
@@ -109,7 +139,15 @@ export function ProfileScreen({
                 <Text style={styles.statLabelDark}>Score</Text>
                 <CaretRight size={11} color="#F1EAF7" weight="bold" />
               </View>
-              <Text style={styles.statValueDark}>{score}</Text>
+              {scorePending && score == null ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#F1EAF7"
+                  style={styles.statSpinner}
+                />
+              ) : (
+                <Text style={styles.statValueDark}>{scoreDisplay}</Text>
+              )}
             </Pressable>
 
             {/* Applied Card */}
@@ -125,7 +163,7 @@ export function ProfileScreen({
                 <Text style={styles.statLabelLight}>Applied</Text>
                 <CaretRight size={11} color="#6E7889" weight="bold" />
               </View>
-              <Text style={styles.statValueLight}>{appliedCount}</Text>
+              <Text style={styles.statValueLight}>{appliedDisplay}</Text>
             </Pressable>
 
             {/* Add-ons Card */}
@@ -141,7 +179,7 @@ export function ProfileScreen({
                 <Text style={styles.statLabelLight}>Add-ons</Text>
                 <CaretRight size={11} color="#6E7889" weight="bold" />
               </View>
-              <Text style={styles.statValueLight}>{addonsCount}</Text>
+              <Text style={styles.statValueLight}>{addonsDisplay}</Text>
             </Pressable>
           </View>
 
@@ -246,7 +284,9 @@ export function ProfileScreen({
               <DownloadSimple size={20} color="#3A4761" weight="duotone" />
               <View style={styles.menuItemColumn}>
                 <Text style={styles.menuItemTitle}>Download my data</Text>
-                <Text style={styles.menuItemDate}>Asked 8 Aug · ready by 15 Aug</Text>
+                <Text style={styles.menuItemDate}>
+                  Asked 8 Aug · ready by 15 Aug
+                </Text>
               </View>
               <View style={styles.badgePill}>
                 <Text style={styles.badgePillText}>Working</Text>
@@ -371,6 +411,9 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: '#FFFFFF',
   },
+  statSpinner: {
+    height: 24,
+  },
   statLabelLight: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 11,
@@ -394,7 +437,11 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   sectionEyebrowText: {
-    fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
+    fontFamily: Platform.select({
+      ios: 'SpaceMono-Bold',
+      android: 'SpaceMono-Bold',
+      default: 'monospace',
+    }),
     fontSize: 11,
     lineHeight: 12,
     letterSpacing: 1.2,

@@ -59,7 +59,10 @@ class OfferResponse(_Base):
     requires_acknowledgement: bool
     device_check_passed: bool = Field(description="A passed check that is still valid.")
     device_check_valid_until: datetime | None = None
-    sessions_available: int = Field(ge=0, description="Bought and not yet started.")
+    sessions_available: int = Field(
+        ge=0,
+        description="Subscription-included sessions that may be started now.",
+    )
     open_session_id: uuid.UUID | None = Field(
         default=None, description="A session being recorded. Resume it."
     )

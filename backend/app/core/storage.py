@@ -32,6 +32,13 @@ logger = get_logger(__name__)
 #: model and is not hashable.
 _s3_client: Any | None = None
 
+#: A second client used only to *sign* presigned URLs, against a host a phone
+#: or emulator can reach. Server-side reads/writes keep using `_s3_client`
+#: (localhost in dev); presigning against localhost produces a URL whose
+#: `Host` header is `localhost:4566`, which on a device is the device itself
+#: and whose signature cannot be rewritten client-side without breaking it.
+_s3_presign_client: Any | None = None
+
 
 def get_s3_client() -> Any:
     global _s3_client
@@ -56,13 +63,43 @@ def get_s3_client() -> Any:
     return _s3_client
 
 
+def _get_presign_client() -> Any:
+    """The client presigned URLs are signed with.
+
+    When `aws_endpoint_url_external` is set (local dev, so a phone can reach
+    LocalStack), this is a client pointed at that host. Otherwise it is the
+    same client as `get_s3_client()` — in prod the real regional endpoint is
+    reachable from every client, so no second client is needed.
+    """
+    global _s3_presign_client
+    if _s3_presign_client is None:
+        settings = get_settings()
+        external = settings.aws_endpoint_url_external
+        if external:
+            _s3_presign_client = boto3.client(
+                "s3",
+                region_name=settings.aws_region,
+                endpoint_url=external,
+                config=Config(
+                    signature_version="s3v4",
+                    retries={"max_attempts": 3, "mode": "standard"},
+                ),
+            )
+        else:
+            _s3_presign_client = get_s3_client()
+    return _s3_presign_client
+
+
 def dispose_s3() -> None:
-    """Drop the cached client. Called on shutdown and by tests that swap
+    """Drop the cached clients. Called on shutdown and by tests that swap
     settings, so a stale endpoint or credential never outlives its config."""
-    global _s3_client
+    global _s3_client, _s3_presign_client
     if _s3_client is not None:
         _s3_client.close()
         _s3_client = None
+    if _s3_presign_client is not None and _s3_presign_client is not _s3_client:
+        _s3_presign_client.close()
+    _s3_presign_client = None
 
 
 async def presign_put(*, bucket: str, key: str, expires_in: int) -> str:
@@ -71,8 +108,13 @@ async def presign_put(*, bucket: str, key: str, expires_in: int) -> str:
     Content-Type is deliberately not bound into the signature. Binding it
     would only force the client to repeat a value we refuse to trust anyway --
     the type is sniffed from the stored bytes afterwards.
+
+    Signed with `_get_presign_client()`, which targets `aws_endpoint_url_external`
+    when set, so the URL's host is one a phone or emulator can reach. The
+    server-side read of the same object still goes through `get_s3_client()`
+    (localhost in dev); the two clients point at the same store.
     """
-    client = get_s3_client()
+    client = _get_presign_client()
     return await asyncio.to_thread(
         client.generate_presigned_url,
         "put_object",
@@ -82,7 +124,7 @@ async def presign_put(*, bucket: str, key: str, expires_in: int) -> str:
 
 
 async def presign_get(*, bucket: str, key: str, expires_in: int) -> str:
-    client = get_s3_client()
+    client = _get_presign_client()
     return await asyncio.to_thread(
         client.generate_presigned_url,
         "get_object",

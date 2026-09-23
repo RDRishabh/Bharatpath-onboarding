@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -35,9 +36,7 @@ def parse_resume(self: Any, resume_file_id: str) -> dict[str, Any]:
     so it is recorded and left alone. Retrying it would burn Textract pages
     and leave the candidate waiting for an outcome that cannot change.
     """
-    import asyncio
-
-    return asyncio.run(_parse(resume_file_id))
+    return run_async(_parse(resume_file_id))
 
 
 async def _parse(resume_file_id: str) -> dict[str, Any]:

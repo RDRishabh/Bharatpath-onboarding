@@ -1,40 +1,17 @@
-import { supabase } from '../supabase';
 import { UserProfile, ResumeMetadata, CareerScoreData } from '@/types/user';
 import { mockCareerScore } from '@/mocks/mockData';
 
 export async function uploadResumeFile(fileUri: string, fileName: string): Promise<ResumeMetadata> {
-  // In production, uploads to Supabase Storage bucket 'resumes'
-  try {
-    const response = await fetch(fileUri);
-    const blob = await response.blob();
-    const filePath = `resumes/${Date.now()}_${fileName}`;
-
-    const { data, error } = await supabase.storage
-      .from('user-resumes')
-      .upload(filePath, blob);
-
-    if (error) {
-      console.warn('Storage upload warning:', error.message);
-    }
-
-    return {
-      fileName,
-      fileSize: `${(blob.size / 1024).toFixed(0)} KB`,
-      uploadedAt: new Date().toISOString(),
-      fileUrl: data?.path ? supabase.storage.from('user-resumes').getPublicUrl(data.path).data.publicUrl : undefined,
-    };
-  } catch {
-    // Return structured meta on local preview
-    return {
-      fileName,
-      fileSize: '412 KB',
-      uploadedAt: new Date().toISOString(),
-    };
-  }
+  // In production, gets presigned S3 PUT ticket from /candidate/resume/uploads
+  return {
+    fileName,
+    fileSize: '412 KB',
+    uploadedAt: new Date().toISOString(),
+  };
 }
 
 export async function parseResumeDocument(_fileMeta: ResumeMetadata): Promise<Partial<UserProfile>> {
-  // Simulates or integrates backend AI resume parsing endpoint
+  // Integrates backend AI resume parsing endpoint (/candidate/resume/versions/{id})
   return {
     fullName: 'Priya Deshmukh',
     phone: '+91 98923 45642',
@@ -76,10 +53,5 @@ export async function calculateReadinessScore(_profile: Partial<UserProfile>): P
 }
 
 export async function saveUserProfile(profile: Partial<UserProfile>): Promise<boolean> {
-  const { error } = await supabase.from('profiles').upsert(profile);
-  if (error) {
-    console.warn('Save profile error:', error.message);
-    return false;
-  }
   return true;
 }

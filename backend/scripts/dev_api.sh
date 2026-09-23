@@ -10,9 +10,15 @@ cd "$(dirname "$0")/.."
 
 PORT="${PORT:-8099}"
 
-for pid in $(netstat -ano 2>/dev/null | grep ":${PORT}.*LISTENING" | awk '{print $5}' | sort -u); do
-  taskkill //F //PID "$pid" >/dev/null 2>&1 || kill -9 "$pid" 2>/dev/null || true
-done
+if command -v lsof >/dev/null 2>&1; then
+  for pid in $(lsof -t -i ":${PORT}" 2>/dev/null || true); do
+    kill -9 "$pid" 2>/dev/null || true
+  done
+else
+  for pid in $(netstat -ano 2>/dev/null | grep ":${PORT}.*LISTENING" | awk '{print $5}' | sort -u); do
+    taskkill //F //PID "$pid" >/dev/null 2>&1 || kill -9 "$pid" 2>/dev/null || true
+  done
+fi
 
 set -a; [ -f .env ] && . ./.env; set +a
-exec "${PYTHON:-python}" -m uvicorn app.main:app --port "$PORT" "$@"
+exec "${PYTHON:-python}" -m uvicorn app.main:app --host 0.0.0.0 --port "$PORT" "$@"
