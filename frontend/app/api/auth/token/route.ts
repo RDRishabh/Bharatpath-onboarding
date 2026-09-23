@@ -11,8 +11,6 @@ import {
 
 const UPSTREAM_HEADERS = {
   "content-type": "application/json",
-  // Skips ngrok's free-tier browser interstitial when the backend is tunnelled.
-  "ngrok-skip-browser-warning": "true",
 };
 
 export async function POST(request: Request) {
@@ -145,7 +143,6 @@ export async function POST(request: Request) {
       cache: "no-store",
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        "ngrok-skip-browser-warning": "true",
       },
     });
   } catch (error) {

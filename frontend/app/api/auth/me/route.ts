@@ -43,7 +43,6 @@ export async function GET() {
       cache: "no-store",
       headers: {
         Authorization: `Bearer ${token}`,
-        "ngrok-skip-browser-warning": "true",
       },
     });
   } catch (error) {

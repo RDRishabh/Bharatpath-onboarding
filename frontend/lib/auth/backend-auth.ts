@@ -5,9 +5,8 @@ import path from "node:path";
 
 /**
  * The HTTP-only cookie that carries the backend RS256 bearer token for the
- * signed-in user. The value is never exposed to browser JavaScript; the proxy
- * (`app/api/v1/[...path]`) reads it and forwards it as the `Authorization`
- * header on every backend call.
+ * signed-in user, set by the sign-in route (`app/api/auth/token`). Never
+ * exposed to browser JavaScript.
  */
 export const SESSION_COOKIE = "bharatpath_session";
 
@@ -34,11 +33,11 @@ export class AuthConfigurationError extends Error {
 
 /** The main backend base URL (e.g. http://127.0.0.1:8099/api/v1). */
 export function backendBaseUrl(): string {
-  const base = process.env.API_PROXY_TARGET;
+  const base = process.env.BACKEND_API_URL;
 
   if (!base) {
     throw new AuthConfigurationError(
-      "API_PROXY_TARGET is not configured.",
+      "BACKEND_API_URL is not configured.",
     );
   }
 
