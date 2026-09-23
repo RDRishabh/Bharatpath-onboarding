@@ -9,6 +9,56 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-23 — the review screen reads a CV as sections, and edits it that way
+
+Raised by the frontend team against the review design (cards for education,
+skills, experience, a pencil on each, skill chips flagged "unclear"). An
+uploaded or pasted CV reached the client as one `raw_text` string, so none of
+those cards could be filled.
+
+**`GET /candidate/resume/versions/{id}` now carries `sections`**: the text split
+at recognised headings (`CAREER OBJECTIVE`, `Academic Qualifications:`,
+`Skills: a, b`, ...) into eleven kinds, with skills, languages and
+certifications also broken into `items`. A near miss of a known spelling is
+`unclear` with a `suggestion` (`MS-Ofice` → `MS Office`); **an unknown skill is
+not unclear**. Null for a structured version, whose `parsed` already has fields.
+
+**`POST .../edit` takes `sections`** as a third shape beside `text` and
+`structured`: every section in order, edited or not (one left out is deleted).
+It is assembled into text, normalised like a text edit, and stored as
+`raw_text`. Same version chain, same unconfirmed-until-confirmed gate.
+
+### Why the text stays the scored thing
+
+The obvious build — parse the upload into `ManualResumeRequest` and let the
+client edit fields — is lossy. The form has nowhere for most of a CV's prose,
+and that prose is what Layer 1 reads for achievement specificity, progression
+and scope. A candidate fixing a typo on the review screen would quietly lose
+points. So sections are a **view computed on every read, never stored**, and an
+edit goes back to text. `sections.py` is pure and holds two properties in tests:
+no line is lost by splitting, and splitting what was assembled gives the same
+sections back. A heading we do not recognise stays a line in the previous
+section's body — visible and editable, not lost.
+
+A heading sent back must name its kind, and `header` can only come first;
+otherwise the section would merge into its neighbour on the next read. Both are
+422s.
+
+### No model call, deliberately
+
+A pre-confirm LLM extraction would give fielded entries (institution, marks) but
+doubles model spend per upload while E17 is open, and there is no model wired by
+default. The splitter is deterministic and free. Entries inside a section are
+the client's to split on blank lines; percentages and colleges stay in the text.
+
+**`resume/vocabulary.py` is ours** (`VOCABULARY_VERSION = placeholder-…`, held
+by a test). It only decides whether to *ask*; nothing in it reaches scoring.
+
+Not changed: a text edit of an upload (either shape) still drops the hidden-text
+analysis, as `text` edits always have.
+
+---
+
 ## 2026-09-23 — frontend production type-check restored
 
 The frontend production build had three stale wiring errors after the broader
