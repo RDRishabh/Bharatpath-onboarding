@@ -16,7 +16,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import jwt
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import text
 
 from app.modules.notifications import service
@@ -34,6 +36,12 @@ INBOX = f"{API}/notifications"
 APP_URL = os.environ.get("DATABASE_URL", "")
 #: Noon in India on a fixed day, so the sending-hours rule never decides a test.
 NOON_IST = datetime(2031, 3, 12, 6, 30, tzinfo=UTC)
+
+#: 32 bytes, which `Settings` now refuses to boot without (RFC 7518 3.2).
+TEST_UNSUBSCRIBE_SECRET = "unsubscribe-test-secret-32-bytes!"
+#: A different key of the same length, for the forged-token case. Same length
+#: so the test proves the signature was checked, not the key size.
+WRONG_SECRET = "a-different-secret-of-32-bytes!!!"
 
 
 # --- helpers ------------------------------------------------------------------------
@@ -346,3 +354,166 @@ async def test_a_bad_nudge_rule_stops_the_sweep_rather_than_defaulting() -> None
                 ),
                 {"n": version},
             )
+
+
+# ===========================================================================
+# Stopping the nudges from the email itself (blockers E30)
+# ===========================================================================
+@pytest.fixture
+def unsubscribable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The state a deployment reaches once SES and a public URL exist."""
+    from app.modules.notifications import unsubscribe
+    from app.settings import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "notifications_unsubscribe_secret",
+        SecretStr(TEST_UNSUBSCRIBE_SECRET),
+        raising=False,
+    )
+    monkeypatch.setattr(settings, "public_api_base_url", "https://api.test", raising=False)
+    assert unsubscribe.configured(settings)
+
+
+async def test_a_nudge_email_carries_one_click_unsubscribe_headers(
+    stub_email: StubEmailProvider, unsubscribable: None
+) -> None:
+    """RFC 8058. This is what draws the Unsubscribe button in Gmail, and what
+    a mailbox provider looks for before deciding bulk mail is well behaved."""
+    from app.tasks.notify import send_all
+
+    user_id = await _signed_up(days_ago=3)
+    await _give_email(user_id)
+    page = await _nudge(user_id, NOON_IST)
+    assert page.outgoing, "the fixture should have produced a nudge"
+
+    await send_all(page.outgoing)
+    email = next(m for m in stub_email.sent if m["headers"])
+    assert email["headers"]["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    assert email["headers"]["List-Unsubscribe"].startswith(
+        "<https://api.test/api/v1/notifications/unsubscribe?token="
+    )
+
+
+async def test_a_transactional_email_carries_no_unsubscribe(
+    client: Any, mint_token: Any, stub_email: StubEmailProvider, unsubscribable: None
+) -> None:
+    """**Only a nudge.** "Your payment failed" is not something to opt out
+    of, and offering it would either lie or quietly turn off messages the
+    person needs."""
+    from app.modules.notifications import service as notifications_service
+    from app.modules.notifications.service import Outgoing
+
+    assert (
+        notifications_service._unsubscribe_headers(
+            Outgoing(
+                notification_id=uuid.uuid4(),
+                channel="EMAIL",
+                to="someone@example.test",
+                subject="Receipt",
+                body="...",
+                dlt_template_id=None,
+                user_id=uuid.uuid4(),
+                category="TRANSACTIONAL",
+            )
+        )
+        == {}
+    )
+
+
+async def test_the_link_stops_the_nudges_without_signing_in(
+    client: Any, unsubscribable: None
+) -> None:
+    """The whole point: no token, no session, no sign-in."""
+    from app.modules.notifications import unsubscribe
+
+    user_id = await _signed_up(days_ago=3)
+    token = unsubscribe.mint(user_id)
+
+    answered = await client.post(f"{API}/notifications/unsubscribe", json={"token": token})
+    assert answered.status_code == 200, answered.text
+
+    async with sessions(_seed_url())() as session:
+        enabled = await session.scalar(
+            text("SELECT nudges_enabled FROM notification_preferences WHERE user_id = :u"),
+            {"u": str(user_id)},
+        )
+    assert enabled is False
+    assert (await _nudge(user_id, NOON_IST)).outgoing == [], "and no further nudge is produced"
+
+
+async def test_unsubscribing_twice_is_not_an_error(client: Any, unsubscribable: None) -> None:
+    """A mail client that retries one-click must not see a failure."""
+    from app.modules.notifications import unsubscribe
+
+    token = unsubscribe.mint(await _signed_up(days_ago=3))
+    for _ in range(2):
+        assert (
+            await client.post(f"{API}/notifications/unsubscribe", json={"token": token})
+        ).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "not-a-token",
+        # Signed with the wrong key.
+        jwt.encode(
+            {"sub": str(uuid.uuid4()), "purpose": "notifications.unsubscribe"},
+            WRONG_SECRET,
+            algorithm="HS256",
+        ),
+        # Correctly signed, wrong purpose -- a token minted for anything else
+        # must not work here, however valid its signature.
+        jwt.encode(
+            {"sub": str(uuid.uuid4()), "purpose": "auth.session"},
+            TEST_UNSUBSCRIBE_SECRET,
+            algorithm="HS256",
+        ),
+        # Correctly signed and named nobody.
+        jwt.encode(
+            {"sub": "not-a-uuid", "purpose": "notifications.unsubscribe"},
+            TEST_UNSUBSCRIBE_SECRET,
+            algorithm="HS256",
+        ),
+    ],
+)
+async def test_a_bad_token_is_refused_and_says_nothing_about_why(
+    client: Any, unsubscribable: None, token: str
+) -> None:
+    """Identical answers, on purpose. An unauthenticated endpoint that
+    distinguished them would be a way to probe for valid tokens, and for
+    whether an account exists."""
+    answered = await client.post(f"{API}/notifications/unsubscribe", json={"token": token})
+    assert answered.status_code == 200
+    assert (
+        answered.json()
+        == (
+            await client.post(
+                f"{API}/notifications/unsubscribe",
+                json={
+                    "token": jwt.encode(
+                        {"sub": str(uuid.uuid4()), "purpose": "notifications.unsubscribe"},
+                        TEST_UNSUBSCRIBE_SECRET,
+                        algorithm="HS256",
+                    )
+                },
+            )
+        ).json()
+    )
+
+
+async def test_no_header_is_offered_when_it_could_not_be_served(
+    stub_email: StubEmailProvider,
+) -> None:
+    """**Unconfigured means no header at all**, not a broken one. A mail
+    client that shows an Unsubscribe button which silently fails is worse
+    than one that shows none: the next step is the spam button."""
+    from app.tasks.notify import send_all
+
+    user_id = await _signed_up(days_ago=3)
+    await _give_email(user_id)
+    page = await _nudge(user_id, NOON_IST)
+    await send_all(page.outgoing)
+    assert all(m["headers"] == {} for m in stub_email.sent)

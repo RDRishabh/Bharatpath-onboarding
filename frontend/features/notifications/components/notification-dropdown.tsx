@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell,
   BriefcaseBusiness,
   Clock3,
   Link2,
+  LoaderCircle,
   Receipt,
   ShieldCheck,
   Upload,
@@ -14,9 +15,8 @@ import {
 } from "lucide-react";
 
 import {
-  useDeleteNotificationMutation,
   useGetNotificationsQuery,
-  useMarkAllNotificationsReadMutation,
+  useLazyGetNotificationsQuery,
   useMarkNotificationReadMutation,
 } from "@/store/api/notification-api";
 
@@ -26,13 +26,49 @@ import type {
   Notification,
   NotificationType,
 } from "../types/notification.types";
-import { MOCK_NOTIFICATIONS } from "../mock-notifications";
 
-/*
- * Set this to false when your real
- * notification API is ready.
- */
-const USE_MOCK_NOTIFICATIONS = true;
+const PAGE_SIZE = 10;
+const DISMISSED_NOTIFICATIONS_KEY = "bharatpath-dismissed-notifications";
+
+function mergeNotifications(
+  current: Notification[],
+  incoming: Notification[],
+): Notification[] {
+  const byId = new Map(current.map((notification) => [notification.id, notification]));
+  incoming.forEach((notification) => {
+    byId.set(notification.id, notification);
+  });
+  return Array.from(byId.values()).sort(
+    (left, right) =>
+      new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
+  );
+}
+
+function persistDismissedNotifications(ids: Set<string>) {
+  try {
+    localStorage.setItem(
+      DISMISSED_NOTIFICATIONS_KEY,
+      JSON.stringify(Array.from(ids).slice(-500)),
+    );
+  } catch {
+    // Storage can be unavailable in private browsing; dismissal still works in memory.
+  }
+}
+
+function initialDismissedNotifications(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+
+  try {
+    const stored: unknown = JSON.parse(
+      localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY) ?? "[]",
+    );
+    return Array.isArray(stored)
+      ? new Set(stored.filter((id): id is string => typeof id === "string"))
+      : new Set();
+  } catch {
+    return new Set();
+  }
+}
 
 function getNotificationIcon(type: NotificationType) {
   switch (type) {
@@ -120,18 +156,24 @@ export function NotificationDropdown() {
   const dispatch = useAppDispatch();
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    const handleUpdate = () => setTick((tick) => tick + 1);
-    window.addEventListener("bharatpath-notifications-updated", handleUpdate);
-    return () => {
-      window.removeEventListener(
-        "bharatpath-notifications-updated",
-        handleUpdate,
-      );
-    };
-  }, []);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
+  const [additionalNotifications, setAdditionalNotifications] = useState<
+    Notification[]
+  >([]);
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(
+    initialDismissedNotifications,
+  );
+  const [nextCursorOverride, setNextCursorOverride] = useState<
+    string | null | undefined
+  >(undefined);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -154,21 +196,30 @@ export function NotificationDropdown() {
     };
   }, [dispatch]);
 
-  const { data, isLoading, isError } = useGetNotificationsQuery(
-    { limit: 10 },
-    { skip: USE_MOCK_NOTIFICATIONS },
-  );
+  const { data, isLoading, isError } = useGetNotificationsQuery({
+    limit: PAGE_SIZE,
+  });
+  const [getNotifications] = useLazyGetNotificationsQuery();
 
   const [markNotificationRead] = useMarkNotificationReadMutation();
-  const [markAllNotificationsRead, { isLoading: isMarkingAllRead }] =
-    useMarkAllNotificationsReadMutation();
-  const [deleteNotification] = useDeleteNotificationMutation();
 
-  const notifications: Notification[] = USE_MOCK_NOTIFICATIONS
-    ? MOCK_NOTIFICATIONS
-    : data?.notifications ?? [];
+  const notifications = mergeNotifications(
+    data?.notifications ?? [],
+    additionalNotifications,
+  ).map((notification) =>
+    readNotificationIds.has(notification.id)
+      ? { ...notification, read: true }
+      : notification,
+  );
+  const nextCursor =
+    nextCursorOverride === undefined
+      ? data?.nextCursor ?? null
+      : nextCursorOverride;
 
-  const unreadCount = notifications.filter(
+  const visibleNotifications = notifications.filter(
+    (notification) => !dismissedIds.has(notification.id),
+  );
+  const unreadCount = visibleNotifications.filter(
     (notification) => !notification.read,
   ).length;
 
@@ -177,12 +228,7 @@ export function NotificationDropdown() {
   };
 
   const handleNotificationClick = async (notification: Notification) => {
-    if (USE_MOCK_NOTIFICATIONS) {
-      notification.read = true;
-      window.dispatchEvent(
-        new Event("bharatpath-notifications-updated"),
-      );
-
+    if (notification.read) {
       if (notification.href) {
         close();
         router.push(notification.href);
@@ -190,39 +236,68 @@ export function NotificationDropdown() {
       return;
     }
 
+    setReadNotificationIds((current) =>
+      new Set(current).add(notification.id),
+    );
+
     try {
-      if (!notification.read) {
-        await markNotificationRead(notification.id).unwrap();
-      }
+      await markNotificationRead(notification.id).unwrap();
 
       if (notification.href) {
         close();
         router.push(notification.href);
       }
     } catch (error) {
+      setReadNotificationIds((current) => {
+        const updated = new Set(current);
+        updated.delete(notification.id);
+        return updated;
+      });
       console.error("Failed to mark notification as read:", error);
     }
   };
 
   const handleMarkAllRead = async () => {
-    if (USE_MOCK_NOTIFICATIONS) {
-      MOCK_NOTIFICATIONS.forEach((notification) => {
-        notification.read = true;
-      });
+    if (isMarkingAllRead) return;
 
-      window.dispatchEvent(
-        new Event("bharatpath-notifications-updated"),
-      );
-      return;
-    }
+    setIsMarkingAllRead(true);
 
     try {
-      await markAllNotificationsRead().unwrap();
+      let allNotifications = notifications;
+      let cursor = nextCursor;
+
+      while (cursor) {
+        const page = await getNotifications({
+          limit: 100,
+          cursor,
+        }).unwrap();
+        allNotifications = mergeNotifications(
+          allNotifications,
+          page.notifications,
+        );
+        cursor = page.nextCursor;
+      }
+
+      setAdditionalNotifications(allNotifications);
+      setReadNotificationIds(
+        new Set(allNotifications.map((notification) => notification.id)),
+      );
+      setNextCursorOverride(null);
+
+      await Promise.all(
+        allNotifications
+          .filter((notification) => !notification.read)
+          .map((notification) =>
+            markNotificationRead(notification.id).unwrap(),
+          ),
+      );
     } catch (error) {
       console.error(
         "Failed to mark all notifications as read:",
         error,
       );
+    } finally {
+      setIsMarkingAllRead(false);
     }
   };
 
@@ -232,26 +307,63 @@ export function NotificationDropdown() {
   ) => {
     event.stopPropagation();
 
-    if (USE_MOCK_NOTIFICATIONS) {
-      const index = MOCK_NOTIFICATIONS.findIndex(
-        (notification) => notification.id === notificationId,
-      );
+    const notification = notifications.find((item) => item.id === notificationId);
+    const updatedDismissedIds = new Set(dismissedIds).add(notificationId);
+    setDismissedIds(updatedDismissedIds);
+    persistDismissedNotifications(updatedDismissedIds);
 
-      if (index !== -1) {
-        MOCK_NOTIFICATIONS.splice(index, 1);
-        window.dispatchEvent(
-          new Event("bharatpath-notifications-updated"),
-        );
+    if (notification && !notification.read) {
+      try {
+        await markNotificationRead(notificationId).unwrap();
+      } catch (error) {
+        console.error("Failed to mark dismissed notification as read:", error);
       }
-      return;
-    }
-
-    try {
-      await deleteNotification(notificationId).unwrap();
-    } catch (error) {
-      console.error("Failed to delete notification:", error);
     }
   };
+
+  const loadMoreNotifications = async () => {
+    if (!nextCursor || loadingMoreRef.current) return;
+
+    loadingMoreRef.current = true;
+    setIsLoadingMore(true);
+    setLoadMoreFailed(false);
+
+    try {
+      const page = await getNotifications({
+        limit: PAGE_SIZE,
+        cursor: nextCursor,
+      }).unwrap();
+      setAdditionalNotifications((current) =>
+        mergeNotifications(current, page.notifications),
+      );
+      setNextCursorOverride(page.nextCursor);
+    } catch (error) {
+      setLoadMoreFailed(true);
+      console.error("Failed to load more notifications:", error);
+    } finally {
+      loadingMoreRef.current = false;
+      setIsLoadingMore(false);
+    }
+  };
+
+  const loadMoreFromObserver = useEffectEvent(loadMoreNotifications);
+
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    const sentinel = loadMoreSentinelRef.current;
+    if (!root || !sentinel || !nextCursor) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          void loadMoreFromObserver();
+        }
+      },
+      { root, rootMargin: "48px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [nextCursor]);
 
   return (
     <div
@@ -317,6 +429,7 @@ export function NotificationDropdown() {
 
       {/* BODY */}
       <div
+        ref={scrollContainerRef}
         style={{
           display: "flex",
           flexDirection: "column",
@@ -328,20 +441,38 @@ export function NotificationDropdown() {
         }}
         className="bp-scrollbar"
       >
-        {isLoading && !USE_MOCK_NOTIFICATIONS && (
-          <div style={{ padding: "24px 8px", textAlign: "center" }}>
-            <p
-              style={{
-                font: '400 12px / 16px "General Sans", sans-serif',
-                color: "var(--ink-muted)",
-              }}
-            >
-              Loading notifications...
-            </p>
+        {isLoading && (
+          <div aria-label="Loading notifications" style={{ padding: "4px 0" }}>
+            {[0, 1, 2].map((index) => (
+              <div
+                key={index}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 8px",
+                }}
+              >
+                <span
+                  className="bp-skeleton"
+                  style={{ width: 32, height: 32, borderRadius: 8, flex: "0 0 auto" }}
+                />
+                <span style={{ display: "flex", flex: 1, flexDirection: "column", gap: 7 }}>
+                  <span
+                    className="bp-skeleton"
+                    style={{ width: `${78 - index * 9}%`, height: 10, borderRadius: 4 }}
+                  />
+                  <span
+                    className="bp-skeleton"
+                    style={{ width: 48, height: 8, borderRadius: 4 }}
+                  />
+                </span>
+              </div>
+            ))}
           </div>
         )}
 
-        {isError && !USE_MOCK_NOTIFICATIONS && (
+        {isError && notifications.length === 0 && (
           <div style={{ padding: "24px 8px", textAlign: "center" }}>
             <p
               style={{
@@ -354,7 +485,7 @@ export function NotificationDropdown() {
           </div>
         )}
 
-        {!isLoading && !isError && notifications.length === 0 && (
+        {!isLoading && !isError && visibleNotifications.length === 0 && (
           <div style={{ padding: "24px 8px", textAlign: "center" }}>
             <Bell
               size={20}
@@ -384,13 +515,16 @@ export function NotificationDropdown() {
           </div>
         )}
 
-        {notifications.map((notification, index) => {
+        {visibleNotifications.map((notification, index) => {
           const Icon = getNotificationIcon(notification.type);
           const iconStyles = getIconStyles(notification.type);
 
           return (
             <div
               key={notification.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`${notification.read ? "Read" : "Unread"} notification: ${notification.title}`}
               className="transition-colors hover:bg-[#f8f9fb]"
               style={{
                 display: "flex",
@@ -403,8 +537,16 @@ export function NotificationDropdown() {
                     ? "none"
                     : "1px solid var(--border-hair)",
                 cursor: "pointer",
+                animation: "bpFadeUp 180ms ease both",
+                animationDelay: `${Math.min(index, 6) * 24}ms`,
               }}
               onClick={() => handleNotificationClick(notification)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  void handleNotificationClick(notification);
+                }
+              }}
             >
               {/* ICON */}
               <span
@@ -471,27 +613,13 @@ export function NotificationDropdown() {
               )}
 
               {/* CLEAR BUTTON */}
-              <span
-                role="button"
-                tabIndex={0}
-                aria-label="Clear notification"
-                title="Clear"
+              <button
+                type="button"
+                aria-label="Delete notification"
+                title="Delete notification"
                 onClick={(event) =>
                   handleDelete(event, notification.id)
                 }
-                onKeyDown={(event) => {
-                  if (
-                    event.key === "Enter" ||
-                    event.key === " "
-                  ) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    handleDelete(
-                      event as unknown as React.MouseEvent,
-                      notification.id,
-                    );
-                  }
-                }}
                 className="transition-colors hover:bg-[#f2f3f5]"
                 style={{
                   width: 24,
@@ -508,10 +636,45 @@ export function NotificationDropdown() {
                   strokeWidth={2.2}
                   style={{ color: "var(--ink-muted)" }}
                 />
-              </span>
+              </button>
             </div>
           );
         })}
+
+        <div ref={loadMoreSentinelRef} style={{ minHeight: nextCursor ? 1 : 0 }} />
+
+        {isLoadingMore && (
+          <div
+            role="status"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              padding: "12px 8px",
+              color: "var(--ink-muted)",
+              font: '500 11px / 14px "General Sans", sans-serif',
+            }}
+          >
+            <LoaderCircle className="animate-spin" size={14} aria-hidden="true" />
+            Loading more
+          </div>
+        )}
+
+        {loadMoreFailed && !isLoadingMore && (
+          <button
+            type="button"
+            onClick={() => void loadMoreNotifications()}
+            style={{
+              alignSelf: "center",
+              margin: "8px",
+              color: "var(--indigo)",
+              font: '600 11px / 14px "General Sans", sans-serif',
+            }}
+          >
+            Couldn&apos;t load more. Try again
+          </button>
+        )}
       </div>
     </div>
   );

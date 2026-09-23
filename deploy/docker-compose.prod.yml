@@ -1,0 +1,176 @@
+# The BharatPath test deployment: one host, five containers.
+#
+#   caddy     TLS termination and reverse proxy
+#   api       uvicorn
+#   worker    celery worker
+#   beat      celery beat            <- the schedule (app/tasks/schedule.py)
+#   postgres  on the mounted EBS volume
+#   redis     on the mounted EBS volume
+#
+# Copied to /opt/bharatpath on the instance beside a `.env` file. See
+# `docs/aws-deployment.md`; the host is created by `infra/terraform/ec2.tf`.
+#
+# ---------------------------------------------------------------------------
+# Three things here are deliberate and worth reading before changing them
+# ---------------------------------------------------------------------------
+#
+# 1. **`api`, `worker` and `beat` are the same image.** That is the property
+#    `backend/Dockerfile` exists to give: a task and the route that enqueued
+#    it can never disagree about a model definition, because there is one
+#    build. Do not split them.
+#
+# 2. **Exactly one `beat`.** It is a clock, not a worker: two of them run
+#    every sweep twice. `replicas` on this service is a misconfiguration, and
+#    scaling load means scaling `worker`.
+#
+# 3. **No AWS keys anywhere in this file.** The instance carries an IAM role
+#    (`infra/terraform/ec2.tf`) and boto3 finds it through the metadata
+#    service. `AWS_ACCESS_KEY_ID` in the env file would *override* the role
+#    with a long-lived secret on a public box -- strictly worse. Leave both
+#    out.
+
+name: bharatpath
+
+x-app-image: &app-image
+  image: ${BHARATPATH_IMAGE:-bharatpath-backend:latest}
+  restart: unless-stopped
+  env_file: [.env]
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_started }
+
+services:
+  # -------------------------------------------------------------------------
+  # Data
+  # -------------------------------------------------------------------------
+  # Postgres 16, matching docker-compose.yml and the CI service container.
+  # **Not exposed on the host.** The security group has no 5432 rule and this
+  # has no `ports:`; both would have to be wrong for the database to be
+  # reachable from the internet.
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bharatpath}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-bharatpath}
+    volumes:
+      # The mounted EBS volume, so replacing the instance keeps the database.
+      - /mnt/data/postgres:/var/lib/postgresql/data
+      # **The three roles, and they are not optional.** RLS is the second line
+      # of tenant isolation and it does nothing at all against a table's owner,
+      # so the app must connect as a role that owns nothing and holds no
+      # BYPASSRLS. Without these two files Postgres starts with only the
+      # superuser, the app cannot connect as `bharatpath_app`, and the
+      # tempting fix -- pointing DATABASE_URL at the superuser -- turns every
+      # RLS policy into decoration while `\d+` still shows them.
+      #
+      # `docker-entrypoint-initdb.d` runs ONLY on an empty data directory, so
+      # this happens once, on the first boot against a fresh EBS volume, and
+      # never again. Changing these files later needs the statements run by
+      # hand.
+      #
+      # Copy them to the host beside this file:
+      #   scp backend/scripts/init_db_roles.sql      HOST:/opt/bharatpath/init/
+      #   scp backend/scripts/init_db_extensions.sql HOST:/opt/bharatpath/init/
+      - ./init/init_db_extensions.sql:/docker-entrypoint-initdb.d/05-extensions.sql:ro
+      - ./init/init_db_roles.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bharatpath}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    # `appendonly` so the membership cache and rate-limit counters survive a
+    # restart. Losing them is not fatal -- the cache refills and the limits
+    # reset -- but a restart that silently un-rate-limits the API is not a
+    # property worth having.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - /mnt/data/redis:/data
+
+  # -------------------------------------------------------------------------
+  # Schema
+  # -------------------------------------------------------------------------
+  # Runs to completion on every `up`, before the API starts, and then exits.
+  # Alembic is idempotent, so a no-op migration costs a second.
+  #
+  # **As the migrator role**, never as the app role. The app role is genuinely
+  # subject to RLS and holds no DDL; running migrations as it would either
+  # fail or, worse, create objects owned by a role that must not own them.
+  migrate:
+    <<: *app-image
+    command:
+      ["sh", "-c", "python -m alembic upgrade head && python scripts/seed_config.py"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL_MIGRATOR:?set DATABASE_URL_MIGRATOR in .env}
+    restart: "no"
+
+  # -------------------------------------------------------------------------
+  # The application
+  # -------------------------------------------------------------------------
+  api:
+    <<: *app-image
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers",
+       "--forwarded-allow-ips", "*"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Scale this one if tasks back up: `docker compose up -d --scale worker=3`.
+  worker:
+    <<: *app-image
+    command: ["celery", "-A", "app.worker", "worker", "--loglevel=info", "--concurrency=2"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      migrate: { condition: service_completed_successfully }
+
+  # The clock. ONE of these, always -- see note 2 at the top of this file.
+  #
+  # Its state file lives on the mounted volume so a restart does not make beat
+  # think every sweep is overdue (`Settings.celery_beat_schedule_path`).
+  beat:
+    <<: *app-image
+    command:
+      ["celery", "-A", "app.worker", "beat", "--loglevel=info",
+       "--schedule=/var/run/bharatpath/celerybeat-schedule"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      migrate: { condition: service_completed_successfully }
+    volumes:
+      - /mnt/data/celerybeat:/var/run/bharatpath
+
+  # -------------------------------------------------------------------------
+  # Edge
+  # -------------------------------------------------------------------------
+  # Caddy gets and renews a Let's Encrypt certificate by itself when
+  # API_DOMAIN is a hostname that resolves to this box. With API_DOMAIN unset
+  # it serves the IP under a self-signed certificate, which most HTTP clients
+  # refuse -- fine for a curl with `-k`, not for the app teams.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:-:443}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /mnt/data/caddy:/data
+    depends_on:
+      - api

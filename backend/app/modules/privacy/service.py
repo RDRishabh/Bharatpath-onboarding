@@ -364,10 +364,25 @@ async def due_deletions(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class ErasureTargets:
+    """Everything the cascade will make unreachable, read while it still can be.
+
+    Both fields exist for the same reason: they are pointers living on rows
+    the erasure destroys. Collect them afterwards and you collect nothing --
+    the objects stay in S3 and the Cognito user stays in the pool, with
+    nothing left to name either.
+    """
+
+    object_keys: tuple[tuple[str, str], ...]
+    #: `(pool, cognito_sub)`, or None for an account nobody ever signed in to.
+    sign_in: tuple[str, str] | None
+
+
 async def begin_erasure(
     session: AsyncSession, *, dsr_id: uuid.UUID, user_id: uuid.UUID
-) -> list[tuple[str, str]] | None:
-    """Claim a deletion and return the S3 objects to destroy first.
+) -> ErasureTargets | None:
+    """Claim a deletion and read what must be destroyed outside the database.
 
     None when somebody else claimed it, or it was withdrawn in the meantime.
     The claim is a conditional UPDATE, so a sweep and a withdrawal racing on
@@ -383,7 +398,9 @@ async def begin_erasure(
     )
     if not claimed:
         return None
-    return await repository.erasable_object_keys(session, user_id=user_id)
+    keys = await repository.erasable_object_keys(session, user_id=user_id)
+    sign_in = await repository.sign_in_to_destroy(session, user_id=user_id)
+    return ErasureTargets(object_keys=tuple(keys), sign_in=sign_in)
 
 
 async def complete_erasure(

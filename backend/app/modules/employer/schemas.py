@@ -19,8 +19,9 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
+from app.core.schemas import ApiSchema
 from app.modules.employer.reference import active_employer_types, active_industries
 
 EmployerRole = Literal["EMPLOYER_OWNER", "EMPLOYER_RECRUITER", "EMPLOYER_VIEWER"]
@@ -37,8 +38,9 @@ _ACTIVE_INDUSTRIES: Final[frozenset[str]] = frozenset(t.code for t in active_ind
 _EMAIL: Final = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
-class _Base(BaseModel):
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
+class _Base(ApiSchema):
+    """Every schema in this module. `ApiSchema` strips the control
+    characters Postgres cannot store -- see `app/core/schemas.py`."""
 
 
 def _employer_type(value: str | None) -> str | None:

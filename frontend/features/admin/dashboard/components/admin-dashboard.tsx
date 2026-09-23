@@ -11,7 +11,6 @@ import {
 
 import { useDashboard } from "../hooks/use-dashboard";
 import { CardSkeletonGrid, ListSkeleton } from "@/components/common/loading";
-import { ErrorState } from "@/components/ui";
 
 export function AdminDashboard() {
   usePageHeader(
@@ -25,7 +24,6 @@ export function AdminDashboard() {
     platformTotals,
     intakeCleared,
     isLoading,
-    error,
   } = useDashboard();
 
   return (
@@ -35,7 +33,6 @@ export function AdminDashboard() {
       {/* ================================================================ */}
 
       {isLoading ? <CardSkeletonGrid count={4} /> : <DashboardMetrics metrics={metrics} />}
-      {error ? <ErrorState error={error} fallback="Some dashboard data could not be loaded." /> : null}
 
       {/* ================================================================ */}
       {/* Main content                                                     */}
@@ -56,7 +53,7 @@ export function AdminDashboard() {
           <PlatformTotals items={platformTotals} />
 
           {intakeCleared.length > 0 ? <IntakeClearedChart data={intakeCleared} /> : (
-            <section className="rounded-[12px] border border-[#e5e7ec] bg-white p-5 text-[12px] text-[#777f90]">Historical intake and clearance metrics are not exposed by the Admin API.</section>
+            <section className="rounded-xl border border-[#e5e7ec] bg-white p-5 text-[12px] text-[#777f90]">Historical intake and clearance metrics are not exposed by the Admin API.</section>
           )}
         </div>
       </div>

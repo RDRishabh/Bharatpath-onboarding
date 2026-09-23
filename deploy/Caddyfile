@@ -1,0 +1,33 @@
+# TLS and reverse proxy for the test host.
+#
+# `{$API_DOMAIN}` comes from the compose environment. Set it to a hostname
+# that resolves to this instance's elastic IP and Caddy obtains and renews a
+# Let's Encrypt certificate on its own, with no ACM, no ALB and no cron job.
+# Left unset it falls back to `:443` and serves a self-signed certificate,
+# which browsers and most HTTP clients refuse -- usable with `curl -k`, not
+# usable by the four client teams.
+#
+# Certificates live in /mnt/data/caddy, on the EBS volume, so a container
+# restart does not re-issue them. Let's Encrypt rate-limits issuance per
+# domain per week, and re-issuing on every restart is how that limit is hit.
+
+{$API_DOMAIN} {
+	encode gzip
+
+	# The app reads the client IP from X-Forwarded-For for its per-IP rate
+	# limit (`app/core/ratelimit.py`, the global tier in middleware). uvicorn
+	# runs with `--proxy-headers`, and `get_client_ip` takes the LAST entry
+	# because only the final hop is one we appended -- a client can put
+	# anything in the earlier ones.
+	reverse_proxy api:8000 {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 20mb
+			roll_keep 5
+		}
+	}
+}

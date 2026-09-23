@@ -81,7 +81,7 @@ resource "aws_cognito_user_pool" "candidates" {
     for_each = local.email_enabled ? [1] : []
     content {
       email_sending_account = "DEVELOPER"
-      source_arn            = aws_sesv2_email_identity.domain[0].arn
+      source_arn            = local.email_identity_arn
       from_email_address    = local.email_from_display
     }
   }
@@ -192,7 +192,7 @@ resource "aws_cognito_user_pool" "business" {
     for_each = local.email_enabled ? [1] : []
     content {
       email_sending_account = "DEVELOPER"
-      source_arn            = aws_sesv2_email_identity.domain[0].arn
+      source_arn            = local.email_identity_arn
       from_email_address    = local.email_from_display
     }
   }

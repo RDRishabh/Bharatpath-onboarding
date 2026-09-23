@@ -5,7 +5,18 @@ import {
   UserPlus,
 } from "lucide-react";
 
-import { RecentActivity } from "../../../features/college/dashboard/types";
+type RecentActivityType =
+  | "link"
+  | "upload"
+  | "hire"
+  | "invoice";
+
+interface RecentActivity {
+  id: string;
+  text: string;
+  time: string;
+  type: RecentActivityType;
+}
 
 interface RecentActivityProps {
   activities: RecentActivity[];
@@ -29,57 +40,66 @@ export function RecentActivityList({
   activities,
 }: RecentActivityProps) {
   return (
-    <div className="rounded-xl border border-[#e5e7ec] bg-white p-5">
+    <div className="flex min-h-[220px] flex-col rounded-xl border border-[#e5e7ec] bg-white p-5">
       <h2 className="text-sm font-semibold text-[#252b3b]">
         Recent activity
       </h2>
 
-      <div
-        className="
-          mt-5
-          max-h-[320px]
-          space-y-5
-          overflow-y-auto
-          pr-1
+      {activities.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center px-6 py-8 text-center">
+          <p className="text-[13px] leading-[18px] text-[#8a91a0]">
+            No recent activity yet. Actions on your jobs, applications and
+            billing will show up here.
+          </p>
+        </div>
+      ) : (
+        <div
+          className="
+            mt-5
+            max-h-[320px]
+            space-y-5
+            overflow-y-auto
+            pr-1
 
-          [&::-webkit-scrollbar]:w-[6px]
-          [&::-webkit-scrollbar-track]:bg-transparent
-          [&::-webkit-scrollbar-thumb]:rounded-full
-          [&::-webkit-scrollbar-thumb]:bg-[#c7cbd2]
-          [&::-webkit-scrollbar-thumb]:hover:bg-[#b5bac3]
-        "
-        style={{
-          scrollbarWidth: "thin",
-          scrollbarColor: "#c7cbd2 transparent",
-        }}
-      >
-        {activities.map((activity) => {
-          const Icon = icons[activity.type];
+            [&::-webkit-scrollbar]:w-[6px]
+            [&::-webkit-scrollbar-track]:bg-transparent
+            [&::-webkit-scrollbar-thumb]:rounded-full
+            [&::-webkit-scrollbar-thumb]:bg-[#c7cbd2]
+            [&::-webkit-scrollbar-thumb]:hover:bg-[#b5bac3]
+          "
+          style={{
+            scrollbarWidth: "thin",
+            scrollbarColor: "#c7cbd2 transparent",
+          }}
+        >
+          {activities.map((activity) => {
+            const Icon = icons[activity.type];
 
-          return (
-            <div
-              key={activity.id}
-              className="flex gap-3"
-            >
+            return (
               <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${toneClasses[activity.type]}`}
+                key={activity.id}
+                className="flex gap-3"
               >
-                <Icon size={16} />
-              </div>
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${toneClasses[activity.type]}`}
+                >
+                  <Icon size={16} />
+                </div>
 
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-[#252b3b]">
-                  {activity.text}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-[#252b3b]">
+                    {activity.text}
+                  </p>
 
-                <p className="mt-0.5 text-xs text-[#8a91a0]">
-                  {activity.time}
-                </p>
+                  <p className="mt-0.5 text-xs text-[#8a91a0]">
+                    {activity.time}
+                  </p>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

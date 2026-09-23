@@ -96,6 +96,11 @@ from app.modules.college.forms import COLLEGE_FORM, FORM_VERSION, INSTITUTION_TY
 from app.modules.college.models import College, ReferralCode, RosterEntry, RosterImport
 from app.modules.college.schemas import CreateCollegeRequest, UpdateCollegeRequest
 from app.modules.identity import service as identity_service
+
+# Which roster columns an invitation can actually be delivered to (E35).
+# A service reading another module's pure domain, the same shape as
+# `admin.router` reading `notifications.service`.
+from app.modules.notifications.domain import roster_invitation_contact_fields
 from app.modules.resume import service as resume_service
 from app.modules.scoring.domain import band_for, display_value
 from app.modules.subscriptions import service as subscriptions_service
@@ -861,6 +866,9 @@ class ImportView:
     record: RosterImport
     invitations: dict[str, int]
     created: bool = False
+    #: Valid rows no invitation can reach, given what is deliverable today
+    #: (blockers E35). Phone-only rows while SMS is deferred.
+    unreachable_rows: int = 0
 
 
 async def _view(
@@ -874,7 +882,15 @@ async def _view(
         state = invitation_state(stored=stored, sent_at=sent_at, now=now)
         if state is not None:
             counts[state] += 1
-    return ImportView(record, counts, created)
+    # Asked on every read of an import, not only at upload: which columns can
+    # carry an invitation is a deployment fact that changes, so a count taken
+    # once and stored would go stale the day SMS returns.
+    unreachable = await repository.unreachable_valid_rows(
+        session,
+        import_id=record.id,
+        contact_fields=roster_invitation_contact_fields(),
+    )
+    return ImportView(record, counts, created, unreachable_rows=unreachable)
 
 
 async def upload_roster(

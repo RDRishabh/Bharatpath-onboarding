@@ -20,7 +20,6 @@ interface ApplicationDrawerProps {
   onMoveStage: (stage: ApplicationStage) => void;
   onMeetingLinkChange: (value: string) => void;
   onConfirmHire: () => void;
-  onRequestUnlock?: () => void;
 }
 
 export function ApplicationDrawer({
@@ -29,7 +28,6 @@ export function ApplicationDrawer({
   onMoveStage,
   onMeetingLinkChange,
   onConfirmHire,
-  onRequestUnlock,
 }: ApplicationDrawerProps) {
   if (!application) {
     return null;
@@ -70,8 +68,6 @@ export function ApplicationDrawer({
     (skill) => !candidate.skills.includes(skill),
   );
 
-  const isMasked = !application.candidate.unlocked;
-
   const currentStage = Number(application.stage);
   const currentStageLabel =
     APPLICATION_STAGES[currentStage]?.label ?? "Submitted";
@@ -95,9 +91,7 @@ export function ApplicationDrawer({
         <div className="flex shrink-0 items-center gap-3 border-b border-[#e7e9ee] px-6 py-5">
           <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
             <span className="truncate text-[16px] font-semibold leading-[21px] text-[#151b2b]">
-              {isMasked
-                ? `Masked · ${candidate.id.toUpperCase()}`
-                : candidate.name}
+              {candidate.name}
             </span>
 
             <span className="truncate text-[12px] font-normal leading-[17px] text-[#777f90]">
@@ -139,16 +133,6 @@ export function ApplicationDrawer({
               otherCandidateSkills={otherCandidateSkills}
               missingSkills={missingSkills}
             />
-
-            {isMasked && (
-              <button
-                type="button"
-                onClick={onRequestUnlock}
-                className="flex h-[44px] w-full cursor-pointer items-center justify-center rounded-lg border-0 bg-[#5b4fcf] px-4 text-[14px] font-semibold leading-[18px] text-white transition hover:bg-[#5145c2] active:scale-[0.99]"
-              >
-                Unlock candidate · 1 credit
-              </button>
-            )}
 
             <StageMoveControls
               currentStage={currentStage}

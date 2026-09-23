@@ -352,3 +352,90 @@ async def test_declined_and_expired_invitations_link_nobody(client: Any, mint_to
             )
             == 0
         )
+
+
+# ===========================================================================
+# Rows nobody can reach (blockers E35)
+# ===========================================================================
+# A roster row needs a phone *or* an email. With SMS deferred (2026-09-18) a
+# phone-only row is valid, is committed, raises its invitation event, and is
+# then recorded SKIPPED `NO_CONTACT` -- and the college had no way of knowing
+# that a third of their students would hear nothing. The preview now says so
+# *before* they commit, which is when they can still go and collect
+# addresses.
+PHONE_ONLY = (
+    "name,phone,email\n"
+    "Asha Menon,9812300011,\n"
+    "Ravi Kumar,9812300012,\n"
+    "Priya Shah,9812300013,priya@example.test\n"
+)
+
+
+async def test_the_preview_counts_rows_no_invitation_can_reach(
+    client: Any, mint_token: Any
+) -> None:
+    college = await _college(client, mint_token)
+    upload = await _upload(client, college, PHONE_ONLY)
+    assert upload.status_code == 201, upload.text
+    body = upload.json()
+
+    assert body["valid_rows"] == 3, "phone-only rows are valid; that is the point"
+    assert body["unreachable_rows"] == 2, "two rows have no email and email is the only channel"
+
+
+async def test_a_roster_with_addresses_reports_none_unreachable(
+    client: Any, mint_token: Any
+) -> None:
+    """The other half: the warning must be absent when it does not apply, or
+    a college learns to ignore it."""
+    college = await _college(client, mint_token)
+    csv = "name,phone,email\nAsha Menon,9812300021,asha@example.test\n"
+    body = (await _upload(client, college, csv)).json()
+    assert body["valid_rows"] == 1
+    assert body["unreachable_rows"] == 0
+
+
+async def test_the_count_is_derived_from_what_can_be_delivered_not_hardcoded(
+    client: Any, mint_token: Any, monkeypatch: Any
+) -> None:
+    """**When SMS returns, this corrects itself.**
+
+    The count asks `notifications.domain` which roster columns an invitation
+    can actually be delivered to, and that answer is derived from `plan_for`
+    and DLT readiness. A constant would have to be remembered by whoever
+    turns SMS back on, which is exactly what nobody remembers -- and the
+    college would go on being warned about rows that are now fine.
+    """
+    from app.modules.college import service as college_service
+
+    college = await _college(client, mint_token)
+    upload = await _upload(client, college, PHONE_ONLY)
+    import_id = upload.json()["id"]
+    assert upload.json()["unreachable_rows"] == 2
+
+    # Exactly what registering the SMS template and routing to it would do.
+    monkeypatch.setattr(
+        college_service, "roster_invitation_contact_fields", lambda: frozenset({"email", "phone"})
+    )
+    again = await client.get(f"{IMPORTS}/{import_id}", headers=college["headers"])
+    assert again.status_code == 200, again.text
+    assert again.json()["unreachable_rows"] == 0, (
+        "with SMS deliverable, a phone-only row is reachable again"
+    )
+
+
+async def test_the_count_is_recomputed_on_every_read_not_stored(
+    client: Any, mint_token: Any, monkeypatch: Any
+) -> None:
+    """It is a fact about the deployment, not about the file. Storing it at
+    upload time would leave a stale number on every roster ever imported."""
+    from app.modules.college import service as college_service
+
+    college = await _college(client, mint_token)
+    import_id = (await _upload(client, college, PHONE_ONLY)).json()["id"]
+
+    monkeypatch.setattr(college_service, "roster_invitation_contact_fields", frozenset)
+    nothing_deliverable = await client.get(f"{IMPORTS}/{import_id}", headers=college["headers"])
+    assert nothing_deliverable.json()["unreachable_rows"] == 3, (
+        "with no channel at all, every valid row is unreachable and should say so"
+    )

@@ -4,20 +4,28 @@ import {
   ApplicationPipeline,
   ApplicationFilter,
   ApplicationDrawer,
+  ApplicationsPipelineSkeleton,
 } from "@/features/employer/applications";
-import { ErrorState } from "@/components/ui";
+import { CursorPagination, ErrorState } from "@/components/ui";
 
 import { useApplicationsPage } from "../hooks/use-applications-page";
 
 export function ApplicationsPageContent() {
   const {
     applications,
+    isLoading,
     jobFilter,
     jobOptions,
+    currentPage,
+    pageSize,
+    hasNextPage,
     selectedApplication,
     error,
 
     handleJobFilterChange,
+    handlePageSizeChange,
+    handlePreviousPage,
+    handleNextPage,
     handleOpenApplication,
     handleCloseApplication,
     handleMoveStage,
@@ -75,14 +83,31 @@ export function ApplicationsPageContent() {
           overflow-hidden
         "
       >
-        <ApplicationPipeline
-          applications={applications}
-          onApplicationClick={
-            handleOpenApplication
-          }
-          onApplicationDrop={handleMoveToColumn}
-        />
+        {isLoading ? (
+          <ApplicationsPipelineSkeleton />
+        ) : (
+          <ApplicationPipeline
+            applications={applications}
+            onApplicationClick={
+              handleOpenApplication
+            }
+            onApplicationDrop={handleMoveToColumn}
+          />
+        )}
       </div>
+
+      <CursorPagination
+        currentPage={currentPage}
+        itemCount={applications.length}
+        pageSize={pageSize}
+        hasNextPage={hasNextPage}
+        isLoading={isLoading}
+        onPreviousPage={handlePreviousPage}
+        onNextPage={handleNextPage}
+        onPageSizeChange={handlePageSizeChange}
+        itemLabel={applications.length === 1 ? "application" : "applications"}
+        className="mt-3 shrink-0 rounded-[11px] border border-[#e1e5eb]"
+      />
 
       {/* =====================================================
           APPLICATION DRAWER

@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Any, Final
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -130,7 +131,160 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def root() -> JSONResponse:
         return JSONResponse({"service": settings.project_name, "version": "0.1.0"})
 
+    _document_error_responses(app)
     return app
+
+
+#: Statuses this API returns that FastAPI never documents, and what each one
+#: means here. `422` is left out because FastAPI already adds it.
+#:
+#: **Found by the fuzzer** (`tests/integration/test_api_fuzz.py`, 2026-09-22).
+#: Every one of the 157 operations documented its success code and 422 and
+#: nothing else -- so `openapi.json` told the four client teams, who generate
+#: their code from it, that this API never returns 401, 403, 404, 409 or 429.
+#: It returns all of them constantly; the test suite asserts them by the
+#: hundred. A generated client that treats an undocumented status as a
+#: transport error retries a 409 or shows a crash for a 403.
+COMMON_ERROR_RESPONSES: Final[dict[str, str]] = {
+    "401": "No credential, or one this API will not accept.",
+    "402": (
+        "Payment is required. **A first-class answer from this API, not an "
+        "edge case**: the platform is pay-first for all three audiences (R13), "
+        "so `subscription_required` guards most of what a candidate or "
+        "employer can do, and `access_window_expired` guards the employer's "
+        "reveal when their paid period has lapsed (R14). Distinguish them by "
+        "`code` -- they need different screens."
+    ),
+    "403": "Authenticated, and not allowed to do this.",
+    "404": (
+        "Not found -- **including a row that exists in another tenant**. "
+        "A tenant-scoped miss is deliberately a 404 and never a 403, because "
+        "a 403 would confirm the row exists."
+    ),
+    "409": (
+        "The request conflicts with the current state, such as a stage "
+        "transition that is not allowed."
+    ),
+    "429": "Rate limited.",
+}
+
+
+def _document_error_responses(app: FastAPI) -> None:
+    """Add the error statuses every operation can return to the schema.
+
+    FastAPI documents the success response and 422 and stops, because it only
+    knows what a route's signature declares. Everything else here comes from
+    exception handlers and dependencies -- `AppError` subclasses raised deep
+    in a service -- which the framework cannot see.
+
+    Applied over the whole schema rather than as `responses=` on each route:
+    there are 157 of them, a new one would be added without it, and the point
+    of this is that the document cannot drift from what the API does.
+
+    **Wrapping `app.openapi` rather than mutating `app.openapi_schema` once**,
+    which is the version that did not work. FastAPI 0.141 regenerates the
+    schema whenever the route set has changed since it last built one
+    (`_openapi_routes_version`), so a schema post-processed before the final
+    route was added is silently discarded and the served document is the
+    unmodified one. Wrapping the method means the additions survive any route
+    registered later, in any order.
+    """
+    generate = app.openapi
+
+    def with_error_responses() -> dict[str, Any]:
+        schema = generate()
+        if schema.get("x-bharatpath-errors-documented"):
+            return schema
+        _add_error_responses(schema)
+        schema["x-bharatpath-errors-documented"] = True
+        return schema
+
+    app.openapi = with_error_responses  # type: ignore[method-assign]
+
+
+def _add_error_responses(schema: dict[str, Any]) -> None:
+    """The mutation itself, so it can be read and tested on its own."""
+    error_schema = {
+        "application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetail"}}
+    }
+    schema.setdefault("components", {}).setdefault("schemas", {})["ProblemDetail"] = {
+        "type": "object",
+        "title": "ProblemDetail",
+        "description": (
+            "RFC 9457 problem details, as `app.core.errors.app_error_handler` writes them. "
+            "`code` is the stable machine-readable identifier -- match on it, never on `title`, "
+            "which is English prose and will be translated."
+        ),
+        "properties": {
+            "type": {"type": "string"},
+            "title": {"type": "string"},
+            "status": {"type": "integer"},
+            "code": {"type": "string"},
+            "instance": {"type": "string"},
+            "params": {"type": "object"},
+            "request_id": {"type": "string"},
+        },
+        "required": ["type", "title", "status", "code"],
+    }
+    schema["components"]["schemas"]["FrameworkError"] = {
+        "type": "object",
+        "title": "FrameworkError",
+        "description": (
+            "What Starlette answers when a request never reaches a handler -- an "
+            "unparseable body. Deliberately distinct from `ProblemDetail`, which every "
+            "error the application itself raises uses."
+        ),
+        "properties": {"detail": {"type": "string"}},
+        "required": ["detail"],
+    }
+
+    # **400 is a different shape, and that is the API's doing, not a mistake
+    # here.** An `AppError` is answered by `app_error_handler` as RFC 9457
+    # problem+json. An unparseable body never reaches a handler at all, so
+    # Starlette answers it with its own `{"detail": ...}` as plain JSON -- the
+    # same shape FastAPI already documents for 422. Writing 400 down as
+    # problem+json would be tidier and would be false, and the four client
+    # teams parse this document.
+    #
+    # That the API has two error shapes at all is a real wart, found by the
+    # fuzzer. Normalising them is a breaking change for anyone already parsing
+    # `detail`, so it is recorded in `docs/blockers.md` rather than done
+    # quietly here while a client team is mid-integration.
+    framework_schema = {
+        "application/json": {"schema": {"$ref": "#/components/schemas/FrameworkError"}}
+    }
+    for operations in schema.get("paths", {}).values():
+        for operation in operations.values():
+            if not isinstance(operation, dict):
+                continue
+            responses = operation.setdefault("responses", {})
+            responses.setdefault(
+                "400",
+                {
+                    "description": (
+                        "The request body could not be parsed. Answered by the framework "
+                        "before any handler runs, so it carries `detail` rather than the "
+                        "problem+json body every other error uses."
+                    ),
+                    "content": framework_schema,
+                },
+            )
+            for status, description in COMMON_ERROR_RESPONSES.items():
+                responses.setdefault(status, {"description": description, "content": error_schema})
+
+            # **422 has both shapes, and FastAPI only documents one.** It adds
+            # `HTTPValidationError` for the validation it performs itself, and
+            # that is correct as far as it goes -- but an `AppError` may also
+            # carry 422 (`invalid_cursor`, `dispute_application_required`),
+            # and those come back as problem+json like every other
+            # application error. A client told to expect `{"detail": [...]}`
+            # and handed a `code` cannot read it.
+            validation = responses.get("422")
+            if isinstance(validation, dict) and isinstance(validation.get("content"), dict):
+                validation["content"].setdefault(
+                    "application/problem+json",
+                    {"schema": {"$ref": "#/components/schemas/ProblemDetail"}},
+                )
 
 
 app = create_app()

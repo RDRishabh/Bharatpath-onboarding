@@ -139,6 +139,12 @@ async def _parse(resume_file_id: str) -> dict[str, Any]:
             parsed={
                 "raw_text": extracted.text,
                 "page_count": extracted.page_count,
+                # Text the document renders and a reader cannot see (E5).
+                # **Absent on every version created before 2026-09-22**, which
+                # is how a reader tells "never analysed" from "analysed and
+                # clean" -- `{"analysed": true, "text": ""}`. Integrity reads
+                # it through `hidden_text_of()`.
+                "hidden_text": extracted.hidden.as_stored(),
                 # Stored so a score can say which engine produced the text it
                 # was computed from. Invariant 1: a different parser means a
                 # different score, and a replay has to be able to tell.

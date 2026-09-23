@@ -155,6 +155,7 @@ export function useSettings() {
 
     /* Profile */
     organisation: organisation ?? null,
+    isLoadingProfile: organisationQuery.isLoading,
     draftName,
     setDraftName,
     draftInstitutionType,

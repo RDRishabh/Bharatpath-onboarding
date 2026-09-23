@@ -2,6 +2,8 @@
 
 import { BadgeCheck, Loader2 } from "lucide-react";
 
+import { Skeleton } from "@/components/common/loading";
+
 import { useSettings } from "../hooks/use-settings";
 import { INSTITUTION_TYPE_OPTIONS } from "../types";
 
@@ -16,6 +18,7 @@ function formatDate(iso: string): string {
 export function CollegeProfile() {
   const {
     organisation,
+    isLoadingProfile,
     draftName,
     setDraftName,
     draftInstitutionType,
@@ -23,6 +26,29 @@ export function CollegeProfile() {
     saveProfile,
     isSavingProfile,
   } = useSettings();
+
+  if (isLoadingProfile) {
+    return (
+      <section
+        aria-busy="true"
+        className="flex w-full max-w-[640px] flex-col gap-4 rounded-[12px] border border-[#e1e5eb] bg-white p-5 shadow-[0_4px_12px_rgba(19,26,38,0.024)]"
+      >
+        <div className="flex flex-col gap-2">
+          <Skeleton width={140} height={16} radius={6} />
+          <Skeleton width={280} height={12} radius={6} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Skeleton width={120} height={12} radius={6} />
+          <Skeleton height={46} radius={10} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Skeleton width={120} height={12} radius={6} />
+          <Skeleton height={46} radius={10} />
+        </div>
+        <Skeleton width={132} height={40} radius={8} />
+      </section>
+    );
+  }
 
   return (
     <section

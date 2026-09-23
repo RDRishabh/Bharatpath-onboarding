@@ -12,6 +12,7 @@ import React, {
 } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/common/loading/skeleton";
+import { AppSelect } from "@/components/ui/app-select";
 
 /* =========================================================
    1. TABLE CONTAINER (Card wrapper)
@@ -226,6 +227,10 @@ export interface TablePaginationProps {
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+const PAGE_SIZE_SELECT_OPTIONS = PAGE_SIZE_OPTIONS.map((option) => ({
+  value: String(option),
+  label: String(option),
+}));
 
 export function TablePagination({
   currentPage,
@@ -253,21 +258,18 @@ export function TablePagination({
       </span>
 
       <div className="flex items-center gap-4">
-        <label className="flex items-center gap-2 whitespace-nowrap text-[13px] text-[#777f90]">
+        <div className="flex items-center gap-2 whitespace-nowrap text-[13px] text-[#777f90]">
           <span>Rows per page</span>
-          <select
-            value={pageSize}
-            onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            aria-label="Rows per page"
-            className="h-8 rounded-[8px] border border-[#e2e5eb] bg-white px-2 text-[13px] font-semibold text-[#151b2b] outline-none focus:border-[#8f86df] focus:ring-2 focus:ring-[#5b4fcf]/10"
-          >
-            {PAGE_SIZE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
+          <AppSelect
+            value={String(pageSize)}
+            onChange={(value) => onPageSizeChange(Number(value))}
+            options={PAGE_SIZE_SELECT_OPTIONS}
+            ariaLabel="Rows per page"
+            className="w-18.5 [&>button]:h-8 [&>button]:px-2"
+            menuClassName="!min-w-18.5"
+            menuPlacement="top"
+          />
+        </div>
 
         {/* PAGINATION CONTROLS: < [2] of 2 > */}
         {totalPages > 1 && (
@@ -305,6 +307,84 @@ export function TablePagination({
           </button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+export interface CursorPaginationProps {
+  currentPage: number;
+  itemCount: number;
+  pageSize: number;
+  hasNextPage: boolean;
+  isLoading?: boolean;
+  onPreviousPage: () => void;
+  onNextPage: () => void;
+  onPageSizeChange: (pageSize: number) => void;
+  itemLabel?: string;
+  className?: string;
+}
+
+export function CursorPagination({
+  currentPage,
+  itemCount,
+  pageSize,
+  hasNextPage,
+  isLoading = false,
+  onPreviousPage,
+  onNextPage,
+  onPageSizeChange,
+  itemLabel = "items",
+  className = "",
+}: Readonly<CursorPaginationProps>) {
+  return (
+    <div
+      className={`flex items-center justify-between border-t border-[#e7e9ee] bg-white px-6 py-3 ${className}`}
+      style={{ fontFamily: "'General Sans', sans-serif" }}
+    >
+      <span className="text-[13px] text-[#777f90]">
+        Page {currentPage} · {itemCount} {itemLabel}
+      </span>
+
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 whitespace-nowrap text-[13px] text-[#777f90]">
+          <span>Rows per page</span>
+          <AppSelect
+            value={String(pageSize)}
+            onChange={(value) => onPageSizeChange(Number(value))}
+            options={PAGE_SIZE_SELECT_OPTIONS}
+            ariaLabel="Rows per page"
+            className="w-18.5 [&>button]:h-8 [&>button]:px-2"
+            menuClassName="!min-w-18.5"
+            menuPlacement="top"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={currentPage <= 1 || isLoading}
+            onClick={onPreviousPage}
+            aria-label="Previous page"
+            className="grid h-7 w-7 cursor-pointer place-items-center rounded-[8px] border border-[#e2e5eb] text-[#5d6673] transition-colors hover:bg-[#f8f9fb] disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ChevronLeft size={14} />
+          </button>
+
+          <span className="grid h-7 min-w-7 select-none place-items-center rounded-[8px] border border-[#e2e5eb] bg-white px-2 text-[13px] font-semibold text-[#151b2b]">
+            {currentPage}
+          </span>
+
+          <button
+            type="button"
+            disabled={!hasNextPage || isLoading}
+            onClick={onNextPage}
+            aria-label="Next page"
+            className="grid h-7 w-7 cursor-pointer place-items-center rounded-[8px] border border-[#e2e5eb] text-[#5d6673] transition-colors hover:bg-[#f8f9fb] disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -9,20 +9,79 @@
 #     sends from a no-reply@verificationemail.com address nobody trusts.
 #   * The backend sends notifications (`NOTIFICATIONS_EMAIL_PROVIDER=ses`).
 #
-# **Nothing here is created until `email_domain` is set.** Verifying a domain
-# needs DNS records added where the domain's DNS lives, and SES production
-# access (a support request) before it will send to anyone but verified
-# addresses. See infra/README.md, "Email".
+# **Two ways to be able to send** (the second added 2026-09-22):
+#
+#   `email_domain`         -- the destination. Verified by DNS, carries DKIM.
+#   `email_sender_address` -- one mailbox, while the client has no domain
+#                             (blockers E38). Verified by a link SES emails to
+#                             it. No DKIM, so worse deliverability.
+#
+# Set neither and nothing here is created; the backend records every email as
+# SKIPPED `PROVIDER_UNCONFIGURED` and Cognito falls back to its own sender
+# (about 50/day, from an address nobody trusts).
+#
+# **Either way, SES production access is a separate support request**, and
+# until it is granted the account is in the sandbox and can send only *to*
+# addresses that are themselves verified. See infra/README.md, "Email", and
+# `docs/aws-deployment.md`.
 
 locals {
-  email_enabled = var.email_domain != ""
-  email_from    = local.email_enabled ? "${var.email_from_local_part}@${var.email_domain}" : ""
+  # Two ways to be able to send, and a domain always wins (2026-09-22).
+  #
+  #   domain_enabled  -- the destination. Covers every address at the domain,
+  #                      carries DKIM, aligns SPF, passes DMARC.
+  #   address_enabled -- the stop-gap while the client has no domain (E38).
+  #                      One mailbox, verified by clicking a link SES emails
+  #                      to it. No DKIM alignment is possible, so deliverability
+  #                      is materially worse; good enough for staff, an admin
+  #                      account and a test environment, not for sign-up codes
+  #                      at volume.
+  #
+  # Both set is not an error and not a mix: the domain is used and the address
+  # variable is ignored, because a domain identity already covers it.
+  domain_enabled  = var.email_domain != ""
+  address_enabled = !local.domain_enabled && var.email_sender_address != ""
+
+  # `email_enabled` keeps its old meaning for every other file: "the backend
+  # can send email". It is now true for either identity.
+  email_enabled = local.domain_enabled || local.address_enabled
+
+  email_from = (
+    local.domain_enabled ? "${var.email_from_local_part}@${var.email_domain}" :
+    local.address_enabled ? var.email_sender_address : ""
+  )
+
+  # The ARN of whichever identity exists, for the IAM grant and for Cognito.
+  email_identity_arn = (
+    local.domain_enabled ? try(aws_sesv2_email_identity.domain[0].arn, "") :
+    local.address_enabled ? try(aws_sesv2_email_identity.sender[0].arn, "") : ""
+  )
+
   # Cognito wants `Name <address>`.
   email_from_display = local.email_enabled ? "BharatPath <${local.email_from}>" : ""
 }
 
+# ---------------------------------------------------------------------------
+# The single-address identity (blockers E38, stop-gap)
+# ---------------------------------------------------------------------------
+# **Applying this does not make email work.** SES sends a confirmation link to
+# the address and the identity stays unverified until somebody opens that
+# mailbox and clicks it. Terraform reports success either way, because
+# creating the identity is all it can do.
+#
+# The second, larger catch is the SES **sandbox**, which is where every new
+# account starts and which is not visible in this file at all: in the sandbox
+# you may send only *to* addresses that are themselves verified. So a verified
+# sender plus the sandbox means email works between your own verified
+# addresses and reaches no real candidate. Production access is a support
+# request -- see infra/README.md, and `docs/aws-deployment.md`.
+resource "aws_sesv2_email_identity" "sender" {
+  count          = local.address_enabled ? 1 : 0
+  email_identity = var.email_sender_address
+}
+
 resource "aws_sesv2_email_identity" "domain" {
-  count          = local.email_enabled ? 1 : 0
+  count          = local.domain_enabled ? 1 : 0
   email_identity = var.email_domain
 
   # Easy DKIM: SES generates the keys and publishes three CNAME targets.
@@ -34,7 +93,7 @@ resource "aws_sesv2_email_identity" "domain" {
 # Bounces come back to a subdomain we own rather than amazonses.com, which is
 # what lets SPF align for DMARC.
 resource "aws_sesv2_email_identity_mail_from_attributes" "domain" {
-  count                  = local.email_enabled ? 1 : 0
+  count                  = local.domain_enabled ? 1 : 0
   email_identity         = aws_sesv2_email_identity.domain[0].email_identity
   mail_from_domain       = "mail.${var.email_domain}"
   behavior_on_mx_failure = "USE_DEFAULT_VALUE"
@@ -46,7 +105,9 @@ resource "aws_sesv2_email_identity_mail_from_attributes" "domain" {
 # at the registrar, once.
 # ---------------------------------------------------------------------------
 locals {
-  manage_dns = local.email_enabled && var.route53_zone_id != ""
+  # DNS records belong to a domain identity. An address identity has none:
+  # it is verified by a link in an email, not by DNS.
+  manage_dns = local.domain_enabled && var.route53_zone_id != ""
 }
 
 resource "aws_route53_record" "dkim" {

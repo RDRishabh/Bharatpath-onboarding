@@ -73,8 +73,46 @@ export const employerCandidatesApi = baseApi.injectEndpoints({
       query: (candidateId) => ({ url: `/employer/discovery/candidates/${candidateId}`, method: "GET" }),
       providesTags: (_result, _error, candidateId) => [{ type: "Candidate", id: candidateId }],
     }),
+    revealEmployerCandidates: builder.query<
+      Record<string, RevealedCandidateResponse>,
+      string[]
+    >({
+      // Reveals every id in one hook. Each call is the audited reveal, so this
+      // is subject to the organisation's per-hour/day view caps.
+      async queryFn(ids, _api, _extraOptions, baseQuery) {
+        if (ids.length === 0) {
+          return { data: {} };
+        }
+        const results = await Promise.all(
+          ids.map(async (id) => {
+            const response = await baseQuery({
+              url: `/employer/discovery/candidates/${id}`,
+              method: "GET",
+            });
+            return response.error
+              ? null
+              : ([id, response.data as RevealedCandidateResponse] as const);
+          }),
+        );
+        const map: Record<string, RevealedCandidateResponse> = {};
+        for (const entry of results) {
+          if (entry) {
+            map[entry[0]] = entry[1];
+          }
+        }
+        return { data: map };
+      },
+      providesTags: (result) =>
+        result
+          ? Object.keys(result).map((id) => ({ type: "Candidate" as const, id }))
+          : [{ type: "Candidate" as const, id: "LIST" }],
+    }),
   }),
   overrideExisting: false,
 });
 
-export const { useSearchEmployerCandidatesQuery, useLazyRevealEmployerCandidateQuery } = employerCandidatesApi;
+export const {
+  useSearchEmployerCandidatesQuery,
+  useLazyRevealEmployerCandidateQuery,
+  useRevealEmployerCandidatesQuery,
+} = employerCandidatesApi;

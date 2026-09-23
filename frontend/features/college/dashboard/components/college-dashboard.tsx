@@ -15,8 +15,7 @@ import {
 } from "lucide-react";
 
 import { usePageHeader } from "@/components/layout/header-context";
-import { CardSkeletonGrid } from "@/components/common/loading";
-import { ErrorState } from "@/components/ui";
+import { CardSkeletonGrid, Skeleton } from "@/components/common/loading";
 import { MetricCard } from "../../../../components/common/dashboard/metric-card";
 import { useDashboard } from "../hooks/use-dashboard";
 import { ScoreDistribution } from "./score-distribution";
@@ -26,7 +25,7 @@ function formatMetric(value: number | null): string | number {
 }
 
 export function CollegeDashboard() {
-  const { data, isLoading, isError } = useDashboard();
+  const { data, isLoadingOverview, isLoadingReferralCodes } = useDashboard();
 
   usePageHeader(
     "Dashboard",
@@ -46,12 +45,8 @@ export function CollegeDashboard() {
 
   return (
     <div className="flex flex-col gap-4">
-      {isError ? (
-        <ErrorState fallback="Some dashboard data could not be loaded. Please refresh and try again." />
-      ) : null}
-
       {/* Metrics */}
-      {isLoading ? (
+      {isLoadingOverview ? (
         <CardSkeletonGrid count={4} />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -89,23 +84,35 @@ export function CollegeDashboard() {
       <div className="grid items-start gap-4 lg:grid-cols-[1.5fr_1fr]">
         {/* Left column */}
         <div className="flex min-w-0 flex-col gap-4">
-          <ScoreDistribution
-            bands={data.bands}
-            medianScore={data.medianScore}
-            belowFloor={data.belowFloor}
-            minCohortSize={data.minCohortSize}
-          />
+          {isLoadingOverview ? (
+            <Skeleton height={280} radius={12} />
+          ) : (
+            <ScoreDistribution
+              bands={data.bands}
+              medianScore={data.medianScore}
+              belowFloor={data.belowFloor}
+              minCohortSize={data.minCohortSize}
+            />
+          )}
 
-          <ReferralCode code={data.referralCode} />
+          {isLoadingReferralCodes ? (
+            <Skeleton height={132} radius={12} />
+          ) : (
+            <ReferralCode code={data.referralCode} />
+          )}
         </div>
 
         {/* Right column */}
-        <CohortFunnel
-          applicants={data.applicants}
-          applications={data.applications}
-          interviews={data.interviews}
-          hires={data.platformHires}
-        />
+        {isLoadingOverview ? (
+          <Skeleton height={280} radius={12} />
+        ) : (
+          <CohortFunnel
+            applicants={data.applicants}
+            applications={data.applications}
+            interviews={data.interviews}
+            hires={data.platformHires}
+          />
+        )}
       </div>
     </div>
   );

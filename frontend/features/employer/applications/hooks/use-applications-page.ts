@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   useAppDispatch,
@@ -24,16 +24,25 @@ import {
   useProposeEmployerHireMutation,
 } from "@/store/employer/applications";
 import { useGetEmployerJobsQuery } from "@/store/employer/jobs";
+import { useRevealEmployerCandidatesQuery } from "@/store/employer/candidates";
 import type { EmployerJob } from "@/features/employer/jobs/types";
 import type { ApplicationColumnDefinition } from "../types";
 
 const EMPTY_JOBS: EmployerJob[] = [];
 
+interface ApplicationPageCursor {
+  jobIndex: number;
+  cursor?: string;
+}
+
+const FIRST_APPLICATION_PAGE: ApplicationPageCursor = { jobIndex: 0 };
+
 export function useApplicationsPage() {
   const dispatch = useAppDispatch();
-  const { data: jobs = EMPTY_JOBS } = useGetEmployerJobsQuery({
-    status: "PUBLISHED",
-  });
+  const { data: jobs = EMPTY_JOBS, isLoading: jobsLoading } =
+    useGetEmployerJobsQuery({
+      status: "PUBLISHED",
+    });
   const [loadApplications, applicationsState] =
     useLazyGetEmployerApplicationsQuery();
   const [loadApplication] =
@@ -43,9 +52,76 @@ export function useApplicationsPage() {
   const [proposeHire, proposeState] =
     useProposeEmployerHireMutation();
 
+  const jobFilter = useAppSelector(
+    selectApplicationJobFilter,
+  );
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [cursorHistory, setCursorHistory] = useState<ApplicationPageCursor[]>([
+    FIRST_APPLICATION_PAGE,
+  ]);
+  const [nextCursor, setNextCursor] = useState<ApplicationPageCursor | null>(null);
+
   const applications = useAppSelector(
     selectFilteredEmployerApplications,
   );
+
+  // Reveal every applicant before rendering the pipeline so placeholder data
+  // never flashes during hydration or a full-page refresh.
+  const revealIds = useMemo(
+    () => Array.from(new Set(applications.map((application) => application.candidate.id))),
+    [applications],
+  );
+  const { data: revealedApplicants, isFetching: applicantsRevealing } =
+    useRevealEmployerCandidatesQuery(revealIds, {
+      skip: revealIds.length === 0,
+    });
+  const displayedApplications = useMemo(
+    () =>
+      applications.map((application) => {
+        const match = revealedApplicants?.[application.candidate.id];
+        if (!match?.full_name) {
+          return application;
+        }
+        const initials = match.full_name
+          .split(" ")
+          .filter(Boolean)
+          .map((word) => word[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase();
+        return {
+          ...application,
+          candidate: {
+            ...application.candidate,
+            name: match.full_name,
+            initials,
+            unlocked: true,
+            exactScore: match.score,
+          },
+        };
+      }),
+    [applications, revealedApplicants],
+  );
+
+  // "All jobs" composes the backend's per-job cursors without inventing a
+  // global ordering or total that the API does not provide.
+  const pagedJobs = useMemo(
+    () =>
+      jobFilter === "all"
+        ? jobs
+        : jobs.filter((job) => job.id === jobFilter),
+    [jobFilter, jobs],
+  );
+  const activeCursor = cursorHistory[currentPage - 1] ?? FIRST_APPLICATION_PAGE;
+
+  const isLoading =
+    jobsLoading ||
+    applicationsState.isFetching ||
+    applicantsRevealing ||
+    (jobs.length > 0 &&
+      applications.length === 0 &&
+      applicationsState.isUninitialized);
 
   const jobOptions = useMemo(
     () => [
@@ -61,40 +137,65 @@ export function useApplicationsPage() {
   useEffect(() => {
     let active = true;
 
-    if (jobs.length === 0) {
-      if (applications.length > 0) {
-        dispatch(replaceApplications([]));
-      }
+    if (pagedJobs.length === 0) {
+      dispatch(replaceApplications([]));
       return () => {
         active = false;
       };
     }
 
-    void Promise.all(
-      jobs.map(async (job) => {
+    void (async () => {
+      const items = [];
+      let remaining = pageSize;
+      let jobIndex = activeCursor.jobIndex;
+      let cursor = activeCursor.cursor;
+      let followingCursor: ApplicationPageCursor | null = null;
+
+      while (jobIndex < pagedJobs.length && remaining > 0) {
+        const job = pagedJobs[jobIndex];
         const page = await loadApplications({
           jobId: job.id,
-          limit: 100,
+          cursor,
+          limit: remaining,
         }).unwrap();
 
-        return page.items.map((application) => ({
+        items.push(...page.items.map((application) => ({
           ...application,
           candidate: {
             ...application.candidate,
             jobTitle: job.title,
           },
-        }));
-      }),
-    ).then((pages) => {
-      if (active) {
-        dispatch(replaceApplications(pages.flat()));
+        })));
+        remaining -= page.items.length;
+
+        if (page.nextCursor) {
+          followingCursor = { jobIndex, cursor: page.nextCursor };
+          break;
+        }
+
+        jobIndex += 1;
+        cursor = undefined;
+        followingCursor =
+          jobIndex < pagedJobs.length ? { jobIndex } : null;
       }
-    }).catch(() => undefined);
+
+      if (active) {
+        dispatch(replaceApplications(items));
+        setNextCursor(followingCursor);
+      }
+    })().catch(() => undefined);
 
     return () => {
       active = false;
     };
-  }, [applications.length, dispatch, jobs, loadApplications]);
+  }, [
+    activeCursor.cursor,
+    activeCursor.jobIndex,
+    dispatch,
+    loadApplications,
+    pageSize,
+    pagedJobs,
+  ]);
 
   /*
    * ============================================================
@@ -108,10 +209,6 @@ export function useApplicationsPage() {
    * ============================================================
    */
 
-  const jobFilter = useAppSelector(
-    selectApplicationJobFilter,
-  );
-
   /*
    * ============================================================
    * CURRENTLY OPEN APPLICATION
@@ -120,10 +217,14 @@ export function useApplicationsPage() {
    * This is used internally by the handlers below.
    */
 
-  const selectedApplication =
-    useAppSelector(
-      selectOpenApplication,
-    );
+  const selectedApplicationFromStore = useAppSelector(selectOpenApplication);
+  const selectedApplication = useMemo(
+    () =>
+      displayedApplications.find(
+        (application) => application.id === selectedApplicationFromStore?.id,
+      ) ?? selectedApplicationFromStore,
+    [displayedApplications, selectedApplicationFromStore],
+  );
 
   /*
    * ============================================================
@@ -133,12 +234,40 @@ export function useApplicationsPage() {
 
   const handleJobFilterChange = useCallback(
     (value: string) => {
+      setCurrentPage(1);
+      setCursorHistory([FIRST_APPLICATION_PAGE]);
+      setNextCursor(null);
       dispatch(
         setApplicationJobFilter(value),
       );
     },
     [dispatch],
   );
+
+  const handlePageSizeChange = useCallback((size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+    setCursorHistory([FIRST_APPLICATION_PAGE]);
+    setNextCursor(null);
+  }, []);
+
+  const handlePreviousPage = useCallback(() => {
+    setNextCursor(null);
+    setCurrentPage((page) => Math.max(1, page - 1));
+  }, []);
+
+  const handleNextPage = useCallback(() => {
+    if (!nextCursor) {
+      return;
+    }
+
+    setCursorHistory((history) => [
+      ...history.slice(0, currentPage),
+      nextCursor,
+    ]);
+    setNextCursor(null);
+    setCurrentPage((page) => page + 1);
+  }, [currentPage, nextCursor]);
 
   /*
    * ============================================================
@@ -298,9 +427,13 @@ export function useApplicationsPage() {
    */
 
   return {
-    applications,
+    applications: displayedApplications,
+    isLoading,
     jobFilter,
     jobOptions,
+    currentPage,
+    pageSize,
+    hasNextPage: nextCursor !== null,
     selectedApplication,
     error:
       applicationsState.error ??
@@ -308,6 +441,9 @@ export function useApplicationsPage() {
       proposeState.error,
 
     handleJobFilterChange,
+    handlePageSizeChange,
+    handlePreviousPage,
+    handleNextPage,
     handleOpenApplication,
     handleCloseApplication,
     handleMoveStage,

@@ -7,31 +7,59 @@ import type { EmployerJob } from "@/features/employer/jobs/types";
 import type { EmployerDashboardData } from "../types";
 
 const EMPTY_JOBS: EmployerJob[] = [];
+const EMPTY_COUNTS: Record<string, number> = {};
 
-export function useDashboard(): { data: EmployerDashboardData | null; isLoading: boolean; error: Error | null } {
+interface ApplicationCountsState {
+  jobKey: string;
+  counts: Record<string, number>;
+}
+
+export function useDashboard(): { data: EmployerDashboardData; isLoading: boolean } {
   const { data: jobsData, isLoading: jobsLoading, error: jobsError } = useGetEmployerJobsQuery();
-  const jobs = jobsData ?? EMPTY_JOBS;
+  const jobs = jobsError ? EMPTY_JOBS : jobsData ?? EMPTY_JOBS;
   const [loadApplications] = useLazyGetEmployerApplicationsQuery();
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [applicationsLoading, setApplicationsLoading] = useState(true);
-  const [applicationsError, setApplicationsError] = useState<Error | null>(null);
+  const [countsState, setCountsState] = useState<ApplicationCountsState>({
+    jobKey: "",
+    counts: {},
+  });
+  const jobKey = jobs.map((job) => job.id).join(":");
+  const counts = countsState.jobKey === jobKey ? countsState.counts : EMPTY_COUNTS;
+  const countsLoading =
+    !jobsError && jobs.length > 0 && countsState.jobKey !== jobKey;
 
   useEffect(() => {
     let active = true;
-    if (jobsLoading) return () => { active = false; };
-    if (jobsError || jobs.length === 0) return () => { active = false; };
+
+    if (jobsLoading || jobsError || jobs.length === 0) {
+      return () => { active = false; };
+    }
+
     void Promise.all(jobs.map(async (job) => {
-      const response = await loadApplications({ jobId: job.id, limit: 100 }).unwrap();
-      return [job.id, response.items.length] as const;
+      let count = 0;
+      let cursor: string | undefined;
+
+      do {
+        const response = await loadApplications({
+          jobId: job.id,
+          cursor,
+          limit: 100,
+        }).unwrap();
+        count += response.items.length;
+        cursor = response.nextCursor ?? undefined;
+      } while (cursor);
+
+      return [job.id, count] as const;
     })).then((entries) => {
-      if (active) setCounts(Object.fromEntries(entries));
+      if (active) {
+        setCountsState({ jobKey, counts: Object.fromEntries(entries) });
+      }
     }).catch(() => {
-      if (active) setApplicationsError(new Error("Failed to load employer applications"));
-    }).finally(() => {
-      if (active) setApplicationsLoading(false);
+      if (active) {
+        setCountsState({ jobKey, counts: {} });
+      }
     });
     return () => { active = false; };
-  }, [jobs, jobsError, jobsLoading, loadApplications]);
+  }, [jobKey, jobs, jobsError, jobsLoading, loadApplications]);
 
   const data = useMemo<EmployerDashboardData>(() => {
     const topJobs = jobs.map((job) => ({ id: job.id, title: job.title, applicants: counts[job.id] ?? 0 }))
@@ -50,7 +78,6 @@ export function useDashboard(): { data: EmployerDashboardData | null; isLoading:
 
   return {
     data,
-    isLoading: jobsLoading || (!jobsError && jobs.length > 0 && applicationsLoading),
-    error: jobsError ? new Error("Failed to load employer jobs") : applicationsError,
+    isLoading: jobsLoading || countsLoading,
   };
 }

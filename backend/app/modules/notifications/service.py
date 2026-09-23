@@ -42,7 +42,7 @@ from app.core.pagination import clamp_limit, decode_cursor, encode_cursor
 from app.core.tenant import TenantContext
 from app.modules.college import service as college_service
 from app.modules.identity import service as identity_service
-from app.modules.notifications import repository
+from app.modules.notifications import repository, unsubscribe
 from app.modules.notifications.domain import (
     DEFAULT_NUDGE_RULES,
     NUDGE_TEMPLATES,
@@ -110,6 +110,12 @@ class Outgoing:
     subject: str | None
     body: str
     dlt_template_id: str | None
+    #: Who it is for and what kind, so `send` can attach RFC 8058 unsubscribe
+    #: headers to a nudge (blockers E30). A nudge is the only message a person
+    #: may reasonably not want; a transactional one carries no unsubscribe,
+    #: because "your payment failed" is not something to opt out of.
+    user_id: uuid.UUID | None = None
+    category: str = "TRANSACTIONAL"
 
 
 @dataclass(frozen=True, slots=True)
@@ -356,6 +362,8 @@ async def _write(
         subject=template.subject,
         body=body,
         dlt_template_id=template.dlt_template_id,
+        user_id=addressee.user_id,
+        category=category,
     )
 
 
@@ -395,6 +403,20 @@ async def dispatch_event(
 # ---------------------------------------------------------------------------
 # Send
 # ---------------------------------------------------------------------------
+def _unsubscribe_headers(message: Outgoing) -> dict[str, str]:
+    """RFC 8058 headers, on a nudge to an account, when configured.
+
+    **Only a nudge.** A transactional message -- a receipt, a failed payment,
+    a pre-debit notice -- carries no unsubscribe, because it is not something
+    to opt out of and offering it would either lie or quietly turn off
+    messages the person needs. A roster invitation has no account to
+    unsubscribe, which is why `user_id` is checked and not assumed.
+    """
+    if message.category != "NUDGE" or message.user_id is None:
+        return {}
+    return unsubscribe.headers_for(message.user_id)
+
+
 async def send(session: AsyncSession, *, message: Outgoing, now: datetime | None = None) -> str:
     """Hand one message to its provider and record the outcome. Returns the
     row's state, or `NOT_PENDING` if another worker has it or it is done."""
@@ -412,7 +434,10 @@ async def send(session: AsyncSession, *, message: Outgoing, now: datetime | None
         else:
             provider_name = get_email_provider().name
             ref = await get_email_provider().send(
-                to=message.to, subject=message.subject or "", body=message.body
+                to=message.to,
+                subject=message.subject or "",
+                body=message.body,
+                headers=_unsubscribe_headers(message),
             )
     except DeliveryError as exc:
         await repository.mark(
@@ -650,3 +675,115 @@ async def suppress(
         metadata={"channel": channel, "reason": reason, "created": created},
     )
     return SuppressResponse(user_id=user_id, channel=channel, created=created)
+
+
+# ---------------------------------------------------------------------------
+# Messages a crashed worker left behind (blockers E30)
+# ---------------------------------------------------------------------------
+#: How long a message must sit PENDING before the sweep treats it as
+#: abandoned rather than in flight. `send_all` works through a batch one short
+#: transaction at a time, so a large fan-out can legitimately leave rows
+#: PENDING for a while; fifteen minutes is far longer than that takes and far
+#: shorter than a person would wait to hear about a payment.
+ORPHAN_AFTER_MINUTES: Final = 15
+
+#: A bounded batch, like every other sweep here. A backlog drains over
+#: several runs rather than holding one worker for an unbounded time.
+ORPHAN_BATCH: Final = 200
+
+
+async def orphaned_messages(
+    session: AsyncSession, *, now: datetime | None = None, limit: int = ORPHAN_BATCH
+) -> list[Outgoing]:
+    """Rebuild the messages a crashed worker decided and never sent.
+
+    **The contact has to be resolved again, not read back.** Nothing stores
+    it: `Notification` keeps the rendered body and who it was for, and never
+    the address, because a contact on a message row is a second copy of
+    personal data that the erasure would then have to find. So this asks
+    `identity` for the address exactly as the original dispatch did.
+
+    That re-resolution is also a correctness win rather than a cost. A
+    message decided an hour ago and sent now goes to the address the person
+    has *now*, and a message for somebody since deleted resolves to no
+    contact and is dropped here rather than sent to a stranger.
+    """
+    moment = _now(now)
+    rows = await repository.orphaned_pending(
+        session, cutoff=moment - timedelta(minutes=ORPHAN_AFTER_MINUTES), limit=limit
+    )
+    if not rows:
+        return []
+
+    user_ids = [row.user_id for row in rows if row.user_id is not None]
+    contacts = await identity_service.contacts(session, user_ids=user_ids)
+
+    outgoing: list[Outgoing] = []
+    for row in rows:
+        contact = contacts.get(row.user_id) if row.user_id is not None else None
+        if contact is None or contact.status != "ACTIVE":
+            # Erased, suspended, or simply gone between the decision and now.
+            await repository.mark(
+                session, notification_id=row.id, state="SKIPPED", skip_reason="ACCOUNT_INACTIVE"
+            )
+            continue
+        address = contact.phone if row.channel == "SMS" else contact.email
+        if not address:
+            await repository.mark(
+                session, notification_id=row.id, state="SKIPPED", skip_reason="NO_CONTACT"
+            )
+            continue
+        template = template_by_code(row.template_code)
+        outgoing.append(
+            Outgoing(
+                notification_id=row.id,
+                channel=row.channel,
+                to=address,
+                subject=row.subject,
+                # The stored body, never re-rendered. It was written in the
+                # reader's language at the time and against the template
+                # version recorded on the row; re-rendering now could quietly
+                # send different words than the ones we recorded sending.
+                body=row.body,
+                dlt_template_id=template.dlt_template_id if template is not None else None,
+                user_id=row.user_id,
+                category=row.category,
+            )
+        )
+    return outgoing
+
+
+async def unsubscribe_by_token(session: AsyncSession, *, token: str) -> bool:
+    """Turn nudges off for whoever this token names (blockers E30).
+
+    **Nudges only, and only off.** The token cannot turn anything on, cannot
+    touch another preference, and cannot read anything. The worst a stolen
+    one does is stop reminders its holder was already receiving.
+
+    Returns False for a token that is expired, forged, for another purpose,
+    or names an account that no longer exists. The caller answers the same
+    way in every case: an unauthenticated endpoint that distinguishes them is
+    a way to probe for valid tokens, and for an account's existence.
+
+    Idempotent -- a mail client that retries one-click must not be an error.
+    """
+    user_id = unsubscribe.verify(token)
+    if user_id is None:
+        return False
+    found = await identity_service.contacts(session, user_ids=[user_id])
+    if user_id not in found:
+        return False
+    current = await repository.preferences_for(session, user_ids=[user_id])
+    stored = current.get(user_id)
+    await repository.upsert_preferences(
+        session,
+        user_id=user_id,
+        values={
+            "sms_enabled": stored.sms_enabled if stored else True,
+            "email_enabled": stored.email_enabled if stored else True,
+            "push_enabled": stored.push_enabled if stored else True,
+            "nudges_enabled": False,
+        },
+    )
+    logger.info("nudges_unsubscribed", user_id=str(user_id), via="email_link")
+    return True

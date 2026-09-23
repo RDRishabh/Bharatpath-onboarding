@@ -8,6 +8,7 @@ import notificationUIReducer from "./common/slices/notification-slice";
 import { baseApi } from "./api/base-api";
 import { notificationApi } from "./api/notification-api";
 
+import { collegeBillingReducer } from "./college/billing";
 import collegeSettingsReducer from "./college/settings/college-settings.slice";
 
 import employerBillingReducer from "./employer/billing/billing.slice";
@@ -20,6 +21,7 @@ import {
 import employerSettingsReducer from "./employer/settings/settings-slice";
 import { employerCandidatesReducer } from "./employer/candidates";
 import { adminReducer } from "./admin";
+import { studentReducer } from "./student";
 
 export const store = configureStore({
   reducer: {
@@ -54,7 +56,16 @@ export const store = configureStore({
      * ==========================================
      */
 
+    collegeBilling: collegeBillingReducer,
     collegeSettings: collegeSettingsReducer,
+
+    /*
+     * ==========================================
+     * STUDENT PORTAL UI STATE
+     * ==========================================
+     */
+
+    student: studentReducer,
 
     /*
      * ==========================================

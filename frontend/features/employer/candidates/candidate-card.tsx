@@ -3,7 +3,6 @@
 import {
   BriefcaseBusiness,
   CheckCircle,
-  EyeOff,
   MapPin,
   Star,
 } from "lucide-react";
@@ -129,6 +128,18 @@ export function CandidateCard({
   const remainingSkills =
     Math.max(candidate.skills.length - 5, 0);
 
+  const displayName =
+    candidate.fullName ?? `Candidate ${candidate.candidateId.slice(0, 8)}`;
+  const initials = candidate.fullName
+    ? candidate.fullName
+        .split(" ")
+        .filter(Boolean)
+        .map((word) => word[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : "C";
+
   return (
     <article
       className="
@@ -143,10 +154,6 @@ export function CandidateCard({
         shadow-[0_2px_4px_rgba(19,26,38,0.04),0_8px_20px_rgba(19,26,38,0.05)]
       "
     >
-      {/* =====================================================
-          MASKED PROFILE ICON
-          ===================================================== */}
-
       <span
         className="
           grid
@@ -160,13 +167,12 @@ export function CandidateCard({
           backgroundColor: avatarBackground,
         }}
       >
-        <EyeOff
-          size={18}
-          strokeWidth={2}
-          style={{
-            color: avatarIconColor,
-          }}
-        />
+        <span
+          className="text-[13px] font-bold leading-none"
+          style={{ color: avatarIconColor }}
+        >
+          {initials}
+        </span>
       </span>
 
       {/* =====================================================
@@ -207,7 +213,7 @@ export function CandidateCard({
               text-[#202a3b]
             "
           >
-            Masked candidate
+            {displayName}
           </span>
 
           {/* Score band */}
@@ -252,6 +258,26 @@ export function CandidateCard({
               Course completed
             </AddonPill>
           )}
+
+          {candidate.badges.length === 0 && (
+            <span className="text-[11px] font-medium text-[#8a92a0]">
+              No completed add-ons
+            </span>
+          )}
+        </span>
+
+        {/* -------------------------------------------------
+            CONTACT (shown once revealed)
+            ------------------------------------------------- */}
+        <span className="flex flex-wrap items-center gap-x-[12px] gap-y-[2px] text-[12px] leading-[17px] text-[#4a5568]">
+          {candidate.phone || candidate.email ? (
+            <>
+            {candidate.phone && <span>{candidate.phone}</span>}
+            {candidate.email && <span>{candidate.email}</span>}
+            </>
+          ) : (
+            <span className="text-[#8a92a0]">Contact details not provided</span>
+          )}
         </span>
 
         {/* -------------------------------------------------
@@ -284,7 +310,7 @@ export function CandidateCard({
               strokeWidth={2}
             />
 
-            <span>{candidate.location}</span>
+            <span>{candidate.location.trim() || "Location not provided"}</span>
           </span>
 
           {/* Experience */}
@@ -327,11 +353,17 @@ export function CandidateCard({
             gap-[6px]
           "
         >
-          {visibleSkills.map((skill) => (
-            <SkillPill key={skill}>
-              {skill}
-            </SkillPill>
-          ))}
+          {visibleSkills.length > 0 ? (
+            visibleSkills.map((skill) => (
+              <SkillPill key={skill}>
+                {skill}
+              </SkillPill>
+            ))
+          ) : (
+            <span className="text-[11px] text-[#8a92a0]">
+              No skills provided
+            </span>
+          )}
 
           {remainingSkills > 0 && (
             <span

@@ -705,7 +705,9 @@ def skill_profile(skills: object) -> tuple[int, int]:
     return len(best), sum(best.values()) // len(best)
 
 
-def claims_from_extraction(extracted: dict[str, object], *, visible_text: str) -> ResumeClaims:
+def claims_from_extraction(
+    extracted: dict[str, object], *, visible_text: str, hidden_text: str = ""
+) -> ResumeClaims:
     """**The translation between Layer 1 and the rules.** Pure and total.
 
     **A timeline is complete only when every role is month-dated.** Two rules
@@ -720,8 +722,12 @@ def claims_from_extraction(extracted: dict[str, object], *, visible_text: str) -
     still run on the roles that *are* dated. Dropping a role can hide an
     overlap; it can never invent one.
 
-    Hidden text stays empty: the parser does not extract it yet
-    (`docs/blockers.md` E5), so that rule is inert rather than wrong.
+    **`hidden_text` is supplied by the parser** as of 2026-09-22 (blockers
+    E5, which this closes). It defaults to empty because that is the honest
+    value for a version parsed before the detector existed, for a document
+    the detector could not read, and for a CV with nothing hidden in it --
+    and because `domain.py` is pure, so it takes what it is given and does
+    not go looking.
     """
     raw_roles = extracted.get("roles")
     roles: list[dict[str, object]] = (
@@ -751,5 +757,6 @@ def claims_from_extraction(extracted: dict[str, object], *, visible_text: str) -
         skill_count=skill_count,
         skill_evidence=skill_evidence,
         visible_text=visible_text,
+        hidden_text=hidden_text,
         claimed_platform_score=_as_int(extracted.get("claimed_platform_score")),
     )

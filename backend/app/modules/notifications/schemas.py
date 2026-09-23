@@ -17,16 +17,23 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import Field
 
 from app.core.i18n import LOCALE_CODES
+from app.core.schemas import ApiSchema
 
-LocaleCode = Literal["en", "hi", "bn", "mr", "te", "ta", "gu", "kn"]
+#: Spelled out rather than generated, because a `Literal` built from a runtime
+#: set is not a type mypy or the OpenAPI schema can read -- the four client
+#: teams generate their language picker from this enum. The assertion below is
+#: what keeps the two honest; `pa` was added on 2026-09-22 and this line is
+#: where the build said so.
+LocaleCode = Literal["en", "hi", "bn", "mr", "pa", "te", "ta", "gu", "kn"]
 assert set(LocaleCode.__args__) == LOCALE_CODES  # type: ignore[attr-defined]
 
 
-class _Base(BaseModel):
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
+class _Base(ApiSchema):
+    """Every schema in this module. `ApiSchema` strips the control
+    characters Postgres cannot store -- see `app/core/schemas.py`."""
 
 
 class InboxItem(_Base):
@@ -73,3 +80,21 @@ class SuppressResponse(_Base):
     channel: str
     #: False when that channel was already suppressed.
     created: bool
+
+
+class UnsubscribeRequest(_Base):
+    """The token from an email's `List-Unsubscribe` header."""
+
+    token: str = Field(min_length=1, max_length=2048)
+
+
+class UnsubscribeResponse(_Base):
+    """Deliberately says nothing about whether the token was valid.
+
+    An unauthenticated endpoint that answered differently for a good token,
+    an expired one and one naming a deleted account would be a way to probe
+    for valid tokens and for who has an account. The reader cannot act on the
+    difference in any case: there is nothing for them to do but read this.
+    """
+
+    detail: str = "If that link was still valid, you will not receive profile reminders again."

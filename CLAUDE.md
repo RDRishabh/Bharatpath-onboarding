@@ -31,8 +31,13 @@ cd backend
 docker compose up -d postgres redis     # Docker Desktop must be running
 PYTHON=.venv/Scripts/python.exe bash scripts/reset_local_db.sh
 source .test-env.sh                     # NOT optional - see below
-.venv/Scripts/pytest.exe                # 2079 tests
+bash scripts/dev_api.sh                 # API on :8099
 bash scripts/dev_all.sh                # API + Celery worker, together
+
+# Periodic work (added 2026-09-22). Nothing settles a payment, sends a
+# notification or carries out a deletion until the relay runs.
+celery -A app.worker worker --loglevel=info
+celery -A app.worker beat   --loglevel=info    # EXACTLY ONE of these
 ```
 
 **The API alone is not enough for resume parsing.** The parse flow is
@@ -44,6 +49,10 @@ parser worker may not be running."_ `scripts/dev_all.sh` starts both the API
 (:8099) and the worker + outbox relay together, with shared Ctrl-C cleanup.
 Logs: `/tmp/bp_api.log`, `/tmp/bp_workers.log`. Use it instead of
 `dev_api.sh` for any flow that touches resumes or scoring.
+
+**Deploying it: [`docs/aws-deployment.md`](docs/aws-deployment.md).** One EC2
+host, docker compose, deliberately not production (no database backups); §7 is
+the migration to ECS Fargate + RDS.
 
 **Run tests as CI does — bare `pytest`, not `python -m pytest`.** The latter puts
 the working directory on `sys.path`, which hides import errors that CI will catch.
@@ -62,6 +71,72 @@ ruff check app tests scripts && ruff format --check app tests scripts
 mypy app && lint-imports && python scripts/gen_modules.py --check
 pytest --cov=app
 ```
+
+## Periodic work runs on Celery Beat, and there is exactly one
+
+`app/tasks/schedule.py`, added 2026-09-22 closing half of `blockers.md` E4.
+
+- **Beat, not EventBridge.** `worker.py` used to say Beat could not work on an
+  SQS broker because SQS has no ETA/countdown. That is true of
+  `apply_async(countdown=...)` and irrelevant to Beat, which never asks the
+  broker to delay anything. The trigger endpoint that docstring described was
+  never built, so **from Day 12 until 2026-09-22 nothing ran any sweep** -- no
+  payment settled, no notification was dispatched, no accepted deletion was
+  carried out.
+- **One beat process.** It is a clock; two run every sweep twice. Scale
+  `worker`, never `beat`. Its state file must persist across restarts
+  (`CELERY_BEAT_SCHEDULE_PATH`).
+- The relay runs **every 30 seconds** -- that interval is the delay a candidate
+  feels between paying and being subscribed.
+- A misspelt task name here fails nowhere: beat publishes it, no worker
+  registers it, the message is discarded in silence.
+  `tests/unit/test_beat_schedule.py` is the only thing that catches it.
+
+## Configuration is rows, and `seed_config.py` writes them
+
+Eight `config_values` keys steer things a customer feels, and until 2026-09-22
+**none of them had a row anywhere** -- every reader fell back to a default in
+code, so production ran on invisible numbers, all of them ours.
+
+- `scripts/seed_config.py` builds each document **from the module's own default
+  object** and parses it back through that module's own strict reader before
+  writing. The values are never retyped, so they cannot drift from the code.
+- **Version 1 only, never an update.** A key that already has a row is left
+  alone; changing a number is inserting version 2.
+- Readers are strict on purpose: a bad row is a 500, not a silent fallback. So
+  a misspelt key in the seed is a customer-facing outage, which is why
+  `tests/unit/test_config_seed.py` runs every document through the real reader.
+
+## Nine locales, six of them the client's
+
+`app/core/i18n/`, `PRIORITY_LOCALES` = en, hi, bn, kn, mr, **pa**.
+
+- **Punjabi had no bundle at all** before 2026-09-22 and was not in
+  `SUPPORTED_LOCALES`, so it returned `{}` and fell back to English silently --
+  a supported-looking language that translated nothing.
+- **127 of 159 keys were in no bundle**, in any language: every form label,
+  interview question, questionnaire prompt and notification body. They rendered
+  as the key itself.
+- The six priority locales are held to **full key parity**; gu/ta/te keep the
+  32 core strings and fall back per key.
+- **Every non-English bundle is flagged `needs_native_speaker_pass: true`** in
+  its `_meta`, and a test fails if that flag is dropped. We wrote them. Flipping
+  the flag is a claim that a qualified person read the file (C5, E39).
+- `notifications/schemas.py` carries a hardcoded `LocaleCode` literal with an
+  assertion against `LOCALE_CODES` -- add a language in both places.
+
+## Payments: the stub IS the bypass
+
+No gateway is chosen (D3). `PAYMENTS_PROVIDER=stub` with `ENVIRONMENT=dev`, and
+`POST /billing/dev/payments/{id}/simulate` completes a checkout end to end --
+synchronously, so it works without the relay.
+
+**It bypasses the bank, not the rules**: the stub signs its callbacks with a
+real HMAC and they go through the ordinary verification path, so every guard,
+transition and CHECK is genuinely exercised. `Settings` refuses the stub in
+staging and prod, and the route is not registered without it.
+[`docs/payments-bypass.md`](docs/payments-bypass.md) has the swap: one adapter
+class, one `Literal`, no route or schema change.
 
 ## Architecture rules the linter enforces
 
@@ -116,6 +191,11 @@ attached to it.
   `supersedes_id`; the chain cannot fork (unique index) and `confirmed_at` is a
   latch (conditional UPDATE, `WHERE confirmed_at IS NULL`). An edit never
   inherits confirmation — that would be the gate reached through a side door.
+
+- **Review-screen sections are a view of `raw_text`, never stored**
+  (`resume/sections.py`, 2026-09-23). A `sections` edit is assembled back into
+  text. Do not "upgrade" it to the structured form: that drops the prose Layer 1
+  reads, so fixing a typo would lower a score.
 
 Anything that feeds a deliberately unreadable document into the parse chain
 will call **Textract for real** unless it is pinned to `LocalResumeParser` —
@@ -183,6 +263,7 @@ test asserts**, so a placeholder cannot quietly become the product:
 | `college/domain.py`                          | `INDIVIDUAL_CONSENT_VERSION` starts `placeholder-` — the words for letting a college see a student by name, and the field list they name (blockers E27)                |
 | `analytics/domain.py`                        | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3                                                 |
 | `billing/domain.py`                          | `DISCOUNT_POLICY_VERSION` starts `placeholder-` — no 100% code, first checkout only, one use per payer (blockers E36)                                                  |
+| `resume/vocabulary.py`                       | `VOCABULARY_VERSION` starts `placeholder-` — the spellings the review screen flags near misses of                                                                      |
 
 Flipping one of these is a client decision, not a tidy-up.
 
@@ -195,6 +276,26 @@ forbids the words for the same reason, and a dial says it louder than any word.
 
 SRS 1.4.5, enforced by the `integrity-never-imports-scoring` contract.
 `integrity/domain.py` raises signals; a human resolves them.
+
+**Hidden text is read as of 2026-09-22** (`resume/hidden_text.py`, closing
+E5): invisible render mode, near-white fill, sub-point type and off-page
+positioning, plus `w:vanish` and white runs in .docx.
+
+- **`raw_text` is unchanged and must stay so.** pypdf returns hidden and
+  visible text in one string; the detector is a **separate second pass** that
+  identifies rather than subtracts. No score moves, nothing re-scores. That
+  the model still reads hidden keywords is the design: the remedy is a HIGH
+  signal, not a quietly different number.
+- **Built to miss rather than guess**, because HIGH hides someone before a
+  human looks. An OCR text layer over a scan is every-character-invisible and
+  is *not* reported (invisible mode counts only as a minority of the
+  document); light-grey text is not white.
+- **`analysed=False` is not "nothing found".** `hidden_text_of` hands the
+  rules `""` for never-analysed, failed and clean alike; `was_analysed` keeps
+  the record. A rule firing on our own missing data would suppress candidates
+  for a reason that is nothing to do with them.
+- **Versions parsed before 2026-09-22 carry no analysis** and are not
+  re-checked. Re-running over live candidates is a decision, not a migration.
 
 **Severity is the design, not the rules.** HIGH removes a candidate from
 employer search _before_ anyone has looked, so only two rules may reach it —
@@ -239,8 +340,15 @@ is where a third one would have to be argued for.
 - **The threshold preview is a leak vector.** Steps of ten, counts floored to
   ten, anything under ten reported only as "fewer than ten", rate-limited per
   organisation. Don't make it more precise.
-- **Config rows are global in tests.** Insert with a past `effective_from`, and
-  delete the row in a `finally`.
+- **Config rows are global in tests.** Insert with a past `effective_from`,
+  **take `coalesce(max(version), 0) + 1` rather than `1`**, and delete the row
+  in a `finally`. Version 1 now belongs to `seed_config.py` in any environment
+  where it has run, which is every deployment and `reset_local_db.sh`.
+- **Never assert a literal rules version** (`code-v1`, `config-v1`). That is
+  really an assertion about whether a config row exists, and it silently
+  encodes "this platform runs on defaults that live only in source". Read the
+  live row and compare (`_live_expiry_version` in `test_pipeline.py`). Three
+  tests failed this way the day the defaults became rows.
 - **Review actions (KYB and integrity) are routed by the admin console**
   (Day 19), which calls these services.
 
@@ -573,6 +681,46 @@ is where a third one would have to be argued for.
   nudge number is claimed first (`uq_profile_nudges_sequence`) -- that is the
   cap and the concurrency guard. Tests inject `now` and page with
   `after_id = uuid - 1, limit = 1` to examine one person in a shared database.
+
+## The API has two error shapes, and the schema says so
+
+Found by the fuzzer, 2026-09-22 (`blockers.md` E42).
+
+- An `AppError` is answered by `app_error_handler` as RFC 9457
+  **`application/problem+json`** with a stable `code`. **Match on `code`,
+  never on `title`** -- the title is English prose and will be translated.
+- An **unparseable body never reaches a handler**, so Starlette answers 400
+  with its own `{"detail": ...}` as plain `application/json`, which is also
+  what FastAPI uses for 422.
+
+`openapi.json` documents both (`ProblemDetail`, `FrameworkError`) rather than
+pretending they are one. **Normalising them is a breaking change** for
+anyone parsing `detail`, so it is the client's decision.
+
+**Error statuses are added to the schema in one place** --
+`main._document_error_responses`, which **wraps `app.openapi`**. Mutating
+`app.openapi_schema` once does not work: FastAPI 0.141 regenerates the schema
+whenever the route set has changed since it last built one, so a post-process
+that runs before the final route is registered is silently discarded and the
+served document is the unmodified one.
+
+## Fuzzing: `pytest -m contract`
+
+`tests/integration/test_api_fuzz.py`. 157 operations against hostile input,
+authenticated as a real candidate so the input reaches handlers rather than
+bouncing off `current_user`.
+
+- **Excluded from the default run** and not yet green (`blockers.md` E43). A
+  full run is about fifteen minutes.
+- **`positive_data_acceptance` is deliberately not one of the checks.** It
+  fails an operation that refuses schema-compliant input, and this API
+  refuses plenty, correctly -- `city: ""` satisfies every constraint JSON
+  Schema can express and is still not a city. Including it would mean
+  watering down the validators to satisfy a test.
+- Requests go through the suite's own httpx client, not
+  `case.call_and_validate`: schemathesis drives the ASGI app in its own event
+  loop, and the shared Redis client is created and disposed in pytest's, so
+  the two loops collide in teardown and it looks like a fuzzing finding.
 
 ## Privacy, erasure and rate limits — Day 20
 

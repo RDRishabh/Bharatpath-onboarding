@@ -102,6 +102,11 @@ async def evaluate_version(
     resume_version_id: uuid.UUID,
     extracted: dict[str, Any],
     visible_text: str,
+    #: Text the CV renders and a reader cannot see (blockers E5). Empty for
+    #: versions parsed before the detector existed -- which reads as "nothing
+    #: hidden", deliberately: a rule that fired on our own missing data would
+    #: suppress candidates for a reason that is nothing to do with them.
+    hidden_text: str = "",
     as_of: datetime,
 ) -> EvaluationResult:
     """Run the rules over one scored version and record what they found.
@@ -115,7 +120,7 @@ async def evaluate_version(
     the same score event returns the first result and writes nothing.
     """
     thresholds = await current_thresholds(session, as_of=as_of)
-    claims = claims_from_extraction(extracted, visible_text=visible_text)
+    claims = claims_from_extraction(extracted, visible_text=visible_text, hidden_text=hidden_text)
     signals = detect(
         claims, as_of_month=month_index(as_of.year, as_of.month), thresholds=thresholds
     )

@@ -119,6 +119,24 @@ def upload_key(*, user_id: uuid.UUID, upload_id: uuid.UUID) -> str:
     return f"resumes/{user_id}/{upload_id}"
 
 
+#: Characters removed before anything else. C0 controls and DEL, minus the
+#: three that carry meaning in pasted text (`\t`, `\n`, `\r`).
+#:
+#: **NUL is the one that mattered.** Postgres cannot store `\x00` in a text
+#: or JSONB value at all, so a pasted CV containing one travelled through
+#: validation, through the service, and died in the asyncpg driver as
+#: `A string literal cannot contain NUL (0x00) characters` -- a 500, on
+#: input a candidate can send. Found by the fuzzer
+#: (`tests/integration/test_api_fuzz.py`, 2026-09-22); it is trivially
+#: reachable by pasting from a corrupted PDF, which is exactly the population
+#: this endpoint exists for.
+#:
+#: The rest go with it because none of them can be typed deliberately, none
+#: survives rendering, and every one of them is a way to make two CVs that
+#: look identical store differently.
+_CONTROL_CHARACTERS = dict.fromkeys([*range(0, 9), 11, 12, *range(14, 32), 127])
+
+
 def normalise_pasted_text(raw: str) -> str:
     """Collapse the whitespace a paste from a PDF viewer brings with it.
 
@@ -126,7 +144,11 @@ def normalise_pasted_text(raw: str) -> str:
     what was stored: scoring has to be reproducible from the stored text
     (invariant 1), so normalisation happens once, before persistence, never
     again afterwards.
+
+    Control characters are stripped first, for the same reason and one more:
+    a value the database cannot hold is not a validation nicety, it is a 500.
     """
+    raw = raw.translate(_CONTROL_CHARACTERS)
     lines = [line.strip() for line in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
     out: list[str] = []
     blank = False

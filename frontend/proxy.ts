@@ -219,7 +219,7 @@ function getPortalFromHostname(
   };
 }
 
-export function middleware(
+export function proxy(
   request: NextRequest
 ) {
   const { pathname } =
@@ -300,11 +300,11 @@ export function middleware(
 export const config = {
   matcher: [
     /*
-     * Run middleware on all application
+     * Run the proxy on all application
      * routes except static assets.
      *
      * API routes are additionally skipped
-     * inside middleware so they remain safe
+     * inside the proxy so they remain safe
      * even if this matcher is expanded later.
      */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|woff|woff2|ttf)$).*)",

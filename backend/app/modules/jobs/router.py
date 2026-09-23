@@ -38,6 +38,7 @@ from app.modules.jobs.schemas import (
     BoardJobDetail,
     BoardJobSummary,
     CreateJobRequest,
+    JobListItem,
     JobResponse,
     JobStatus,
     ThresholdPreviewResponse,
@@ -76,16 +77,18 @@ async def create_job(
 
 @router.get(
     "",
-    response_model=list[JobResponse],
+    response_model=list[JobListItem],
     dependencies=[Readers, PayingEmployer],
-    summary="The organisation's jobs, newest first",
+    summary="The organisation's jobs, newest first, each with its pipeline counts",
 )
 async def list_jobs(
     user: CurrentUser,
     session: DbSession,
     status_filter: Annotated[JobStatus | None, Query(alias="status")] = None,
-) -> list[JobResponse]:
-    return [_job(j) for j in await service.list_jobs(session, ctx=user, status=status_filter)]
+) -> list[JobListItem]:
+    """`application_counts` is where each job's applications stand now, so the
+    list draws its funnel without a request per row."""
+    return await service.list_jobs(session, ctx=user, status=status_filter)
 
 
 @router.get(

@@ -2,6 +2,7 @@
 
 import { useCancelEmployerSubscriptionMutation, useCheckoutEmployerSubscriptionMutation, useCreateEmployerMandateMutation, useGetEmployerPlansQuery, useGetEmployerSubscriptionQuery } from "@/store/employer/billing";
 import { ErrorState } from "@/components/ui";
+import { Spinner } from "@/components/common/loading";
 
 export function SubscriptionTab() {
   const { data: subscription, isLoading } = useGetEmployerSubscriptionQuery();
@@ -27,7 +28,12 @@ export function SubscriptionTab() {
     }
   };
 
-  if (isLoading || plansLoading) return <p className="text-xs text-[#718096]">Loading subscription…</p>;
+  if (isLoading || plansLoading)
+    return (
+      <div className="flex items-center py-6">
+        <Spinner label="Loading subscription…" />
+      </div>
+    );
 
   return (
     <div className="max-w-[760px] space-y-4">
@@ -43,14 +49,20 @@ export function SubscriptionTab() {
           {subscription?.has_access && !subscription.renews_automatically && <button disabled={mandateState.isLoading} onClick={() => void mandate()} className="rounded-lg bg-[#151b2b] px-3 py-2 text-xs font-semibold text-white">Enable UPI AutoPay</button>}
         </div>
       </section>
-      <div className="grid gap-3 md:grid-cols-3">
-        {plans.map((plan) => <section key={plan.code} className="rounded-xl border border-[#e0e4e9] bg-white p-5">
+      {plans.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-[#dfe3e9] bg-white px-5 py-8 text-center text-xs leading-5 text-[#718096]">
+          No subscription plans are available right now. Please try again later.
+        </p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-3">
+          {plans.map((plan) => <section key={plan.code} className="rounded-xl border border-[#e0e4e9] bg-white p-5">
           <h3 className="text-sm font-bold">{plan.period}</h3>
           <p className="mt-2 text-2xl font-bold">₹{(plan.price_minor / 100).toLocaleString("en-IN")}</p>
           <p className="mt-1 text-xs text-[#718096]">{plan.months} month{plan.months === 1 ? "" : "s"}{plan.seat_allowance ? ` · ${plan.seat_allowance} seats` : ""}</p>
           <button disabled={checkoutState.isLoading} onClick={() => void buy(plan.code)} className="mt-4 w-full rounded-lg bg-[#5b4ed0] px-3 py-2 text-xs font-bold text-white">Choose plan</button>
-        </section>)}
-      </div>
+          </section>)}
+        </div>
+      )}
       {(checkoutState.isError || cancelState.isError || mandateState.isError) && <ErrorState error={checkoutState.error || cancelState.error || mandateState.error} fallback="The billing request could not be completed." />}
     </div>
   );

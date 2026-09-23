@@ -25,7 +25,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
 
@@ -55,7 +55,14 @@ class EmailProvider(Protocol):
     name: str
     configured: bool
 
-    async def send(self, *, to: str, subject: str, body: str) -> str: ...
+    async def send(
+        self, *, to: str, subject: str, body: str, headers: dict[str, str] | None = None
+    ) -> str:
+        """`headers` carries RFC 8058 unsubscribe headers on a nudge
+        (blockers E30). Optional, so a provider that cannot set headers is
+        still a valid implementation -- it sends the message without them
+        rather than refusing to send it."""
+        ...
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +80,9 @@ class UnconfiguredEmailProvider:
     name = "none"
     configured = False
 
-    async def send(self, *, to: str, subject: str, body: str) -> str:
+    async def send(
+        self, *, to: str, subject: str, body: str, headers: dict[str, str] | None = None
+    ) -> str:
         raise DeliveryError("provider_unconfigured")
 
 
@@ -95,10 +104,14 @@ class StubSmsProvider:
 class StubEmailProvider:
     name: str = "stub"
     configured: bool = True
-    sent: list[dict[str, str]] = field(default_factory=list)
+    sent: list[dict[str, Any]] = field(default_factory=list)
 
-    async def send(self, *, to: str, subject: str, body: str) -> str:
-        self.sent.append({"to": to, "subject": subject, "body": body})
+    async def send(
+        self, *, to: str, subject: str, body: str, headers: dict[str, str] | None = None
+    ) -> str:
+        self.sent.append(
+            {"to": to, "subject": subject, "body": body, "headers": dict(headers or {})}
+        )
         return f"stub-email-{len(self.sent)}"
 
 
@@ -156,22 +169,32 @@ class SesEmailProvider:
         self._region = region
         self._endpoint_url = endpoint_url
 
-    async def send(self, *, to: str, subject: str, body: str) -> str:
+    async def send(
+        self, *, to: str, subject: str, body: str, headers: dict[str, str] | None = None
+    ) -> str:
         import boto3
 
         def _send() -> str:
             client = boto3.client(
                 "sesv2", region_name=self._region, endpoint_url=self._endpoint_url
             )
+            content: dict[str, Any] = {
+                "Simple": {
+                    "Subject": {"Data": subject, "Charset": "UTF-8"},
+                    "Body": {"Text": {"Data": body, "Charset": "UTF-8"}},
+                }
+            }
+            if headers:
+                # SESv2 takes custom headers on the Simple content. This is
+                # how `List-Unsubscribe` reaches the reader's mail client,
+                # which is what draws its own Unsubscribe button.
+                content["Simple"]["Headers"] = [
+                    {"Name": name, "Value": value} for name, value in sorted(headers.items())
+                ]
             result = client.send_email(
                 FromEmailAddress=self._from,
                 Destination={"ToAddresses": [to]},
-                Content={
-                    "Simple": {
-                        "Subject": {"Data": subject, "Charset": "UTF-8"},
-                        "Body": {"Text": {"Data": body, "Charset": "UTF-8"}},
-                    }
-                },
+                Content=content,
             )
             return str(result["MessageId"])
 

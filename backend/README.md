@@ -28,6 +28,10 @@ pytest                            # the whole suite, against that database
 bash scripts/dev_api.sh           # http://localhost:8099, docs at /docs
 ```
 
+**Front-end teams: [`../docs/local-backend-setup.md`](../docs/local-backend-setup.md)**
+is the same thing written for someone who only wants the API running -- tokens
+without Cognito, checkouts without a gateway, and what is switched off locally.
+
 `reset_local_db.sh` runs Alembic as the **migrator** role, which owns the
 tables; the application connects as a role that is genuinely subject to
 row-level security, which is what makes the RLS tests mean anything. On

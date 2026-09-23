@@ -13,13 +13,16 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
+from app.core.schemas import ApiSchema
 from app.modules.resume.domain import normalise_pasted_text
+from app.modules.resume.sections import HEADER, SectionKind, assemble_sections, heading_kind
 
 
-class _Base(BaseModel):
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
+class _Base(ApiSchema):
+    """Every schema in this module. `ApiSchema` strips the control
+    characters Postgres cannot store -- see `app/core/schemas.py`."""
 
 
 #: Where a version's content came from. EDIT means a human corrected it; see
@@ -190,6 +193,38 @@ class ResumeVersionSummary(_Base):
     created_at: datetime
 
 
+class ResumeSectionItem(_Base):
+    text: str
+    unclear: bool = Field(
+        description="Worth asking the candidate about: a likely typo, a "
+        "sentence split by mistake, or not a word. An unknown skill is not "
+        "unclear."
+    )
+    suggestion: str | None = Field(
+        default=None, description="The spelling we think was meant, if any."
+    )
+
+
+class ResumeSection(_Base):
+    """One card on the review screen. A view of `parsed.raw_text`, computed on
+    read -- the text is still what is scored."""
+
+    kind: SectionKind = Field(
+        description="What the section holds. `header` is everything before the "
+        "first heading, usually the name and contact lines."
+    )
+    heading: str | None = Field(
+        description="As written in the document. Null for `header`. Send it "
+        "back unchanged when editing, to keep the candidate's wording."
+    )
+    body: str
+    items: list[ResumeSectionItem] | None = Field(
+        default=None,
+        description="Skills, languages and certifications as separate items; "
+        "null for every other kind.",
+    )
+
+
 class ResumeVersionDetailResponse(_Base):
     """**The review screen.** The whole point of the confirm gate is that the
     candidate sees what was extracted before a number is attached to it, so
@@ -207,6 +242,13 @@ class ResumeVersionDetailResponse(_Base):
         "`extractor` provenance block. This is what will be scored if it is "
         "confirmed, so it is what the candidate must be shown."
     )
+    sections: list[ResumeSection] | None = Field(
+        default=None,
+        description="`parsed.raw_text` split into sections, for an uploaded, "
+        "pasted or text-edited version. Null for a structured one, whose "
+        "`parsed` already has its fields. Every line of the text is in exactly "
+        "one section.",
+    )
     confirmed: bool
     confirmed_at: datetime | None = None
     supersedes_id: uuid.UUID | None = None
@@ -214,18 +256,45 @@ class ResumeVersionDetailResponse(_Base):
     created_at: datetime
 
 
+class ResumeSectionEdit(_Base):
+    kind: SectionKind
+    heading: str | None = Field(
+        default=None,
+        max_length=80,
+        description="The heading as the review screen returned it, or null for "
+        "the kind's standard heading. Must name this kind.",
+    )
+    body: Annotated[str, Field(max_length=20_000)] = ""
+
+    @model_validator(mode="after")
+    def _heading_names_kind(self) -> ResumeSectionEdit:
+        if self.kind == HEADER:
+            if self.heading is not None:
+                raise ValueError("the header section has no heading")
+        elif self.heading is not None and heading_kind(self.heading) != self.kind:
+            # Otherwise it would not be read back as this kind -- or as a
+            # heading at all -- and the section would merge into its neighbour.
+            raise ValueError(f"{self.heading!r} is not a heading for {self.kind}")
+        return self
+
+
 class ResumeEditRequest(_Base):
     """A correction to a reviewed version. Sends the resume **entire**.
 
-    Exactly one of `text` or `structured`, and the reason it is not both is
-    that the two carry the same facts in different shapes: accepting both
-    would make "which one is scored?" a question with an answer buried in
-    merge code. Sending neither is equally a client bug, so both are 422s
-    rather than a silent no-op that returns a version nobody changed.
+    Exactly one of `text`, `structured` or `sections`, and the reason it is
+    not two is that they carry the same facts in different shapes: accepting
+    both would make "which one is scored?" a question with an answer buried in
+    merge code. Sending none is equally a client bug, so both are 422s rather
+    than a silent no-op that returns a version nobody changed.
+
+    `sections` is the review screen's shape: every section, in order, edited
+    or not -- a section left out is deleted. It is assembled into text and
+    stored exactly as a `text` edit is.
     """
 
     text: Annotated[str | None, Field(default=None, min_length=50)] = None
     structured: ManualResumeRequest | None = None
+    sections: Annotated[list[ResumeSectionEdit] | None, Field(default=None, max_length=40)] = None
 
     @field_validator("text")
     @classmethod
@@ -242,9 +311,25 @@ class ResumeEditRequest(_Base):
 
     @model_validator(mode="after")
     def _exactly_one(self) -> ResumeEditRequest:
-        if (self.text is None) == (self.structured is None):
-            raise ValueError("send exactly one of `text` or `structured`")
+        given = [v for v in (self.text, self.structured, self.sections) if v is not None]
+        if len(given) != 1:
+            raise ValueError("send exactly one of `text`, `structured` or `sections`")
+        if self.sections is not None:
+            if any(s.kind == HEADER for s in self.sections[1:]):
+                # Assembled anywhere else it would read back as part of the
+                # section before it.
+                raise ValueError("the header section can only come first")
+            if len(self.edited_text() or "") < 50:
+                raise ValueError("too short to be a resume once whitespace is removed")
         return self
+
+    def edited_text(self) -> str | None:
+        """The text this edit stores, or None for a structured edit."""
+        if self.sections is not None:
+            return normalise_pasted_text(
+                assemble_sections([(s.kind, s.heading, s.body) for s in self.sections])
+            )
+        return self.text
 
 
 class ResumeConfirmResponse(_Base):
