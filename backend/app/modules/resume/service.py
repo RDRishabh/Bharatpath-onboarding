@@ -333,9 +333,9 @@ async def edit_version(
             "skills": list(payload.structured.skills),
         }
     else:
-        # `text` is not None here: the schema's model validator guarantees
-        # exactly one of the two is set, so there is no third case.
-        replacement = {"raw_text": payload.text}
+        # `text` or `sections`: the schema guarantees exactly one shape was
+        # sent, and a section edit is stored as the text it assembles to.
+        replacement = {"raw_text": payload.edited_text()}
 
     parsed = build_edited_parsed(previous_parsed=previous.parsed, replacement=replacement)
 

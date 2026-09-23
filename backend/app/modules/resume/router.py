@@ -26,12 +26,15 @@ from app.modules.resume.schemas import (
     ResumeConfirmResponse,
     ResumeEditRequest,
     ResumeFileStatusResponse,
+    ResumeSection,
+    ResumeSectionItem,
     ResumeVersionDetailResponse,
     ResumeVersionResponse,
     ResumeVersionSummary,
     UploadCompleteResponse,
     UploadTicketResponse,
 )
+from app.modules.resume.sections import section_items, split_sections
 from app.settings import get_settings
 
 router = APIRouter()
@@ -225,12 +228,35 @@ async def review_version(
         resume_version_id=row.id,
         source=row.source,
         parsed=row.parsed,
+        sections=_sections_of(row.parsed),
         confirmed=row.confirmed_at is not None,
         confirmed_at=row.confirmed_at,
         supersedes_id=row.supersedes_id,
         superseded=superseded,
         created_at=row.created_at,
     )
+
+
+def _sections_of(parsed: object) -> list[ResumeSection] | None:
+    raw_text = parsed.get("raw_text") if isinstance(parsed, dict) else None
+    if not isinstance(raw_text, str):
+        return None
+    return [
+        ResumeSection(
+            kind=section.kind,
+            heading=section.heading,
+            body=section.body,
+            items=(
+                None
+                if (items := section_items(section.kind, section.body)) is None
+                else [
+                    ResumeSectionItem(text=i.text, unclear=i.unclear, suggestion=i.suggestion)
+                    for i in items
+                ]
+            ),
+        )
+        for section in split_sections(raw_text)
+    ]
 
 
 @router.post(

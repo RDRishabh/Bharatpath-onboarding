@@ -182,6 +182,11 @@ attached to it.
   latch (conditional UPDATE, `WHERE confirmed_at IS NULL`). An edit never
   inherits confirmation — that would be the gate reached through a side door.
 
+- **Review-screen sections are a view of `raw_text`, never stored**
+  (`resume/sections.py`, 2026-09-23). A `sections` edit is assembled back into
+  text. Do not "upgrade" it to the structured form: that drops the prose Layer 1
+  reads, so fixing a typo would lower a score.
+
 Anything that feeds a deliberately unreadable document into the parse chain
 will call **Textract for real** unless it is pinned to `LocalResumeParser` —
 see the `local_parser_only` fixture.
@@ -248,6 +253,7 @@ test asserts**, so a placeholder cannot quietly become the product:
 | `college/domain.py` | `INDIVIDUAL_CONSENT_VERSION` starts `placeholder-` — the words for letting a college see a student by name, and the field list they name (blockers E27) |
 | `analytics/domain.py` | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3 |
 | `billing/domain.py` | `DISCOUNT_POLICY_VERSION` starts `placeholder-` — no 100% code, first checkout only, one use per payer (blockers E36) |
+| `resume/vocabulary.py` | `VOCABULARY_VERSION` starts `placeholder-` — the spellings the review screen flags near misses of |
 
 Flipping one of these is a client decision, not a tidy-up.
 
