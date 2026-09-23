@@ -220,12 +220,93 @@ type DisputeListParams = AdminListParams & {
   party?: DisputeRow["party"];
 };
 
+/*
+ * GET /api/v1/admin/dashboard — everything the operations dashboard needs in
+ * one audited request. Field names follow the backend contract; nested shapes
+ * the contract does not spell out in full are typed conservatively and the
+ * hook maps them defensively.
+ */
+export type OrganisationStatusCounts = {
+  active: number;
+  suspended: number;
+  closed: number;
+};
+
+export type AdminOldestWaitingItem = {
+  queue: "KYB" | "INTEGRITY" | "DISPUTE";
+  id: string;
+  label: string;
+  detail?: string | null;
+  severity?: "LOW" | "MEDIUM" | "HIGH" | null;
+  waiting_since: string;
+};
+
+export type AdminThroughputPoint = {
+  date: string;
+  entered: number;
+  cleared: number;
+};
+
+export type AdminCandidateRow = {
+  id: string;
+  status: "ACTIVE" | "SUSPENDED" | "DELETED";
+  full_name: string | null;
+  city: string | null;
+  state_code: string | null;
+  phone_masked: string | null;
+  email_masked: string | null;
+  created_at: string;
+};
+
+export type AdminCandidateListParams = AdminListParams & {
+  status?: "ACTIVE" | "SUSPENDED" | "DELETED";
+  q?: string;
+  email?: string;
+};
+
+export type AdminDashboardResponse = {
+  kyb: {
+    awaiting_review: number;
+    awaiting_employer: number;
+    review_required: boolean;
+  };
+  integrity: {
+    open: number;
+    open_by_severity: Partial<Record<"LOW" | "MEDIUM" | "HIGH", number>>;
+    candidates_held_back: number;
+  };
+  disputes: {
+    open: number;
+    in_review: number;
+    unassigned: number;
+    by_kind: Record<string, number>;
+  };
+  organisations: {
+    employers: OrganisationStatusCounts;
+    colleges: OrganisationStatusCounts;
+  };
+  oldest_waiting: AdminOldestWaitingItem[];
+  platform_totals: {
+    candidates: number;
+    employers: number;
+    colleges: number;
+    published_jobs: number;
+    applications: number;
+    confirmed_hires: number;
+  };
+  throughput: AdminThroughputPoint[];
+};
+
 export const adminApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder) => ({
     getAdminIdentity: builder.query<AuthIdentity, void>({
       query: () => "/auth/me",
       providesTags: ["Auth"],
+    }),
+    getAdminDashboard: builder.query<AdminDashboardResponse, void>({
+      query: () => "/admin/dashboard",
+      providesTags: ["Admin"],
     }),
     getAdminKybSubmissions: builder.query<KybSubmissionsPage, KybListParams | void>({
       query: (params) => ({ url: "/admin/kyb/submissions", params: params ?? undefined }),
@@ -253,6 +334,10 @@ export const adminApi = baseApi.injectEndpoints({
     }),
     getAdminTenants: builder.query<CursorPage<TenantRow>, TenantListParams | void>({
       query: (params) => ({ url: "/admin/tenants", params: params ?? undefined }),
+      providesTags: ["Admin"],
+    }),
+    getAdminCandidates: builder.query<CursorPage<AdminCandidateRow>, AdminCandidateListParams | void>({
+      query: (params) => ({ url: "/admin/candidates", params: params ?? undefined }),
       providesTags: ["Admin"],
     }),
     suspendAdminTenant: builder.mutation<SuspensionResponse, { tenantId: string; reason: string }>({
@@ -313,6 +398,7 @@ export const adminApi = baseApi.injectEndpoints({
 export const {
   useGetAdminIdentityQuery,
   useLazyGetAdminIdentityQuery,
+  useGetAdminDashboardQuery,
   useGetAdminKybSubmissionsQuery,
   useGetAdminKybSubmissionQuery,
   useDecideAdminKybMutation,
@@ -320,6 +406,7 @@ export const {
   useGetAdminIntegritySignalQuery,
   useResolveAdminIntegritySignalMutation,
   useGetAdminTenantsQuery,
+  useGetAdminCandidatesQuery,
   useSuspendAdminTenantMutation,
   useReinstateAdminTenantMutation,
   useGetAdminTenantSuspensionsQuery,
@@ -333,4 +420,5 @@ export const {
   useAssignAdminDisputeMutation,
   useResolveAdminDisputeMutation,
   useGetAdminAuditEventsQuery,
+  useLazyGetAdminAuditEventsQuery,
 } = adminApi;

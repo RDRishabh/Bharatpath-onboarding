@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import {
   useAppDispatch,
@@ -24,7 +25,10 @@ import {
   useMoveEmployerApplicationMutation,
   useProposeEmployerHireMutation,
 } from "@/store/employer/applications";
-import { useGetEmployerJobsQuery } from "@/store/employer/jobs";
+import {
+  useGetEmployerJobsQuery,
+  useGetEmployerJobQuery,
+} from "@/store/employer/jobs";
 import {
   useLazyRevealEmployerCandidatesQuery,
   type RevealedCandidateResponse,
@@ -37,6 +41,11 @@ import type {
 
 const EMPTY_JOBS: EmployerJob[] = [];
 const APPLICATIONS_BATCH_SIZE = 10;
+
+interface PagedJob {
+  id: string;
+  title: string;
+}
 
 interface ApplicationPageCursor {
   jobIndex: number;
@@ -52,10 +61,14 @@ const FIRST_APPLICATION_PAGE: ApplicationPageCursor = { jobIndex: 0 };
 
 export function useApplicationsPage() {
   const dispatch = useAppDispatch();
-  const { data: jobs = EMPTY_JOBS, isLoading: jobsLoading } =
+  const searchParams = useSearchParams();
+  const jobIdParam = searchParams.get("jobId");
+  const { data: jobsPage, isLoading: jobsLoading } =
     useGetEmployerJobsQuery({
       status: "PUBLISHED",
+      limit: 100,
     });
+  const jobs = jobsPage?.items ?? EMPTY_JOBS;
   const [loadApplications, applicationsState] =
     useLazyGetEmployerApplicationsQuery();
   const [loadApplication] =
@@ -70,6 +83,30 @@ export function useApplicationsPage() {
   const jobFilter = useAppSelector(
     selectApplicationJobFilter,
   );
+
+  // A `?jobId=` arriving from the jobs table (a stage number was clicked)
+  // selects that job so only its applications are fetched. Only re-syncs when
+  // the URL changes, so a later dropdown change is not overwritten.
+  useEffect(() => {
+    dispatch(setApplicationJobFilter(jobIdParam ?? "all"));
+  }, [jobIdParam, dispatch]);
+
+  const selectedJobId = jobFilter === "all" ? undefined : jobFilter;
+  const jobInList = useMemo(
+    () => jobs.find((job) => job.id === selectedJobId),
+    [jobs, selectedJobId],
+  );
+
+  // A clicked job may be paused or closed and so absent from the published
+  // list above; fetch it directly to fill the breadcrumb and load its
+  // applications. Skipped when it is already in the list or nothing is selected.
+  const selectedJobQuery = useGetEmployerJobQuery(selectedJobId ?? "", {
+    skip: !selectedJobId || Boolean(jobInList),
+  });
+
+  const selectedJobTitle =
+    jobInList?.title ?? selectedJobQuery.data?.title ?? null;
+
   const [nextCursor, setNextCursor] = useState<ApplicationPageCursor | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -115,14 +152,25 @@ export function useApplicationsPage() {
   );
 
   // "All jobs" composes the backend's per-job cursors without inventing a
-  // global ordering or total that the API does not provide.
-  const pagedJobs = useMemo(
-    () =>
-      jobFilter === "all"
-        ? jobs
-        : jobs.filter((job) => job.id === jobFilter),
-    [jobFilter, jobs],
-  );
+  // global ordering or total that the API does not provide. A single selected
+  // job fetches only that job's applications, even if it is paused or closed.
+  const pagedJobs = useMemo<PagedJob[]>(() => {
+    if (!selectedJobId) {
+      return jobs.map((job) => ({ id: job.id, title: job.title }));
+    }
+    if (jobInList) {
+      return [{ id: jobInList.id, title: jobInList.title }];
+    }
+    if (selectedJobQuery.data) {
+      return [
+        {
+          id: selectedJobQuery.data.id,
+          title: selectedJobQuery.data.title,
+        },
+      ];
+    }
+    return [];
+  }, [jobs, jobInList, selectedJobId, selectedJobQuery.data]);
 
   const jobOptions = useMemo(
     () => [
@@ -505,6 +553,7 @@ export function useApplicationsPage() {
     isLoadingMore,
     jobFilter,
     jobOptions,
+    selectedJobTitle,
     hasNextPage: nextCursor !== null,
     selectedApplication,
     error:

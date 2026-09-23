@@ -48,8 +48,8 @@ export function RecentActivityList({
       {activities.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-6 py-8 text-center">
           <p className="text-[13px] leading-[18px] text-[#8a91a0]">
-            No recent activity yet. Actions on your jobs, applications and
-            billing will show up here.
+            Recent activity will appear here when the activity feed becomes
+            available.
           </p>
         </div>
       ) : (

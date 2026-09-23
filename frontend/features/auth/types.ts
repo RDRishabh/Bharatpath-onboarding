@@ -26,4 +26,9 @@ export interface LoginResponse {
   path: string;
   /** The authoritative backend membership role (e.g. EMPLOYER_OWNER). */
   backendRole: string;
+  /**
+   * The backend RS256 bearer token for this session. Returned by the sign-in
+   * route so the browser can authenticate its direct backend calls.
+   */
+  token?: string;
 }

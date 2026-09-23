@@ -13,6 +13,7 @@ import {
   loginSchema,
 } from "@/features/auth/schemas/login.schema";
 import { authService } from "@/features/auth/services/auth.service";
+import { setStoredToken } from "@/lib/auth/token";
 import { setUser } from "@/store/common/slices/auth.slice";
 import { setTenant } from "@/store/common/slices/tenant.slice";
 import { useAppDispatch } from "@/store/hooks";
@@ -46,6 +47,10 @@ export function LoginForm() {
 
     try {
       const result = await authService.login(values);
+
+      if (result.token) {
+        setStoredToken(result.token);
+      }
 
       dispatch(setUser(result.user));
       dispatch(

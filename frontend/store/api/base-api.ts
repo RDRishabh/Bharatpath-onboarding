@@ -3,6 +3,8 @@ import {
   fetchBaseQuery,
 } from "@reduxjs/toolkit/query/react";
 
+import { getStoredToken } from "@/lib/auth/token";
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://localhost:8099/api/v1";
@@ -41,11 +43,12 @@ export const baseApi = createApi({
       );
 
       /*
-       * Local-dev only: lets you hit auth-gated employer
-       * routes without wiring up the real login flow.
-       * Set via NEXT_PUBLIC_API_BEARER_TOKEN, never in production.
+       * The signed-in user's token, minted at login and kept in local
+       * storage, authenticates every direct backend call. Falls back to the
+       * local-dev NEXT_PUBLIC_API_BEARER_TOKEN when no one is signed in.
        */
-      const bearerToken = process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
+      const bearerToken =
+        getStoredToken() ?? process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
 
       if (bearerToken) {
         headers.set(

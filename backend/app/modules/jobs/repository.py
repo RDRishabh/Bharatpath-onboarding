@@ -63,15 +63,38 @@ async def get_job(session: AsyncSession, *, tenant_id: uuid.UUID, job_id: uuid.U
     return result.scalar_one_or_none()
 
 
-async def list_jobs(
-    session: AsyncSession, *, tenant_id: uuid.UUID, status: str | None, limit: int
-) -> list[Job]:
-    query = select(Job).where(Job.tenant_id == tenant_id)
+def _employer_job_filters(
+    *, tenant_id: uuid.UUID, status: str | None, query: str | None
+) -> list[Any]:
+    filters: list[Any] = [Job.tenant_id == tenant_id]
     if status is not None:
-        query = query.where(Job.status == status)
-    result = await session.execute(
-        query.order_by(Job.created_at.desc(), Job.id.desc()).limit(limit)
+        filters.append(Job.status == status)
+    if query:
+        pattern = _contains(query)
+        filters.append(
+            or_(
+                Job.title.ilike(pattern, escape="\\"),
+                Job.location.ilike(pattern, escape="\\"),
+            )
+        )
+    return filters
+
+
+async def list_jobs(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    status: str | None,
+    query: str | None,
+    after: tuple[datetime, uuid.UUID] | None,
+    limit: int,
+) -> list[Job]:
+    stmt = select(Job).where(
+        *_employer_job_filters(tenant_id=tenant_id, status=status, query=query)
     )
+    if after is not None:
+        stmt = stmt.where(tuple_(Job.created_at, Job.id) < after)
+    result = await session.execute(stmt.order_by(Job.created_at.desc(), Job.id.desc()).limit(limit))
     return list(result.scalars().all())
 
 

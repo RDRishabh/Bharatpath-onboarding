@@ -183,6 +183,7 @@ export async function POST(request: Request) {
     portal: mapping.portal,
     path: mapping.path,
     backendRole: role,
+    token: accessToken,
   });
 
   response.cookies.set(SESSION_COOKIE, accessToken, sessionCookieOptions());

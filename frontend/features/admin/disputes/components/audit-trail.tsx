@@ -17,6 +17,9 @@ import { ListSkeleton } from "@/components/common/loading";
 interface AuditTrailProps {
   items: AuditItem[];
   isLoading?: boolean;
+  isLoadingMore?: boolean;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 function AuditIconComponent({
@@ -71,6 +74,9 @@ function AuditIconComponent({
 export function AuditTrail({
   items,
   isLoading,
+  isLoadingMore,
+  hasMore,
+  onLoadMore,
 }: AuditTrailProps) {
   return (
     <section
@@ -87,13 +93,16 @@ export function AuditTrail({
           Audit trail
         </span>
 
-        <span className="text-[11px] text-[#7b8494]">Latest 10</span>
+        <span className="text-[11px] text-[#7b8494]">Recent activity</span>
       </div>
 
       {/* Timeline */}
 
-      <div className="relative pb-3">
-        <span className="absolute bottom-0 left-[13px] top-7 w-[2px] bg-[#eef0f3]" />
+      <div className="bp-scrollbar max-h-[480px] overflow-y-auto pr-1">
+        <div className="relative pb-3">
+          {!isLoading && items.length > 0 ? (
+            <span className="absolute bottom-0 left-[13px] top-7 w-[2px] bg-[#eef0f3]" />
+          ) : null}
 
         {isLoading ? <ListSkeleton rows={5} /> : null}
         {!isLoading && items.length === 0 ? <p className="pt-3 text-[12px] text-[#7b8494]">No audit events found.</p> : null}
@@ -130,6 +139,20 @@ export function AuditTrail({
               </span>
             </div>
           ))}
+        </div>
+
+        {hasMore ? (
+          <div className="flex justify-center pt-4">
+            <button
+              type="button"
+              onClick={onLoadMore}
+              disabled={isLoadingMore}
+              className="rounded-lg border border-[#e2e5eb] bg-white px-4 py-2 text-[12px] font-semibold text-[#172033] transition-colors hover:bg-[#f8f9fb] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isLoadingMore ? "Loading…" : "Load more"}
+            </button>
+          </div>
+        ) : null}
         </div>
       </div>
 

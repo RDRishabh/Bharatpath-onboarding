@@ -28,7 +28,22 @@ export function UsersPage() {
     openUser,
     setSegment,
     setSearch,
+    pageSize,
+    currentPage,
+    hasNextPage,
+    setPageSize,
+    goToNextPage,
+    goToPreviousPage,
   } = useUsers();
+
+  const pagination = {
+    pageSize,
+    currentPage,
+    hasNextPage,
+    onNextPage: goToNextPage,
+    onPreviousPage: goToPreviousPage,
+    onPageSizeChange: setPageSize,
+  };
 
   return (
     <div className="min-w-0 space-y-0">
@@ -98,11 +113,14 @@ export function UsersPage() {
       {/* TAB CONTENT                                                       */}
       {/* ================================================================ */}
 
-      {error ? <ErrorState error={error} fallback="Could not load organisations." className="mb-3" /> : null}
+      {error ? <ErrorState error={error} fallback="Could not load users." className="mb-3" /> : null}
 
       {segment === "candidates" && (
         <CandidatesTab
           users={filteredUsers}
+          isLoading={isLoading}
+          onOpen={openUser}
+          pagination={pagination}
         />
       )}
 
@@ -111,6 +129,7 @@ export function UsersPage() {
           users={filteredUsers}
           isLoading={isLoading}
           onOpen={openUser}
+          pagination={pagination}
         />
       )}
 
@@ -119,6 +138,7 @@ export function UsersPage() {
           users={filteredUsers}
           isLoading={isLoading}
           onOpen={openUser}
+          pagination={pagination}
         />
       )}
       <UserDrawer />

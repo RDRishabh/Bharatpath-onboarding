@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import {
   ApplicationPipeline,
   ApplicationFilter,
@@ -7,6 +9,10 @@ import {
   ApplicationsPipelineSkeleton,
 } from "@/features/employer/applications";
 import { ErrorState } from "@/components/ui";
+import {
+  usePageHeader,
+  type Breadcrumb,
+} from "@/components/layout/header-context";
 
 import { useApplicationsPage } from "../hooks/use-applications-page";
 
@@ -17,6 +23,7 @@ export function ApplicationsPageContent() {
     isLoadingMore,
     jobFilter,
     jobOptions,
+    selectedJobTitle,
     hasNextPage,
     selectedApplication,
     error,
@@ -30,6 +37,25 @@ export function ApplicationsPageContent() {
     handleMeetingLinkChange,
     handleConfirmHire,
   } = useApplicationsPage();
+
+  // When a specific job is in focus (a stage number was clicked on the jobs
+  // table), show `Jobs > {job} > Applications`, matching the approved design.
+  const breadcrumbs = useMemo<Breadcrumb[] | undefined>(() => {
+    if (jobFilter === "all" || !selectedJobTitle) {
+      return undefined;
+    }
+    return [
+      { label: "Jobs", href: "/employer/jobs" },
+      { label: selectedJobTitle },
+      { label: "Applications" },
+    ];
+  }, [jobFilter, selectedJobTitle]);
+
+  usePageHeader(
+    "Applications",
+    "Track applicants through your hiring pipeline",
+    { breadcrumbs },
+  );
 
   return (
     <div

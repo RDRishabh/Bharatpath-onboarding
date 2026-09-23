@@ -15,6 +15,11 @@ export interface HeaderBadge {
   label: string;
 }
 
+export interface Breadcrumb {
+  label: string;
+  href?: string;
+}
+
 export interface HeaderStat {
   icon?: LucideIcon;
   label: string;
@@ -26,6 +31,7 @@ export interface HeaderStat {
 interface HeaderContent {
   title: string;
   subtitle: string;
+  breadcrumbs?: Breadcrumb[];
   badge?: HeaderBadge;
   stat?: HeaderStat;
   action?: ReactNode;
@@ -77,6 +83,7 @@ export function useHeaderContent() {
 }
 
 export interface PageHeaderOptions {
+  breadcrumbs?: Breadcrumb[];
   badge?: HeaderBadge;
   stat?: HeaderStat;
   action?: ReactNode;
@@ -88,7 +95,7 @@ export function usePageHeader(
   options?: PageHeaderOptions,
 ) {
   const { setHeader } = useHeaderContent();
-  const { badge, stat, action } = options ?? {};
+  const { breadcrumbs, badge, stat, action } = options ?? {};
 
   // Icons are stable component references, so they're left out of the
   // dependency string below and only the data fields are compared.
@@ -96,10 +103,13 @@ export function usePageHeader(
   const statKey = stat
     ? JSON.stringify([stat.label, stat.sublabel, stat.progress])
     : "";
+  const breadcrumbsKey = breadcrumbs
+    ? JSON.stringify(breadcrumbs)
+    : "";
 
   useEffect(() => {
-    setHeader({ title, subtitle, badge, stat, action });
+    setHeader({ title, subtitle, breadcrumbs, badge, stat, action });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, subtitle, setHeader, badgeKey, statKey, action]);
+  }, [title, subtitle, setHeader, badgeKey, statKey, action, breadcrumbsKey]);
 }
 

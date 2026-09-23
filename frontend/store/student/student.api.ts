@@ -417,6 +417,7 @@ export const {
   useUpdateStudentLocationMutation,
   useGetStudentScoreQuery,
   useGetStudentJobsQuery,
+  useLazyGetStudentJobsQuery,
   useGetStudentJobQuery,
   useGetStudentApplicationsQuery,
   useGetStudentApplicationQuery,

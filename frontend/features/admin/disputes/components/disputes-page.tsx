@@ -23,8 +23,13 @@ export function DisputesPage() {
     auditItems,
     isLoading,
     auditLoading,
+    auditLoadingMore,
+    auditHasMore,
+    loadMoreAudit,
     error,
     openCount,
+    openHasMore,
+    openPagination,
     resolvedCount,
     setTab,
     openDispute,
@@ -32,7 +37,7 @@ export function DisputesPage() {
 
   return (
     <>
-      <div className="min-w-0 space-y-0">
+      <div className="min-w-0 space-y-0 pb-6">
         {/* ============================================================
             TABS
             ============================================================ */}
@@ -43,7 +48,7 @@ export function DisputesPage() {
               [
                 [
                   "open",
-                  `Open · ${openCount}`,
+                  `Open · ${openCount}${openHasMore ? "+" : ""}`,
                 ],
                 [
                   "resolved",
@@ -96,6 +101,7 @@ export function DisputesPage() {
                 disputes={openDisputes}
                 onOpen={openDispute}
                 isLoading={isLoading}
+                pagination={openPagination}
               />
             )}
 
@@ -115,6 +121,9 @@ export function DisputesPage() {
           <AuditTrail
             items={auditItems}
             isLoading={auditLoading}
+            isLoadingMore={auditLoadingMore}
+            hasMore={auditHasMore}
+            onLoadMore={loadMoreAudit}
           />
         </div>
       </div>
