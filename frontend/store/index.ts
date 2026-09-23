@@ -61,12 +61,7 @@ export const store = configureStore({
 
     /*
      * ==========================================
-     * STUDENT PORTAL STATE
-     *
-     * The candidate-facing mobile app. Holds
-     * saved jobs, the application board,
-     * notifications and feed filters — all
-     * seeded from static mock data.
+     * STUDENT PORTAL UI STATE
      * ==========================================
      */
 

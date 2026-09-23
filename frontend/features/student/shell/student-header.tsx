@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { Menu, Bell } from "lucide-react";
 
 import { useGetNotificationsQuery } from "@/store/api/notification-api";
-import { studentProfile } from "@/features/student/data";
+import { useGetStudentProfileQuery } from "@/store/student";
+import { initials } from "@/features/student/formatters";
 
 /*
  * ==========================================================================
@@ -42,7 +43,7 @@ function sectionFor(pathname: string): Section {
     return { title: "Notifications", subtitle: "Updates on your applications" };
   }
   if (pathname.startsWith("/student/privacy")) {
-    return { title: "Who has seen me", subtitle: "Every employer unlock, logged" };
+    return { title: "Profile visibility", subtitle: "How your profile is shared" };
   }
   if (pathname.startsWith("/student/attribute")) {
     return { title: "Attribute check", subtitle: "How you like to work" };
@@ -59,6 +60,7 @@ export function StudentHeader({
   onOpenDrawer: () => void;
 }) {
   const pathname = usePathname();
+  const { data: profile } = useGetStudentProfileQuery();
   const { data: notificationPage } = useGetNotificationsQuery(
     { limit: 1 },
     {
@@ -111,7 +113,7 @@ export function StudentHeader({
         aria-label="Your profile"
         className="grid h-9 w-9 place-items-center rounded-full bg-[#5F4DB2] text-[12px] font-bold text-white"
       >
-        {studentProfile.initials}
+        {initials(profile?.fullName)}
       </Link>
     </header>
   );

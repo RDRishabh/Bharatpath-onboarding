@@ -1,62 +1,36 @@
 "use client";
 
-import { useMemo } from "react";
-import { useRouter } from "next/navigation";
-import { Search, ChevronRight, Check } from "lucide-react";
+import { useDeferredValue } from "react";
+import { Check, Search } from "lucide-react";
 
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
-  setJobSearch,
-  toggleQualifiedOnly,
-  setJobCategory,
-  selectJobSearch,
   selectJobQualifiedOnly,
-  selectJobCategory,
+  selectJobSearch,
+  selectJobWorkMode,
+  setJobSearch,
+  setJobWorkMode,
+  toggleQualifiedOnly,
+  useGetStudentJobsQuery,
 } from "@/store/student";
-import { jobListings, studentScore } from "@/features/student/data";
-import { JobCard, EmptyState } from "@/features/student/components";
+import { getApiErrorMessage } from "@/lib/api/error-message";
+import { EmptyState, JobCard } from "@/features/student/components";
 import { StudentPage } from "@/features/student/shell";
 
-/*
- * ==========================================================================
- * JOB FEED — the Jobs hub. Search, "I qualify" and category pills all filter
- * the mock list locally; no network.
- * ==========================================================================
- */
-
-const CATEGORIES = ["Lab & QC", "Operations", "Research"];
+const WORK_MODES = ["ONSITE", "HYBRID", "REMOTE"] as const;
 
 export function JobFeed() {
-  const router = useRouter();
   const dispatch = useAppDispatch();
-
   const search = useAppSelector(selectJobSearch);
+  const deferredSearch = useDeferredValue(search);
   const qualifiedOnly = useAppSelector(selectJobQualifiedOnly);
-  const category = useAppSelector(selectJobCategory);
-
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return jobListings.filter((job) => {
-      if (qualifiedOnly && job.match !== "match") return false;
-      if (category && job.category !== category) return false;
-      if (query) {
-        const haystack = [
-          job.title,
-          job.company,
-          job.category,
-          ...job.skills,
-        ]
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(query)) return false;
-      }
-      return true;
-    });
-  }, [search, qualifiedOnly, category]);
-
-  const qualifyingCount = jobListings.filter(
-    (job) => job.match === "match",
-  ).length;
+  const workMode = useAppSelector(selectJobWorkMode);
+  const jobs = useGetStudentJobsQuery({
+    q: deferredSearch.trim() || undefined,
+    workMode: workMode ?? undefined,
+    eligibleOnly: qualifiedOnly,
+    limit: 50,
+  });
 
   return (
     <StudentPage>
@@ -65,32 +39,6 @@ export function JobFeed() {
           <span className="text-[24px] font-bold leading-7 tracking-[-0.025em] text-[#0A1931] sm:text-[28px]">
             Jobs
           </span>
-
-          {/* Score teaser */}
-          <button
-            type="button"
-            onClick={() => router.push("/student/score")}
-            className="flex items-center gap-3.5 overflow-hidden rounded-[20px] bg-[#5F4DB2] px-[18px] py-4 text-left transition-transform active:scale-[.99]"
-          >
-            <span className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold uppercase leading-3 tracking-[0.12em] text-[#E0DBF4]">
-                Your score
-              </span>
-              <span className="text-[22px] font-extrabold leading-6 tracking-[-0.03em] text-white">
-                {studentScore.value}
-              </span>
-            </span>
-            <span className="h-9 w-px bg-white/15" />
-            <span className="flex-1 text-[12px] leading-4 text-[#DCD6F4]">
-              Open to your score of{" "}
-              <span className="font-bold text-[#F4D685]">{studentScore.value}</span>.
-              Nine more unlock at{" "}
-              <span className="font-bold text-[#F4D685]">734</span>.
-            </span>
-            <ChevronRight size={15} className="text-white" />
-          </button>
-
-          {/* Search */}
           <label className="flex items-center gap-3 rounded-full border border-[#E7E0D4] bg-white px-4 py-3">
             <Search size={16} className="text-[#5F6B80]" />
             <input
@@ -101,62 +49,45 @@ export function JobFeed() {
               className="flex-1 bg-transparent text-[15px] leading-5 text-[#0A1931] outline-none placeholder:text-[#8891a0]"
             />
           </label>
-
-          {/* Filter pills */}
           <div className="bp-scrollbar flex gap-2 overflow-x-auto pb-1">
-            <button
-              type="button"
+            <FilterButton
+              active={qualifiedOnly}
               onClick={() => dispatch(toggleQualifiedOnly())}
-              className={[
-                "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-semibold transition-colors",
-                qualifiedOnly
-                  ? "border border-[#C9BEEB] bg-[#F1EAF7] text-[#4A3E8F]"
-                  : "border border-[#E7E0D4] bg-white text-[#0A1931]",
-              ].join(" ")}
             >
-              {qualifiedOnly ? (
-                <span className="grid h-[13px] w-[13px] place-items-center rounded-full bg-[#4A3E8F]">
-                  <Check size={9} className="text-[#F1EAF7]" />
-                </span>
-              ) : null}
-              I qualify · {qualifyingCount}
-            </button>
-
-            {CATEGORIES.map((cat) => {
-              const active = category === cat;
-              return (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => dispatch(setJobCategory(cat))}
-                  className={[
-                    "whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-semibold transition-colors",
-                    active
-                      ? "border border-[#C9BEEB] bg-[#F1EAF7] text-[#4A3E8F]"
-                      : "border border-[#E7E0D4] bg-white text-[#0A1931]",
-                  ].join(" ")}
-                >
-                  {cat}
-                </button>
-              );
-            })}
+              {qualifiedOnly ? <Check size={11} /> : null}
+              I qualify
+            </FilterButton>
+            {WORK_MODES.map((mode) => (
+              <FilterButton
+                key={mode}
+                active={workMode === mode}
+                onClick={() => dispatch(setJobWorkMode(mode))}
+              >
+                {mode[0] + mode.slice(1).toLowerCase()}
+              </FilterButton>
+            ))}
           </div>
         </div>
 
-        {/* Count */}
         <div className="flex items-baseline justify-between">
           <span className="text-[11px] font-bold uppercase leading-4 tracking-[0.12em] text-[#5F6B80]">
-            {filtered.length} {filtered.length === 1 ? "job" : "jobs"}
-          </span>
-          <span className="text-[12px] font-semibold text-[#0A1931]">
-            Nearest first
+            {jobs.data?.items.length ?? 0} jobs
           </span>
         </div>
 
-        {/* List */}
-        {filtered.length > 0 ? (
+        {jobs.isLoading ? (
+          <div className="rounded-2xl border border-[#E7E0D4] bg-white p-5 text-sm text-[#5F6B80]">
+            Loading jobs…
+          </div>
+        ) : jobs.error ? (
+          <EmptyState
+            icon={<Search size={22} />}
+            title="Jobs unavailable"
+            message={getApiErrorMessage(jobs.error, "Could not load jobs.")}
+          />
+        ) : jobs.data?.items.length ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {filtered.map((job) => (
+            {jobs.data.items.map((job) => (
               <JobCard key={job.id} job={job} />
             ))}
           </div>
@@ -164,10 +95,35 @@ export function JobFeed() {
           <EmptyState
             icon={<Search size={22} />}
             title="No jobs match"
-            message="Try clearing a filter or turning off “I qualify” to see more roles."
+            message="Try clearing a filter or changing your search."
           />
         )}
       </div>
     </StudentPage>
+  );
+}
+
+function FilterButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-semibold transition-colors",
+        active
+          ? "border border-[#C9BEEB] bg-[#F1EAF7] text-[#4A3E8F]"
+          : "border border-[#E7E0D4] bg-white text-[#0A1931]",
+      ].join(" ")}
+    >
+      {children}
+    </button>
   );
 }

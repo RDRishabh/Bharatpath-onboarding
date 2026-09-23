@@ -1,133 +1,179 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ChevronRight,
-  CircleUser,
-  Languages,
-  FileText,
-  Compass,
-  MicVocal,
-  Lock,
-  Eye,
   Bell,
+  BookOpen,
+  CircleUser,
+  Eye,
+  GraduationCap,
+  Lock,
+  MapPin,
 } from "lucide-react";
 
-import { useAppSelector } from "@/store/hooks";
-import { selectApplications } from "@/store/student";
+import {
+  useGetStudentApplicationsQuery,
+  useGetStudentCollegeLinksQuery,
+  useGetStudentCoursesQuery,
+  useGetStudentProfileQuery,
+  useGetStudentScoreQuery,
+  useUpdateStudentLocationMutation,
+  useUpdateStudentNameMutation,
+} from "@/store/student";
 import {
   useGetNotificationPreferencesQuery,
   useUpdateNotificationPreferencesMutation,
 } from "@/store/api/notification-api";
-import { studentProfile, studentScore } from "@/features/student/data";
-import { SectionEyebrow } from "@/features/student/components";
+import { getApiErrorMessage } from "@/lib/api/error-message";
+import { initials } from "@/features/student/formatters";
+import type { StudentProfile as StudentProfileData } from "@/features/student/types";
+import {
+  NoteStrip,
+  PillButton,
+  SectionEyebrow,
+  StudentCard,
+} from "@/features/student/components";
 import { StudentPage } from "@/features/student/shell";
-
-/*
- * ==========================================================================
- * PROFILE (You) — the account hub. Quick stats, "my information" and the
- * privacy controls. The score is shown as a display value, never a raw field.
- * ==========================================================================
- */
 
 export function StudentProfile() {
   const router = useRouter();
-  const applications = useAppSelector(selectApplications);
-  const { data: notificationPreferences, isLoading: preferencesLoading } =
-    useGetNotificationPreferencesQuery();
-  const [updateNotificationPreferences, { isLoading: preferencesUpdating }] =
+  const profile = useGetStudentProfileQuery();
+  const score = useGetStudentScoreQuery();
+  const applications = useGetStudentApplicationsQuery({ limit: 100 });
+  const courses = useGetStudentCoursesQuery();
+  const colleges = useGetStudentCollegeLinksQuery();
+  const preferences = useGetNotificationPreferencesQuery();
+  const [updatePreferences, preferencesState] =
     useUpdateNotificationPreferencesMutation();
-  const notificationsEnabled = notificationPreferences?.push_enabled ?? false;
 
-  const togglePushNotifications = async () => {
-    try {
-      await updateNotificationPreferences({
-        push_enabled: !notificationsEnabled,
-      }).unwrap();
-    } catch (error) {
-      console.error("Failed to update notification preferences:", error);
-    }
-  };
+  const notificationsEnabled = preferences.data?.push_enabled ?? false;
+  const activeCollegeLinks =
+    colleges.data?.filter((link) => link.revokedAt === null).length ?? 0;
 
   return (
     <StudentPage>
       <div className="flex flex-col gap-6">
-        {/* Header */}
         <div className="flex items-center gap-4">
           <span className="grid h-14 w-14 place-items-center rounded-full bg-[#F1EAF7] text-[19px] font-bold text-[#4A3E8F]">
-            {studentProfile.initials}
+            {initials(profile.data?.fullName)}
           </span>
           <div className="flex flex-1 flex-col gap-1">
             <span className="text-[18px] font-bold tracking-[-0.02em] text-[#0A1931] sm:text-[22px]">
-              {studentProfile.fullName}
+              {profile.data?.fullName ?? "Student"}
             </span>
             <span className="text-[13px] text-[#5F6B80]">
-              {studentProfile.degree} {studentProfile.branch} · {studentProfile.college}
+              {[profile.data?.city, profile.data?.stateCode]
+                .filter(Boolean)
+                .join(", ") || "Location not added"}
             </span>
           </div>
         </div>
 
-        {/* Quick stats */}
         <div className="grid grid-cols-3 gap-2 sm:max-w-md">
           <StatTile
-            value={String(studentScore.value)}
+            value={
+              score.data?.status === "READY" && score.data.value != null
+                ? String(score.data.value)
+                : "—"
+            }
             label="Score"
             tone="indigo"
             onClick={() => router.push("/student/score")}
           />
           <StatTile
-            value={String(applications.length)}
+            value={String(
+              applications.data?.total ??
+                applications.data?.items.length ??
+                0,
+            )}
             label="Applications"
             onClick={() => router.push("/student/board")}
           />
-          <StatTile
-            value={`${studentProfile.profileCompletion}%`}
-            label="Profile"
-          />
+          <StatTile value={String(activeCollegeLinks)} label="Colleges" />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* My information */}
-          <div className="flex flex-col gap-2">
-            <SectionEyebrow icon={<CircleUser size={12} />}>My information</SectionEyebrow>
-            <Row icon={<FileText size={20} />} label="My details" hint="Name, contact, resume" />
-            <Row icon={<Compass size={20} />} label="Attribute report" hint="Steady builder" />
-            <Row icon={<MicVocal size={20} />} label="Interview report" hint="Not taken yet" />
-            <Row
-              icon={<Languages size={20} />}
-              label="Language"
-              hint={studentProfile.language}
-            />
+          <div className="flex flex-col gap-3">
+            <SectionEyebrow icon={<CircleUser size={12} />}>
+              My information
+            </SectionEyebrow>
+            {profile.data ? (
+              <ProfileForm
+                profile={profile.data}
+              />
+            ) : (
+              <StudentCard>Loading profile…</StudentCard>
+            )}
+
+            <StudentCard>
+              <div className="flex items-center gap-3">
+                <BookOpen size={20} className="text-[#5F4DB2]" />
+                <span className="flex flex-1 flex-col">
+                  <span className="text-[15px] font-medium text-[#0A1931]">
+                    Courses
+                  </span>
+                  <span className="text-[12px] text-[#5F6B80]">
+                    {courses.data?.length ?? 0} available ·{" "}
+                    {courses.data?.filter((course) => course.completed).length ?? 0} completed
+                  </span>
+                </span>
+              </div>
+            </StudentCard>
+            <StudentCard>
+              <div className="flex items-center gap-3">
+                <GraduationCap size={20} className="text-[#5F4DB2]" />
+                <span className="flex flex-1 flex-col">
+                  <span className="text-[15px] font-medium text-[#0A1931]">
+                    College links
+                  </span>
+                  <span className="text-[12px] text-[#5F6B80]">
+                    {activeCollegeLinks} active
+                  </span>
+                </span>
+              </div>
+            </StudentCard>
           </div>
 
-          {/* Privacy and data */}
           <div className="flex flex-col gap-2">
             <SectionEyebrow icon={<Lock size={12} />}>Privacy and data</SectionEyebrow>
-            <Row
-              icon={<Eye size={20} />}
-              label="Who has seen me"
-              hint="Every unlock, logged"
+            <button
+              type="button"
               onClick={() => router.push("/student/privacy")}
-            />
-
-            {/* Notifications toggle */}
+              className="flex items-center gap-3 rounded-2xl border border-[#E7E0D4] bg-white p-4 text-left"
+            >
+              <Eye size={20} className="text-[#0A1931]" />
+              <span className="flex flex-1 flex-col">
+                <span className="text-[15px] font-medium text-[#0A1931]">
+                  Profile visibility
+                </span>
+                <span className="text-[12px] text-[#5F6B80]">
+                  Review what employers can access
+                </span>
+              </span>
+            </button>
             <div className="flex items-center gap-3 rounded-2xl border border-[#E7E0D4] bg-white p-4">
               <Bell size={20} className="text-[#0A1931]" />
               <span className="flex flex-1 flex-col">
-                <span className="text-[15px] font-medium text-[#0A1931]">Push notifications</span>
+                <span className="text-[15px] font-medium text-[#0A1931]">
+                  Push notifications
+                </span>
                 <span className="text-[12px] text-[#5F6B80]">
-                  Allow notification alerts on supported devices
+                  Application and account updates
                 </span>
               </span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={notificationsEnabled}
-                aria-label="Toggle push notifications"
-                disabled={preferencesLoading || preferencesUpdating}
-                onClick={() => void togglePushNotifications()}
+                disabled={preferences.isLoading || preferencesState.isLoading}
+                onClick={() =>
+                  void updatePreferences({
+                    push_enabled: !notificationsEnabled,
+                  })
+                }
                 className={[
-                  "flex h-7 w-12 items-center rounded-full p-1 transition-colors",
+                  "flex h-7 w-12 items-center rounded-full p-1 transition-colors disabled:opacity-60",
                   notificationsEnabled
                     ? "justify-end bg-[#5F4DB2]"
                     : "justify-start bg-[rgba(10,25,49,0.2)]",
@@ -136,15 +182,114 @@ export function StudentProfile() {
                 <span className="h-5 w-5 rounded-full bg-white" />
               </button>
             </div>
+            <NoteStrip icon={<MapPin size={16} />}>
+              Only your city and state are used for job discovery. Do not enter a
+              street address.
+            </NoteStrip>
           </div>
-        </div>
-
-        <div className="rounded-2xl bg-[#F7F4EC] p-4 text-[13px] leading-[18px] text-[#3A4761]">
-          Your resume file is never shared. Employers see the parsed profile only —
-          and only if you apply.
         </div>
       </div>
     </StudentPage>
+  );
+}
+
+function ProfileForm({
+  profile,
+}: {
+  profile: StudentProfileData;
+}) {
+  const [updateName, nameState] = useUpdateStudentNameMutation();
+  const [updateLocation, locationState] = useUpdateStudentLocationMutation();
+  const [fullName, setFullName] = useState(profile.fullName ?? "");
+  const [city, setCity] = useState(profile.city ?? "");
+  const [stateCode, setStateCode] = useState(profile.stateCode ?? "");
+  const profileError = nameState.error ?? locationState.error;
+
+  const saveProfile = async () => {
+    try {
+      if (fullName.trim() !== (profile.fullName ?? "")) {
+        await updateName(fullName.trim()).unwrap();
+      }
+      if (
+        city.trim() !== (profile.city ?? "") ||
+        stateCode.trim().toUpperCase() !== (profile.stateCode ?? "")
+      ) {
+        await updateLocation({
+          city: city.trim() || null,
+          stateCode: stateCode.trim().toUpperCase() || null,
+        }).unwrap();
+      }
+    } catch {
+      // The mutation error is rendered below the form.
+    }
+  };
+
+  return (
+    <StudentCard className="flex flex-col gap-3">
+      <Field
+        label="Full name"
+        value={fullName}
+        onChange={setFullName}
+        placeholder="Your full name"
+      />
+      <div className="grid grid-cols-[1fr_7rem] gap-2">
+        <Field
+          label="City"
+          value={city}
+          onChange={setCity}
+          placeholder="City"
+        />
+        <Field
+          label="State"
+          value={stateCode}
+          onChange={setStateCode}
+          placeholder="MH"
+          maxLength={2}
+        />
+      </div>
+      <PillButton
+        disabled={
+          nameState.isLoading || locationState.isLoading || !fullName.trim()
+        }
+        onClick={() => void saveProfile()}
+      >
+        {nameState.isLoading || locationState.isLoading
+          ? "Saving…"
+          : "Save profile"}
+      </PillButton>
+      {profileError ? (
+        <NoteStrip tone="amber">
+          {getApiErrorMessage(profileError, "Could not save your profile.")}
+        </NoteStrip>
+      ) : null}
+    </StudentCard>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  maxLength,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  maxLength?: number;
+}) {
+  return (
+    <label className="flex flex-col gap-1.5 text-[12px] font-semibold text-[#3A4761]">
+      {label}
+      <input
+        value={value}
+        maxLength={maxLength}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="rounded-xl border border-[#E7E0D4] bg-white px-3 py-2.5 text-[14px] font-normal text-[#0A1931] outline-none focus:border-[#5F4DB2]"
+      />
+    </label>
   );
 }
 
@@ -166,50 +311,16 @@ function StatTile({
       onClick={onClick}
       disabled={!onClick}
       className={[
-        "flex min-w-0 flex-1 flex-col gap-1 rounded-2xl border p-3 text-left transition-transform",
-        onClick ? "active:scale-[.97] cursor-pointer" : "cursor-default",
+        "flex min-w-0 flex-1 flex-col gap-1 rounded-2xl border p-3 text-left",
         indigo
           ? "border-[#5F4DB2] bg-[#5F4DB2] text-white"
           : "border-[#E7E0D4] bg-white text-[#0A1931]",
       ].join(" ")}
     >
-      <span className="text-[22px] font-extrabold leading-6 tracking-[-0.03em]">
-        {value}
-      </span>
+      <span className="text-[22px] font-extrabold leading-6">{value}</span>
       <span className={indigo ? "text-[12px] text-[#E0DBF4]" : "text-[12px] text-[#5F6B80]"}>
         {label}
       </span>
-    </button>
-  );
-}
-
-function Row({
-  icon,
-  label,
-  hint,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  hint?: string;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className={[
-        "flex items-center gap-3 rounded-2xl border border-[#E7E0D4] bg-white p-4 text-left",
-        onClick ? "transition-colors hover:bg-[#FFFDF9] cursor-pointer" : "cursor-default",
-      ].join(" ")}
-    >
-      <span className="text-[#0A1931]">{icon}</span>
-      <span className="flex flex-1 flex-col">
-        <span className="text-[15px] font-medium text-[#0A1931]">{label}</span>
-        {hint ? <span className="text-[12px] text-[#5F6B80]">{hint}</span> : null}
-      </span>
-      {onClick ? <ChevronRight size={18} className="text-[#5F6B80]" /> : null}
     </button>
   );
 }

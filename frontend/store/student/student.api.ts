@@ -1,0 +1,433 @@
+import { baseApi } from "@/store/api/base-api";
+import type {
+  CollegeLink,
+  Course,
+  InterviewOffer,
+  JobApplication,
+  JobListing,
+  Page,
+  QuestionnaireView,
+  StudentProfile,
+  StudentScore,
+} from "@/features/student/types";
+
+interface StudentScoreResponse {
+  status: StudentScore["status"];
+  value: number | null;
+  band: string | null;
+  computed_at: string | null;
+}
+
+interface StudentProfileResponse {
+  full_name: string | null;
+  city: string | null;
+  state_code: string | null;
+  updated_at: string | null;
+}
+
+interface JobResponse {
+  id: string;
+  title: string;
+  employer_name: string | null;
+  description?: string;
+  skills: string[];
+  location: string | null;
+  work_mode: JobListing["workMode"];
+  experience_min_months: number | null;
+  salary_min_minor: number;
+  salary_max_minor: number;
+  published_at: string;
+  eligibility: JobListing["eligibility"];
+}
+
+interface ApplicationResponse {
+  id: string;
+  job_id: string;
+  job_title: string | null;
+  employer_name: string | null;
+  stage: JobApplication["stage"];
+  hire_confirmation: JobApplication["hireConfirmation"];
+  interview: {
+    interview_at: string;
+    meeting_url: string;
+  } | null;
+  created_at: string;
+  updated_at: string;
+  history?: Array<{
+    kind: NonNullable<JobApplication["history"]>[number]["kind"];
+    from_stage: JobApplication["stage"] | null;
+    to_stage: JobApplication["stage"];
+    by: NonNullable<JobApplication["history"]>[number]["by"];
+    occurred_at: string;
+  }>;
+}
+
+interface ApiPage<T> {
+  items: T[];
+  next_cursor: string | null;
+  total: number | null;
+}
+
+interface QuestionnaireResponse {
+  bank_version: string;
+  sections: Array<{
+    code: string;
+    questions: Array<{
+      code: string;
+      key: string;
+      prompt: string;
+      type: QuestionnaireView["sections"][number]["questions"][number]["type"];
+      options: Array<{ code: string; label: string }>;
+      required: boolean;
+      help_text: string | null;
+    }>;
+  }>;
+  answers: Record<string, unknown>;
+  submitted: boolean;
+  submitted_at: string | null;
+  updated_at: string | null;
+}
+
+interface InterviewOfferResponse {
+  on_sale: boolean;
+  price_minor: number | null;
+  currency: string;
+  will_increase_score: boolean;
+  requires_acknowledgement: boolean;
+  device_check_passed: boolean;
+  device_check_valid_until: string | null;
+  sessions_available: number;
+  open_session_id: string | null;
+}
+
+interface CourseResponse {
+  id: string;
+  code: string;
+  title: string;
+  price_minor: number;
+  currency: string;
+  purchased: boolean;
+  completed: boolean;
+}
+
+interface CollegeLinkResponse {
+  college_id: string;
+  college_name: string | null;
+  scope: CollegeLink["scope"];
+  granted_via: CollegeLink["grantedVia"];
+  granted_at: string;
+  revoked_at: string | null;
+  seat_held: boolean;
+}
+
+function mapProfile(response: StudentProfileResponse): StudentProfile {
+  return {
+    fullName: response.full_name,
+    city: response.city,
+    stateCode: response.state_code,
+    updatedAt: response.updated_at,
+  };
+}
+
+function mapScore(response: StudentScoreResponse): StudentScore {
+  return {
+    status: response.status,
+    value: response.value,
+    band: response.band,
+    computedAt: response.computed_at,
+  };
+}
+
+function mapJob(response: JobResponse): JobListing {
+  return {
+    id: response.id,
+    title: response.title,
+    employerName: response.employer_name,
+    description: response.description,
+    skills: response.skills,
+    location: response.location,
+    workMode: response.work_mode,
+    experienceMinMonths: response.experience_min_months,
+    salaryMinMinor: response.salary_min_minor,
+    salaryMaxMinor: response.salary_max_minor,
+    publishedAt: response.published_at,
+    eligibility: response.eligibility,
+  };
+}
+
+function mapApplication(response: ApplicationResponse): JobApplication {
+  return {
+    id: response.id,
+    jobId: response.job_id,
+    jobTitle: response.job_title,
+    employerName: response.employer_name,
+    stage: response.stage,
+    hireConfirmation: response.hire_confirmation,
+    interview: response.interview
+      ? {
+          interviewAt: response.interview.interview_at,
+          meetingUrl: response.interview.meeting_url,
+        }
+      : null,
+    createdAt: response.created_at,
+    updatedAt: response.updated_at,
+    history: response.history?.map((item) => ({
+      kind: item.kind,
+      fromStage: item.from_stage,
+      toStage: item.to_stage,
+      by: item.by,
+      occurredAt: item.occurred_at,
+    })),
+  };
+}
+
+function mapQuestionnaire(
+  response: QuestionnaireResponse,
+): QuestionnaireView {
+  return {
+    bankVersion: response.bank_version,
+    sections: response.sections.map((section) => ({
+      code: section.code,
+      questions: section.questions.map((question) => ({
+        code: question.code,
+        key: question.key,
+        prompt: question.prompt,
+        type: question.type,
+        options: question.options,
+        required: question.required,
+        helpText: question.help_text,
+      })),
+    })),
+    answers: response.answers,
+    submitted: response.submitted,
+    submittedAt: response.submitted_at,
+    updatedAt: response.updated_at,
+  };
+}
+
+export const studentApi = baseApi.injectEndpoints({
+  endpoints: (builder) => ({
+    getStudentProfile: builder.query<StudentProfile, void>({
+      query: () => "/candidate/profile",
+      transformResponse: mapProfile,
+      providesTags: [{ type: "Student", id: "PROFILE" }],
+    }),
+    updateStudentName: builder.mutation<StudentProfile, string>({
+      query: (fullName) => ({
+        url: "/candidate/profile/name",
+        method: "PUT",
+        body: { full_name: fullName },
+      }),
+      transformResponse: mapProfile,
+      invalidatesTags: [{ type: "Student", id: "PROFILE" }],
+    }),
+    updateStudentLocation: builder.mutation<
+      StudentProfile,
+      { city: string | null; stateCode: string | null }
+    >({
+      query: ({ city, stateCode }) => ({
+        url: "/candidate/profile/location",
+        method: "PUT",
+        body: { city, state_code: stateCode },
+      }),
+      transformResponse: mapProfile,
+      invalidatesTags: [{ type: "Student", id: "PROFILE" }],
+    }),
+    getStudentScore: builder.query<StudentScore, void>({
+      query: () => "/candidate/score/me",
+      transformResponse: mapScore,
+      providesTags: [{ type: "Student", id: "SCORE" }],
+    }),
+    getStudentJobs: builder.query<
+      Page<JobListing>,
+      {
+        q?: string;
+        workMode?: string;
+        eligibleOnly?: boolean;
+        cursor?: string;
+        limit?: number;
+      } | void
+    >({
+      query: (args) => ({
+        url: "/candidate/jobs",
+        params: args
+          ? {
+              q: args.q || undefined,
+              work_mode: args.workMode || undefined,
+              eligible_only: args.eligibleOnly,
+              cursor: args.cursor,
+              limit: args.limit,
+            }
+          : undefined,
+      }),
+      transformResponse: (response: ApiPage<JobResponse>) => ({
+        items: response.items.map(mapJob),
+        nextCursor: response.next_cursor,
+        total: response.total,
+      }),
+      providesTags: [{ type: "Job", id: "STUDENT_LIST" }],
+    }),
+    getStudentJob: builder.query<JobListing, string>({
+      query: (jobId) => `/candidate/jobs/${jobId}`,
+      transformResponse: mapJob,
+      providesTags: (_result, _error, jobId) => [
+        { type: "Job", id: jobId },
+      ],
+    }),
+    getStudentApplications: builder.query<
+      Page<JobApplication>,
+      { cursor?: string; limit?: number } | void
+    >({
+      query: (args) => ({
+        url: "/candidate/applications",
+        params: args ?? undefined,
+      }),
+      transformResponse: (response: ApiPage<ApplicationResponse>) => ({
+        items: response.items.map(mapApplication),
+        nextCursor: response.next_cursor,
+        total: response.total,
+      }),
+      providesTags: [{ type: "Application", id: "STUDENT_LIST" }],
+    }),
+    getStudentApplication: builder.query<JobApplication, string>({
+      query: (applicationId) =>
+        `/candidate/applications/${applicationId}`,
+      transformResponse: mapApplication,
+      providesTags: (_result, _error, applicationId) => [
+        { type: "Application", id: applicationId },
+      ],
+    }),
+    applyToStudentJob: builder.mutation<JobApplication, string>({
+      query: (jobId) => ({
+        url: "/candidate/applications",
+        method: "POST",
+        body: { job_id: jobId },
+      }),
+      transformResponse: mapApplication,
+      invalidatesTags: [{ type: "Application", id: "STUDENT_LIST" }],
+    }),
+    withdrawStudentApplication: builder.mutation<JobApplication, string>({
+      query: (applicationId) => ({
+        url: `/candidate/applications/${applicationId}/withdraw`,
+        method: "POST",
+      }),
+      transformResponse: mapApplication,
+      invalidatesTags: (_result, _error, applicationId) => [
+        { type: "Application", id: applicationId },
+        { type: "Application", id: "STUDENT_LIST" },
+      ],
+    }),
+    confirmStudentHire: builder.mutation<JobApplication, string>({
+      query: (applicationId) => ({
+        url: `/candidate/applications/${applicationId}/hire/confirm`,
+        method: "POST",
+      }),
+      transformResponse: mapApplication,
+      invalidatesTags: (_result, _error, applicationId) => [
+        { type: "Application", id: applicationId },
+        { type: "Application", id: "STUDENT_LIST" },
+      ],
+    }),
+    disputeStudentHire: builder.mutation<JobApplication, string>({
+      query: (applicationId) => ({
+        url: `/candidate/applications/${applicationId}/hire/dispute`,
+        method: "POST",
+      }),
+      transformResponse: mapApplication,
+      invalidatesTags: (_result, _error, applicationId) => [
+        { type: "Application", id: applicationId },
+        { type: "Application", id: "STUDENT_LIST" },
+      ],
+    }),
+    getQuestionnaire: builder.query<QuestionnaireView, void>({
+      query: () => "/candidate/questionnaire",
+      transformResponse: mapQuestionnaire,
+      providesTags: [{ type: "Student", id: "QUESTIONNAIRE" }],
+    }),
+    saveQuestionnaireAnswers: builder.mutation<
+      QuestionnaireView,
+      Record<string, unknown>
+    >({
+      query: (answers) => ({
+        url: "/candidate/questionnaire/answers",
+        method: "PUT",
+        body: { answers },
+      }),
+      transformResponse: mapQuestionnaire,
+      invalidatesTags: [{ type: "Student", id: "QUESTIONNAIRE" }],
+    }),
+    submitQuestionnaire: builder.mutation<QuestionnaireView, void>({
+      query: () => ({
+        url: "/candidate/questionnaire/submit",
+        method: "POST",
+      }),
+      transformResponse: mapQuestionnaire,
+      invalidatesTags: [{ type: "Student", id: "QUESTIONNAIRE" }],
+    }),
+    getInterviewOffer: builder.query<InterviewOffer, void>({
+      query: () => "/candidate/interview/offer",
+      transformResponse: (response: InterviewOfferResponse) => ({
+        onSale: response.on_sale,
+        priceMinor: response.price_minor,
+        currency: response.currency,
+        willIncreaseScore: response.will_increase_score,
+        requiresAcknowledgement: response.requires_acknowledgement,
+        deviceCheckPassed: response.device_check_passed,
+        deviceCheckValidUntil: response.device_check_valid_until,
+        sessionsAvailable: response.sessions_available,
+        openSessionId: response.open_session_id,
+      }),
+      providesTags: [{ type: "Student", id: "INTERVIEW_OFFER" }],
+    }),
+    getStudentCourses: builder.query<Course[], void>({
+      query: () => "/candidate/courses",
+      transformResponse: (response: CourseResponse[]) =>
+        response.map((course) => ({
+          id: course.id,
+          code: course.code,
+          title: course.title,
+          priceMinor: course.price_minor,
+          currency: course.currency,
+          purchased: course.purchased,
+          completed: course.completed,
+        })),
+      providesTags: [{ type: "Student", id: "COURSES" }],
+    }),
+    getStudentCollegeLinks: builder.query<CollegeLink[], void>({
+      query: () => "/candidate/colleges",
+      transformResponse: (response: CollegeLinkResponse[]) =>
+        response.map((link) => ({
+          collegeId: link.college_id,
+          collegeName: link.college_name,
+          scope: link.scope,
+          grantedVia: link.granted_via,
+          grantedAt: link.granted_at,
+          revokedAt: link.revoked_at,
+          seatHeld: link.seat_held,
+        })),
+      providesTags: [{ type: "Student", id: "COLLEGES" }],
+    }),
+  }),
+  overrideExisting: false,
+});
+
+export const {
+  useGetStudentProfileQuery,
+  useUpdateStudentNameMutation,
+  useUpdateStudentLocationMutation,
+  useGetStudentScoreQuery,
+  useGetStudentJobsQuery,
+  useGetStudentJobQuery,
+  useGetStudentApplicationsQuery,
+  useGetStudentApplicationQuery,
+  useApplyToStudentJobMutation,
+  useWithdrawStudentApplicationMutation,
+  useConfirmStudentHireMutation,
+  useDisputeStudentHireMutation,
+  useGetQuestionnaireQuery,
+  useSaveQuestionnaireAnswersMutation,
+  useSubmitQuestionnaireMutation,
+  useGetInterviewOfferQuery,
+  useGetStudentCoursesQuery,
+  useGetStudentCollegeLinksQuery,
+} = studentApi;

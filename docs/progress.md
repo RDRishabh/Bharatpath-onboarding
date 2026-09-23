@@ -21,6 +21,12 @@ root Redux store.
 The shared activity component now owns its small rendering contract instead of
 depending on either portal, job mutations use the existing centralized API error
 formatter, and `collegeBilling` is registered alongside the other portal state.
+The missing student formatter and RTK Query API modules were also restored from
+their backend-aligned contracts, reconnecting the existing student components
+and store barrel exports.
+The root request interceptor was migrated from Next.js's deprecated
+`middleware.ts` convention to `proxy.ts`; only the file and exported handler
+name changed, so the host-based portal routing and matcher remain identical.
 `npm run build` completes successfully, including TypeScript checking and static
 page generation.
 

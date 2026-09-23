@@ -1,62 +1,71 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import {
-  ChevronRight,
-  Rocket,
-  Briefcase,
-  ArrowRight,
-} from "lucide-react";
+import { ArrowRight, Briefcase, ChevronRight, Rocket } from "lucide-react";
 
 import {
-  studentProfile,
-  studentScore,
-  jobListings,
-  addOnCards,
-} from "@/features/student/data";
+  useGetInterviewOfferQuery,
+  useGetQuestionnaireQuery,
+  useGetStudentJobsQuery,
+  useGetStudentProfileQuery,
+  useGetStudentScoreQuery,
+} from "@/store/student";
+import { getApiErrorMessage } from "@/lib/api/error-message";
+import { firstName } from "@/features/student/formatters";
 import {
+  CommerceBadge,
+  EmptyState,
   JobCard,
   SectionEyebrow,
-  CommerceBadge,
 } from "@/features/student/components";
-import { BandStrip } from "@/features/student/components/score-ring";
 import { StudentPage } from "@/features/student/shell";
-
-/*
- * ==========================================================================
- * HOME — the primary hub. Greeting, the score card, the two add-ons, and the
- * first jobs the candidate qualifies for. Responsive: single column on mobile,
- * a two-column split (score + add-ons) and a job grid on larger screens.
- * ==========================================================================
- */
 
 export function StudentHome() {
   const router = useRouter();
+  const profile = useGetStudentProfileQuery();
+  const score = useGetStudentScoreQuery();
+  const jobs = useGetStudentJobsQuery({ eligibleOnly: true, limit: 3 });
+  const questionnaire = useGetQuestionnaireQuery();
+  const interview = useGetInterviewOfferQuery();
 
-  const qualifyingJobs = jobListings
-    .filter((job) => job.match === "match")
-    .slice(0, 3);
+  const jobsError = jobs.error
+    ? getApiErrorMessage(jobs.error, "Could not load jobs.")
+    : null;
+  const questionCount =
+    questionnaire.data?.sections.reduce(
+      (total, section) => total + section.questions.length,
+      0,
+    ) ?? 0;
+  const interviewPrice =
+    !interview.data?.onSale || interview.data.priceMinor == null
+      ? "Unavailable"
+      : new Intl.NumberFormat("en-IN", {
+          style: "currency",
+          currency: interview.data.currency || "INR",
+          maximumFractionDigits: 0,
+        }).format(interview.data.priceMinor / 100);
 
   return (
     <StudentPage>
       <div className="flex flex-col gap-6">
-        {/* Greeting */}
         <div className="flex flex-col gap-0.5">
           <span className="text-[13px] leading-4 text-[#5F6B80]">
-            Wednesday, 12 Aug
+            {new Intl.DateTimeFormat("en-IN", {
+              weekday: "long",
+              day: "numeric",
+              month: "short",
+            }).format(new Date())}
           </span>
           <span className="text-[26px] font-bold leading-8 tracking-[-0.025em] text-[#0A1931] sm:text-[30px]">
-            Hi, {studentProfile.greetingName}
+            Hi, {firstName(profile.data?.fullName)}
           </span>
         </div>
 
-        {/* Score + add-ons */}
         <div className="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
-          {/* Score card */}
           <button
             type="button"
             onClick={() => router.push("/student/score")}
-            className="relative flex flex-col gap-4 overflow-hidden rounded-[24px] bg-[#5F4DB2] p-5 text-left transition-transform active:scale-[.99] sm:p-6"
+            className="relative flex min-h-48 flex-col justify-between gap-4 overflow-hidden rounded-[24px] bg-[#5F4DB2] p-5 text-left transition-transform active:scale-[.99] sm:p-6"
           >
             <span className="flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase leading-3 tracking-[0.14em] text-[#E0DBF4]">
@@ -64,69 +73,53 @@ export function StudentHome() {
               </span>
               <ChevronRight size={16} className="text-white" />
             </span>
-
-            <span className="flex items-baseline gap-2">
-              <span className="text-[52px] font-extrabold leading-none tracking-[-0.045em] text-white sm:text-[64px]">
-                {studentScore.value}
-              </span>
-              <span className="text-[13px] text-[#E0DBF4]">/ {studentScore.max}</span>
-              <span className="text-[15px] font-bold text-[#F4D685]">
-                +{studentScore.delta}
-              </span>
-            </span>
-
-            <span className="flex flex-col gap-2">
-              <BandStrip band={studentScore.band} />
-              <span className="flex items-center justify-between text-[12px] leading-4 text-[#E0DBF4]">
-                <span>Employers filter by band</span>
-                <span className="font-medium text-[#F4D685]">
-                  {studentScore.toNextBand} to {studentScore.nextBandLabel}
+            {score.isLoading ? (
+              <span className="text-[15px] text-[#E0DBF4]">Loading score…</span>
+            ) : score.data?.status === "READY" && score.data.value != null ? (
+              <>
+                <span className="text-[52px] font-extrabold leading-none tracking-[-0.045em] text-white sm:text-[64px]">
+                  {score.data.value}
                 </span>
+                <span className="text-[13px] text-[#E0DBF4]">
+                  Band {score.data.band ?? "not available"}
+                </span>
+              </>
+            ) : (
+              <span className="text-[18px] font-semibold text-white">
+                Your score is being prepared
               </span>
-            </span>
+            )}
           </button>
 
-          {/* Go further */}
           <div className="flex flex-col gap-3">
             <SectionEyebrow icon={<Rocket size={12} />}>Go further</SectionEyebrow>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
-              {addOnCards.map((addon) => (
-                <button
-                  key={addon.id}
-                  type="button"
-                  onClick={() =>
-                    router.push(
-                      addon.key === "attribute"
-                        ? "/student/attribute"
-                        : "/student/interview",
-                    )
-                  }
-                  className="flex flex-col gap-3 overflow-hidden rounded-[20px] border p-3 text-left transition-transform active:scale-[.98]"
-                  style={{ background: addon.tint, borderColor: addon.border }}
-                >
-                  <span className="flex items-start justify-between">
-                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-white/70 text-[#4A3E8F]">
-                      <Rocket size={16} />
-                    </span>
-                    <CommerceBadge>
-                      {addon.isFree ? "Free" : addon.priceLabel}
-                    </CommerceBadge>
-                  </span>
-                  <span className="flex flex-col gap-0.5">
-                    <span className="text-[15px] font-bold leading-5 tracking-[-0.02em] text-[#0A1931]">
-                      {addon.title}
-                    </span>
-                    <span className="text-[12px] leading-4 text-[#3A4761]">
-                      {addon.subtitle}
-                    </span>
-                  </span>
-                </button>
-              ))}
+              <AddOnButton
+                title="Attribute check"
+                subtitle={
+                  questionnaire.data?.submitted
+                    ? "Report ready"
+                    : questionCount
+                      ? `${questionCount} questions`
+                      : "Work-style questionnaire"
+                }
+                badge="Included"
+                onClick={() => router.push("/student/attribute")}
+              />
+              <AddOnButton
+                title="Mock interview"
+                subtitle={
+                  interview.data?.openSessionId
+                    ? "Continue your session"
+                    : `${interview.data?.sessionsAvailable ?? 0} sessions available`
+                }
+                badge={interviewPrice}
+                onClick={() => router.push("/student/interview")}
+              />
             </div>
           </div>
         </div>
 
-        {/* Jobs you qualify for */}
         <div className="flex flex-col gap-3">
           <SectionEyebrow
             icon={<Briefcase size={12} />}
@@ -136,7 +129,7 @@ export function StudentHome() {
                 onClick={() => router.push("/student/jobs")}
                 className="flex items-center gap-1 text-[13px] font-semibold text-[#0A1931]"
               >
-                All 28
+                All jobs
                 <ChevronRight size={12} />
               </button>
             }
@@ -144,11 +137,24 @@ export function StudentHome() {
             Jobs you qualify for
           </SectionEyebrow>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {qualifyingJobs.map((job) => (
-              <JobCard key={job.id} job={job} />
-            ))}
-          </div>
+          {jobs.isLoading ? (
+            <div className="rounded-2xl border border-[#E7E0D4] bg-white p-5 text-sm text-[#5F6B80]">
+              Loading jobs…
+            </div>
+          ) : jobsError ? (
+            <EmptyState title="Jobs unavailable" message={jobsError} />
+          ) : jobs.data?.items.length ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {jobs.data.items.map((job) => (
+                <JobCard key={job.id} job={job} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No eligible jobs yet"
+              message="New roles will appear here when they match your profile."
+            />
+          )}
 
           <button
             type="button"
@@ -161,5 +167,38 @@ export function StudentHome() {
         </div>
       </div>
     </StudentPage>
+  );
+}
+
+function AddOnButton({
+  title,
+  subtitle,
+  badge,
+  onClick,
+}: {
+  title: string;
+  subtitle: string;
+  badge: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col gap-3 overflow-hidden rounded-[20px] border border-[#CDC4EA] bg-[#DDD6F2] p-3 text-left transition-transform active:scale-[.98]"
+    >
+      <span className="flex items-start justify-between">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-white/70 text-[#4A3E8F]">
+          <Rocket size={16} />
+        </span>
+        <CommerceBadge>{badge}</CommerceBadge>
+      </span>
+      <span className="flex flex-col gap-0.5">
+        <span className="text-[15px] font-bold leading-5 tracking-[-0.02em] text-[#0A1931]">
+          {title}
+        </span>
+        <span className="text-[12px] leading-4 text-[#3A4761]">{subtitle}</span>
+      </span>
+    </button>
   );
 }

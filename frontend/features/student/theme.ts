@@ -5,7 +5,7 @@
  * Lifted from the candidate-app prototype + BharatPath Design System. The rest
  * of the portal uses Tailwind arbitrary values (the repo convention); these
  * constants exist for the few places that need the colour in JS — the score
- * ring gradient, canvas-like SVGs, and shared tints referenced by mock data.
+ * ring gradient, canvas-like SVGs, and shared portal tints.
  * ==========================================================================
  */
 

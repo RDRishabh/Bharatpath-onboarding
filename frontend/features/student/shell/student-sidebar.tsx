@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowLeftToLine, LogOut, X } from "lucide-react";
 
-import { studentProfile } from "@/features/student/data";
+import { useGetStudentProfileQuery } from "@/store/student";
+import { initials } from "@/features/student/formatters";
 
 import { studentNavItems, isNavItemActive } from "./nav-items";
 
@@ -34,6 +35,8 @@ export function StudentSidebarContent({
   onClose?: () => void;
 }) {
   const pathname = usePathname();
+  const { data: profile } = useGetStudentProfileQuery();
+  const displayName = profile?.fullName ?? "Student";
 
   const rowClass = (active: boolean) =>
     [
@@ -154,19 +157,19 @@ export function StudentSidebarContent({
           <Link
             href="/student/profile"
             onClick={onNavigate}
-            title={collapsed ? studentProfile.fullName : undefined}
+            title={collapsed ? displayName : undefined}
             className={[
               "flex min-w-0 items-center gap-2.5 rounded-lg transition-colors",
               collapsed ? "" : "flex-1",
             ].join(" ")}
           >
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#5F4DB2] text-[13px] font-bold text-white">
-              {studentProfile.initials}
+              {initials(profile?.fullName)}
             </span>
             {!collapsed ? (
               <span className="flex min-w-0 flex-col">
                 <span className="truncate text-[13px] font-semibold text-[#0A1931]">
-                  {studentProfile.fullName}
+                  {displayName}
                 </span>
                 <span className="truncate text-[12px] text-[#5F6B80]">
                   Student account
