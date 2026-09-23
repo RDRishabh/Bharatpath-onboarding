@@ -147,6 +147,21 @@ async def _verified_employer(session: AsyncSession, ctx: TenantContext) -> uuid.
     return ctx.tenant_id
 
 
+async def revealed_counts(
+    session: AsyncSession, *, ctx: TenantContext, since: datetime
+) -> tuple[int, int]:
+    """Distinct candidates the organisation has opened, ever and since `since`.
+
+    For the employer dashboard. No KYB check: an organisation that may not
+    reveal anyone has simply revealed nobody, and the dashboard should say so
+    rather than refuse.
+    """
+    if ctx.tenant_id is None:
+        raise PermissionDeniedError()
+    await set_transaction_tenant(session, ctx.tenant_id)
+    return await repository.revealed_counts(session, tenant_id=ctx.tenant_id, since=since)
+
+
 async def visible_candidate_ids(
     session: AsyncSession, *, limit: int | None = None, after: uuid.UUID | None = None
 ) -> list[uuid.UUID]:

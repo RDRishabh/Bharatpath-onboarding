@@ -1,7 +1,7 @@
 # 06 — Applications: the hiring pipeline
 
-What happens after a candidate hits "Apply." Eleven endpoints, two surfaces
-(`/candidate/applications`, `/employer/applications`), one shared state
+What happens after a candidate hits "Apply." Thirteen endpoints, three surfaces
+(`/candidate/applications`, `/employer/applications`, `/employer/dashboard`), one shared state
 machine underneath both.
 
 Read [05-jobs-and-discovery-apis.md](05-jobs-and-discovery-apis.md) first —
@@ -337,6 +337,99 @@ timestamp against a configured window (default 30 days, `config_values` key
 for too long. A proposed hire never expires — once at `DECISION` with an
 employer confirmation, the clock stops. (This sweep isn't wired to run on a
 schedule yet in the current build — a tracked gap, not a design choice.)
+
+---
+
+## 8. The employer dashboard
+
+Two endpoints for the portal's landing page. Both: **any employer role**
+(Owner/Recruiter/Viewer) + **active subscription** (`402
+subscription_required` otherwise, like the rest of the pipeline).
+
+**Neither returns a name, contact, score or candidate id.** Everything is a
+count, a job, or an application id — the same handles the pipeline screens
+already take. Who a candidate is stays behind the audited reveal in
+[05](05-jobs-and-discovery-apis.md).
+
+### `GET /employer/dashboard` — the tiles, in one request
+
+**Query:** `top_jobs` (1–20, default 5).
+
+**Response** — `200 OK`, `EmployerDashboard`:
+```json
+{
+  "generated_at": "2026-09-23T10:15:00Z",
+  "jobs": { "total": 6, "active": 3, "draft": 1, "paused": 0, "closed": 2 },
+  "applications": {
+    "total": 120, "open": 45, "distinct_candidates": 110,
+    "new_last_7_days": 12, "new_last_30_days": 40,
+    "by_stage": { "SUBMITTED": 10, "VIEWED": 8, "SHORTLISTED": 12, "INTERVIEW": 9,
+                  "DECISION": 6, "HIRED": 4, "REJECTED": 50, "WITHDRAWN": 15, "EXPIRED": 6 }
+  },
+  "needs_attention": {
+    "unreviewed": 10, "interviews_to_schedule": 2, "interviews_next_7_days": 3,
+    "hires_awaiting_candidate": 1, "hires_disputed": 0, "expiring_within_7_days": 4
+  },
+  "candidates_revealed": { "total": 30, "last_7_days": 5 },
+  "top_jobs": [
+    { "job_id": "...", "title": "Machine Operator", "status": "PUBLISHED",
+      "applications": 41, "open": 18, "new_last_7_days": 6,
+      "last_applied_at": "2026-09-23T08:02:11Z" }
+  ],
+  "upcoming_interviews": [
+    { "application_id": "...", "job_id": "...", "job_title": "Machine Operator",
+      "interview_at": "2026-09-25T04:30:00Z", "meeting_url": "https://meet.example.com/abc" }
+  ],
+  "applications_per_day": [ { "date": "2026-08-25", "count": 0 }, "... 30 entries ..." ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `jobs.active` | `PUBLISHED` — on the board now |
+| `applications.total` | Every application ever received. Same number as the jobs list's `application_counts.total`, summed |
+| `applications.open` | Not yet hired, rejected, withdrawn or expired |
+| `applications.distinct_candidates` | People, not applications — someone who reapplied counts once |
+| `applications.by_stage` | Where they stand **now**; every stage present; sums to `total` |
+| `needs_attention.unreviewed` | `SUBMITTED` — nobody has opened them |
+| `needs_attention.interviews_to_schedule` | At `INTERVIEW` with no time booked |
+| `needs_attention.hires_awaiting_candidate` / `hires_disputed` | Hire proposed; candidate hasn't answered / said it didn't happen |
+| `needs_attention.expiring_within_7_days` | Open applications the team hasn't touched for long enough that §7's sweep will expire them within a week — including any already overdue. A proposed hire never counts |
+| `candidates_revealed` | Distinct candidates whose full profile the organisation opened — the design's "Candidates unlocked". Re-opening someone is not counted again |
+| `top_jobs` | Busiest first, by `applications`; only jobs with at least one |
+| `upcoming_interviews` | Next 5 booked, soonest first |
+| `applications_per_day` | 30 **IST** calendar days ending today (today is partial), oldest first, zeros included — chart it directly |
+
+"Recent" is the last seven days everywhere, so the tiles agree with each
+other. Every number is read live on each request; nothing is cached, so a
+refetch after a recruiter acts shows the change.
+
+### `GET /employer/dashboard/activity` — recent activity feed
+
+**Query:** `actor` (`CANDIDATE` | `EMPLOYER` | `SYSTEM`, optional),
+`cursor`, `limit` (1–100, default 50).
+
+**Response** — `200 OK`, a `Page` of `ActivityItem`, newest first:
+```json
+{
+  "items": [
+    { "id": "...", "application_id": "...", "job_id": "...", "job_title": "Machine Operator",
+      "kind": "STAGE_CHANGED", "from_stage": "VIEWED", "to_stage": "SHORTLISTED",
+      "by": "EMPLOYER", "actor_id": "recruiter-user-id", "occurred_at": "..." },
+    { "id": "...", "application_id": "...", "job_id": "...", "job_title": "Machine Operator",
+      "kind": "STAGE_CHANGED", "from_stage": null, "to_stage": "SUBMITTED",
+      "by": "CANDIDATE", "actor_id": null, "occurred_at": "..." }
+  ],
+  "next_cursor": "..."
+}
+```
+The same events as an application's `history` (§6), across every job.
+`from_stage: null, to_stage: SUBMITTED` is "applied"; `by: SYSTEM,
+to_stage: EXPIRED` is the sweep. `actor_id` is the team member, and only for
+`EMPLOYER` rows. **No `note`** — open the application for that.
+
+Pipeline events only, for now: job publishing, reveals, KYB and purchases
+are not in this feed.
 
 ---
 

@@ -37,6 +37,7 @@ READS_NO_CANDIDATE: dict[str, str] = {
     "current_config": "reads config_values: the abuse limits, not a person",
     "lock_tenant_views": "takes an advisory lock; reads no table",
     "view_counts": "counts the organisation's own view log to enforce its caps",
+    "revealed_counts": "counts the organisation's own view log for its dashboard",
     "ensure_view_partitions": "creates view-log partitions; reads no rows",
 }
 

@@ -25,7 +25,7 @@ confirmation is the transition (PRD 5.2, SRS 1.13.3).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Final, Literal
 from urllib.parse import urlsplit
 
@@ -300,3 +300,57 @@ def withdrawal(stage: str) -> Withdrawal:
     if stage in TERMINAL_STAGES:
         return "REFUSE"
     return "WITHDRAW"
+
+
+# ---------------------------------------------------------------------------
+# The employer dashboard
+# ---------------------------------------------------------------------------
+#: India keeps one offset all year, so a fixed zone is exact. A "day" on the
+#: dashboard is a day where the recruiter is, not a UTC day that turns over at
+#: 05:30 in the morning.
+IST: Final = timezone(timedelta(hours=5, minutes=30), "IST")
+#: The same zone by the name Postgres knows it. Not "+05:30": Postgres reads a
+#: POSIX offset with the sign reversed, and would count days in UTC-05:30.
+IST_ZONE_NAME: Final = "Asia/Kolkata"
+
+#: "Recent" everywhere on the dashboard: new applications, interviews coming
+#: up, applications about to expire. One window, so the tiles agree.
+DASHBOARD_WINDOW: Final = timedelta(days=7)
+#: How far back the new-applications count and the daily series reach.
+TREND_DAYS: Final = 30
+DEFAULT_TOP_JOBS: Final = 5
+MAX_TOP_JOBS: Final = 20
+UPCOMING_INTERVIEWS: Final = 5
+
+
+def trend_start(now: datetime) -> datetime:
+    """Midnight IST at the start of the first day of the daily series.
+
+    `TREND_DAYS` days ending today, so today is the last point and is partial.
+    """
+    if now.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    first = now.astimezone(IST).date() - timedelta(days=TREND_DAYS - 1)
+    return datetime.combine(first, time.min, IST)
+
+
+def daily_series(counts: dict[date, int], *, now: datetime) -> list[tuple[date, int]]:
+    """One `(IST date, count)` per day of the trend, oldest first, zeros included.
+
+    A chart given only the days that had applications draws a line straight
+    across the quiet ones, which is the opposite of what happened.
+    """
+    first = trend_start(now).date()
+    days = (first + timedelta(days=i) for i in range(TREND_DAYS))
+    return [(day, counts.get(day, 0)) for day in days]
+
+
+def expiry_horizon(*, now: datetime, rules: ExpiryRules, within: timedelta) -> datetime:
+    """Applications whose employer has been quiet since before this expire within `within`.
+
+    The same clock `expires` reads, moved forward: an application expires once
+    its last employer activity is older than `rules.period`, so it expires
+    within `within` when that activity is older than `period - within`. Anything
+    already past the period counts too; the sweep has not reached it yet.
+    """
+    return now + within - rules.period

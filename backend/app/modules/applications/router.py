@@ -16,6 +16,9 @@ Two surfaces, one module:
     viewers read. Another organisation's application is a 404. The employer
     subscription gate lands on these with the other employer routes on
     Day 15, when a subscription can be bought.
+  * **`/employer/dashboard`** -- the same pipeline, counted, for the portal's
+    landing page, and its recent activity across every job. Every role that
+    reads the pipeline reads this; payment gates it like the pipeline.
 """
 
 from __future__ import annotations
@@ -37,13 +40,17 @@ from app.core.deps import (
 )
 from app.core.pagination import MAX_PAGE_SIZE, Page
 from app.modules.applications import service
+from app.modules.applications.domain import DEFAULT_TOP_JOBS, MAX_TOP_JOBS
 from app.modules.applications.schemas import (
+    ActivityItem,
+    Actor,
     ApplicationDetailResponse,
     ApplicationResponse,
     ApplicationStage,
     ApplyRequest,
     EmployerApplicationDetail,
     EmployerApplicationSummary,
+    EmployerDashboard,
     MoveStageRequest,
     ScheduleInterviewRequest,
 )
@@ -52,6 +59,9 @@ router = APIRouter()
 
 #: The employer's pipeline, mounted at `/employer/applications` (see `__init__.py`).
 employer_router = APIRouter()
+
+#: The pipeline counted, mounted at `/employer/dashboard`.
+dashboard_router = APIRouter()
 
 CandidateOnly = Depends(require_role(CANDIDATE))
 # The role guard first, so an employer is told 403 rather than asked to pay.
@@ -241,3 +251,44 @@ async def propose_hire(
 ) -> EmployerApplicationDetail:
     """At DECISION only (409 `hire_not_allowed`). Idempotent."""
     return await service.propose_hire(session, ctx=user, application_id=application_id)
+
+
+# ---------------------------------------------------------------------------
+# The employer dashboard
+# ---------------------------------------------------------------------------
+@dashboard_router.get(
+    "",
+    response_model=EmployerDashboard,
+    dependencies=[Readers, PayingEmployer],
+    summary="The organisation's jobs and pipeline, counted, for the portal's landing page",
+)
+async def employer_dashboard(
+    user: CurrentUser,
+    session: DbSession,
+    top_jobs: Annotated[
+        int,
+        Query(ge=1, le=MAX_TOP_JOBS, description="How many of the busiest jobs to return"),
+    ] = DEFAULT_TOP_JOBS,
+) -> EmployerDashboard:
+    """Live counts, one request. "Recent" is the last seven days throughout;
+    days in `applications_per_day` are IST."""
+    return await service.dashboard(session, ctx=user, top_jobs=top_jobs)
+
+
+@dashboard_router.get(
+    "/activity",
+    response_model=Page[ActivityItem],
+    dependencies=[Readers, PayingEmployer],
+    summary="Recent pipeline activity across every job, newest first",
+)
+async def recent_activity(
+    user: CurrentUser,
+    session: DbSession,
+    actor: Annotated[
+        Actor | None,
+        Query(description="Only what candidates, the team, or the system did"),
+    ] = None,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=MAX_PAGE_SIZE)] = None,
+) -> Page[ActivityItem]:
+    return await service.activity(session, ctx=user, actor=actor, cursor=cursor, limit=limit)
