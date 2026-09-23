@@ -418,7 +418,8 @@ async def test_routes_without_an_id_only_ever_return_the_callers_own_tenant(
     assert a["member_id"] in team_a
 
     jobs_a = {
-        j["id"] for j in (await client.get(f"{API}/employer/jobs", headers=a["headers"])).json()
+        j["id"]
+        for j in (await client.get(f"{API}/employer/jobs", headers=a["headers"])).json()["items"]
     }
     assert b["job_id"] not in jobs_a
     assert a["job_id"] in jobs_a
@@ -458,6 +459,13 @@ async def test_another_tenants_job_has_no_pipeline_to_list(client: Any, mint_tok
     assert response.status_code == 404
     assert response.json()["code"] == "job_not_found"
     assert application not in response.text
+
+    # Without a job the list spans the organisation, and a query that forgot
+    # its tenant would hand A every organisation's pipeline.
+    everything = await client.get(f"{API}/employer/applications", headers=a["headers"])
+    assert everything.status_code == 200, everything.text
+    assert application not in everything.text
+    assert str(victim_job) not in everything.text
 
 
 async def test_college_routes_without_an_id_only_ever_return_the_callers_own(

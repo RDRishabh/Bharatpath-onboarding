@@ -912,7 +912,8 @@ server still returns 403 if called.
 Next control; do not download the full list and paginate it in the browser.
 
 - Filters: All · **Published** · Draft · **Paused** · Closed. Search by title
-  or location (client-side over the list).
+  or location with `q` (server-side, so it covers every page, not just the
+  ones loaded). There are no page numbers or total.
 - Columns: Job (title + initials) · Status · Location · Pay (monthly range, or
   LPA as mockup) · Applicants · Viewed · Shortlisted · Interview · Hired ·
   Rejected · Actions.
@@ -995,10 +996,13 @@ logged**, including re-opens.
 | 404 | "This candidate is no longer available." |
 
 #### A1 · Applications (pipeline) — mockup "Applications"
-`GET /employer/applications?job_id=&stage=` (`job_id` **required**, so the page
-always has a job selected; default to the most recent published job).
+`GET /employer/applications?job_id=&stage=`. **`job_id` is optional**
+(2026-09-23): leave it out and one request returns every job's applications,
+each row carrying `job_title` and `job_location` for the card.
 
-- Job selector at the top ("All jobs" is not possible, so remove it).
+- Job selector at the top. "All jobs" = no `job_id`; choosing a job adds it.
+  Never fetch per job and merge, and never open each card
+  (`GET /employer/applications/{id}` records VIEWED) to fill the board.
 - Columns: **Submitted · Viewed · Shortlisted · Interview · Decision** plus
   **Hired** and **Rejected**. Withdrawn and Expired sit in a collapsed
   "Closed" group.

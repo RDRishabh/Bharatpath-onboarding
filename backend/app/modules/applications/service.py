@@ -100,6 +100,7 @@ from app.modules.applications.schemas import (
     CandidateHistoryItem,
     DailyApplications,
     EmployerApplicationDetail,
+    EmployerApplicationListItem,
     EmployerApplicationSummary,
     EmployerDashboard,
     EmployerHistoryItem,
@@ -576,25 +577,28 @@ async def _detail(session: AsyncSession, row: Any) -> EmployerApplicationDetail:
     )
 
 
-async def list_for_job(
+async def list_for_employer(
     session: AsyncSession,
     *,
     ctx: TenantContext,
-    job_id: uuid.UUID,
+    job_id: uuid.UUID | None,
     stage: str | None,
     cursor: str | None,
     limit: int | None,
-) -> Page[EmployerApplicationSummary]:
-    """A job's applications, oldest first, optionally at one stage.
+) -> Page[EmployerApplicationListItem]:
+    """The organisation's applications, oldest first, optionally for one job
+    and optionally at one stage. Each row names its job.
 
-    The job is looked up first, so another organisation's job id is
-    `job_not_found` rather than an empty page that confirms nothing and
-    explains nothing.
+    Without `job_id` the page spans every job, so a pipeline board fills from
+    one request rather than one per job. With it, the job is looked up first,
+    so another organisation's job id is `job_not_found` rather than an empty
+    page that confirms nothing and explains nothing.
     """
     tenant_id = await _bind_tenant(session, ctx)
-    await jobs_service.get_job(session, ctx=ctx, job_id=job_id)
+    if job_id is not None:
+        await jobs_service.get_job(session, ctx=ctx, job_id=job_id)
     page_size = clamp_limit(limit)
-    rows = await repository.list_for_job(
+    rows = await repository.list_for_employer(
         session,
         tenant_id=tenant_id,
         job_id=job_id,
@@ -603,9 +607,16 @@ async def list_for_job(
         limit=page_size + 1,
     )
     page, more = rows[:page_size], len(rows) > page_size
-    return Page[EmployerApplicationSummary](
-        items=[_summary(r) for r in page], next_cursor=_cursor(page, more)
-    )
+    labels = await jobs_service.labels(session, ctx=ctx, job_ids=list({r.job_id for r in page}))
+    items = []
+    for row in page:
+        title, location = labels.get(row.job_id, (None, None))
+        items.append(
+            EmployerApplicationListItem(
+                **_summary(row).model_dump(), job_title=title, job_location=location
+            )
+        )
+    return Page[EmployerApplicationListItem](items=items, next_cursor=_cursor(page, more))
 
 
 async def open_application(
@@ -848,7 +859,7 @@ async def dashboard(
 
     Counted the way the rest of the pipeline counts: an application whose
     candidate is later held back from search is still in the employer's
-    pipeline and still counted, exactly as `list_for_job` lists it.
+    pipeline and still counted, exactly as `list_for_employer` lists it.
 
     `expiring_within_7_days` uses the expiry rules in force, so a malformed
     `applications.expiry` row is a 500 here as it is in the sweep, rather than

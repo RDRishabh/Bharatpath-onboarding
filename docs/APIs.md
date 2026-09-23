@@ -208,7 +208,7 @@ ahead of `/{job_id}` to avoid a path collision.
 | Method | Path | Auth | Body/Params | Response | Notes |
 |---|---|---|---|---|
 | POST | `/employer/jobs` | OWNER/RECRUITER + active subscription | `CreateJobRequest` | `JobResponse` (201) | Draft |
-| GET | `/employer/jobs` | any employer role + active subscription | `status` | `list[JobResponse]` | Newest first |
+| GET | `/employer/jobs` | any employer role + active subscription | `status`, `cursor`, `limit` (≤100, default 50) | `Page[JobListItem]` | Newest first, each with pipeline counts |
 | GET | `/employer/jobs/threshold-preview` | OWNER/RECRUITER + active subscription | `min_score` (700–990, stepped, rate-limited per org) | `ThresholdPreviewResponse` | Rounded/coarse count only, floored under ten — never exact, so a threshold can't be used to binary-search one candidate's score |
 | GET | `/employer/jobs/{job_id}` | any employer role + active subscription | path | `JobResponse` | 404 cross-org |
 | PATCH | `/employer/jobs/{job_id}` | OWNER/RECRUITER + active subscription | path + `UpdateJobRequest` | `JobResponse` | 409 once published/closed — pause first |
@@ -232,7 +232,7 @@ migrator, can bypass.
 | POST | `/candidate/applications/{id}/withdraw` | CANDIDATE | path | `ApplicationResponse` | Any pre-outcome stage; 409 once hired/rejected/expired |
 | POST | `/candidate/applications/{id}/hire/confirm` | CANDIDATE | path | `ApplicationResponse` | Finalizes a hire the employer proposed; the candidate's confirmation, not the employer's, is what writes HIRED; 409 `hire_confirmation_not_pending` |
 | POST | `/candidate/applications/{id}/hire/dispute` | CANDIDATE | path | `ApplicationResponse` | |
-| GET | `/employer/applications` | OWNER/RECRUITER/VIEWER + active subscription | `job_id` (required), `stage, cursor, limit` | `Page[EmployerApplicationSummary]` | Oldest first |
+| GET | `/employer/applications` | OWNER/RECRUITER/VIEWER + active subscription | `job_id, stage, cursor, limit` (all optional) | `Page[EmployerApplicationListItem]` | Oldest first. No `job_id` = every job in one list; each row carries `job_title`, `job_location`. Read-only: never records VIEWED |
 | GET | `/employer/applications/{id}` | OWNER/RECRUITER/VIEWER + active subscription | path | `EmployerApplicationDetail` | Opening a SUBMITTED application auto-moves it to VIEWED, once |
 | POST | `/employer/applications/{id}/stage` | OWNER/RECRUITER + active subscription | path + `{stage, note}` | `EmployerApplicationDetail` | One stage forward, or REJECTED; 409 otherwise |
 | PUT | `/employer/applications/{id}/interview` | OWNER/RECRUITER + active subscription | path + `{interview_at, meeting_url}` | `EmployerApplicationDetail` | Book/rebook, only at INTERVIEW stage (409 otherwise); 422 for a non-https link or a time over a year out |

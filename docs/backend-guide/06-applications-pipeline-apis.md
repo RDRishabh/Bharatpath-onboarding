@@ -206,31 +206,64 @@ known, tracked gap).
 
 ## 6. The employer's pipeline
 
-### `GET /employer/applications?job_id=...` — list a job's applications
+### `GET /employer/applications` — list applications, for one job or all of them
 
 **Auth required:** any employer role (Owner/Recruiter/Viewer) + active subscription.
 
-**Request:** no body. Required query param `job_id`; optional `?stage=` filter,
-`cursor`/`limit` for pagination.
+**Request:** no body. Every query param is optional:
 
-**Response** — `200 OK`, a `Page` of `EmployerApplicationSummary`:
+| Param | Meaning |
+|---|---|
+| `job_id` | Only this job's applications. **Leave it out for every job the organisation has**, in one list. Another organisation's job is `404 job_not_found`. |
+| `stage` | Only applications at this stage (`SUBMITTED`, `VIEWED`, `SHORTLISTED`, …). Works with or without `job_id`. |
+| `limit` | Page size, default 50, at most 100 (`422` outside 1–100). |
+| `cursor` | `next_cursor` from the previous page. |
+
+```
+GET /employer/applications                          # the whole pipeline board
+GET /employer/applications?stage=SHORTLISTED        # one column, across every job
+GET /employer/applications?job_id=e577...           # the job filter
+```
+
+**Response** — `200 OK`, a `Page` of `EmployerApplicationListItem`:
 ```json
 {
   "items": [
     {
       "id": "...", "job_id": "...", "candidate_id": "9f2e...",
+      "job_title": "Backend Engineer", "job_location": "Delhi",
       "stage": "SUBMITTED", "hire_confirmation": "NONE",
       "interview": null, "created_at": "...", "updated_at": "..."
     }
   ],
-  "next_cursor": null
+  "next_cursor": "eyJj...",
+  "total": null
 }
 ```
 Oldest first (opposite of the candidate's own view, which is newest-first)
-— a pipeline is worked queue-style. **This is explicitly not a candidate
-profile** — no name, no contact, no score. `candidate_id` is only a handle;
-seeing who this actually is requires the separate, audited reveal from
-[05](05-jobs-and-discovery-apis.md).
+— a pipeline is worked queue-style. Across jobs it is still one order by
+`created_at`, so the page is not grouped by job; group on `job_id` client-side.
+`job_title` and `job_location` are the job's own (the organisation's data), so
+a board spanning jobs does not need a request per card to label it;
+`job_location` is `null` for a job with no location. `next_cursor` is `null` on
+the last page, and there is no total.
+
+**Draw the pipeline board from this list alone.** One request with no
+`job_id` (and `limit=100`, following `next_cursor` if it is set) fills every
+column. Two things must *not* be called per card:
+
+- `GET /employer/applications/{id}` **records VIEWED** on a submitted
+  application — the candidate sees that someone looked. Opening every card to
+  draw the board marks the whole column viewed.
+- `GET /employer/discovery/candidates/{id}` is the audited reveal: every call
+  writes an audit row and counts against the organisation's hourly and daily
+  view caps.
+
+Listing is read-only and records nothing.
+
+**This is explicitly not a candidate profile** — no name, no contact, no score.
+`candidate_id` is only a handle; seeing who this actually is requires the
+separate, audited reveal from [05](05-jobs-and-discovery-apis.md).
 
 ### `GET /employer/applications/{application_id}` — open one
 

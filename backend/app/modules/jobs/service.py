@@ -202,6 +202,15 @@ async def titles(
     return await repository.titles(session, tenant_id=tenant_id, job_ids=job_ids)
 
 
+async def labels(
+    session: AsyncSession, *, ctx: TenantContext, job_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[str, str | None]]:
+    """`job id -> (title, location)` for the organisation's own jobs among
+    `job_ids`, for the pipeline list's cards."""
+    tenant_id = await _bind(session, ctx)
+    return await repository.labels(session, tenant_id=tenant_id, job_ids=job_ids)
+
+
 async def update_job(
     session: AsyncSession, *, ctx: TenantContext, job_id: uuid.UUID, payload: UpdateJobRequest
 ) -> Any:

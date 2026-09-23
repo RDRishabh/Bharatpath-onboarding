@@ -9,6 +9,55 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-23 — the pipeline list no longer needs a job
+
+Raised by the frontend against the Applications board: "All jobs" was a
+`GET /employer/applications?job_id=…` per job, merged on the client, about
+fifteen requests for one screen. `job_id` is now **optional**. Without it the
+list spans every job the organisation has, in one oldest-first order, and the
+stage filter and cursor behave as before. The response item is now
+`EmployerApplicationListItem`, which is the summary plus `job_title` and
+`job_location`, so the cards need no second lookup. The change is additive:
+existing callers passing `job_id` see two new fields and nothing else.
+
+- **New index `ix_applications_tenant_created (tenant_id, created_at, id)`**,
+  in the model and therefore in the baseline. `ix_applications_job_stage`
+  starts with `job_id` and cannot serve a list across jobs. It is a hot path in
+  `test_index_review.py`. **Existing databases (Render, EC2) need a rebuild or
+  a hand-run `CREATE INDEX CONCURRENTLY`**, because there are no incremental
+  migrations.
+- The cross-tenant invariant now also lists without a job and asserts none of
+  the other organisation's applications or jobs come back.
+- **The 429 that prompted this was not a rate limit.** The Render deploy had
+  no reachable Redis (`/api/v1/health/ready` → `redis: down`). The fail-closed
+  limits (search, reveal, threshold preview, discount codes, analytics,
+  privacy) answer `429 rate_limit_unavailable` in that state, and the global
+  tier fails open, so nothing else looked broken. Fixing it means setting
+  `REDIS_URL` on the service. No code change is needed.
+
+## 2026-09-23 — `GET /employer/jobs` is paginated
+
+Reported by the frontend: `?limit=10` returned every job. The route never
+declared `limit`, so FastAPI dropped it, and the service always read up to a
+fixed 100 (`MAX_JOB_LIST`, now gone). It was the only list in the API without
+a cursor.
+
+It now takes `limit` (1–100, default 50) and `cursor`, keyset on
+`(created_at, id)`, and returns `Page[JobListItem]`. **That is a breaking
+change to the response** — a bare array became `{ items, next_cursor, total }`
+— made in the backend only, by decision; the frontend in `frontend/` still
+reads an array (`store/employer/jobs/jobs.api.ts`) and is the frontend
+developer's to move. The dashboard and applications screens that want every
+job must follow `next_cursor`. The cursor's timestamp key is `c`, not the
+board's `p`, so a `/candidate/jobs` cursor is refused here rather than
+silently misread. No new index: jobs per tenant are few and
+`ix_jobs_tenant_status` bounds the scan.
+
+`main` paginated the same route independently, with the same shape and cursor
+key, and added `q`, a server-side search over title and location. The merge
+takes `main`'s implementation. This branch contributes the tests in
+`test_jobs.py`, which pass against it.
+
 ## 2026-09-23 — the admin console can list candidates
 
 Reported: `GET /admin/tenants?type=CANDIDATE` answers 422. That is correct,

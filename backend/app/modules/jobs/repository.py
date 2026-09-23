@@ -174,6 +174,20 @@ async def titles(
     return {job_id: (title, state) for job_id, title, state in rows}
 
 
+async def labels(
+    session: AsyncSession, *, tenant_id: uuid.UUID, job_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, tuple[str, str | None]]:
+    """`job id -> (title, location)` for this organisation's jobs among `job_ids`."""
+    if not job_ids:
+        return {}
+    rows = await session.execute(
+        select(Job.id, Job.title, Job.location).where(
+            Job.tenant_id == tenant_id, Job.id.in_(list(job_ids))
+        )
+    )
+    return {job_id: (title, location) for job_id, title, location in rows}
+
+
 async def apply_changes(session: AsyncSession, *, job: Job, changes: dict[str, Any]) -> Job:
     unexpected = set(changes) - EDITABLE_FIELDS
     if unexpected:
