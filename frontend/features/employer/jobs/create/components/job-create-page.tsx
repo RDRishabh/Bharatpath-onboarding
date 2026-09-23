@@ -14,6 +14,7 @@ import {
 import { ConfigurableForm } from "@/components/forms/configurable-form";
 import type { FormFieldConfig } from "@/components/forms/configurable-form.types";
 import { usePageHeader } from "@/components/layout/header-context";
+import { getApiErrorMessage } from "@/lib/api/error-message";
 
 import { useJobCreateForm } from "../hooks/use-job-create-form";
 import type { CreateJobFormValues } from "../types";

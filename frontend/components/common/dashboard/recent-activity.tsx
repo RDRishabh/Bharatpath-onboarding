@@ -5,7 +5,18 @@ import {
   UserPlus,
 } from "lucide-react";
 
-import { RecentActivity } from "../../../features/college/dashboard/types";
+type RecentActivityType =
+  | "link"
+  | "upload"
+  | "hire"
+  | "invoice";
+
+interface RecentActivity {
+  id: string;
+  text: string;
+  time: string;
+  type: RecentActivityType;
+}
 
 interface RecentActivityProps {
   activities: RecentActivity[];

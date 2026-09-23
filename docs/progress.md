@@ -9,6 +9,23 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-23 — frontend production type-check restored
+
+The frontend production build had three stale wiring errors after the broader
+student contract fixes landed: the shared recent-activity component imported a
+type from the college dashboard even though only the employer dashboard defines
+that data, the job create/edit page called the shared API error formatter without
+importing it, and the completed college billing slice was never mounted in the
+root Redux store.
+
+The shared activity component now owns its small rendering contract instead of
+depending on either portal, job mutations use the existing centralized API error
+formatter, and `collegeBilling` is registered alongside the other portal state.
+`npm run build` completes successfully, including TypeScript checking and static
+page generation.
+
+---
+
 ## 2026-09-23 — the employer's jobs list carries its own funnel
 
 Raised by the frontend team against the jobs screen: the table draws a column
