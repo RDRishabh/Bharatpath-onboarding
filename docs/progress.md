@@ -9,6 +9,67 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-24 — the candidate search filters get a catalogue staff curate
+
+Asked for by the frontend against the Candidates screen: the filter panel
+(band, skills, location, experience) had nothing to load its options from,
+and skills and locations needed a typeahead with "add your own".
+
+**Employer side** (owner/recruiter, subscription, own rate limit
+`discovery.filters` — 120/min per person, deliberately *not* the
+organisation's `discovery:search` pages, which the panel used to burn):
+
+- `GET /employer/discovery/filters` — bands, badges, experience steps
+  (1/3/5/10), the 36 states, featured skills and cities, and the limits the
+  search enforces. **No counts, anywhere** — a test walks every key.
+- `GET /employer/discovery/filters/skills?q=` and `/filters/locations?q=&state=`
+  — exact, then starts-with (label, then alias), then contains.
+- `GET /employer/discovery/candidates` now takes **up to 5 `city` values**,
+  any of which may match (skills are still all-of). A city filter is checked
+  with the candidate's own city rule, so `Pune 411001` is 422
+  `discovery_city_invalid` instead of silently matching nobody.
+
+**Why aliases, not just a list.** Skills are whatever Layer 1 wrote and
+match by exact key; cities are whatever the candidate typed. "Forklift
+certified" never met "forklift operation", nor "Bengaluru" "Bangalore". A
+value that names an option (label, key or alias) now searches every spelling
+of it — per skill `skill_keys && group`, the same GIN index; for cities an OR
+of trigram contains-matches. **Anything else searches exactly as before**,
+including the trigger's un-collapsed inner spaces, so the catalogue only adds
+reach.
+
+**Staff side** — capability `search_filters`, PLATFORM_ADMIN **and
+SUPPORT_AGENT** (client, 2026-09-24): list, create, import (`/import`, ≤500, all
+or none), get, PATCH. Every change is an audit row
+(`search_filter_option_created` / `_updated`); a no-op PATCH writes none.
+
+**Decisions worth knowing:**
+
+- **A table, `search_filter_options`, not a `config_values` row.** Per-item
+  edits by two staff would clobber whole-document versions, and the list will
+  grow. Owned by `discovery`; the admin service adds the audit row.
+- **Switched off, never deleted** (the app role has no DELETE). An inactive
+  option leaves the panel and typeahead and stops expanding, but its label
+  still searches as plain text, and it keeps its spellings.
+- **One spelling, one option per kind**, active or not: unique `(kind, key)`
+  plus an alias check under a per-kind advisory lock. 409
+  `search_filter_option_conflict` names the spelling.
+- **Suggestions come from the catalogue, never from candidates' skills.** A
+  rare skill in a dropdown tells an employer someone has it.
+- **A city must name its state; a skill cannot.** CHECK-held.
+- Starter lists (89 skills, 67 cities) are **ours** —
+  `discovery/catalogue.py`, `FILTER_CATALOGUE_VERSION = placeholder-…`, a
+  test holds the prefix. `scripts/seed_filter_options.py` writes only options
+  none of whose spellings exist, so it never undoes console edits; it now
+  runs in `reset_local_db.sh` and the prod `migrate` step. **The baseline
+  gained the table, so the EC2 database needs a reset** (agreed).
+
+Known limit: two same-named cities in different states (Aurangabad MH/BR)
+cannot both be options, because the search filters by city name. Filter by
+`state` alongside.
+
+---
+
 ## 2026-09-23 — the pipeline list no longer needs a job
 
 Raised by the frontend against the Applications board: "All jobs" was a

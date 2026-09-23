@@ -301,6 +301,10 @@ ERASURE_PLAN: Final[Mapping[str, TablePlan]] = {
     "discount_codes": _not_personal(
         "A code staff created. Names the member of staff who made it, never a payer."
     ),
+    "search_filter_options": _not_personal(
+        "A skill or a city name staff curate for the search filters. Names the member of "
+        "staff who changed it, never a candidate."
+    ),
     "tenant_suspensions": _not_personal("Our decision about an organisation, taken by staff."),
     "employers": _not_personal("An organisation's profile."),
     "colleges": _not_personal("An organisation's profile."),

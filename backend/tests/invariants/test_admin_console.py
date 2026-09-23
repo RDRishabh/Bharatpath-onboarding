@@ -157,6 +157,12 @@ ROUTE_CAPABILITY: dict[str, Any] = {
     "discount_redemptions": "discounts_read",
     # 2026-09-23: the landing page, for all staff; its sections are gated inside.
     "dashboard": "dashboard",
+    # 2026-09-24: the skills and cities employers filter by; support edits too.
+    "list_search_filter_options": "search_filters",
+    "create_search_filter_option": "search_filters",
+    "import_search_filter_options": "search_filters",
+    "get_search_filter_option": "search_filters",
+    "update_search_filter_option": "search_filters",
 }
 
 

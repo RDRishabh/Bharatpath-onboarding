@@ -38,12 +38,15 @@ from app.modules.admin.schemas import (
     CandidatesPage,
     CollegeDrilldown,
     CreateDiscountCodeRequest,
+    CreateSearchFilterOptionRequest,
     DiscountCodeResponse,
     DiscountCodesPage,
     DiscountRedemptionsPage,
     DisputeDetail,
     DisputesPage,
     EmployerDrilldown,
+    ImportSearchFilterOptionsRequest,
+    ImportSearchFilterOptionsResponse,
     IntegritySignalDetail,
     IntegritySignalsPage,
     InvitationResentResponse,
@@ -57,10 +60,13 @@ from app.modules.admin.schemas import (
     RaiseDisputeRequest,
     ResolveDisputeRequest,
     ResolveSignalRequest,
+    SearchFilterOptionResponse,
+    SearchFilterOptionsPage,
     SeatAllocationResponse,
     SuspendTenantRequest,
     SuspensionResponse,
     TenantsPage,
+    UpdateSearchFilterOptionRequest,
 )
 from app.modules.kyb.schemas import KybSubmissionResponse
 from app.modules.notifications import service as notifications_service
@@ -710,6 +716,113 @@ async def discount_redemptions(
 ) -> DiscountRedemptionsPage:
     """A use is recorded when its payment succeeds, not at checkout."""
     return await service.discount_redemptions(session, code_id=code_id, cursor=cursor, limit=limit)
+
+
+# ---------------------------------------------------------------------------
+# Search filter options (2026-09-24)
+# ---------------------------------------------------------------------------
+@router.get(
+    "/search-filters",
+    response_model=SearchFilterOptionsPage,
+    dependencies=can("search_filters"),
+    summary="The skills and cities employers filter by",
+)
+async def list_search_filter_options(
+    session: DbSession,
+    kind: Literal["SKILL", "CITY"] | None = None,
+    q: str | None = Query(default=None, max_length=100, description="In the key or an alias"),
+    include_inactive: bool = False,
+    cursor: str | None = None,
+    limit: int | None = Limit,
+) -> SearchFilterOptionsPage:
+    """By kind, then key. Switched-off options only with `include_inactive`."""
+    return await service.list_search_filter_options(
+        session,
+        kind=kind,
+        query=q,
+        include_inactive=include_inactive,
+        cursor=cursor,
+        limit=limit,
+    )
+
+
+@router.post(
+    "/search-filters",
+    response_model=SearchFilterOptionResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=can("search_filters"),
+    summary="Add a skill or a city to the search filters",
+)
+async def create_search_filter_option(
+    payload: CreateSearchFilterOptionRequest,
+    request: Request,
+    user: CurrentUser,
+    session: DbSession,
+) -> SearchFilterOptionResponse:
+    """422 `search_filter_option_invalid` with a reason; 409
+    `search_filter_option_conflict` naming a spelling (label or alias) that
+    another option already holds, switched off or not."""
+    [created] = await service.create_search_filter_options(
+        session, ctx=user, items=[payload], request_id=get_request_id(request)
+    )
+    return created
+
+
+@router.post(
+    "/search-filters/import",
+    response_model=ImportSearchFilterOptionsResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=can("search_filters"),
+    summary="Import up to 500 skills or cities at once, all or none",
+)
+async def import_search_filter_options(
+    payload: ImportSearchFilterOptionsRequest,
+    request: Request,
+    user: CurrentUser,
+    session: DbSession,
+) -> ImportSearchFilterOptionsResponse:
+    """One bad item refuses the lot: 422 with `params.index`, or 409 with the
+    clashing spellings."""
+    items = await service.create_search_filter_options(
+        session, ctx=user, items=payload.items, request_id=get_request_id(request)
+    )
+    return ImportSearchFilterOptionsResponse(items=items)
+
+
+@router.get(
+    "/search-filters/{option_id}",
+    response_model=SearchFilterOptionResponse,
+    dependencies=can("search_filters"),
+    summary="One search filter option",
+)
+async def get_search_filter_option(
+    option_id: uuid.UUID, session: DbSession
+) -> SearchFilterOptionResponse:
+    return await service.get_search_filter_option(session, option_id=option_id)
+
+
+@router.patch(
+    "/search-filters/{option_id}",
+    response_model=SearchFilterOptionResponse,
+    dependencies=can("search_filters"),
+    summary="Change, feature, reorder or switch off a search filter option",
+)
+async def update_search_filter_option(
+    option_id: uuid.UUID,
+    payload: UpdateSearchFilterOptionRequest,
+    request: Request,
+    user: CurrentUser,
+    session: DbSession,
+) -> SearchFilterOptionResponse:
+    """Only the fields sent change; `aliases` replaces the list. Options are
+    switched off (`active: false`), never deleted."""
+    return await service.update_search_filter_option(
+        session,
+        ctx=user,
+        option_id=option_id,
+        payload=payload,
+        request_id=get_request_id(request),
+    )
 
 
 # ---------------------------------------------------------------------------

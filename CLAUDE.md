@@ -254,6 +254,7 @@ test asserts**, so a placeholder cannot quietly become the product:
 | `analytics/domain.py` | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3 |
 | `billing/domain.py` | `DISCOUNT_POLICY_VERSION` starts `placeholder-` — no 100% code, first checkout only, one use per payer (blockers E36) |
 | `resume/vocabulary.py` | `VOCABULARY_VERSION` starts `placeholder-` — the spellings the review screen flags near misses of |
+| `discovery/catalogue.py` | `FILTER_CATALOGUE_VERSION` starts `placeholder-` — the starter skills and cities in the employer filter panel |
 
 Flipping one of these is a client decision, not a tidy-up.
 
@@ -446,6 +447,28 @@ is where a third one would have to be argued for.
   moved forward. Change one and you change both.
 - Tests move `now` forward (`service.dashboard(..., now=)`) rather than
   ageing `created_at`, which the application guard refuses to change.
+
+## Search filter options — 2026-09-24
+
+`search_filter_options` (owned by `discovery`), served at
+`/employer/discovery/filters[/skills|/locations]` and curated at
+`/admin/search-filters` (capability `search_filters`: PLATFORM_ADMIN and
+SUPPORT_AGENT).
+
+- **The catalogue suggests; it never restricts.** Search still takes any
+  text. A value naming an option (label, key or alias) searches every
+  spelling of it (`domain.filter_groups`); anything else searches itself,
+  in the search document's own key form, exactly as before.
+- **No count on any filter schema.** A test walks the panel's keys.
+- **Suggestions come from the catalogue, never from candidates' skills.** A
+  rare skill in a dropdown says somebody has it.
+- **One spelling, one option per kind, switched off or not** — unique
+  `(kind, key)`, and the aliases under a per-kind advisory lock. Options are
+  switched off, never deleted (no DELETE grant).
+- Its repository functions are in `READS_NO_CANDIDATE`; a new one must be too.
+- Tests create options with letters-only tokens and delete them as the
+  migrator (the `made` fixture in `test_search_filters.py`) — featured
+  options left behind would crowd the panel's 40.
 
 ## Access windows, the reveal and abuse controls — Day 14
 
