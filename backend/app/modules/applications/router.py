@@ -49,7 +49,7 @@ from app.modules.applications.schemas import (
     ApplicationStage,
     ApplyRequest,
     EmployerApplicationDetail,
-    EmployerApplicationSummary,
+    EmployerApplicationListItem,
     EmployerDashboard,
     MoveStageRequest,
     ScheduleInterviewRequest,
@@ -171,19 +171,26 @@ async def dispute_hire(
 # ---------------------------------------------------------------------------
 @employer_router.get(
     "",
-    response_model=Page[EmployerApplicationSummary],
+    response_model=Page[EmployerApplicationListItem],
     dependencies=[Readers, PayingEmployer],
-    summary="A job's applications, oldest first",
+    summary="The organisation's applications, oldest first, for one job or all of them",
 )
-async def list_for_job(
+async def list_applications(
     user: CurrentUser,
     session: DbSession,
-    job_id: Annotated[uuid.UUID, Query()],
+    job_id: Annotated[uuid.UUID | None, Query()] = None,
     stage: Annotated[ApplicationStage | None, Query()] = None,
     cursor: Annotated[str | None, Query(max_length=512)] = None,
     limit: Annotated[int | None, Query(ge=1, le=MAX_PAGE_SIZE)] = None,
-) -> Page[EmployerApplicationSummary]:
-    return await service.list_for_job(
+) -> Page[EmployerApplicationListItem]:
+    """Leave out `job_id` for every job's applications in one list -- the
+    pipeline board fills from this one request. Each row carries `job_title`
+    and `job_location`. Another organisation's `job_id` is `job_not_found`.
+
+    Read-only: listing never records VIEWED. Opening one application
+    (`GET /employer/applications/{id}`) does, so never open each row to draw
+    a list."""
+    return await service.list_for_employer(
         session, ctx=user, job_id=job_id, stage=stage, cursor=cursor, limit=limit
     )
 

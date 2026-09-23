@@ -460,6 +460,13 @@ async def test_another_tenants_job_has_no_pipeline_to_list(client: Any, mint_tok
     assert response.json()["code"] == "job_not_found"
     assert application not in response.text
 
+    # Without a job the list spans the organisation, and a query that forgot
+    # its tenant would hand A every organisation's pipeline.
+    everything = await client.get(f"{API}/employer/applications", headers=a["headers"])
+    assert everything.status_code == 200, everything.text
+    assert application not in everything.text
+    assert str(victim_job) not in everything.text
+
 
 async def test_college_routes_without_an_id_only_ever_return_the_callers_own(
     client: Any, mint_token: Any

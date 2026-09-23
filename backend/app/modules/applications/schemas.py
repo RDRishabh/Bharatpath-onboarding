@@ -145,6 +145,19 @@ class EmployerHistoryItem(_Base):
     occurred_at: datetime
 
 
+class EmployerApplicationListItem(EmployerApplicationSummary):
+    """A row of the pipeline list, carrying its job's label.
+
+    The list spans every job when no `job_id` is given, so each row names its
+    own job -- otherwise a board of forty cards is forty more requests to
+    learn what each was an application for. The job is the organisation's
+    own; nothing here is about the candidate.
+    """
+
+    job_title: str | None = None
+    job_location: str | None = None
+
+
 class EmployerApplicationDetail(EmployerApplicationSummary):
     history: list[EmployerHistoryItem]
 

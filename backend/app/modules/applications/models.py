@@ -128,6 +128,8 @@ class Application(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
         ),
         Index("ix_applications_candidate", "candidate_id", "created_at"),
         Index("ix_applications_job_stage", "job_id", "stage", "created_at"),
+        # The pipeline across every job, oldest first (`list_for_employer`).
+        Index("ix_applications_tenant_created", "tenant_id", "created_at", "id"),
         # The expiry sweep, per tenant, over open applications only.
         Index(
             "ix_applications_expiring",

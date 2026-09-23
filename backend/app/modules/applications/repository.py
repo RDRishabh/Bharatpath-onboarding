@@ -136,21 +136,23 @@ async def list_for_candidate(
     return list(result.scalars().all())
 
 
-async def list_for_job(
+async def list_for_employer(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-    job_id: uuid.UUID,
+    job_id: uuid.UUID | None,
     stage: str | None,
     after: tuple[datetime, uuid.UUID] | None,
     limit: int,
 ) -> list[Application]:
     """**Oldest first**, unlike the candidate's board: a pipeline is worked in
     the order people applied, and the oldest are the ones nearest expiry.
-    `ix_applications_job_stage`."""
-    stmt = select(Application).where(
-        Application.tenant_id == tenant_id, Application.job_id == job_id
-    )
+
+    One job (`ix_applications_job_stage`) or, with `job_id` None, every job
+    the organisation has (`ix_applications_tenant_created`)."""
+    stmt = select(Application).where(Application.tenant_id == tenant_id)
+    if job_id is not None:
+        stmt = stmt.where(Application.job_id == job_id)
     if stage is not None:
         stmt = stmt.where(Application.stage == stage)
     if after is not None:
