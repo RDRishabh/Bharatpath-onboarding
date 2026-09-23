@@ -3,7 +3,6 @@
 import {
   BriefcaseBusiness,
   MapPin,
-  EyeOff,
   Star,
 } from "lucide-react";
 
@@ -47,40 +46,6 @@ function getBand(score: number) {
   };
 }
 
-function getMaskedName(name: string) {
-  const trimmed = name.trim();
-
-  if (!trimmed) {
-    return "Masked candidate";
-  }
-
-  /*
-   * Reference:
-   * M. Shaikh -> M. S•••••
-   *
-   * Keep the first initial and first character
-   * of the surname, then mask the remaining
-   * surname characters.
-   */
-
-  const parts = trimmed.split(/\s+/);
-
-  if (parts.length === 1) {
-    return `${parts[0].slice(0, 2)}•••••`;
-  }
-
-  const firstName = parts[0];
-  const lastName = parts[parts.length - 1];
-
-  const firstInitial =
-    firstName.charAt(0).toUpperCase();
-
-  const lastInitial =
-    lastName.charAt(0).toUpperCase();
-
-  return `${firstInitial}. ${lastInitial}•••••`;
-}
-
 export function ApplicationCard({
   application,
   onClick,
@@ -92,13 +57,6 @@ export function ApplicationCard({
   const band = getBand(
     candidate.exactScore,
   );
-
-  const masked =
-    !candidate.unlocked;
-
-  const displayName = masked
-    ? getMaskedName(candidate.name)
-    : candidate.name;
 
   return (
     <button
@@ -170,30 +128,19 @@ export function ApplicationCard({
               band.avatarBackground,
           }}
         >
-          {masked ? (
-            <EyeOff
-              size={12}
-              strokeWidth={2}
-              style={{
-                color:
-                  band.avatarColor,
-              }}
-            />
-          ) : (
-            <span
-              className="
-                text-[11px]
-                font-bold
-                leading-none
-              "
-              style={{
-                color:
-                  band.avatarColor,
-              }}
-            >
-              {candidate.initials}
-            </span>
-          )}
+          <span
+            className="
+              text-[11px]
+              font-bold
+              leading-none
+            "
+            style={{
+              color:
+                band.avatarColor,
+            }}
+          >
+            {candidate.initials}
+          </span>
         </span>
 
         {/* NAME */}
@@ -211,7 +158,7 @@ export function ApplicationCard({
             text-[#252d3b]
           "
         >
-          {displayName}
+          {candidate.name}
         </span>
 
         {/* BAND */}
@@ -311,7 +258,7 @@ export function ApplicationCard({
             whitespace-nowrap
           "
         >
-          {candidate.location}
+          {candidate.location.trim() || "Location not provided"}
         </span>
       </span>
     </button>

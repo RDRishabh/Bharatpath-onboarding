@@ -59,7 +59,7 @@ export function ApplicationColumn({
         flex
         h-full
         min-h-0
-        w-[208px]
+        w-64
         shrink-0
         flex-col
         overflow-hidden
@@ -109,7 +109,7 @@ export function ApplicationColumn({
       </div>
 
       {/* BODY */}
-      <div className="flex flex-1 flex-col gap-2 px-3 pb-3">
+      <div className="bp-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
         {applications.length > 0 ? (
           applications.map(
             (application) => (

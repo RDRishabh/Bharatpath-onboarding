@@ -58,7 +58,7 @@ export function CandidateFilters({
             type="text"
             value={filters.search}
             onChange={(e) => onSearch(e.target.value)}
-            placeholder="Skill, role or area"
+            placeholder="Search skills"
             aria-label="Search candidates"
             className="min-w-0 flex-1 border-0 bg-transparent text-[13px] font-normal leading-[18px] text-[#182132] outline-none placeholder:text-[#687386]"
           />
@@ -143,7 +143,7 @@ export function CandidateFilters({
         {/* =================================================
             EXPERIENCE
             ================================================= */}
-        <FilterSection title="EXPERIENCE">
+        <FilterSection title="MINIMUM EXPERIENCE">
           <div className="flex flex-col gap-[2px]">
             {EXPERIENCE_DEFS.map((item) => (
               <CheckRow

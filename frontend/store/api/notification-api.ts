@@ -1,11 +1,41 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 
 import type {
+  Notification,
+  NotificationInboxItem,
+  NotificationInboxPage,
+  NotificationPreferenceChanges,
+  NotificationPreferences,
   NotificationResponse,
+  NotificationType,
 } from "@/features/notifications/types/notification.types";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "/api/v1";
+
+function notificationType(templateCode: string): NotificationType {
+  if (templateCode.includes("APPLICATION")) return "HIRING";
+  if (templateCode.includes("PAYMENT") || templateCode.includes("DEBIT")) {
+    return "PAYMENT";
+  }
+  if (templateCode.includes("COLLEGE_STUDENT")) return "STUDENT_LINKED";
+  if (templateCode.includes("KYB") || templateCode.includes("DISPUTE")) {
+    return "SECURITY";
+  }
+  if (templateCode.includes("INTERVIEW")) return "JOB";
+  return "SYSTEM";
+}
+
+function toNotification(item: NotificationInboxItem): Notification {
+  return {
+    id: item.id,
+    templateCode: item.template_code,
+    type: notificationType(item.template_code),
+    title: item.body,
+    timestamp: item.created_at,
+    read: item.read_at !== null,
+  };
+}
 
 export const notificationApi = createApi({
   reducerPath: "notificationApi",
@@ -16,76 +46,88 @@ export const notificationApi = createApi({
     credentials: "include",
 
     prepareHeaders: (headers) => {
-      headers.set(
-        "Content-Type",
-        "application/json"
-      );
+      headers.set("Accept", "application/json");
+
+      const bearerToken = process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
+      if (bearerToken) {
+        headers.set("Authorization", `Bearer ${bearerToken}`);
+      }
 
       return headers;
     },
   }),
 
-  tagTypes: ["Notifications"],
+  tagTypes: ["Notifications", "NotificationPreferences"],
 
   endpoints: (builder) => ({
     getNotifications: builder.query<
       NotificationResponse,
       {
         limit?: number;
+        cursor?: string;
       }
     >({
-      query: ({ limit = 10 } = {}) => ({
+      query: ({ limit = 10, cursor } = {}) => ({
         url: "/notifications",
         method: "GET",
         params: {
           limit,
+          ...(cursor ? { cursor } : {}),
         },
+      }),
+
+      transformResponse: (response: NotificationInboxPage): NotificationResponse => ({
+        notifications: response.items.map(toNotification),
+        unreadCount: response.unread,
+        nextCursor: response.next_cursor,
       }),
 
       providesTags: ["Notifications"],
     }),
 
     markNotificationRead: builder.mutation<
-      void,
+      Notification,
       string
     >({
       query: (notificationId) => ({
         url: `/notifications/${notificationId}/read`,
-        method: "PATCH",
+        method: "POST",
       }),
+
+      transformResponse: (response: NotificationInboxItem) =>
+        toNotification(response),
 
       invalidatesTags: ["Notifications"],
     }),
 
-    markAllNotificationsRead: builder.mutation<
-      void,
-      void
-    >({
+    getNotificationPreferences: builder.query<NotificationPreferences, void>({
       query: () => ({
-        url: "/notifications/read-all",
-        method: "PATCH",
+        url: "/notifications/preferences",
+        method: "GET",
       }),
 
-      invalidatesTags: ["Notifications"],
+      providesTags: ["NotificationPreferences"],
     }),
 
-    deleteNotification: builder.mutation<
-      void,
-      string
+    updateNotificationPreferences: builder.mutation<
+      NotificationPreferences,
+      NotificationPreferenceChanges
     >({
-      query: (notificationId) => ({
-        url: `/notifications/${notificationId}`,
-        method: "DELETE",
+      query: (changes) => ({
+        url: "/notifications/preferences",
+        method: "PATCH",
+        body: changes,
       }),
 
-      invalidatesTags: ["Notifications"],
+      invalidatesTags: ["NotificationPreferences"],
     }),
   }),
 });
 
 export const {
   useGetNotificationsQuery,
+  useGetNotificationPreferencesQuery,
+  useLazyGetNotificationsQuery,
   useMarkNotificationReadMutation,
-  useMarkAllNotificationsReadMutation,
-  useDeleteNotificationMutation,
+  useUpdateNotificationPreferencesMutation,
 } = notificationApi;

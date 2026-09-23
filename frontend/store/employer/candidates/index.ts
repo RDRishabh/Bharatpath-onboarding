@@ -6,6 +6,7 @@ export {
   toggleCandidateFilter,
   goToNextCandidatePage,
   goToPreviousCandidatePage,
+  setCandidatePageSize,
 } from "./candidates.slice";
 export type { EmployerCandidatesState } from "./candidates.slice";
 export {
@@ -13,10 +14,12 @@ export {
   selectEmployerCandidateSearch,
   selectEmployerCandidatePage,
   selectEmployerCandidateCursor,
+  selectEmployerCandidatePageSize,
 } from "./candidates.selectors";
 export {
   employerCandidatesApi,
   useSearchEmployerCandidatesQuery,
   useLazyRevealEmployerCandidateQuery,
+  useRevealEmployerCandidatesQuery,
 } from "./candidates.api";
 export type { RevealedCandidateResponse } from "./candidates.api";

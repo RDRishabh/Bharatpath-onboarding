@@ -146,6 +146,7 @@ export function PillButton({
   type = "button",
   icon,
   "aria-label": ariaLabel,
+  disabled = false,
 }: {
   children: ReactNode;
   variant?: PillVariant;
@@ -154,6 +155,7 @@ export function PillButton({
   type?: "button" | "submit";
   icon?: ReactNode;
   "aria-label"?: string;
+  disabled?: boolean;
 }) {
   const shape =
     variant === "tertiary"
@@ -165,8 +167,9 @@ export function PillButton({
       type={type}
       onClick={onClick}
       aria-label={ariaLabel}
+      disabled={disabled}
       className={[
-        "inline-flex items-center justify-center gap-2 font-semibold leading-5 transition-transform active:scale-[.98] cursor-pointer",
+        "inline-flex items-center justify-center gap-2 font-semibold leading-5 transition-transform active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer",
         shape,
         PILL_VARIANTS[variant],
         className,

@@ -298,7 +298,6 @@ bharatpath/
 │     │  ├─ notification-center.tsx
 │     │  └─ notification-dropdown.tsx
 │     ├─ index.ts
-│     ├─ mock-notifications.ts
 │     └─ types/
 │        └─ notification.types.ts
 │

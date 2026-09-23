@@ -59,6 +59,29 @@ analysis, as `text` edits always have.
 
 ---
 
+## 2026-09-23 — frontend production type-check restored
+
+The frontend production build had three stale wiring errors after the broader
+student contract fixes landed: the shared recent-activity component imported a
+type from the college dashboard even though only the employer dashboard defines
+that data, the job create/edit page called the shared API error formatter without
+importing it, and the completed college billing slice was never mounted in the
+root Redux store.
+
+The shared activity component now owns its small rendering contract instead of
+depending on either portal, job mutations use the existing centralized API error
+formatter, and `collegeBilling` is registered alongside the other portal state.
+The missing student formatter and RTK Query API modules were also restored from
+their backend-aligned contracts, reconnecting the existing student components
+and store barrel exports.
+The root request interceptor was migrated from Next.js's deprecated
+`middleware.ts` convention to `proxy.ts`; only the file and exported handler
+name changed, so the host-based portal routing and matcher remain identical.
+`npm run build` completes successfully, including TypeScript checking and static
+page generation.
+
+---
+
 ## 2026-09-23 — the employer's jobs list carries its own funnel
 
 Raised by the frontend team against the jobs screen: the table draws a column
@@ -513,8 +536,10 @@ their full dashboard UI with empty values and no blocking error panel.
 Added a shared rows-per-page selector to every frontend data table with 10 as
 the default and 25, 50 and 100 as options. Page-size changes return to the first
 page, filtered result sets clamp invalid page numbers, and tables with fewer
-than ten records retain accurate counts and controls. College table queries now
-request the backend's 100-row maximum so the larger selections have data.
+than ten records retain accurate counts and controls. The selector now uses the
+reusable custom `AppSelect` menu and opens upward from table footers to avoid
+clipping. College table queries request the backend's 100-row maximum so the
+larger selections have data.
 
 Validation: the changed pagination files pass TypeScript checking. Full
 `npx tsc --noEmit` remains blocked by 19 pre-existing errors in recent activity,

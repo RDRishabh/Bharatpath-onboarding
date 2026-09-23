@@ -86,6 +86,9 @@ export function useDashboard() {
       overviewQuery.isLoading ||
       seatsQuery.isLoading ||
       referralCodesQuery.isLoading,
+    isLoadingOverview: overviewQuery.isLoading,
+    isLoadingSeats: seatsQuery.isLoading,
+    isLoadingReferralCodes: referralCodesQuery.isLoading,
     isError:
       overviewQuery.isError ||
       seatsQuery.isError ||

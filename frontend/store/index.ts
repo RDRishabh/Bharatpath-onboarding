@@ -8,6 +8,7 @@ import notificationUIReducer from "./common/slices/notification-slice";
 import { baseApi } from "./api/base-api";
 import { notificationApi } from "./api/notification-api";
 
+import { collegeBillingReducer } from "./college/billing";
 import collegeSettingsReducer from "./college/settings/college-settings.slice";
 
 import employerBillingReducer from "./employer/billing/billing.slice";
@@ -55,16 +56,12 @@ export const store = configureStore({
      * ==========================================
      */
 
+    collegeBilling: collegeBillingReducer,
     collegeSettings: collegeSettingsReducer,
 
     /*
      * ==========================================
-     * STUDENT PORTAL STATE
-     *
-     * The candidate-facing mobile app. Holds
-     * saved jobs, the application board,
-     * notifications and feed filters — all
-     * seeded from static mock data.
+     * STUDENT PORTAL UI STATE
      * ==========================================
      */
 

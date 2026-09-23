@@ -19,6 +19,34 @@ interface StatusView {
   progress: number | null;
 }
 
+const DAY_MS = 86_400_000;
+
+function daysLeft(endIso: string | null): number | null {
+  if (!endIso) return null;
+  const end = new Date(endIso).getTime();
+  if (Number.isNaN(end)) return null;
+  return Math.max(0, Math.ceil((end - Date.now()) / DAY_MS));
+}
+
+function remainingLabel(days: number | null): string {
+  if (days === null) return "";
+  if (days <= 0) return "Last day";
+  if (days === 1) return "1 day left";
+  return `${days} days left`;
+}
+
+function periodProgress(
+  startIso: string | null,
+  endIso: string | null,
+): number | null {
+  if (!startIso || !endIso) return null;
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return null;
+  const remaining = ((end - Date.now()) / (end - start)) * 100;
+  return Math.max(0, Math.min(100, Math.round(remaining)));
+}
+
 function toView(
   subscription: EmployerSubscription | undefined,
 ): StatusView {
@@ -33,15 +61,21 @@ function toView(
 
   const { state, has_access } = subscription;
 
-  // Remaining-days / period detail is intentionally omitted until the credits
-  // API exists; only the status label is shown for an active plan.
   if (has_access) {
-    return {
-      label: state === "GRACE" ? "In grace" : "Active",
-      detail: state === "GRACE" ? "Renewal pending" : "",
-      active: true,
-      progress: null,
-    };
+    const remaining = remainingLabel(daysLeft(subscription.current_period_end));
+    const progress = periodProgress(
+      subscription.current_period_start,
+      subscription.current_period_end,
+    );
+    if (state === "GRACE") {
+      return {
+        label: "In grace",
+        detail: remaining || "Renewal pending",
+        active: true,
+        progress,
+      };
+    }
+    return { label: "Active", detail: remaining, active: true, progress };
   }
 
   switch (state) {

@@ -1,130 +1,105 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  BadgeCheck,
   Bookmark,
-  Share2,
+  BriefcaseBusiness,
   CheckCircle2,
-  Check,
-  Plus,
   MapPin,
-  Clock,
+  Share2,
 } from "lucide-react";
 
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
-  applyToJob,
-  toggleSavedJob,
-  selectHasApplied,
   selectIsJobSaved,
+  toggleSavedJob,
+  useApplyToStudentJobMutation,
+  useGetStudentApplicationsQuery,
+  useGetStudentJobQuery,
 } from "@/store/student";
-import { findJob, studentScore } from "@/features/student/data";
+import { getApiErrorMessage } from "@/lib/api/error-message";
 import {
+  employerMonogram,
+  formatDate,
+  formatSalary,
+  workModeLabel,
+} from "@/features/student/formatters";
+import {
+  EmptyState,
   IconCircleButton,
-  StatusChip,
-  SkillChip,
   NoteStrip,
   PillButton,
+  SkillChip,
+  StatusChip,
   StudentCard,
-  EmptyState,
 } from "@/features/student/components";
-import { StudentTopBar, StudentPage } from "@/features/student/shell";
-
-/*
- * ==========================================================================
- * JOB DETAIL — a navy hero banner with the bar gauge, then a responsive
- * two-column layout (details + apply card). Renders the "you qualify" and
- * "short of the bar" variants from one component.
- * ==========================================================================
- */
+import { StudentPage, StudentTopBar } from "@/features/student/shell";
 
 export function JobDetail() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const dispatch = useAppDispatch();
-
-  const job = findJob(params.id);
+  const job = useGetStudentJobQuery(params.id);
+  const applications = useGetStudentApplicationsQuery({ limit: 100 });
+  const [apply, applyState] = useApplyToStudentJobMutation();
   const saved = useAppSelector(selectIsJobSaved(params.id));
-  const applied = useAppSelector(selectHasApplied(params.id));
+  const applied = applications.data?.items.some(
+    (application) =>
+      application.jobId === params.id &&
+      !["WITHDRAWN", "REJECTED", "EXPIRED"].includes(application.stage),
+  );
 
-  if (!job) {
+  if (job.isLoading) {
     return (
       <StudentPage width="narrow">
-        <EmptyState
-          title="Job not found"
-          message="This job may have been closed. Head back to the feed for open roles."
-        />
-        <div className="mt-4">
-          <PillButton
-            className="w-full"
-            onClick={() => router.push("/student/jobs")}
-          >
-            Back to jobs
-          </PillButton>
+        <div className="rounded-2xl border border-[#E7E0D4] bg-white p-5 text-sm text-[#5F6B80]">
+          Loading job…
         </div>
       </StudentPage>
     );
   }
 
-  const isMatch = job.match === "match";
-  const you = studentScore.value;
-  const bar = job.requiredScore;
-  const reach = Math.min(100, Math.max(6, ((you - 600) / (990 - 600)) * 100));
-  const barPos = Math.min(100, Math.max(0, ((bar - 600) / (990 - 600)) * 100));
-
-  const apply = () => {
-    dispatch(applyToJob(job.id));
-    router.push("/student/board");
-  };
-
-  let applyActions: ReactNode;
-  if (!isMatch) {
-    applyActions = (
-      <PillButton
-        className="w-full"
-        onClick={() => router.push("/student/score/improve")}
-      >
-        Raise my score
-      </PillButton>
-    );
-  } else if (applied) {
-    applyActions = (
-      <PillButton
-        variant="secondary"
-        className="w-full"
-        onClick={() => router.push("/student/board")}
-      >
-        Applied · see my board
-      </PillButton>
-    );
-  } else {
-    applyActions = (
-      <div className="flex gap-2">
+  if (!job.data || job.error) {
+    return (
+      <StudentPage width="narrow">
+        <EmptyState
+          title="Job unavailable"
+          message={getApiErrorMessage(
+            job.error,
+            "This job may have been closed.",
+          )}
+        />
         <PillButton
-          variant="secondary"
-          className="flex-1"
-          onClick={() => dispatch(toggleSavedJob(job.id))}
+          className="mt-4 w-full"
+          onClick={() => router.push("/student/jobs")}
         >
-          {saved ? "Saved" : "Save"}
+          Back to jobs
         </PillButton>
-        <PillButton className="flex-[1.5]" onClick={apply}>
-          Apply now
-        </PillButton>
-      </div>
+      </StudentPage>
     );
   }
+
+  const listing = job.data;
+  const eligible = listing.eligibility === "ELIGIBLE";
+
+  const submitApplication = async () => {
+    try {
+      await apply(listing.id).unwrap();
+      router.push("/student/board");
+    } catch {
+      // Mutation state renders the backend-mapped error below.
+    }
+  };
 
   return (
     <StudentPage width="medium">
       <StudentTopBar
-        title={job.title}
+        title={listing.title}
         right={
           <div className="flex items-center gap-2">
             <IconCircleButton
               aria-label={saved ? "Remove saved job" : "Save job"}
-              onClick={() => dispatch(toggleSavedJob(job.id))}
+              onClick={() => dispatch(toggleSavedJob(listing.id))}
             >
               <Bookmark
                 size={16}
@@ -139,160 +114,115 @@ export function JobDetail() {
         }
       />
 
-      {/* Hero banner */}
       <div className="flex flex-col gap-4 rounded-[24px] bg-[#5F4DB2] p-5 sm:p-6">
         <div className="flex items-start gap-3.5">
           <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/10 text-[16px] font-bold text-[#F4D685]">
-            {job.monogram}
+            {employerMonogram(listing.employerName)}
           </span>
           <div className="flex flex-col gap-1 pt-1">
             <span className="text-[22px] font-bold leading-7 tracking-[-0.02em] text-white">
-              {job.title}
+              {listing.title}
             </span>
-            <span className="flex items-center gap-1.5 text-[13px] text-[#E0DBF4]">
-              {job.company}
-              {job.companyVerified ? (
-                <BadgeCheck size={14} className="text-[#F4D685]" />
-              ) : null}
+            <span className="text-[13px] text-[#E0DBF4]">
+              {listing.employerName ?? "Employer"}
             </span>
           </div>
         </div>
-
-        {/* Bar gauge */}
-        <div className="flex flex-col gap-3 rounded-2xl border border-white/20 bg-white/10 p-4">
-          <div className="relative pt-6">
-            <span
-              className="absolute top-0 -translate-x-1/2 rounded-full bg-white px-2 py-[3px] text-[10px] font-bold text-[#0A1931]"
-              style={{ left: `${reach}%` }}
-            >
-              You {you}
-            </span>
-            <span className="relative block h-1.5 rounded-full bg-white/25">
-              <span
-                className="absolute left-0 top-0 bottom-0 rounded-full"
-                style={{
-                  width: `${reach}%`,
-                  background: "linear-gradient(90deg,#F4D685,#D4AF37)",
-                }}
-              />
-              <span
-                className="absolute -top-1 -bottom-1 w-0.5 rounded bg-white"
-                style={{ left: `${barPos}%` }}
-              />
-            </span>
-            <div className="mt-2 flex justify-between text-[10px] text-[#E0DBF4]">
-              <span>Your score {you}</span>
-              <span className="font-semibold text-white">Their bar {bar}</span>
-            </div>
-          </div>
-
-          {isMatch ? (
-            <StatusChip tone="match" icon={<CheckCircle2 size={12} />}>
-              Bar cleared
-            </StatusChip>
-          ) : (
-            <div className="flex items-center gap-2">
-              <StatusChip tone="short">{job.pointsShort} short</StatusChip>
-              <span className="text-[12px] text-[#E0DBF4]">
-                The employer set this bar, not us.
-              </span>
-            </div>
-          )}
-        </div>
+        <StatusChip
+          tone={eligible ? "match" : "waiting"}
+          icon={eligible ? <CheckCircle2 size={12} /> : undefined}
+        >
+          {eligible
+            ? "Eligible to apply"
+            : listing.eligibility === "SCORE_PENDING"
+              ? "Score pending"
+              : "Not eligible"}
+        </StatusChip>
       </div>
 
-      {/* Details + apply */}
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-        {/* Left: details */}
         <div className="flex flex-col gap-3.5">
-          {!isMatch && job.closingFix ? (
-            <>
-              <span className="text-[11px] font-bold uppercase leading-4 tracking-[0.12em] text-[#5F6B80]">
-                One fix closes the gap
-              </span>
-              <button
-                type="button"
-                onClick={() => router.push("/student/score/improve")}
-                className="flex items-center justify-between gap-3 rounded-[20px] border border-[#E7E0D4] bg-white p-4 text-left transition-transform active:scale-[.99]"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-[#5F4DB2] text-white">
-                    <Plus size={16} />
-                  </span>
-                  <span className="text-[14px] font-semibold text-[#0A1931]">
-                    {job.closingFix.title}
-                  </span>
-                </span>
-                <span className="rounded-full border border-[#DDD6C7] px-3 py-1.5 text-[12px] font-bold text-[#0A1931]">
-                  +{job.closingFix.points}
-                </span>
-              </button>
-            </>
-          ) : null}
-
           <div className="flex flex-wrap gap-2">
-            <MetaChip icon={<MapPin size={13} />}>{job.workMode}</MetaChip>
-            <MetaChip icon={<Clock size={13} />}>{job.category}</MetaChip>
-            <MetaChip>{job.isFresher ? "Fresher friendly" : "Some experience"}</MetaChip>
+            <Meta icon={<MapPin size={13} />}>
+              {listing.location ?? "Location not specified"}
+            </Meta>
+            <Meta icon={<BriefcaseBusiness size={13} />}>
+              {workModeLabel(listing.workMode)}
+            </Meta>
           </div>
-
-          <span className="pt-1 text-[11px] font-bold uppercase leading-4 tracking-[0.12em] text-[#5F6B80]">
-            What you would do
-          </span>
-          <p className="text-[14px] leading-[22px] text-[#3A4761]">
-            {job.responsibilities}
-          </p>
-
-          <span className="pt-1 text-[11px] font-bold uppercase leading-4 tracking-[0.12em] text-[#5F6B80]">
-            Skills they look for
-          </span>
-          <div className="flex flex-wrap gap-2">
-            {job.skills.map((skill) => (
-              <SkillChip key={skill} variant="add" icon={<Check size={12} />}>
-                {skill}
-              </SkillChip>
-            ))}
-          </div>
-
-          <NoteStrip icon={<Bookmark size={16} />}>
-            Your name stays hidden until an employer opens your profile. Your
-            resume file is never shared.
-          </NoteStrip>
-        </div>
-
-        {/* Right: apply card */}
-        <div className="h-fit lg:sticky lg:top-4">
           <StudentCard>
-            <div className="flex flex-col gap-3">
-              <span className="text-[20px] font-bold tracking-[-0.02em] text-[#0A1931]">
-                {job.salaryLabel}
-                <span className="text-[13px] font-normal text-[#5F6B80]">/mo</span>
-              </span>
-              <span className="text-[13px] text-[#5F6B80]">
-                {job.location}
-                {job.distanceKm != null ? ` · ${job.distanceKm} km away` : ""}
-              </span>
-              <span className="text-[13px] text-[#5F6B80]">
-                Posted {job.postedAgo} · {job.applicantCount} applied
-              </span>
-              <div className="mt-1 border-t border-[#F0EBDF] pt-3">{applyActions}</div>
+            <h2 className="mb-2 text-[16px] font-bold text-[#0A1931]">
+              About the role
+            </h2>
+            <p className="text-[14px] leading-6 text-[#3A4761]">
+              {listing.description || "No description was provided."}
+            </p>
+          </StudentCard>
+          <StudentCard>
+            <h2 className="mb-3 text-[16px] font-bold text-[#0A1931]">Skills</h2>
+            <div className="flex flex-wrap gap-2">
+              {listing.skills.map((skill) => (
+                <SkillChip key={skill}>{skill}</SkillChip>
+              ))}
             </div>
           </StudentCard>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <StudentCard>
+            <span className="text-[18px] font-bold text-[#0A1931]">
+              {formatSalary(listing)}
+            </span>
+            <span className="mt-1 block text-[12px] text-[#5F6B80]">
+              Published {formatDate(listing.publishedAt)}
+            </span>
+          </StudentCard>
+          {applied ? (
+            <PillButton
+              variant="secondary"
+              className="w-full"
+              onClick={() => router.push("/student/board")}
+            >
+              Applied · see my board
+            </PillButton>
+          ) : (
+            <PillButton
+              className="w-full"
+              disabled={
+                !eligible || applyState.isLoading || applications.isLoading
+              }
+              onClick={() => void submitApplication()}
+            >
+              {applications.isLoading
+                ? "Checking applications…"
+                : applyState.isLoading
+                  ? "Applying…"
+                  : "Apply now"}
+            </PillButton>
+          )}
+          {applyState.error ? (
+            <NoteStrip tone="amber">
+              {getApiErrorMessage(
+                applyState.error,
+                "Could not submit your application.",
+              )}
+            </NoteStrip>
+          ) : null}
         </div>
       </div>
     </StudentPage>
   );
 }
 
-function MetaChip({
-  children,
+function Meta({
   icon,
+  children,
 }: {
-  children: ReactNode;
-  icon?: ReactNode;
+  icon: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
-    <span className="flex items-center gap-1.5 rounded-full bg-[#F7F4EC] px-3 py-2 text-[12px] font-medium text-[#3A4761]">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E7E0D4] bg-white px-3 py-2 text-[12px] text-[#3A4761]">
       {icon}
       {children}
     </span>

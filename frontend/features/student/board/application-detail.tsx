@@ -1,171 +1,207 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { Video, Check, Undo2 } from "lucide-react";
+import { Check, ExternalLink, Undo2 } from "lucide-react";
 
-import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { withdrawApplication, selectApplications } from "@/store/student";
-import { StudentTopBar, StudentPage } from "@/features/student/shell";
 import {
+  useConfirmStudentHireMutation,
+  useDisputeStudentHireMutation,
+  useGetStudentApplicationQuery,
+  useWithdrawStudentApplicationMutation,
+} from "@/store/student";
+import { getApiErrorMessage } from "@/lib/api/error-message";
+import {
+  applicationTimeline,
+  employerMonogram,
+  formatDate,
+  formatDateTime,
+  stageLabel,
+} from "@/features/student/formatters";
+import {
+  EmptyState,
   MonogramTile,
+  NoteStrip,
+  PillButton,
   StatusChip,
   StudentCard,
-  PillButton,
-  EmptyState,
-  type ChipTone,
 } from "@/features/student/components";
-
-/*
- * ==========================================================================
- * APPLICATION DETAIL — the full record for one application: the interview
- * card when it advanced, a "where things stand" timeline, and withdraw.
- * ==========================================================================
- */
-
-const STATUS_TONE: Record<string, ChipTone> = {
-  SUBMITTED: "waiting",
-  VIEWED: "waiting",
-  SHORTLISTED: "advanced",
-  INTERVIEW: "advanced",
-  OFFER: "advanced",
-  REJECTED: "short",
-  WITHDRAWN: "neutral",
-};
+import { StudentPage, StudentTopBar } from "@/features/student/shell";
 
 export function ApplicationDetail() {
   const params = useParams<{ id: string }>();
-  const dispatch = useAppDispatch();
+  const application = useGetStudentApplicationQuery(params.id);
+  const [withdraw, withdrawState] = useWithdrawStudentApplicationMutation();
+  const [confirmHire, confirmState] = useConfirmStudentHireMutation();
+  const [disputeHire, disputeState] = useDisputeStudentHireMutation();
 
-  const application = useAppSelector(selectApplications).find(
-    (app) => app.id === params.id,
-  );
+  if (application.isLoading) {
+    return (
+      <StudentPage width="narrow">
+        <div className="rounded-2xl border border-[#E7E0D4] bg-white p-5 text-sm text-[#5F6B80]">
+          Loading application…
+        </div>
+      </StudentPage>
+    );
+  }
 
-  if (!application) {
+  if (!application.data || application.error) {
     return (
       <StudentPage width="narrow">
         <StudentTopBar title="Application" />
         <EmptyState
-          title="Application not found"
-          message="This application is no longer on your board."
+          title="Application unavailable"
+          message={getApiErrorMessage(
+            application.error,
+            "This application is no longer available.",
+          )}
         />
       </StudentPage>
     );
   }
 
-  const withdrawn = application.status === "WITHDRAWN";
+  const item = application.data;
+  const timeline = applicationTimeline(item);
+  const closed = ["HIRED", "REJECTED", "WITHDRAWN", "EXPIRED"].includes(
+    item.stage,
+  );
+  const actionError =
+    withdrawState.error ?? confirmState.error ?? disputeState.error;
 
   return (
     <StudentPage width="medium">
-      <StudentTopBar title={application.title} />
-
+      <StudentTopBar title={item.jobTitle ?? "Application"} />
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        {/* Main column */}
         <div className="flex flex-col gap-4">
-          {/* Identity */}
           <div className="flex items-center gap-3">
             <MonogramTile tint="indigo" size={48}>
-              {application.monogram}
+              {employerMonogram(item.employerName)}
             </MonogramTile>
             <div className="flex flex-1 flex-col gap-1">
-              <span className="text-[15px] font-bold tracking-[-0.02em] text-[#0A1931]">
-                {application.company}
+              <span className="text-[15px] font-bold text-[#0A1931]">
+                {item.employerName ?? "Employer"}
               </span>
               <span className="text-[12px] text-[#5F6B80]">
-                Applied {application.appliedOn}
+                Applied {formatDate(item.createdAt)}
               </span>
             </div>
-            <StatusChip tone={STATUS_TONE[application.status]}>
-              {application.stageLabel}
+            <StatusChip
+              tone={closed ? "neutral" : "advanced"}
+            >
+              {stageLabel(item.stage)}
             </StatusChip>
           </div>
 
-          {/* Timeline */}
           <StudentCard>
             <span className="text-[15px] font-semibold text-[#0A1931]">
               Where things stand
             </span>
             <ol className="mt-4 flex flex-col">
-              {application.timeline.map((step, index) => {
-                const isLast = index === application.timeline.length - 1;
-                return (
-                  <li key={step.label} className="flex gap-3">
-                    <div className="flex flex-col items-center">
-                      <span
-                        className={[
-                          "grid h-6 w-6 shrink-0 place-items-center rounded-full",
-                          step.reached
-                            ? "bg-[#5F4DB2] text-white"
-                            : "border border-[#E7E0D4] bg-white text-[#B5AC96]",
-                        ].join(" ")}
-                      >
-                        {step.reached ? <Check size={12} /> : null}
-                      </span>
-                      {!isLast ? (
-                        <span
-                          className="w-px flex-1"
-                          style={{
-                            minHeight: 22,
-                            background: step.reached ? "#5F4DB2" : "#E7E0D4",
-                          }}
-                        />
-                      ) : null}
-                    </div>
+              {timeline.map((step, index) => (
+                <li key={step.label} className="flex gap-3">
+                  <div className="flex flex-col items-center">
                     <span
                       className={[
-                        "pb-5 text-[14px] leading-5",
+                        "grid h-6 w-6 shrink-0 place-items-center rounded-full",
                         step.reached
-                          ? "font-medium text-[#0A1931]"
-                          : "text-[#8891a0]",
+                          ? "bg-[#5F4DB2] text-white"
+                          : "border border-[#E7E0D4] bg-white text-[#B5AC96]",
                       ].join(" ")}
                     >
-                      {step.label}
+                      {step.reached ? <Check size={12} /> : null}
                     </span>
-                  </li>
-                );
-              })}
+                    {index < timeline.length - 1 ? (
+                      <span className="min-h-6 w-px flex-1 bg-[#E7E0D4]" />
+                    ) : null}
+                  </div>
+                  <span className="pb-5 text-[14px] text-[#3A4761]">
+                    {step.label}
+                  </span>
+                </li>
+              ))}
             </ol>
           </StudentCard>
-        </div>
 
-        {/* Side column */}
-        <div className="flex flex-col gap-4">
-          {application.interview && !withdrawn ? (
+          {item.history?.length ? (
             <StudentCard>
-              <div className="flex flex-col gap-3">
-                <span className="flex items-center gap-2 text-[11px] font-bold uppercase leading-3 tracking-[0.12em] text-[#4A3E8F]">
-                  <Video size={14} />
-                  Interview scheduled
-                </span>
-                <span className="text-[20px] font-bold tracking-[-0.02em] text-[#0A1931]">
-                  {application.interview.when}
-                </span>
-                <span className="text-[13px] leading-[18px] text-[#5E4DB2]">
-                  {application.interview.mode}, with {application.interview.withWhom}.
-                </span>
-                <div className="flex gap-2 pt-1">
-                  <PillButton variant="in-card" className="flex-1 !py-3 !text-[14px]">
-                    Add to calendar
-                  </PillButton>
-                  <PillButton className="flex-1 !py-3 !text-[14px]">Join call</PillButton>
-                </div>
+              <span className="text-[15px] font-semibold text-[#0A1931]">
+                Activity
+              </span>
+              <div className="mt-3 flex flex-col gap-3">
+                {item.history.map((event) => (
+                  <div
+                    key={`${event.kind}-${event.occurredAt}`}
+                    className="flex justify-between gap-3 text-[12px]"
+                  >
+                    <span className="text-[#3A4761]">
+                      {stageLabel(event.toStage)}
+                    </span>
+                    <span className="text-[#5F6B80]">
+                      {formatDateTime(event.occurredAt)}
+                    </span>
+                  </div>
+                ))}
               </div>
             </StudentCard>
           ) : null}
+        </div>
 
-          {!withdrawn ? (
+        <div className="flex flex-col gap-3">
+          {item.interview ? (
+            <StudentCard>
+              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#4A3E8F]">
+                Interview scheduled
+              </span>
+              <span className="mt-2 block text-[18px] font-bold text-[#0A1931]">
+                {formatDateTime(item.interview.interviewAt)}
+              </span>
+              <a
+                href={item.interview.meetingUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex items-center gap-2 text-[14px] font-semibold text-[#5F4DB2]"
+              >
+                Join interview <ExternalLink size={14} />
+              </a>
+            </StudentCard>
+          ) : null}
+
+          {item.hireConfirmation === "PENDING" ? (
+            <>
+              <PillButton
+                className="w-full"
+                disabled={confirmState.isLoading}
+                onClick={() => void confirmHire(item.id)}
+              >
+                Confirm hire
+              </PillButton>
+              <PillButton
+                variant="secondary"
+                className="w-full"
+                disabled={disputeState.isLoading}
+                onClick={() => void disputeHire(item.id)}
+              >
+                Dispute hire
+              </PillButton>
+            </>
+          ) : null}
+
+          {!closed ? (
             <PillButton
               variant="secondary"
               className="w-full !text-[#3A4761]"
               icon={<Undo2 size={16} />}
-              onClick={() => dispatch(withdrawApplication(application.id))}
+              disabled={withdrawState.isLoading}
+              onClick={() => void withdraw(item.id)}
             >
               Withdraw application
             </PillButton>
-          ) : (
-            <div className="rounded-2xl bg-[#F7F4EC] p-4 text-center text-[13px] text-[#5F6B80]">
-              You withdrew this application. Your data stays with you.
-            </div>
-          )}
+          ) : null}
+
+          {actionError ? (
+            <NoteStrip tone="amber">
+              {getApiErrorMessage(actionError, "Could not update the application.")}
+            </NoteStrip>
+          ) : null}
         </div>
       </div>
     </StudentPage>

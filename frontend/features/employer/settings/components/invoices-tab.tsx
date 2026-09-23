@@ -30,7 +30,11 @@ export function InvoicesTab() {
           <span />
         </div>
 
-        {invoices.map((invoice) => (
+        {invoices.length === 0 ? (
+          <p className="border-t border-[#edf0f3] px-[18px] py-6 text-center text-xs leading-5 text-[#718096]">
+            No invoices are available yet. Completed billing transactions will appear here.
+          </p>
+        ) : invoices.map((invoice) => (
           <div
             key={invoice.id}
             className="grid min-h-[59px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] border-t border-[#edf0f3] px-[18px] max-sm:grid-cols-[minmax(0,1fr)_75px_65px_22px] max-sm:gap-2 max-sm:px-2.5"

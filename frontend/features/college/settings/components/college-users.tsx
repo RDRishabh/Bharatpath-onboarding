@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { UserPlus, X } from "lucide-react";
 
+import { ListSkeleton } from "@/components/common/loading";
+
 import type { CollegeTeamRole } from "@/store/college/types";
 
 import { useSettings } from "../hooks/use-settings";
@@ -13,7 +15,7 @@ const ROLE_OPTIONS: { value: CollegeTeamRole; label: string }[] = [
 ];
 
 export function CollegeUsers() {
-  const { users, inviteUser, removeUser, isInvitingUser } = useSettings();
+  const { users, isLoadingUsers, inviteUser, removeUser, isInvitingUser } = useSettings();
 
   const [showInvite, setShowInvite] = useState(false);
   const [email, setEmail] = useState("");
@@ -70,13 +72,19 @@ export function CollegeUsers() {
 
         {/* Users */}
         <div>
-          {users.length === 0 && (
-            <p className="px-5 py-6 text-[13px] text-[#64748b]">
-              No portal users yet. Add a placement cell member to get started.
-            </p>
-          )}
+          {isLoadingUsers ? (
+            <div className="px-5 py-4">
+              <ListSkeleton rows={3} avatar trailing />
+            </div>
+          ) : (
+            <>
+              {users.length === 0 && (
+                <p className="px-5 py-6 text-[13px] text-[#64748b]">
+                  No portal users yet. Add a placement cell member to get started.
+                </p>
+              )}
 
-          {users.map((user, index) => (
+              {users.map((user, index) => (
             <div
               key={user.userId}
               className={[
@@ -126,6 +134,8 @@ export function CollegeUsers() {
               </button>
             </div>
           ))}
+            </>
+          )}
         </div>
       </section>
 

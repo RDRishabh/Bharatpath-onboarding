@@ -8,6 +8,11 @@ export interface Candidate {
   experienceYears: number;
   skills: string[];
   badges: CandidateBadge[];
+  // Populated from the reveal when masking is off.
+  fullName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  score?: number | null;
 }
 
 export interface CandidateFiltersState {
