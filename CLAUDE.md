@@ -432,6 +432,21 @@ is where a third one would have to be argued for.
   digits in a row, the contact filter drops it as a phone number, and the test
   fails about one run in ten.
 
+## The employer dashboard — 2026-09-23
+
+`GET /employer/dashboard` and `/employer/dashboard/activity`, in the
+`applications` module (`backend-guide/06` §8).
+
+- **Counts and application ids only.** No name, contact, score or candidate
+  id in any dashboard schema; who someone is stays behind the reveal.
+- **The activity feed reaches `application_events` only through a join to
+  `applications`**, which is what applies the tenant policy. Never query the
+  events table by tenant any other way. It has no RLS of its own.
+- `expiring_within_7_days` is `domain.expiry_horizon`, which is the sweep's rule
+  moved forward. Change one and you change both.
+- Tests move `now` forward (`service.dashboard(..., now=)`) rather than
+  ageing `created_at`, which the application guard refuses to change.
+
 ## Access windows, the reveal and abuse controls — Day 14
 
 - **For an employer the subscription IS the access window** (R14).
@@ -645,6 +660,13 @@ is where a third one would have to be argued for.
   candidate and `platform_tenant_bound()`; `guard_dispute_write` lets only a
   PLATFORM-bound transaction change state. Resolving records words and **moves
   nothing else**. A candidate's hire dispute is filed by `admin.open_hire_dispute`.
+
+**The console dashboard** (`GET /admin/dashboard`, 2026-09-23) is capability
+`dashboard`, held by every staff role. Each queue section inside is gated by
+`domain.dashboard_sections`, which reads the queue's own capability, so a
+new queue section means a new entry there and never a check written by
+hand. It is one `_reveal` per load. Its tests assert deltas, because the
+counts cover the whole shared database.
 
 ## Notifications and the relay — Day 19
 

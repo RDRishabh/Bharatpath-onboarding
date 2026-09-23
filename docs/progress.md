@@ -9,6 +9,139 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-23 — the admin console can list candidates
+
+Reported: `GET /admin/tenants?type=CANDIDATE` answers 422. That is correct,
+since a candidate is not a tenant. The real gap was that the console had
+no way to *find* a candidate at all: `GET /admin/candidates/{user_id}` needed
+an id nobody could look up.
+
+**`GET /admin/candidates`**: candidate accounts, newest first, filtered by
+`status`, `q` (part of the full name) and `email` (the exact address).
+Rows carry id, status, name, city, state, masked phone and email, created_at.
+Documented in `backend-guide/13` §4.
+
+### Decisions worth knowing
+
+- **Same capability as the drill-down (`candidate_drilldown`)**: whoever
+  may open a candidate may find one. Not a new capability, so the two cannot
+  drift apart.
+- **Audited, where `/admin/tenants` is not**: every row names a person. One
+  `admin_bypass_session_opened` row per page, `view: candidates`. **The search
+  terms are not in the metadata**, only `by_name` / `by_email` flags; a
+  name or an address is personal data, and the audit log holds ids.
+- **The row is for picking, not reading**: no score, band, CV, subscription
+  or application counts. All of that stays behind the drill-down, which
+  audits the one person opened.
+- **`email` is exact, not partial**, so it cannot enumerate a domain. `q`
+  escapes `%` and `_`, like `/admin/tenants`.
+- **Index `ix_users_pool_created (pool, created_at, id)`** on `users`, and the
+  query is in `test_index_review.py` `HOT_PATHS`. **It is on the model, so
+  only a rebuilt database has it.** Locally it was created by hand
+  (`CREATE INDEX IF NOT EXISTS ...`). The EC2 database was built from the
+  baseline before this change and will not get it from `alembic upgrade`. It
+  needs the same statement run once, or the list scans `users` there.
+
+---
+
+## 2026-09-23 — the admin console gets a dashboard endpoint
+
+Asked by the frontend team: KYB awaiting review, integrity flags, open
+disputes, active employers, oldest items waiting, platform totals. The page
+was built from the queue endpoints: a hundred rows of each, counted, shown
+as "100+" past that, with two audited bypass sessions per load, "Candidates"
+hard-coded to "Unavailable" and the intake/cleared chart given `[]`.
+
+**`GET /admin/dashboard`**, one request, one audit row. Sections: `kyb`
+(the R15 switch, awaiting review, awaiting the employer, oldest), `integrity`
+(open by severity, **candidates held back** — people with an OPEN HIGH signal,
+already out of search before anyone looked), `disputes` (open, in review,
+unassigned, by kind), `organisations` (employers and colleges by status),
+`platform_totals` (candidates, employers, colleges, published jobs,
+applications, confirmed hires), `oldest_waiting` (five, across the queues),
+and `throughput` (14 IST days of intake vs cleared). Documented in
+`backend-guide/13` §0.5.
+
+### Decisions worth knowing
+
+- **A new capability, `dashboard`, for every staff role, and each queue
+  section is null unless the caller holds that queue's own capability**
+  (`domain.dashboard_sections`, read from `CONSOLE_ROLES`). A KYB reviewer's
+  landing page does not count integrity signals they cannot open. Platform
+  totals are for everyone: counts, naming nobody. `oldest_waiting` and
+  `throughput` are drawn only from the sections shown.
+- **Audited, through `_reveal`, once per load**: `oldest_waiting` names
+  organisations and candidate ids. Added to `test_no_audit_row_means_no_reveal`
+  and to `ROUTE_CAPABILITY`.
+- **Auto-approved KYB is neither intake nor cleared** on the chart: it never
+  waited on anyone. While `review_required` is false the KYB tiles read zero,
+  which is true.
+- Tests assert **deltas around one action**, never absolute numbers: the
+  console counts the whole shared test database.
+
+### A cost to watch
+
+`throughput` filters `integrity_signals` and `disputes` on `created_at` and
+`resolved_at`, which no index leads with, so it scans both tables per load.
+Both are small now (one row per flagged CV, one per complaint). If either
+grows, an index on `(resolved_at)` and `(created_at)` is the fix, and the
+query shapes belong in `test_index_review.py` `HOT_PATHS` then.
+
+---
+
+## 2026-09-23 — the employer dashboard gets its own endpoint
+
+Asked by the frontend team: active jobs, total applicants, top-k jobs by
+applicants, and "recent activity — to be discussed", with more metrics to
+come. The dashboard page was assembling these itself: the jobs list, then
+**every job's applications paged through in full just to count them** —
+one request per job per hundred applications, on every load. Two cards
+("Candidates unlocked", "Credit balance") were hard-coded to 0.
+
+**`GET /employer/dashboard`** answers it in one request, every tile counted
+from one snapshot: jobs by state, applications (total, open, distinct
+candidates, new in 7 and 30 days, by stage), what needs attention (unreviewed,
+interviews to schedule and coming up, hires awaiting the candidate or
+disputed, applications that will expire within a week), candidates revealed,
+the top k jobs (1–20, default 5), the next five interviews, and 30 IST days
+of applications per day. **`GET /employer/dashboard/activity`** is the pipeline
+history across every job, newest first, cursor-paged, filterable by who acted.
+Both: any employer role, behind the subscription like the pipeline.
+Documented for app teams in `backend-guide/06` §8.
+
+### Decisions worth knowing
+
+- **It lives in `applications`**, mounted by `get_extra_routers()`. That is
+  where the data is, and `applications.service` already calls `jobs.service`
+  and `discovery.service`. In `employer` it would have closed an import cycle
+  (`jobs.service` imports `employer.service`).
+- **`expiring_within_7_days` is the sweep's own rule moved forward**
+  (`domain.expiry_horizon`), read against the live `applications.expiry` row,
+  so the tile and the sweep cannot disagree. A unit test holds the boundary
+  to `expires()` itself. A bad config row is a 500 here as in the sweep.
+- **The activity feed reads `application_events`, which has no RLS**, only
+  through a join to `applications` under the tenant policy. A test shows
+  another organisation's events never appear. No `note` and no candidate id:
+  a feed is read at a glance by the whole team.
+- **`candidates_revealed` counts distinct people** from the organisation's
+  own `candidate_view_events` (`discovery.repository.revealed_counts`, added
+  to `READS_NO_CANDIDATE`), as the caps do. Re-opening is not counted twice.
+- **`applications_per_day` counts in `Asia/Kolkata`**, not `+05:30`: Postgres
+  reads a POSIX offset with the sign reversed.
+- Two new query shapes in `test_index_review.py` `HOT_PATHS`.
+
+### Not built, deliberately
+
+- **"Credit balance"** has no backend counterpart. There are subscriptions,
+  not credits, and "credit" beside a score is close to the framing invariant
+  6 exists to keep out. The card needs a product decision, not an endpoint.
+- **Job-posted, reveal, KYB and purchase events are not in the feed.** The
+  mock-up shows them; the ask said the feed is still to be discussed. Each is
+  a different table with its own visibility rules, so it is a union to agree
+  first rather than guess at.
+
+---
+
 ## 2026-09-23 — the review screen reads a CV as sections, and edits it that way
 
 Raised by the frontend team against the review design (cards for education,

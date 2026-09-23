@@ -43,12 +43,18 @@ from app.core.tenant import TenantContext
 from app.modules.admin import repository
 from app.modules.admin.domain import (
     CLOSED_DISPUTE_STATES,
+    DISPUTE_KINDS,
     DISPUTE_STATES,
+    IST_ZONE_NAME,
+    OLDEST_ITEMS,
+    dashboard_sections,
     dispute_refusal,
     dispute_transition_refusal,
     mask_email,
     mask_phone,
     party_for_role,
+    throughput_series,
+    throughput_start,
 )
 from app.modules.admin.events import (
     DISPUTE_CLOSED,
@@ -59,10 +65,13 @@ from app.modules.admin.events import (
 from app.modules.admin.models import Dispute
 from app.modules.admin.schemas import (
     AddOrganisationMemberRequest,
+    AdminDashboard,
     ApplicationLink,
     AuditEventRow,
     AuditEventsPage,
     CandidateDrilldown,
+    CandidateRow,
+    CandidatesPage,
     CollegeDrilldown,
     CollegeLinkSummary,
     CreateDiscountCodeRequest,
@@ -70,19 +79,25 @@ from app.modules.admin.schemas import (
     DiscountCodesPage,
     DiscountRedemptionRow,
     DiscountRedemptionsPage,
+    DisputeBacklog,
     DisputeDetail,
     DisputeLinks,
     DisputeRow,
     DisputesPage,
     EmployerDrilldown,
+    IntegrityBacklog,
     IntegritySignalDetail,
     IntegritySignalRow,
     IntegritySignalsPage,
     InvitationResentResponse,
+    KybBacklog,
     KybSubmissionRow,
     KybSubmissionsPage,
     KybSummary,
     MyDisputeResponse,
+    OrganisationCounts,
+    OrganisationStatusCounts,
+    PlatformTotals,
     ProvisionCandidateRequest,
     ProvisionCollegeRequest,
     ProvisionedAccountResponse,
@@ -97,6 +112,8 @@ from app.modules.admin.schemas import (
     SuspensionSummary,
     TenantRow,
     TenantsPage,
+    ThroughputDay,
+    WaitingItem,
 )
 from app.modules.billing import service as billing_service
 from app.modules.billing.domain import DISCOUNT_POLICY_VERSION
@@ -537,6 +554,66 @@ def _subscription(row: Any) -> SubscriptionSummary | None:
 
 def _suspension(row: Any) -> SuspensionSummary | None:
     return SuspensionSummary.model_validate(dict(row)) if row else None
+
+
+async def list_candidates(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    status: str | None,
+    name_contains: str | None,
+    email: str | None,
+    cursor: str | None,
+    limit: int | None,
+    request_id: str | None = None,
+) -> CandidatesPage:
+    """Candidate accounts, newest first -- the way in to a drill-down.
+
+    Candidates are not tenants, so `GET /admin/tenants` cannot list them. This
+    is audited where that is not: every row names a person. The search terms
+    stay out of the audit metadata (a name or an address is not an id); the
+    row records that a search was made, and by whom."""
+    size = clamp_limit(limit)
+    name = (name_contains or "").strip() or None
+    address = identity_service.normalise_email(email) if email and email.strip() else None
+    async with _reveal(
+        session,
+        ctx,
+        action=AuditAction.ADMIN_BYPASS_SESSION_OPENED,
+        target_type="candidates",
+        target_id=None,
+        request_id=request_id,
+        metadata={
+            "view": "candidates",
+            "status": status,
+            "by_name": name is not None,
+            "by_email": address is not None,
+        },
+    ) as reader:
+        rows = await repository.candidates(
+            reader,
+            status=status,
+            name_contains=name,
+            email=address,
+            after=_keyset(cursor),
+            limit=size,
+        )
+    return CandidatesPage(
+        items=[
+            CandidateRow(
+                id=r["id"],
+                status=r["status"],
+                full_name=r["full_name"],
+                city=r["city"],
+                state_code=r["state_code"],
+                phone_masked=mask_phone(r["phone"]),
+                email_masked=mask_email(r["email"]),
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ],
+        next_cursor=_next(rows, size, at="created_at"),
+    )
 
 
 async def candidate_drilldown(
@@ -1397,4 +1474,153 @@ async def discount_redemptions(
             for r in rows
         ],
         next_cursor=next_cursor,
+    )
+
+
+# ---------------------------------------------------------------------------
+# The dashboard
+# ---------------------------------------------------------------------------
+def _status_counts(rows: list[Any], tenant_type: str) -> OrganisationStatusCounts:
+    counts = {r["status"]: int(r["n"]) for r in rows if r["type"] == tenant_type}
+    return OrganisationStatusCounts(
+        active=counts.get("ACTIVE", 0),
+        suspended=counts.get("SUSPENDED", 0),
+        closed=counts.get("CLOSED", 0),
+    )
+
+
+async def dashboard(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    request_id: str | None = None,
+    now: datetime | None = None,
+) -> AdminDashboard:
+    """The console's landing page: every queue the caller can open, counted.
+
+    **One audit row per load**, like every other cross-tenant read: the oldest
+    items name organisations and candidate ids. It replaces the two or more a
+    page built from the queue endpoints would write.
+
+    **Each queue section is there only for a role that can open the queue**
+    (`domain.dashboard_sections`), and the oldest items and the throughput
+    chart are drawn from those queues alone. Platform totals are for all staff:
+    they are counts, and name nobody.
+
+    Read live. A dashboard a reviewer has just worked from must show the
+    item gone.
+    """
+    now = _now(now)
+    sections = dashboard_sections(ctx.role)
+    review_required = (
+        await kyb_service.require_approval(session, now=now) if "kyb" in sections else False
+    )
+    since = throughput_start(now)
+    async with _reveal(
+        session,
+        ctx,
+        action=AuditAction.ADMIN_BYPASS_SESSION_OPENED,
+        target_type="admin_dashboard",
+        target_id=None,
+        request_id=request_id,
+        metadata={"view": "dashboard", "sections": sorted(sections)},
+    ) as reader:
+        totals = await repository.platform_totals(reader)
+        kyb = await repository.kyb_backlog(reader) if "kyb" in sections else None
+        signals = await repository.integrity_backlog(reader) if "integrity" in sections else None
+        disputes = await repository.dispute_backlog(reader) if "disputes" in sections else None
+        tenants = await repository.organisation_counts(reader) if "tenants" in sections else None
+
+        waiting: list[WaitingItem] = []
+        if "kyb" in sections:
+            waiting += [
+                WaitingItem(
+                    type="KYB",
+                    id=r["id"],
+                    waiting_since=r["waiting_since"],
+                    detail=r["state"],
+                    organisation=r["organisation"],
+                    tenant_id=r["tenant_id"],
+                )
+                for r in await repository.oldest_kyb(reader, limit=OLDEST_ITEMS)
+            ]
+        if "integrity" in sections:
+            waiting += [
+                WaitingItem(
+                    type="INTEGRITY",
+                    id=r["id"],
+                    waiting_since=r["waiting_since"],
+                    detail=r["rule_id"],
+                    candidate_id=r["candidate_id"],
+                    severity=r["severity"],
+                )
+                for r in await repository.oldest_signals(reader, limit=OLDEST_ITEMS)
+            ]
+        if "disputes" in sections:
+            waiting += [
+                WaitingItem(
+                    type="DISPUTE",
+                    id=r["id"],
+                    waiting_since=r["waiting_since"],
+                    detail=r["kind"],
+                    organisation=r["organisation"],
+                    tenant_id=r["tenant_id"],
+                    party=r["party"],
+                )
+                for r in await repository.oldest_disputes(reader, limit=OLDEST_ITEMS)
+            ]
+        moves = await repository.throughput(
+            reader,
+            since=since,
+            zone=IST_ZONE_NAME,
+            kyb="kyb" in sections,
+            integrity="integrity" in sections,
+            disputes="disputes" in sections,
+        )
+
+    intake = {r["day"]: int(r["intake"]) for r in moves}
+    cleared = {r["day"]: int(r["cleared"]) for r in moves}
+    return AdminDashboard(
+        generated_at=now,
+        kyb=None
+        if kyb is None
+        else KybBacklog(
+            review_required=review_required,
+            awaiting_review=kyb["awaiting_review"],
+            awaiting_employer=kyb["awaiting_employer"],
+            oldest_waiting_since=kyb["oldest_waiting_since"],
+        ),
+        integrity=None
+        if signals is None
+        else IntegrityBacklog(
+            open=signals["open"],
+            open_by_severity={
+                "HIGH": signals["high"],
+                "MEDIUM": signals["medium"],
+                "LOW": signals["low"],
+            },
+            candidates_held_back=signals["candidates_held_back"],
+            oldest_waiting_since=signals["oldest_waiting_since"],
+        ),
+        disputes=None
+        if disputes is None
+        else DisputeBacklog(
+            open=disputes[0]["open"],
+            in_review=disputes[0]["in_review"],
+            unassigned=disputes[0]["unassigned"],
+            by_kind={kind: disputes[1].get(kind, 0) for kind in DISPUTE_KINDS},
+            oldest_waiting_since=disputes[0]["oldest_waiting_since"],
+        ),
+        organisations=None
+        if tenants is None
+        else OrganisationCounts(
+            employers=_status_counts(tenants, "EMPLOYER"),
+            colleges=_status_counts(tenants, "COLLEGE"),
+        ),
+        platform_totals=PlatformTotals(**dict(totals)),
+        oldest_waiting=sorted(waiting, key=lambda w: (w.waiting_since, str(w.id)))[:OLDEST_ITEMS],
+        throughput=[
+            ThroughputDay(date=day, intake=came, cleared=went)
+            for day, came, went in throughput_series(intake, cleared, now=now)
+        ],
     )

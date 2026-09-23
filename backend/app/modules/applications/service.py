@@ -60,19 +60,26 @@ from app.core.pagination import Page, clamp_limit, decode_cursor, encode_cursor
 from app.core.tenant import TenantContext
 from app.modules.applications import repository
 from app.modules.applications.domain import (
+    DASHBOARD_WINDOW,
     DEFAULT_EXPIRY_RULES,
+    DEFAULT_TOP_JOBS,
     INTERVIEW_STAGE,
+    IST_ZONE_NAME,
+    UPCOMING_INTERVIEWS,
     ExpiryRules,
     ExpiryRulesError,
     HireState,
     candidate_confirm,
     candidate_dispute,
+    daily_series,
     employer_hire,
     employer_move,
     expires,
+    expiry_horizon,
     expiry_rules_from_config,
     hire_state,
     refuse_meeting,
+    trend_start,
     withdrawal,
 )
 from app.modules.applications.events import (
@@ -86,13 +93,22 @@ from app.modules.applications.events import (
     INTERVIEW_SCHEDULED,
 )
 from app.modules.applications.schemas import (
+    ActivityItem,
+    ApplicationCounts,
     ApplicationDetailResponse,
     ApplicationResponse,
     CandidateHistoryItem,
+    DailyApplications,
     EmployerApplicationDetail,
     EmployerApplicationSummary,
+    EmployerDashboard,
     EmployerHistoryItem,
     InterviewDetails,
+    JobCounts,
+    NeedsAttention,
+    RevealCounts,
+    TopJob,
+    UpcomingInterview,
 )
 from app.modules.discovery import service as discovery_service
 from app.modules.jobs import service as jobs_service
@@ -812,3 +828,177 @@ async def expire_for_tenant(session: AsyncSession, *, tenant_id: uuid.UUID, now:
             "applications_expired", tenant_id=str(tenant_id), count=expired, rules=rules.version
         )
     return expired
+
+
+# ---------------------------------------------------------------------------
+# The employer dashboard
+# ---------------------------------------------------------------------------
+async def dashboard(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    top_jobs: int = DEFAULT_TOP_JOBS,
+    now: datetime | None = None,
+) -> EmployerDashboard:
+    """The landing page of the employer portal: the organisation's pipeline, counted.
+
+    **Read live, never cached.** Every number is something a recruiter acts on
+    and then looks for the change -- a cached count that still says three
+    unreviewed after they opened all three reads as a bug.
+
+    Counted the way the rest of the pipeline counts: an application whose
+    candidate is later held back from search is still in the employer's
+    pipeline and still counted, exactly as `list_for_job` lists it.
+
+    `expiring_within_7_days` uses the expiry rules in force, so a malformed
+    `applications.expiry` row is a 500 here as it is in the sweep, rather than
+    a count against a period nobody configured.
+    """
+    now = now or datetime.now(UTC)
+    tenant_id = await _bind_tenant(session, ctx)
+    rules = await load_expiry_rules(session, now=now)
+    trend_since = trend_start(now)
+    recent_since = now - DASHBOARD_WINDOW
+
+    counts = await repository.dashboard_counts(
+        session,
+        tenant_id=tenant_id,
+        now=now,
+        recent_since=recent_since,
+        trend_since=trend_since,
+        interviews_until=now + DASHBOARD_WINDOW,
+        expiry_horizon=expiry_horizon(now=now, rules=rules, within=DASHBOARD_WINDOW),
+    )
+    by_stage = await repository.stage_totals(session, tenant_id=tenant_id)
+    busiest = await repository.top_jobs(
+        session, tenant_id=tenant_id, recent_since=recent_since, limit=top_jobs
+    )
+    interviews = await repository.upcoming_interviews(
+        session, tenant_id=tenant_id, now=now, limit=UPCOMING_INTERVIEWS
+    )
+    per_day = await repository.submissions_by_day(
+        session, tenant_id=tenant_id, since=trend_since, zone=IST_ZONE_NAME
+    )
+    jobs = await jobs_service.status_counts(session, ctx=ctx)
+    revealed, revealed_recently = await discovery_service.revealed_counts(
+        session, ctx=ctx, since=recent_since
+    )
+    titles = await jobs_service.titles(
+        session,
+        ctx=ctx,
+        job_ids=list({row.job_id for row in busiest} | {row.job_id for row in interviews}),
+    )
+
+    return EmployerDashboard(
+        generated_at=now,
+        jobs=JobCounts(
+            total=sum(jobs.values()),
+            active=jobs["PUBLISHED"],
+            draft=jobs["DRAFT"],
+            paused=jobs["PAUSED"],
+            closed=jobs["CLOSED"],
+        ),
+        applications=ApplicationCounts(
+            total=counts["total"],
+            open=counts["open"],
+            distinct_candidates=counts["distinct_candidates"],
+            new_last_7_days=counts["new_recent"],
+            new_last_30_days=counts["new_trend"],
+            by_stage=by_stage,
+        ),
+        needs_attention=NeedsAttention(
+            unreviewed=by_stage["SUBMITTED"],
+            interviews_to_schedule=counts["interviews_to_schedule"],
+            interviews_next_7_days=counts["interviews_upcoming"],
+            hires_awaiting_candidate=counts["hires_awaiting_candidate"],
+            hires_disputed=counts["hires_disputed"],
+            expiring_within_7_days=counts["expiring"],
+        ),
+        candidates_revealed=RevealCounts(total=revealed, last_7_days=revealed_recently),
+        top_jobs=[
+            TopJob(
+                job_id=row.job_id,
+                title=titles[row.job_id][0],
+                status=titles[row.job_id][1],
+                applications=row.applications,
+                open=row.open,
+                new_last_7_days=row.new_recent,
+                last_applied_at=row.last_applied_at,
+            )
+            for row in busiest
+        ],
+        upcoming_interviews=[
+            UpcomingInterview(
+                application_id=row.id,
+                job_id=row.job_id,
+                job_title=titles[row.job_id][0],
+                interview_at=row.interview_at,
+                meeting_url=row.meeting_url,
+            )
+            for row in interviews
+        ],
+        applications_per_day=[
+            DailyApplications(date=day, count=count)
+            for day, count in daily_series(per_day, now=now)
+        ],
+    )
+
+
+def _activity_after(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    payload = decode_cursor(cursor)
+    try:
+        return datetime.fromisoformat(str(payload["o"])), uuid.UUID(str(payload["i"]))
+    except (KeyError, ValueError) as exc:
+        raise ValidationError(code="invalid_cursor") from exc
+
+
+async def activity(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    actor: str | None,
+    cursor: str | None,
+    limit: int | None,
+) -> Page[ActivityItem]:
+    """The organisation's pipeline history across every job, newest first.
+
+    `actor` narrows it to what candidates did, what the team did, or what the
+    clock did. Paged by `(occurred_at, id)`, which is the order the events
+    were written in.
+    """
+    tenant_id = await _bind_tenant(session, ctx)
+    page_size = clamp_limit(limit)
+    rows = await repository.recent_events(
+        session,
+        tenant_id=tenant_id,
+        actor_type=actor,
+        after=_activity_after(cursor),
+        limit=page_size + 1,
+    )
+    page, more = rows[:page_size], len(rows) > page_size
+    titles = await jobs_service.titles(session, ctx=ctx, job_ids=list({r.job_id for r in page}))
+    next_cursor = (
+        encode_cursor({"o": page[-1].occurred_at.isoformat(), "i": str(page[-1].id)})
+        if more and page
+        else None
+    )
+    return Page[ActivityItem](
+        items=[
+            ActivityItem(
+                id=r.id,
+                application_id=r.application_id,
+                job_id=r.job_id,
+                job_title=titles.get(r.job_id, (None, None))[0],
+                kind=r.kind,
+                from_stage=r.from_stage,
+                to_stage=r.to_stage,
+                by=r.actor_type,
+                actor_id=r.actor_id if r.actor_type == "EMPLOYER" else None,
+                occurred_at=r.occurred_at,
+            )
+            for r in page
+        ],
+        next_cursor=next_cursor,
+    )

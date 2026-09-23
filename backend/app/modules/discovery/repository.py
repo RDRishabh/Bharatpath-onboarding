@@ -326,6 +326,26 @@ async def lock_tenant_views(session: AsyncSession, *, tenant_id: uuid.UUID) -> N
     )
 
 
+async def revealed_counts(
+    session: AsyncSession, *, tenant_id: uuid.UUID, since: datetime
+) -> tuple[int, int]:
+    """Distinct candidates this organisation has opened: ever, and since `since`.
+
+    The organisation's own view log, counted for its dashboard. Ids are
+    counted, never returned.
+    """
+    query = text(
+        """
+        SELECT count(DISTINCT e.candidate_id),
+               count(DISTINCT e.candidate_id) FILTER (WHERE e.viewed_at >= :since)
+          FROM candidate_view_events e
+         WHERE e.tenant_id = CAST(:tenant AS uuid)
+        """
+    )
+    row = (await session.execute(query, {"tenant": str(tenant_id), "since": since})).one()
+    return int(row[0]), int(row[1])
+
+
 async def view_counts(
     session: AsyncSession,
     *,

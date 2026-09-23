@@ -28,7 +28,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.applications.domain import STAGES
-from app.modules.jobs.models import Job
+from app.modules.jobs.models import JOB_STATES, Job
 
 #: The fields an edit may change. `status`, `published_at` and `closed_at` are
 #: absent: they move only through `set_status`, the one path the lifecycle
@@ -121,6 +121,34 @@ async def stage_counts(
     for job_id, stage, at_stage in rows:
         counts[job_id][stage] = at_stage
     return counts
+
+
+# ---------------------------------------------------------------------------
+# The employer dashboard
+# ---------------------------------------------------------------------------
+async def status_counts(session: AsyncSession, *, tenant_id: uuid.UUID) -> dict[str, int]:
+    """How many of the organisation's jobs are in each state, every state present."""
+    counts = dict.fromkeys(JOB_STATES, 0)
+    rows = await session.execute(
+        select(Job.status, func.count()).where(Job.tenant_id == tenant_id).group_by(Job.status)
+    )
+    for state, in_state in rows:
+        counts[state] = in_state
+    return counts
+
+
+async def titles(
+    session: AsyncSession, *, tenant_id: uuid.UUID, job_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, tuple[str, str]]:
+    """`job id -> (title, status)` for this organisation's jobs among `job_ids`."""
+    if not job_ids:
+        return {}
+    rows = await session.execute(
+        select(Job.id, Job.title, Job.status).where(
+            Job.tenant_id == tenant_id, Job.id.in_(list(job_ids))
+        )
+    )
+    return {job_id: (title, state) for job_id, title, state in rows}
 
 
 async def apply_changes(session: AsyncSession, *, job: Job, changes: dict[str, Any]) -> Job:

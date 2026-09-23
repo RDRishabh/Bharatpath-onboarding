@@ -159,6 +159,20 @@ async def get_job(session: AsyncSession, *, ctx: TenantContext, job_id: uuid.UUI
     return await _load(session, ctx, job_id)
 
 
+async def status_counts(session: AsyncSession, *, ctx: TenantContext) -> dict[str, int]:
+    """The organisation's jobs counted by state, for the employer dashboard."""
+    tenant_id = await _bind(session, ctx)
+    return await repository.status_counts(session, tenant_id=tenant_id)
+
+
+async def titles(
+    session: AsyncSession, *, ctx: TenantContext, job_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[str, str]]:
+    """`job id -> (title, status)` for the organisation's own jobs among `job_ids`."""
+    tenant_id = await _bind(session, ctx)
+    return await repository.titles(session, tenant_id=tenant_id, job_ids=job_ids)
+
+
 async def update_job(
     session: AsyncSession, *, ctx: TenantContext, job_id: uuid.UUID, payload: UpdateJobRequest
 ) -> Any:

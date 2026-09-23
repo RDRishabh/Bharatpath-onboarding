@@ -20,6 +20,7 @@ where an invariant is enforced structurally.
 from __future__ import annotations
 
 import uuid
+from datetime import date as date_
 from datetime import datetime
 from typing import Any, Literal
 
@@ -137,6 +138,30 @@ class SeatAllocationResponse(_Base):
     used: int
     #: Linked students seated by this change, longest-linked first.
     filled: int
+
+
+# ---------------------------------------------------------------------------
+# Candidates -- the list is how staff find someone to drill into. Audited,
+# because unlike an organisation list every row names a person.
+# ---------------------------------------------------------------------------
+class CandidateRow(_Base):
+    """Enough to tell two people apart and pick one. The score, the CV and
+    everything else the drill-down counts stay behind the drill-down, which
+    audits the one person opened."""
+
+    id: uuid.UUID
+    status: str
+    full_name: str | None
+    city: str | None
+    state_code: str | None
+    phone_masked: str | None
+    email_masked: str | None
+    created_at: datetime
+
+
+class CandidatesPage(_Base):
+    items: list[CandidateRow]
+    next_cursor: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -477,3 +502,98 @@ class DiscountRedemptionRow(_Base):
 class DiscountRedemptionsPage(_Base):
     items: list[DiscountRedemptionRow]
     next_cursor: str | None
+
+
+# ---------------------------------------------------------------------------
+# The dashboard
+# ---------------------------------------------------------------------------
+# A queue section is null for a role that cannot open that queue; see
+# `domain.dashboard_sections`. Nothing below names a person: candidates are
+# ids, as in the integrity queue, and organisations are named as in the KYB
+# queue and the tenants list.
+Severity = Literal["HIGH", "MEDIUM", "LOW"]
+
+
+class KybBacklog(_Base):
+    #: R15's switch. While false every submission is approved on arrival and
+    #: nothing waits here.
+    review_required: bool
+    awaiting_review: int = Field(description="SUBMITTED or UNDER_REVIEW: waiting on a reviewer.")
+    awaiting_employer: int = Field(description="MORE_INFO_REQUIRED: waiting on the employer.")
+    oldest_waiting_since: datetime | None
+
+
+class IntegrityBacklog(_Base):
+    open: int
+    open_by_severity: dict[Severity, int]
+    candidates_held_back: int = Field(
+        description=(
+            "People with an OPEN HIGH signal: already out of employer search, "
+            "waiting on a reviewer to clear or confirm."
+        )
+    )
+    oldest_waiting_since: datetime | None
+
+
+class DisputeBacklog(_Base):
+    open: int
+    in_review: int
+    unassigned: int = Field(description="OPEN or IN_REVIEW with nobody assigned.")
+    by_kind: dict[DisputeKind, int]
+    oldest_waiting_since: datetime | None
+
+
+class OrganisationStatusCounts(_Base):
+    active: int
+    suspended: int
+    closed: int
+
+
+class OrganisationCounts(_Base):
+    employers: OrganisationStatusCounts
+    colleges: OrganisationStatusCounts
+
+
+class PlatformTotals(_Base):
+    candidates: int = Field(description="Active candidate accounts.")
+    employers: int = Field(description="Active employer organisations.")
+    colleges: int = Field(description="Active college organisations.")
+    jobs_published: int
+    applications: int
+    hires: int = Field(description="Confirmed by both sides.")
+
+
+class WaitingItem(_Base):
+    """One item in a queue, oldest first across the queues the caller sees.
+
+    `detail` is the KYB state, the integrity rule, or the dispute kind.
+    """
+
+    type: Literal["KYB", "INTEGRITY", "DISPUTE"]
+    id: uuid.UUID
+    waiting_since: datetime
+    detail: str
+    organisation: str | None = None
+    tenant_id: uuid.UUID | None = None
+    candidate_id: uuid.UUID | None = None
+    severity: Severity | None = None
+    party: Literal["CANDIDATE", "EMPLOYER", "COLLEGE"] | None = None
+
+
+class ThroughputDay(_Base):
+    #: A calendar day in India (IST).
+    date: date_
+    intake: int
+    cleared: int
+
+
+class AdminDashboard(_Base):
+    generated_at: datetime
+    kyb: KybBacklog | None
+    integrity: IntegrityBacklog | None
+    disputes: DisputeBacklog | None
+    organisations: OrganisationCounts | None
+    platform_totals: PlatformTotals
+    oldest_waiting: list[WaitingItem]
+    #: Fourteen IST days ending today, oldest first, over the queues shown.
+    throughput: list[ThroughputDay]
