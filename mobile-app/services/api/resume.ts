@@ -44,6 +44,32 @@ export interface ResumeVersionResponse {
   created_at: string;
 }
 
+export type SectionKind =
+  | 'header'
+  | 'summary'
+  | 'experience'
+  | 'projects'
+  | 'education'
+  | 'skills'
+  | 'certifications'
+  | 'languages'
+  | 'achievements'
+  | 'activities'
+  | 'personal';
+
+export interface ResumeSectionItem {
+  text: string;
+  unclear: boolean;
+  suggestion?: string | null;
+}
+
+export interface ResumeSection {
+  kind: SectionKind;
+  heading?: string | null;
+  body: string;
+  items?: ResumeSectionItem[] | null;
+}
+
 export interface ResumeVersionDetailResponse {
   resume_version_id: string;
   source: 'UPLOAD' | 'PASTE' | 'MANUAL' | 'EDIT';
@@ -70,6 +96,7 @@ export interface ResumeVersionDetailResponse {
       parser_version: string;
     };
   };
+  sections?: ResumeSection[] | null;
   confirmed: boolean;
   confirmed_at: string | null;
   supersedes_id: string | null;
@@ -101,9 +128,16 @@ export interface StructuredResumeData {
   skills: string[];
 }
 
+export interface ResumeSectionEdit {
+  kind: SectionKind;
+  heading?: string | null;
+  body: string;
+}
+
 export type ResumeEditRequest =
-  | { text: string; structured?: never }
-  | { text?: never; structured: StructuredResumeData };
+  | { text: string; structured?: never; sections?: never }
+  | { text?: never; structured: StructuredResumeData; sections?: never }
+  | { text?: never; structured?: never; sections: ResumeSectionEdit[] };
 
 export interface ResumeVersionSummary {
   resume_version_id: string;

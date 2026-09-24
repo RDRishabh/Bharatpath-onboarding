@@ -46,6 +46,7 @@ export interface SignInParams {
 
 // Known pre-existing dev subjects
 const devSubjectCache: Record<string, string> = {
+  'test@gmail.com': 'f7cf75b0-bc28-41c9-a87c-728ec7fc9b00',
   'onlyritik10@gmail.com': '8a6403bc-e0fb-4c46-92ce-47bd7e66ae40',
   'rohan@gmail.com': '572f5bf9-fa74-439c-b577-f5cbfc3b69e9',
   'rish@gmail.com': 'e891265e-95a5-4547-a218-5130c1e18951',

@@ -20,7 +20,11 @@ import { ScoreBreakdownScreen } from '@/screens/onboarding/ScoreBreakdownScreen'
 import { SuggestionsScreen } from '@/screens/onboarding/SuggestionsScreen';
 import { NotificationPermissionScreen } from '@/screens/onboarding/NotificationPermissionScreen';
 import { ShareResultScreen } from '@/screens/onboarding/ShareResultScreen';
-import { ResumeVersionDetailResponse } from '@/services/api/resume';
+import {
+  ResumeVersionDetailResponse,
+  getResumeVersionDetails,
+  listResumeVersions,
+} from '@/services/api/resume';
 import { CandidateScoreResponse, bandIndex, bandLabel, nextBandLabel, pointsToNextBand } from '@/services/api/scoring';
 import { HomeScreen } from '@/screens/home/HomeScreen';
 import { useAuthContext } from '@/context/AuthContext';
@@ -105,11 +109,24 @@ export default function FoundationPreview() {
         onForgotPassword={() => {
           // Placeholder for forgot password flow
         }}
-        onSubmit={(data) => {
+        onSubmit={async (data) => {
           setUserEmail(data.session.email);
           const name = data.profile?.full_name?.trim();
           if (name) {
             setUserName(name);
+          }
+          try {
+            const versions = await listResumeVersions();
+            const unconfirmed = versions.find((v) => !v.confirmed && !v.superseded);
+            if (unconfirmed) {
+              const verDetails = await getResumeVersionDetails(unconfirmed.resume_version_id);
+              setResumeVersionId(unconfirmed.resume_version_id);
+              setResumeVersionDetails(verDetails);
+              setStep('review');
+              return;
+            }
+          } catch (e) {
+            console.warn('Could not check existing resume versions:', e);
           }
           // Backend flow: membership first — the score, jobs and every add-on
           // answer 402 without a live subscription.
