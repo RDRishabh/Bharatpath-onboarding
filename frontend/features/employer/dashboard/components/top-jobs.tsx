@@ -4,13 +4,9 @@ import type { EmployerTopJob } from "../types";
 
 interface TopJobsProps {
   jobs: EmployerTopJob[];
-  onJobClick?: (jobId: string) => void;
 }
 
-export function TopJobs({
-  jobs,
-  onJobClick,
-}: TopJobsProps) {
+export function TopJobs({ jobs }: TopJobsProps) {
   const maxApplicants = Math.max(
     ...jobs.map((job) => job.applicants),
     1,
@@ -35,10 +31,8 @@ export function TopJobs({
             const width = (job.applicants / maxApplicants) * 100;
 
             return (
-              <button
+              <div
                 key={job.id}
-                type="button"
-                onClick={() => onJobClick?.(job.id)}
                 className="block w-full border-b border-[#eef1f4] py-3 text-left last:border-b-0"
               >
                 <div className="mb-2 flex items-center justify-between gap-4">
@@ -60,7 +54,7 @@ export function TopJobs({
                     style={{ width: `${width}%` }}
                   />
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>

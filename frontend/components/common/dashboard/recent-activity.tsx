@@ -1,9 +1,17 @@
+"use client";
+
 import {
   FileText,
   GraduationCap,
+  LoaderCircle,
   Receipt,
   UserPlus,
 } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  type UIEvent,
+} from "react";
 
 type RecentActivityType =
   | "link"
@@ -20,6 +28,9 @@ interface RecentActivity {
 
 interface RecentActivityProps {
   activities: RecentActivity[];
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 const icons = {
@@ -38,7 +49,37 @@ const toneClasses = {
 
 export function RecentActivityList({
   activities,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: RecentActivityProps) {
+  const loadRequested = useRef(false);
+
+  useEffect(() => {
+    if (!isLoadingMore) {
+      loadRequested.current = false;
+    }
+  }, [activities.length, isLoadingMore]);
+
+  function handleScroll(event: UIEvent<HTMLDivElement>) {
+    const viewport = event.currentTarget;
+    const distanceFromBottom =
+      viewport.scrollHeight -
+      viewport.scrollTop -
+      viewport.clientHeight;
+
+    if (
+      distanceFromBottom <= 80 &&
+      hasMore &&
+      !isLoadingMore &&
+      !loadRequested.current &&
+      onLoadMore
+    ) {
+      loadRequested.current = true;
+      onLoadMore();
+    }
+  }
+
   return (
     <div className="flex min-h-[220px] flex-col rounded-xl border border-[#e5e7ec] bg-white p-5">
       <h2 className="text-sm font-semibold text-[#252b3b]">
@@ -54,6 +95,10 @@ export function RecentActivityList({
         </div>
       ) : (
         <div
+          aria-busy={isLoadingMore}
+          aria-label="Recent activity feed"
+          tabIndex={0}
+          onScroll={handleScroll}
           className="
             mt-5
             max-h-[320px]
@@ -98,6 +143,16 @@ export function RecentActivityList({
               </div>
             );
           })}
+
+          {isLoadingMore ? (
+            <div
+              role="status"
+              className="flex items-center justify-center gap-2 py-2 text-xs text-[#8a91a0]"
+            >
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+              Loading more activity...
+            </div>
+          ) : null}
         </div>
       )}
     </div>

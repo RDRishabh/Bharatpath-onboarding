@@ -23,6 +23,7 @@ export function StudentRoster() {
     students,
     isLoadingStudents,
     seats,
+    isLoadingSeats,
     referralCodes,
     isLoadingReferralCodes,
     rosterImports,
@@ -112,6 +113,7 @@ export function StudentRoster() {
         icon: Armchair,
         label: seatLabel,
         progress: seatProgress,
+        isLoading: isLoadingSeats,
       },
       action: headerAction,
     },
@@ -148,6 +150,7 @@ export function StudentRoster() {
           linkedCount={linkedCount}
           invitedCount={invitedCount}
           consentPendingCount={consentPendingCount}
+          isLoading={isLoadingStudents || isLoadingRosterImports}
         />
       </div>
 

@@ -51,9 +51,7 @@ export function ApplicationPipeline({
                 return false;
               }
 
-              if (
-                column.outcome
-              ) {
+              if (column.outcome !== undefined) {
                 return (
                   application.outcome ===
                   column.outcome

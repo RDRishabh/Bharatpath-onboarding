@@ -26,6 +26,7 @@ export interface HeaderStat {
   sublabel?: string;
   /** 0-100. Omit to hide the progress bar. */
   progress?: number;
+  isLoading?: boolean;
 }
 
 interface HeaderContent {
@@ -101,7 +102,12 @@ export function usePageHeader(
   // dependency string below and only the data fields are compared.
   const badgeKey = badge ? JSON.stringify(badge.label) : "";
   const statKey = stat
-    ? JSON.stringify([stat.label, stat.sublabel, stat.progress])
+    ? JSON.stringify([
+        stat.label,
+        stat.sublabel,
+        stat.progress,
+        stat.isLoading,
+      ])
     : "";
   const breadcrumbsKey = breadcrumbs
     ? JSON.stringify(breadcrumbs)
@@ -112,4 +118,3 @@ export function usePageHeader(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, subtitle, setHeader, badgeKey, statKey, action, breadcrumbsKey]);
 }
-

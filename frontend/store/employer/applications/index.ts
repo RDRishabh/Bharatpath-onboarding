@@ -17,7 +17,6 @@ export {
   selectEmployerApplications,
   selectApplicationJobFilter,
   selectOpenApplicationId,
-  selectPendingApplicationsCount,
   selectFilteredEmployerApplications,
   selectOpenApplication,
 } from "./applications.selectors";

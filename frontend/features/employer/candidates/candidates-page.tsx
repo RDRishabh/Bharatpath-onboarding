@@ -15,19 +15,21 @@ import {
   selectEmployerCandidatePageSize,
   setCandidatePageSize,
   setCandidateSearch,
+  setCandidateState,
   toggleCandidateBand,
   toggleCandidateFilter,
   useSearchEmployerCandidatesQuery,
   useLazyRevealEmployerCandidateQuery,
-  useRevealEmployerCandidatesQuery,
   type RevealedCandidateResponse,
 } from "@/store/employer/candidates";
 
 import { CandidateCard } from "./candidate-card";
+import { CandidateDetailsDialog } from "./candidate-details-dialog";
 import { CandidateFilters } from "./candidate-filters";
 import type { Candidate } from "./types";
 
 const EMPTY_CANDIDATES: Candidate[] = [];
+const CANDIDATE_PAGE_SIZES = [10, 25, 50, 100] as const;
 
 export function CandidatesPage() {
   usePageHeader(
@@ -39,14 +41,20 @@ export function CandidatesPage() {
   const filters = useAppSelector(selectEmployerCandidateFilters);
   const page = useAppSelector(selectEmployerCandidatePage);
   const cursor = useAppSelector(selectEmployerCandidateCursor);
-  const pageSize = useAppSelector(selectEmployerCandidatePageSize);
+  const storedPageSize = useAppSelector(selectEmployerCandidatePageSize);
+  const pageSize = CANDIDATE_PAGE_SIZES.includes(
+    storedPageSize as (typeof CANDIDATE_PAGE_SIZES)[number],
+  )
+    ? storedPageSize
+    : 10;
   const deferredSearch = useDeferredValue(filters.search.trim());
   const query = useMemo(() => ({
     q: deferredSearch || undefined,
     band: filters.bands.length ? filters.bands : undefined,
     skill: filters.skills.length ? filters.skills : undefined,
     badge: filters.addons.length ? filters.addons : undefined,
-    city: filters.locations[0],
+    state: filters.state || undefined,
+    city: filters.locations.length ? filters.locations : undefined,
     min_experience_years: filters.experiences.length
       ? Number(filters.experiences[0])
       : undefined,
@@ -60,42 +68,35 @@ export function CandidatesPage() {
     filters.experiences,
     filters.locations,
     filters.skills,
+    filters.state,
     pageSize,
   ]);
 
   const { data, error, isLoading, isFetching } = useSearchEmployerCandidatesQuery(query);
   const candidates = data?.items ?? EMPTY_CANDIDATES;
   const nextCursor = data?.nextCursor ?? null;
+  const isCandidateListLoading = isLoading || isFetching;
   const [revealCandidate, revealState] = useLazyRevealEmployerCandidateQuery();
+  const [selectedCandidateId, setSelectedCandidateId] =
+    useState<string | null>(null);
   const [revealed, setRevealed] = useState<RevealedCandidateResponse | null>(null);
 
-  // Reveal every visible candidate before rendering cards so masked search
-  // results never flash while the full profiles load.
-  const candidateIds = useMemo(
-    () => candidates.map((candidate) => candidate.candidateId),
-    [candidates],
-  );
-  const { data: revealedMap, isFetching: candidatesRevealing } =
-    useRevealEmployerCandidatesQuery(candidateIds, {
-      skip: candidateIds.length === 0,
-    });
-  const isCandidateListLoading = isLoading || candidatesRevealing;
-  const displayedCandidates = useMemo(
-    () =>
-      candidates.map((candidate) => {
-        const match = revealedMap?.[candidate.candidateId];
-        return match
-          ? {
-              ...candidate,
-              fullName: match.full_name,
-              phone: match.phone,
-              email: match.email,
-              score: match.score,
-            }
-          : candidate;
-      }),
-    [candidates, revealedMap],
-  );
+  async function openCandidateProfile(candidateId: string) {
+    setSelectedCandidateId(candidateId);
+    setRevealed(null);
+    revealState.reset();
+
+    const result = await revealCandidate(candidateId);
+    if (result.data) {
+      setRevealed(result.data);
+    }
+  }
+
+  function closeCandidateProfile() {
+    setSelectedCandidateId(null);
+    setRevealed(null);
+    revealState.reset();
+  }
 
   /* =====================================================
      PAGE
@@ -116,8 +117,16 @@ export function CandidatesPage() {
 
         <div className="flex h-[54px] shrink-0 items-center justify-between px-4">
 
-          <div className="text-[12px] text-[#647083]">
-            {isLoading ? "Loading candidates..." : `Showing ${candidates.length} candidates`}
+          <div
+            role="status"
+            aria-live="polite"
+            className="text-[12px] text-[#647083]"
+          >
+            {isLoading
+              ? "Loading candidates..."
+              : isFetching
+                ? "Updating candidates..."
+                : `Showing ${candidates.length} candidates`}
           </div>
 
           <span className="text-[11px] text-[#697385]">
@@ -131,23 +140,28 @@ export function CandidatesPage() {
             THIS IS THE ONLY SCROLLABLE AREA
             ------------------------------------------------- */}
 
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
+        <div
+          aria-busy={isCandidateListLoading}
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3"
+        >
 
           <div className="flex h-full flex-col gap-3">
 
             {isCandidateListLoading && (
-              <ListSkeleton rows={6} trailing />
+              <ListSkeleton rows={Math.min(pageSize, 10)} trailing />
             )}
 
             {!isCandidateListLoading && candidates.map((candidate) => (
               <CandidateCard
                 key={candidate.candidateId}
-                candidate={displayedCandidates.find((item) => item.candidateId === candidate.candidateId) ?? candidate}
-                onReveal={() => void revealCandidate(candidate.candidateId).unwrap().then(setRevealed).catch(() => undefined)}
+                candidate={candidate}
+                onReveal={() =>
+                  void openCandidateProfile(candidate.candidateId)
+                }
               />
             ))}
 
-            {error && (
+            {!isCandidateListLoading && error && (
               <ErrorState
                 error={error}
                 fallback="Candidates could not be loaded. Check your employer subscription and API connection."
@@ -194,37 +208,23 @@ export function CandidatesPage() {
       <CandidateFilters
         filters={filters}
         onSearch={(value) => dispatch(setCandidateSearch(value))}
+        onStateChange={(value) => dispatch(setCandidateState(value))}
         onToggleBand={(value) => dispatch(toggleCandidateBand(value))}
         onToggleFilter={(key, value) => dispatch(toggleCandidateFilter({ key, value }))}
       />
-      {(revealed || revealState.isFetching || revealState.isError) && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
-        <section className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-          {revealState.isFetching ? <p className="text-sm">Opening candidate…</p> : revealState.isError ? <ErrorState error={revealState.error} fallback="This profile could not be opened." /> : revealed && <>
-            <h2 className="text-lg font-bold">{revealed.full_name ?? "Candidate"}</h2>
-            <p className="mt-1 text-sm text-[#647083]">Score {revealed.score} · {revealed.band}</p>
-            <div className="mt-4 space-y-1 text-sm"><p>{revealed.email ?? "No email shared"}</p><p>{revealed.phone ?? "No phone shared"}</p></div>
-            <div className="mt-4">
-              <h3 className="text-xs font-bold uppercase text-[#687384]">Skills</h3>
-              {revealed.skills.length > 0 ? (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {revealed.skills.map((skill) => <span key={skill} className="rounded-full bg-[#f2f4f7] px-2 py-1 text-xs">{skill}</span>)}
-                </div>
-              ) : (
-                <p className="mt-2 text-sm text-[#8a92a0]">No skills were provided.</p>
-              )}
-            </div>
-            <div className="mt-4">
-              <h3 className="text-xs font-bold uppercase text-[#687384]">Completed add-ons</h3>
-              <p className="mt-2 text-sm text-[#8a92a0]">
-                {revealed.badges.length > 0
-                  ? revealed.badges.map((badge) => badge === "MOCK_INTERVIEW_COMPLETED" ? "Mock interview" : "Course completed").join(", ")
-                  : "No completed add-ons."}
-              </p>
-            </div>
-          </>}
-          <button type="button" onClick={() => { setRevealed(null); revealState.reset(); }} className="mt-5 rounded-lg border px-3 py-2 text-xs font-semibold">Close</button>
-        </section>
-      </div>}
+
+      <CandidateDetailsDialog
+        open={selectedCandidateId !== null}
+        candidate={revealed}
+        isLoading={revealState.isFetching}
+        error={revealState.error}
+        onRetry={() => {
+          if (selectedCandidateId) {
+            void openCandidateProfile(selectedCandidateId);
+          }
+        }}
+        onClose={closeCandidateProfile}
+      />
     </div>
   );
 }

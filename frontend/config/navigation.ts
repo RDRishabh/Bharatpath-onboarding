@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   LayoutDashboard,
   Gavel,
+  ListFilter,
 } from "lucide-react";
 
 export const employerNavigation = [
@@ -98,6 +99,12 @@ export const adminNavigation = [
     href: "/admin/disputes",
     icon: Gavel,
     badge: 3,
+  },
+  {
+    key: "search-filters",
+    label: "Search Filters",
+    href: "/admin/search-filters",
+    icon: ListFilter,
   },
   {
     key: "settings",

@@ -44,12 +44,12 @@ function initialsOf(label: string): string {
 }
 
 function typeOf(
-  queue: AdminOldestWaitingItem["queue"],
+  type: AdminOldestWaitingItem["type"],
 ): OldestDashboardItem["type"] {
-  if (queue === "KYB") {
+  if (type === "KYB") {
     return "KYB";
   }
-  if (queue === "DISPUTE") {
+  if (type === "DISPUTE") {
     return "Dispute";
   }
   return "Integrity";
@@ -64,14 +64,48 @@ function riskOf(
   if (severity === "MEDIUM") {
     return "Medium";
   }
-  return "Low";
+  if (severity === "LOW") {
+    return "Low";
+  }
+  return "—";
+}
+
+function shortId(value: string | null): string | null {
+  return value ? value.slice(0, 8) : null;
+}
+
+function subjectOf(item: AdminOldestWaitingItem): string {
+  if (item.organisation) {
+    return item.organisation;
+  }
+
+  if (item.type === "INTEGRITY") {
+    return `Candidate ${shortId(item.candidate_id) ?? shortId(item.id)}`;
+  }
+
+  if (item.type === "KYB") {
+    return `Organisation ${shortId(item.tenant_id) ?? shortId(item.id)}`;
+  }
+
+  const party = item.party
+    ? `${item.party[0]}${item.party.slice(1).toLowerCase()}`
+    : "Platform";
+  return `${party} dispute ${shortId(item.id)}`;
+}
+
+function humaniseCode(value: string): string {
+  return value
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function toMetrics(data: AdminDashboardResponse): DashboardMetric[] {
   const { kyb, integrity, disputes, organisations } = data;
+  const metrics: DashboardMetric[] = [];
 
-  return [
-    {
+  if (kyb) {
+    metrics.push({
       title: "KYB awaiting review",
       value: kyb.awaiting_review,
       tone: "purple",
@@ -79,8 +113,11 @@ function toMetrics(data: AdminDashboardResponse): DashboardMetric[] {
         ? "Manual review enabled"
         : "Automatic approval",
       statusTone: "neutral",
-    },
-    {
+    });
+  }
+
+  if (integrity) {
+    metrics.push({
       title: "Integrity flags",
       value: integrity.open,
       tone: "amber",
@@ -89,8 +126,11 @@ function toMetrics(data: AdminDashboardResponse): DashboardMetric[] {
           ? `${integrity.candidates_held_back} held back`
           : "None held back",
       statusTone: integrity.candidates_held_back > 0 ? "warning" : "neutral",
-    },
-    {
+    });
+  }
+
+  if (disputes) {
+    metrics.push({
       title: "Open disputes",
       value: disputes.open,
       tone: "red",
@@ -99,8 +139,11 @@ function toMetrics(data: AdminDashboardResponse): DashboardMetric[] {
           ? `${disputes.unassigned} unassigned`
           : "All assigned",
       statusTone: disputes.unassigned > 0 ? "warning" : "neutral",
-    },
-    {
+    });
+  }
+
+  if (organisations) {
+    metrics.push({
       title: "Active employers",
       value: organisations.employers.active,
       tone: "navy",
@@ -109,21 +152,26 @@ function toMetrics(data: AdminDashboardResponse): DashboardMetric[] {
           ? `${organisations.employers.suspended} suspended`
           : "None suspended",
       statusTone: "neutral",
-    },
-  ];
+    });
+  }
+
+  return metrics;
 }
 
 function toOldestItems(
   items: AdminOldestWaitingItem[],
 ): OldestDashboardItem[] {
-  return items.map((item) => ({
-    name: item.label,
-    meta: item.detail ?? "",
-    initials: initialsOf(item.label) || "—",
-    type: typeOf(item.queue),
-    risk: riskOf(item.severity ?? null),
-    waiting: waitingFor(item.waiting_since),
-  }));
+  return items.map((item) => {
+    const subject = subjectOf(item);
+    return {
+      name: subject,
+      meta: humaniseCode(item.detail),
+      initials: initialsOf(subject) || "—",
+      type: typeOf(item.type),
+      risk: riskOf(item.severity),
+      waiting: waitingFor(item.waiting_since),
+    };
+  });
 }
 
 function toPlatformTotals(
@@ -133,9 +181,9 @@ function toPlatformTotals(
     { label: "Candidates", value: String(totals.candidates) },
     { label: "Employers", value: String(totals.employers) },
     { label: "Institutions", value: String(totals.colleges) },
-    { label: "Published jobs", value: String(totals.published_jobs) },
+    { label: "Published jobs", value: String(totals.jobs_published) },
     { label: "Applications", value: String(totals.applications) },
-    { label: "Confirmed hires", value: String(totals.confirmed_hires) },
+    { label: "Confirmed hires", value: String(totals.hires) },
   ];
 }
 
@@ -144,7 +192,7 @@ function toIntakeCleared(
 ): IntakeClearedItem[] {
   const maxValue = Math.max(
     1,
-    ...throughput.map((point) => Math.max(point.entered, point.cleared)),
+    ...throughput.map((point) => Math.max(point.intake, point.cleared)),
   );
 
   return throughput.map((point) => {
@@ -155,9 +203,9 @@ function toIntakeCleared(
 
     return {
       day,
-      intake: point.entered,
+      intake: point.intake,
       cleared: point.cleared,
-      intakeHeight: (point.entered / maxValue) * 100,
+      intakeHeight: (point.intake / maxValue) * 100,
       clearedHeight: (point.cleared / maxValue) * 100,
     };
   });

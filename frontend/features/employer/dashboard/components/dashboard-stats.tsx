@@ -1,8 +1,8 @@
 import {
   BriefcaseBusiness,
-  CalendarDays,
   CalendarCheck,
   ListChecks,
+  UserPlus,
 } from "lucide-react";
 
 import { MetricCard } from "@/components/common/dashboard/metric-card";
@@ -40,12 +40,11 @@ export function DashboardStats({
       />
 
       <MetricCard
-        title="Access ends"
-        value={stats.accessEnds ?? "—"}
-        icon={CalendarDays}
+        title="New applications"
+        value={stats.newApplicationsLast7Days}
+        icon={UserPlus}
         tone="purple"
-        status={stats.hasAccess ? "Active access" : "No active access"}
-        statusTone={stats.hasAccess ? "success" : "warning"}
+        status="Last 7 days"
       />
     </div>
   );

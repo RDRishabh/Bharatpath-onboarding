@@ -23,7 +23,15 @@ export function EmployerDashboard() {
     "Overview of your hiring activity and account status",
   );
 
-  const { data, isLoading, isError, refetch } = useDashboard();
+  const {
+    data,
+    isLoading,
+    isError,
+    hasMoreActivities,
+    isLoadingMoreActivities,
+    loadMoreActivities,
+    refetch,
+  } = useDashboard();
 
   /*
    * ==========================================
@@ -81,17 +89,15 @@ export function EmployerDashboard() {
             }
           />
 
-          <TopJobs
-            jobs={data.topJobs}
-            onJobClick={(jobId) =>
-              router.push(
-                `/employer/jobs/${jobId}`,
-              )
-            }
-          />
+          <TopJobs jobs={data.topJobs} />
         </div>
 
-        <RecentActivityList activities={[]} />
+        <RecentActivityList
+          activities={data.activities}
+          hasMore={hasMoreActivities}
+          isLoadingMore={isLoadingMoreActivities}
+          onLoadMore={loadMoreActivities}
+        />
       </div>
     </div>
   );

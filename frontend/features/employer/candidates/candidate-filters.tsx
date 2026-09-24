@@ -1,21 +1,40 @@
 "use client";
 
-import { ChevronRight, Search } from "lucide-react";
-import { useState } from "react";
+import { ChevronRight, Plus, Search } from "lucide-react";
+import {
+  useDeferredValue,
+  useMemo,
+  useState,
+} from "react";
 
 import {
-  ADDONS,
-  BAND_DEFS,
-  EXPERIENCE_DEFS,
-  LOCATIONS,
-  SKILLS,
-} from "./data";
+  useGetEmployerCandidateFiltersQuery,
+  useGetEmployerCandidateLocationSuggestionsQuery,
+  useGetEmployerCandidateSkillSuggestionsQuery,
+} from "@/store/employer/candidates";
+import { ErrorState } from "@/components/ui";
 
 import type { CandidateBand, CandidateFiltersState } from "./types";
+
+function uniqueChoices<T extends { key: string; label: string }>(
+  choices: T[],
+): T[] {
+  const seen = new Set<string>();
+
+  return choices.filter((choice) => {
+    const key = choice.label.toLocaleLowerCase();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
 
 interface CandidateFiltersProps {
   filters: CandidateFiltersState;
   onSearch: (value: string) => void;
+  onStateChange: (value: string) => void;
   onToggleBand: (value: CandidateBand) => void;
   onToggleFilter: (
     key: "skills" | "locations" | "experiences" | "addons",
@@ -26,9 +45,102 @@ interface CandidateFiltersProps {
 export function CandidateFilters({
   filters,
   onSearch,
+  onStateChange,
   onToggleBand,
   onToggleFilter,
 }: CandidateFiltersProps) {
+  const [skillQuery, setSkillQuery] = useState("");
+  const [locationQuery, setLocationQuery] = useState("");
+  const deferredSkillQuery = useDeferredValue(skillQuery.trim());
+  const deferredLocationQuery = useDeferredValue(locationQuery.trim());
+  const {
+    data: panel,
+    error: panelError,
+    isLoading: panelLoading,
+    isFetching: panelFetching,
+    refetch: refetchPanel,
+  } = useGetEmployerCandidateFiltersQuery();
+  const {
+    data: skillSuggestions,
+    isFetching: skillSuggestionsFetching,
+  } =
+    useGetEmployerCandidateSkillSuggestionsQuery(
+      { q: deferredSkillQuery, limit: 10 },
+      { skip: deferredSkillQuery.length === 0 },
+    );
+  const {
+    data: locationSuggestions,
+    isFetching: locationSuggestionsFetching,
+  } =
+    useGetEmployerCandidateLocationSuggestionsQuery(
+      {
+        q: deferredLocationQuery,
+        state: filters.state || undefined,
+        limit: 10,
+      },
+      { skip: deferredLocationQuery.length === 0 },
+    );
+
+  const skills = useMemo(() => {
+    const choices = deferredSkillQuery
+      ? skillSuggestions?.items ?? []
+      : panel?.skills ?? [];
+    return uniqueChoices([
+      ...filters.skills.map((label) => ({ key: label, label })),
+      ...choices,
+    ]);
+  }, [
+    deferredSkillQuery,
+    filters.skills,
+    panel?.skills,
+    skillSuggestions?.items,
+  ]);
+  const cities = useMemo(() => {
+    const choices = deferredLocationQuery
+      ? locationSuggestions?.items ?? []
+      : (panel?.cities ?? []).filter(
+          (city) => !filters.state || city.state_code === filters.state,
+        );
+    return uniqueChoices([
+      ...filters.locations.map((label) => ({
+        key: label,
+        label,
+        state_code: filters.state,
+      })),
+      ...choices,
+    ]);
+  }, [
+    deferredLocationQuery,
+    filters.locations,
+    filters.state,
+    locationSuggestions?.items,
+    panel?.cities,
+  ]);
+  const canAddSkill =
+    deferredSkillQuery.length > 0 &&
+    deferredSkillQuery.length <= (panel?.limits.max_skill_length ?? 80) &&
+    !skills.some(
+      (skill) =>
+        skill.label.toLocaleLowerCase() ===
+          deferredSkillQuery.toLocaleLowerCase() ||
+        skill.key.toLocaleLowerCase() ===
+          deferredSkillQuery.toLocaleLowerCase(),
+    );
+  const canAddCity =
+    deferredLocationQuery.length > 0 &&
+    deferredLocationQuery.length <= (panel?.limits.max_city_length ?? 100) &&
+    !cities.some(
+      (city) =>
+        city.label.toLocaleLowerCase() ===
+          deferredLocationQuery.toLocaleLowerCase() ||
+        city.key.toLocaleLowerCase() ===
+          deferredLocationQuery.toLocaleLowerCase(),
+    );
+  const maxSkillsReached =
+    filters.skills.length >= (panel?.limits.max_skills ?? 5);
+  const maxCitiesReached =
+    filters.locations.length >= (panel?.limits.max_cities ?? 5);
+
   return (
     <aside className="flex h-full w-[268px] shrink-0 flex-col border-l border-[#e7eaef] bg-white">
       {/* =================================================
@@ -43,6 +155,25 @@ export function CandidateFilters({
             Filters
           </span>
         </div>
+
+        {panelError ? (
+          <ErrorState
+            error={panelError}
+            fallback="Filter options could not be loaded."
+            onRetry={() => void refetchPanel()}
+          />
+        ) : null}
+
+        {panelFetching ? (
+          <p
+            role="status"
+            className="text-[12px] text-[#687386]"
+          >
+            {panelLoading
+              ? "Loading filter options..."
+              : "Updating filter options..."}
+          </p>
+        ) : null}
 
         {/* =================================================
             SEARCH
@@ -69,12 +200,12 @@ export function CandidateFilters({
             ================================================= */}
         <FilterSection title="SCORE BAND">
           <div className="flex flex-col gap-[2px]">
-            {BAND_DEFS.map((item) => (
+            {(panel?.bands ?? []).map((item) => (
               <CheckRow
-                key={item.key}
+                key={item.value}
                 label={item.label}
-                checked={filters.bands.includes(item.key)}
-                onClick={() => onToggleBand(item.key)}
+                checked={filters.bands.includes(item.value)}
+                onClick={() => onToggleBand(item.value)}
               />
             ))}
           </div>
@@ -86,18 +217,34 @@ export function CandidateFilters({
             SKILLS
             ================================================= */}
         <FilterSection title="SKILLS">
+          <FilterLookup
+            value={skillQuery}
+            placeholder="Find or add a skill"
+            maxLength={panel?.limits.max_skill_length ?? 80}
+            onChange={setSkillQuery}
+          />
+          {skillSuggestionsFetching ? (
+            <p
+              role="status"
+              className="text-[11px] text-[#7b8494]"
+            >
+              Loading skill suggestions...
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-[6px]">
-            {SKILLS.map((skill) => {
+            {skills.map((skill) => {
               const active =
-                filters.skills.includes(skill);
+                filters.skills.includes(skill.label);
+              const disabled = !active && maxSkillsReached;
 
               return (
                 <button
-                  key={skill}
+                  key={skill.key}
                   type="button"
                   aria-pressed={active}
+                  disabled={disabled}
                   onClick={() =>
-                    onToggleFilter("skills", skill)
+                    onToggleFilter("skills", skill.label)
                   }
                   className={[
                     "inline-flex cursor-pointer items-center gap-[5px]",
@@ -107,13 +254,24 @@ export function CandidateFilters({
                     active
                       ? "bg-[#e9e5ff] text-[#51449a]"
                       : "bg-[#f2f4f7] text-[#687386]",
+                    disabled ? "cursor-not-allowed opacity-50" : "",
                   ].join(" ")}
                 >
-                  {skill}
+                  {skill.label}
                 </button>
               );
             })}
           </div>
+          {canAddSkill ? (
+            <AddTypedFilter
+              label={deferredSkillQuery}
+              disabled={maxSkillsReached}
+              onClick={() => {
+                onToggleFilter("skills", deferredSkillQuery);
+                setSkillQuery("");
+              }}
+            />
+          ) : null}
         </FilterSection>
 
         <Divider />
@@ -122,20 +280,67 @@ export function CandidateFilters({
             LOCATION
             ================================================= */}
         <FilterSection title="LOCATION">
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-[#687386]">
+            State
+            <select
+              value={filters.state}
+              onChange={(event) => onStateChange(event.target.value)}
+              className="h-9 rounded-lg border border-[#e2e5eb] bg-white px-2 text-[12px] text-[#273142] outline-none focus:border-[#315c9f]"
+            >
+              <option value="">All states</option>
+              {(panel?.states ?? []).map((state) => (
+                <option key={state.code} value={state.code}>
+                  {state.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <FilterLookup
+            value={locationQuery}
+            placeholder="Find or add a city"
+            maxLength={panel?.limits.max_city_length ?? 100}
+            onChange={setLocationQuery}
+          />
+          {locationSuggestionsFetching ? (
+            <p
+              role="status"
+              className="text-[11px] text-[#7b8494]"
+            >
+              Loading city suggestions...
+            </p>
+          ) : null}
           <div className="flex flex-col gap-[2px]">
-            {LOCATIONS.map((location) => (
+            {cities.map((location) => (
               <CheckRow
-                key={location}
-                label={location}
+                key={`${location.key}-${location.state_code}`}
+                label={
+                  location.state_code
+                    ? `${location.label} · ${location.state_code}`
+                    : location.label
+                }
                 checked={filters.locations.includes(
-                  location,
+                  location.label,
                 )}
+                disabled={
+                  !filters.locations.includes(location.label) &&
+                  maxCitiesReached
+                }
                 onClick={() =>
-                  onToggleFilter("locations", location)
+                  onToggleFilter("locations", location.label)
                 }
               />
             ))}
           </div>
+          {canAddCity ? (
+            <AddTypedFilter
+              label={deferredLocationQuery}
+              disabled={maxCitiesReached}
+              onClick={() => {
+                onToggleFilter("locations", deferredLocationQuery);
+                setLocationQuery("");
+              }}
+            />
+          ) : null}
         </FilterSection>
 
         <Divider />
@@ -145,15 +350,15 @@ export function CandidateFilters({
             ================================================= */}
         <FilterSection title="MINIMUM EXPERIENCE">
           <div className="flex flex-col gap-[2px]">
-            {EXPERIENCE_DEFS.map((item) => (
+            {(panel?.experience ?? []).map((item) => (
               <CheckRow
-                key={item.key}
+                key={item.min_years}
                 label={item.label}
                 checked={filters.experiences.includes(
-                  item.key,
+                  String(item.min_years),
                 )}
                 onClick={() =>
-                  onToggleFilter("experiences", item.key)
+                  onToggleFilter("experiences", String(item.min_years))
                 }
               />
             ))}
@@ -167,15 +372,15 @@ export function CandidateFilters({
             ================================================= */}
         <FilterSection title="COMPLETED ADD ONS">
           <div className="flex flex-col gap-[2px]">
-            {ADDONS.map((item) => (
+            {(panel?.badges ?? []).map((item) => (
               <CheckRow
-                key={item.key}
+                key={item.value}
                 label={item.label}
                 checked={filters.addons.includes(
-                  item.key,
+                  item.value,
                 )}
                 onClick={() =>
-                  onToggleFilter("addons", item.key)
+                  onToggleFilter("addons", item.value)
                 }
               />
             ))}
@@ -237,6 +442,54 @@ function Divider() {
   );
 }
 
+function FilterLookup({
+  value,
+  placeholder,
+  maxLength,
+  onChange,
+}: {
+  value: string;
+  placeholder: string;
+  maxLength: number;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex h-9 items-center gap-2 rounded-lg border border-[#e2e5eb] bg-white px-2 focus-within:border-[#315c9f]">
+      <Search className="h-3.5 w-3.5 shrink-0 text-[#687386]" />
+      <input
+        type="text"
+        value={value}
+        maxLength={maxLength}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="min-w-0 flex-1 bg-transparent text-[12px] text-[#273142] outline-none placeholder:text-[#8a92a0]"
+      />
+    </label>
+  );
+}
+
+function AddTypedFilter({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex items-center gap-1.5 rounded-lg border border-dashed border-[#cbd2dc] px-2 py-1.5 text-left text-[11px] font-semibold text-[#315c9f] hover:bg-[#f7f9fc] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <Plus className="h-3.5 w-3.5 shrink-0" />
+      Add &quot;{label}&quot;
+    </button>
+  );
+}
+
 /* =========================================================
    RADIO / CHECK ROW
    ========================================================= */
@@ -244,18 +497,21 @@ function Divider() {
 function CheckRow({
   label,
   checked,
+  disabled = false,
   onClick,
 }: {
   label: string;
   checked: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       aria-pressed={checked}
+      disabled={disabled}
       onClick={onClick}
-      className="flex w-full cursor-pointer items-center gap-[8px] rounded-[8px] p-[4px] text-left transition-colors hover:bg-[#f8f9fb]"
+      className="flex w-full cursor-pointer items-center gap-[8px] rounded-[8px] p-[4px] text-left transition-colors hover:bg-[#f8f9fb] disabled:cursor-not-allowed disabled:opacity-50"
     >
       {/* Radio */}
       <span

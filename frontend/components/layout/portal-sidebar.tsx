@@ -34,33 +34,7 @@ import {
 import { clearStoredToken } from "@/lib/auth/token";
 
 import { ConfirmModal } from "@/components/ui";
-
-/*
- * ============================================================
- * EMPLOYER APPLICATIONS
- * ============================================================
- *
- * This selector should come from:
- *
- * store/employer/applications/applications.selectors.ts
- *
- * It calculates:
- *
- * applications.filter(application => application.stage < 4)
- *
- * So the sidebar badge is global and is NOT dependent on:
- *
- * - current pathname
- * - Applications page being open
- * - selected job filter
- * - local Applications component state
- *
- * Therefore the badge stays visible everywhere.
- */
-
-import {
-  selectPendingApplicationsCount,
-} from "@/store/employer/applications";
+import { useGetEmployerDashboardQuery } from "@/store/employer/dashboard";
 
 interface PortalSidebarProps {
   collapsed: boolean;
@@ -98,15 +72,18 @@ export function PortalSidebar({
    *
    * Only employer has Applications.
    *
-   * This value comes from the global store, not from the
-   * Applications page.
+   * The paginated applications list only contains loaded rows. The dashboard
+   * aggregate is the authoritative count across the full organisation.
    */
 
-  const employerPendingApplications = useAppSelector(
-    selectPendingApplicationsCount,
+  const employerDashboardQuery = useGetEmployerDashboardQuery(
+    { topJobs: 3 },
+    { skip: portal !== "employer" },
   );
   const pendingApplications =
-    portal === "employer" ? employerPendingApplications : 0;
+    portal === "employer"
+      ? employerDashboardQuery.data?.applications.open ?? 0
+      : 0;
 
   /*
    * ============================================================

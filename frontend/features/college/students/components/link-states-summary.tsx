@@ -3,19 +3,26 @@
 import React from "react";
 import { Hourglass, Link as LinkIcon, Send } from "lucide-react";
 
+import { Skeleton } from "@/components/common/loading";
+
 export interface LinkStatesSummaryProps {
   linkedCount?: number;
   invitedCount?: number;
   consentPendingCount?: number;
+  isLoading?: boolean;
 }
 
 export function LinkStatesSummary({
   linkedCount = 3,
   invitedCount = 2,
   consentPendingCount = 2,
+  isLoading = false,
 }: LinkStatesSummaryProps) {
   return (
-    <div className="rounded-[16px] border border-[#e7e9ee] bg-white p-6 shadow-2xs flex flex-col justify-between">
+    <div
+      aria-busy={isLoading}
+      className="rounded-[16px] border border-[#e7e9ee] bg-white p-6 shadow-2xs flex flex-col justify-between"
+    >
       <div>
         {/* TITLE & DESCRIPTION */}
         <h3 className="text-[16px] font-bold text-[#151b2b] tracking-[-0.01em]">
@@ -37,7 +44,16 @@ export function LinkStatesSummary({
                   className="text-[#23805d]"
                 />
                 <span className="text-[26px] font-bold text-[#151b2b] leading-none">
-                  {linkedCount}
+                  {isLoading ? (
+                    <Skeleton
+                      aria-hidden="true"
+                      width={34}
+                      height={26}
+                      radius={7}
+                    />
+                  ) : (
+                    linkedCount
+                  )}
                 </span>
               </div>
               <h4 className="mt-3 text-[14px] font-bold text-[#23805d]">
@@ -59,7 +75,16 @@ export function LinkStatesSummary({
                   className="text-[#3566b8]"
                 />
                 <span className="text-[26px] font-bold text-[#151b2b] leading-none">
-                  {invitedCount}
+                  {isLoading ? (
+                    <Skeleton
+                      aria-hidden="true"
+                      width={34}
+                      height={26}
+                      radius={7}
+                    />
+                  ) : (
+                    invitedCount
+                  )}
                 </span>
               </div>
               <h4 className="mt-3 text-[14px] font-bold text-[#3566b8]">
@@ -81,7 +106,16 @@ export function LinkStatesSummary({
                   className="text-[#8c681d]"
                 />
                 <span className="text-[26px] font-bold text-[#151b2b] leading-none">
-                  {consentPendingCount}
+                  {isLoading ? (
+                    <Skeleton
+                      aria-hidden="true"
+                      width={34}
+                      height={26}
+                      radius={7}
+                    />
+                  ) : (
+                    consentPendingCount
+                  )}
                 </span>
               </div>
               <h4 className="mt-3 text-[14px] font-bold text-[#8c681d]">

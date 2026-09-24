@@ -10,6 +10,7 @@ import {
 
 import {
   selectFilteredEmployerApplications,
+  selectEmployerApplications,
   selectApplicationJobFilter,
   selectOpenApplication,
   setApplicationJobFilter,
@@ -25,50 +26,22 @@ import {
   useMoveEmployerApplicationMutation,
   useProposeEmployerHireMutation,
 } from "@/store/employer/applications";
-import {
-  useGetEmployerJobsQuery,
-  useGetEmployerJobQuery,
-} from "@/store/employer/jobs";
-import {
-  useLazyRevealEmployerCandidatesQuery,
-  type RevealedCandidateResponse,
-} from "@/store/employer/candidates";
-import type { EmployerJob } from "@/features/employer/jobs/types";
 import type {
   ApplicationColumnDefinition,
   EmployerApplication,
 } from "../types";
 
-const EMPTY_JOBS: EmployerJob[] = [];
-const APPLICATIONS_BATCH_SIZE = 10;
-
-interface PagedJob {
-  id: string;
-  title: string;
-}
-
-interface ApplicationPageCursor {
-  jobIndex: number;
-  cursor?: string;
-}
+const APPLICATIONS_PAGE_SIZE = 50;
 
 interface ApplicationBatch {
   items: EmployerApplication[];
-  nextCursor: ApplicationPageCursor | null;
+  nextCursor: string | null;
 }
-
-const FIRST_APPLICATION_PAGE: ApplicationPageCursor = { jobIndex: 0 };
 
 export function useApplicationsPage() {
   const dispatch = useAppDispatch();
   const searchParams = useSearchParams();
   const jobIdParam = searchParams.get("jobId");
-  const { data: jobsPage, isLoading: jobsLoading } =
-    useGetEmployerJobsQuery({
-      status: "PUBLISHED",
-      limit: 100,
-    });
-  const jobs = jobsPage?.items ?? EMPTY_JOBS;
   const [loadApplications, applicationsState] =
     useLazyGetEmployerApplicationsQuery();
   const [loadApplication] =
@@ -77,201 +50,76 @@ export function useApplicationsPage() {
     useMoveEmployerApplicationMutation();
   const [proposeHire, proposeState] =
     useProposeEmployerHireMutation();
-  const [revealApplicants] =
-    useLazyRevealEmployerCandidatesQuery();
-
   const jobFilter = useAppSelector(
     selectApplicationJobFilter,
   );
 
-  // A `?jobId=` arriving from the jobs table (a stage number was clicked)
-  // selects that job so only its applications are fetched. Only re-syncs when
-  // the URL changes, so a later dropdown change is not overwritten.
+  // A `?jobId=` arriving from the jobs table selects that job locally. The
+  // organisation-wide cursor remains the only list request.
   useEffect(() => {
     dispatch(setApplicationJobFilter(jobIdParam ?? "all"));
   }, [jobIdParam, dispatch]);
 
   const selectedJobId = jobFilter === "all" ? undefined : jobFilter;
-  const jobInList = useMemo(
-    () => jobs.find((job) => job.id === selectedJobId),
-    [jobs, selectedJobId],
-  );
 
-  // A clicked job may be paused or closed and so absent from the published
-  // list above; fetch it directly to fill the breadcrumb and load its
-  // applications. Skipped when it is already in the list or nothing is selected.
-  const selectedJobQuery = useGetEmployerJobQuery(selectedJobId ?? "", {
-    skip: !selectedJobId || Boolean(jobInList),
-  });
-
-  const selectedJobTitle =
-    jobInList?.title ?? selectedJobQuery.data?.title ?? null;
-
-  const [nextCursor, setNextCursor] = useState<ApplicationPageCursor | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
   const requestGenerationRef = useRef(0);
-  const revealedApplicantsRef = useRef<
-    Record<string, RevealedCandidateResponse>
-  >({});
-  const [revealedApplicants, setRevealedApplicants] = useState<
-    Record<string, RevealedCandidateResponse>
-  >({});
 
   const applications = useAppSelector(
     selectFilteredEmployerApplications,
   );
-
-  const displayedApplications = useMemo(
-    () =>
-      applications.map((application) => {
-        const match = revealedApplicants[application.candidate.id];
-        if (!match?.full_name) {
-          return application;
-        }
-        const initials = match.full_name
-          .split(" ")
-          .filter(Boolean)
-          .map((word) => word[0])
-          .join("")
-          .slice(0, 2)
-          .toUpperCase();
-        return {
-          ...application,
-          candidate: {
-            ...application.candidate,
-            name: match.full_name,
-            initials,
-            unlocked: true,
-            exactScore: match.score,
-          },
-        };
-      }),
-    [applications, revealedApplicants],
+  const allApplications = useAppSelector(
+    selectEmployerApplications,
   );
 
-  // "All jobs" composes the backend's per-job cursors without inventing a
-  // global ordering or total that the API does not provide. A single selected
-  // job fetches only that job's applications, even if it is paused or closed.
-  const pagedJobs = useMemo<PagedJob[]>(() => {
-    if (!selectedJobId) {
-      return jobs.map((job) => ({ id: job.id, title: job.title }));
+  const jobOptions = useMemo(() => {
+    const jobs = new Map<string, string>();
+    for (const application of allApplications) {
+      jobs.set(application.jobId, application.candidate.jobTitle);
     }
-    if (jobInList) {
-      return [{ id: jobInList.id, title: jobInList.title }];
+    if (selectedJobId && !jobs.has(selectedJobId)) {
+      jobs.set(selectedJobId, `Job ${selectedJobId.slice(0, 8)}`);
     }
-    if (selectedJobQuery.data) {
-      return [
-        {
-          id: selectedJobQuery.data.id,
-          title: selectedJobQuery.data.title,
-        },
-      ];
-    }
-    return [];
-  }, [jobs, jobInList, selectedJobId, selectedJobQuery.data]);
 
-  const jobOptions = useMemo(
-    () => [
+    return [
       { value: "all", label: "All jobs" },
-      ...jobs.map((job) => ({
-        value: job.id,
-        label: job.title,
-      })),
-    ],
-    [jobs],
-  );
+      ...Array.from(jobs, ([value, label]) => ({ value, label })),
+    ];
+  }, [allApplications, selectedJobId]);
+  const selectedJobTitle =
+    selectedJobId
+      ? jobOptions.find((option) => option.value === selectedJobId)?.label ??
+        null
+      : null;
 
   const loadApplicationBatch = useCallback(
-    async (start: ApplicationPageCursor): Promise<ApplicationBatch> => {
-      const items: EmployerApplication[] = [];
-      let remaining = APPLICATIONS_BATCH_SIZE;
-      let jobIndex = start.jobIndex;
-      let cursor = start.cursor;
-      let followingCursor: ApplicationPageCursor | null = null;
-
-      while (jobIndex < pagedJobs.length && remaining > 0) {
-        const job = pagedJobs[jobIndex];
-        const page = await loadApplications({
-          jobId: job.id,
-          cursor,
-          limit: remaining,
-        }).unwrap();
-
-        items.push(
-          ...page.items.map((application) => ({
-            ...application,
-            candidate: {
-              ...application.candidate,
-              jobTitle: job.title,
-            },
-          })),
-        );
-        remaining -= page.items.length;
-
-        if (page.nextCursor) {
-          followingCursor = { jobIndex, cursor: page.nextCursor };
-          break;
-        }
-
-        jobIndex += 1;
-        cursor = undefined;
-        followingCursor =
-          jobIndex < pagedJobs.length ? { jobIndex } : null;
-      }
-
-      return { items, nextCursor: followingCursor };
+    async (cursor?: string): Promise<ApplicationBatch> => {
+      return loadApplications({
+        cursor,
+        limit: APPLICATIONS_PAGE_SIZE,
+      }).unwrap();
     },
-    [loadApplications, pagedJobs],
-  );
-
-  const revealApplicationBatch = useCallback(
-    async (
-      items: EmployerApplication[],
-    ): Promise<Record<string, RevealedCandidateResponse>> => {
-      const candidateIds = Array.from(
-        new Set(items.map((application) => application.candidate.id)),
-      ).filter((candidateId) => !revealedApplicantsRef.current[candidateId]);
-
-      if (candidateIds.length === 0) {
-        return {};
-      }
-
-      return revealApplicants(candidateIds).unwrap();
-    },
-    [revealApplicants],
+    [loadApplications],
   );
 
   useEffect(() => {
     const generation = requestGenerationRef.current + 1;
     requestGenerationRef.current = generation;
     loadingMoreRef.current = false;
-    setNextCursor(null);
-    setIsLoadingMore(false);
-    dispatch(replaceApplications([]));
-
-    if (pagedJobs.length === 0) {
-      setIsInitialLoading(false);
-      return;
-    }
-
     let active = true;
-    setIsInitialLoading(true);
 
     void (async () => {
-      const batch = await loadApplicationBatch(FIRST_APPLICATION_PAGE);
-      const revealed = await revealApplicationBatch(batch.items);
+      setNextCursor(null);
+      setIsLoadingMore(false);
+      setIsInitialLoading(true);
+      dispatch(replaceApplications([]));
+
+      const batch = await loadApplicationBatch();
 
       if (active && requestGenerationRef.current === generation) {
-        revealedApplicantsRef.current = {
-          ...revealedApplicantsRef.current,
-          ...revealed,
-        };
-        setRevealedApplicants((current) => ({
-          ...current,
-          ...revealed,
-        }));
         dispatch(replaceApplications(batch.items));
         setNextCursor(batch.nextCursor);
       }
@@ -289,8 +137,6 @@ export function useApplicationsPage() {
   }, [
     dispatch,
     loadApplicationBatch,
-    pagedJobs.length,
-    revealApplicationBatch,
   ]);
 
   const handleLoadMore = useCallback(async () => {
@@ -304,20 +150,11 @@ export function useApplicationsPage() {
 
     try {
       const batch = await loadApplicationBatch(nextCursor);
-      const revealed = await revealApplicationBatch(batch.items);
 
       if (requestGenerationRef.current !== generation) {
         return;
       }
 
-      revealedApplicantsRef.current = {
-        ...revealedApplicantsRef.current,
-        ...revealed,
-      };
-      setRevealedApplicants((current) => ({
-        ...current,
-        ...revealed,
-      }));
       dispatch(appendApplications(batch.items));
       setNextCursor(batch.nextCursor);
     } catch {
@@ -332,14 +169,11 @@ export function useApplicationsPage() {
     dispatch,
     loadApplicationBatch,
     nextCursor,
-    revealApplicationBatch,
   ]);
 
   const isLoading =
-    jobsLoading ||
     isInitialLoading ||
-    (jobs.length > 0 &&
-      applications.length === 0 &&
+    (applications.length === 0 &&
       applicationsState.isUninitialized);
 
   /*
@@ -365,10 +199,10 @@ export function useApplicationsPage() {
   const selectedApplicationFromStore = useAppSelector(selectOpenApplication);
   const selectedApplication = useMemo(
     () =>
-      displayedApplications.find(
+      applications.find(
         (application) => application.id === selectedApplicationFromStore?.id,
       ) ?? selectedApplicationFromStore,
-    [displayedApplications, selectedApplicationFromStore],
+    [applications, selectedApplicationFromStore],
   );
 
   /*
@@ -382,7 +216,6 @@ export function useApplicationsPage() {
       if (value === jobFilter) {
         return;
       }
-      setIsInitialLoading(true);
       dispatch(
         setApplicationJobFilter(value),
       );
@@ -471,7 +304,13 @@ export function useApplicationsPage() {
         return;
       }
 
-      let target: "VIEWED" | "SHORTLISTED" | "INTERVIEW" | "REJECTED" | undefined;
+      let target:
+        | "VIEWED"
+        | "SHORTLISTED"
+        | "INTERVIEW"
+        | "DECISION"
+        | "REJECTED"
+        | undefined;
 
       if (column.outcome === "rejected") {
         target = "REJECTED";
@@ -481,6 +320,8 @@ export function useApplicationsPage() {
         target = "SHORTLISTED";
       } else if (column.stage === 3) {
         target = "INTERVIEW";
+      } else if (column.stage === 4 && column.outcome === null) {
+        target = "DECISION";
       }
 
       if (!target) {
@@ -548,7 +389,9 @@ export function useApplicationsPage() {
    */
 
   return {
-    applications: displayedApplications,
+    applications,
+    loadedApplicationCount: allApplications.length,
+    pageSize: APPLICATIONS_PAGE_SIZE,
     isLoading,
     isLoadingMore,
     jobFilter,

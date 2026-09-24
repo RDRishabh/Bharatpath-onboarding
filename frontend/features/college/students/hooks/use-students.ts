@@ -76,17 +76,21 @@ export function useStudents() {
 
   return {
     students,
-    isLoadingStudents: studentsQuery.isLoading,
+    isLoadingStudents:
+      studentsQuery.isLoading || studentsQuery.isFetching,
     studentsError: studentsQuery.isError,
 
     seats: seatsQuery.data ?? null,
-    isLoadingSeats: seatsQuery.isLoading,
+    isLoadingSeats:
+      seatsQuery.isLoading || seatsQuery.isFetching,
 
     referralCodes: referralCodesQuery.data ?? [],
-    isLoadingReferralCodes: referralCodesQuery.isLoading,
+    isLoadingReferralCodes:
+      referralCodesQuery.isLoading || referralCodesQuery.isFetching,
 
     rosterImports: rosterImportsQuery.data ?? [],
-    isLoadingRosterImports: rosterImportsQuery.isLoading,
+    isLoadingRosterImports:
+      rosterImportsQuery.isLoading || rosterImportsQuery.isFetching,
 
     issueReferralCode,
     isIssuingCode: issueState.isLoading,

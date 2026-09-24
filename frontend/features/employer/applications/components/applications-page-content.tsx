@@ -19,6 +19,8 @@ import { useApplicationsPage } from "../hooks/use-applications-page";
 export function ApplicationsPageContent() {
   const {
     applications,
+    loadedApplicationCount,
+    pageSize,
     isLoading,
     isLoadingMore,
     jobFilter,
@@ -82,8 +84,13 @@ export function ApplicationsPageContent() {
         <ApplicationFilter
           value={jobFilter}
           total={applications.length}
+          loadedTotal={loadedApplicationCount}
+          pageSize={pageSize}
+          hasNextPage={hasNextPage}
+          isLoadingMore={isLoadingMore}
           options={jobOptions}
           onChange={handleJobFilterChange}
+          onLoadMore={handleLoadMore}
         />
 
         {error ? (

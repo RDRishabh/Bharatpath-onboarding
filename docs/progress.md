@@ -9,6 +9,55 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-24 — frontend search filters use the curated catalogue
+
+The employer Candidates screen no longer carries its own skill, city, band,
+badge or experience lists. It reads `GET /employer/discovery/filters`, uses
+the skill and location suggestion endpoints while the employer types, and
+still offers the backend-supported free-text option when a spelling is not in
+the catalogue. State, multi-city selection and the limits returned by the API
+are enforced in the panel. Candidate pages now default to 10 rows.
+
+The admin portal now has `/admin/search-filters`, visible in its navigation.
+PLATFORM_ADMIN and SUPPORT_AGENT can list active or inactive skills and
+cities, search them, create one, bulk-import up to 500, edit aliases/state/
+featured/order, and switch an option off or reactivate it. The page calls the
+existing `/admin/search-filters` APIs; it never deletes an option. Successful
+mutations invalidate the employer filter catalogue cache.
+
+The candidate list treats every in-flight search as loading, not just the
+first request: changing a filter, page or page size replaces the cards with a
+skeleton and announces "Updating candidates..." until the response arrives.
+Unsupported stale page sizes are normalised to the 10-row default, and the API
+adapter also defaults an omitted limit to 10.
+
+Opening a candidate now shows a responsive profile dialog built from the
+reveal response: name, display score and band, experience, location, contact
+details, skills and completed add-ons. The dialog opens immediately with a
+layout-matched skeleton, has an explicit retry state, closes from the backdrop,
+button or Escape key, and keeps the score as text rather than a gauge.
+
+---
+
+## 2026-09-24 — employer dashboard uses its aggregate APIs
+
+The "Top jobs by applicants" rows are summary metrics, not navigation. They
+now render as non-interactive content instead of buttons and no longer open a
+job when selected.
+
+The frontend now reads `GET /employer/dashboard` for its job and pipeline
+counts and top jobs, plus `GET /employer/dashboard/activity` for the recent
+activity feed. It no longer loads or reconstructs dashboard data from
+`GET /employer/jobs`. Subscription status remains a separate request because
+the aggregate endpoints are paywalled and do not return the access-window end.
+Unpaid employers do not call either paywalled dashboard endpoint.
+
+Recent activity uses the endpoint's cursor as an infinite query. The first 10
+events render immediately; scrolling within the feed fetches and appends each
+next page, with an in-feed loading indicator and no duplicate jobs request.
+
+---
+
 ## 2026-09-24 — the candidate search filters get a catalogue staff curate
 
 Asked for by the frontend against the Candidates screen: the filter panel
@@ -80,6 +129,95 @@ stage filter and cursor behave as before. The response item is now
 `EmployerApplicationListItem`, which is the summary plus `job_title` and
 `job_location`, so the cards need no second lookup. The change is additive:
 existing callers passing `job_id` see two new fields and nothing else.
+
+The frontend now uses that contract. It always makes one organisation-wide,
+paginated applications request without `job_id`; selecting a job filters the
+loaded rows locally and does not start another applications request. It no
+longer walks the jobs list or merges a separate cursor per job, and each card
+gets its job title/location from its own application row.
+
+The Applications tab also no longer loads the jobs catalogue or automatically
+reveals every candidate on the page. Its filter options are derived from the
+application rows, and cards remain honestly masked because this response does
+not contain a name or score. Opening an application still uses the
+applications detail endpoint; no jobs or candidate-profile request is made on
+page load.
+
+Large application pipelines now follow the backend's single organisation-wide
+keyset cursor in pages of 50. Reaching the end of any stage column or using the
+visible "Load next 50" control sends the returned `next_cursor`, fetches
+exactly one next page and re-buckets those rows into their stages; it does not
+start a cursor per job or stage. The loaded count and remaining-page state are
+visible. DECISION, WITHDRAWN and EXPIRED are represented explicitly so every
+backend application stage remains visible rather than disappearing from, or
+being mislabeled in, the board.
+
+The application card no longer renders a "Masked" status pill when its list
+row has no score. The header keeps its normal spacing and only shows a band
+badge when genuine band data is present.
+
+The employer sidebar's Applications badge now reads
+`/employer/dashboard`'s authoritative `applications.open` aggregate instead of
+counting whichever cursor pages happen to be loaded in Redux. It therefore
+matches the full open pipeline across jobs and stages, and application
+mutations refresh it through the shared `Application/EMPLOYER_LIST` tag.
+
+The employer Subscription tab now uses a layout-matched loading skeleton for
+the current-subscription panel and its three plan cards instead of collapsing
+to a small spinner while the subscription and plan queries resolve.
+
+The employer dashboard's fourth metric now shows the backend's live
+`applications.new_last_7_days` value instead of repeating the subscription
+expiry already shown in the portal header. The card is labelled "New
+applications" with a "Last 7 days" qualifier.
+
+The admin dashboard frontend contract now matches the backend `AdminDashboard`
+schema. `oldest_waiting` uses `type` plus its organisation/candidate/party
+identifiers instead of nonexistent `queue` and `label` fields; throughput uses
+`intake`; platform totals use `jobs_published` and `hires`; and capability-
+hidden queue sections are nullable. This fixes the `initialsOf(...).split`
+runtime crash and the totals/chart values that were previously becoming
+undefined or `NaN`.
+
+The Admin Users drawer now opens candidates through
+`GET /admin/candidates/{user_id}` instead of returning `null` for the entire
+candidate segment. It presents the audited candidate drill-down's profile,
+masked contacts, display score and band, resume counts, employer visibility,
+application stages, integrity signals, college links and disputes. Tenant-only
+suspension and seat-allocation controls remain limited to employer and college
+drawers.
+
+The admin dashboard now shows layout-matched skeletons for Platform totals and
+Intake vs cleared during both route streaming and the client dashboard query.
+The totals placeholder contains all six rows, and the throughput placeholder
+preserves the chart header, fourteen paired bars and footer instead of briefly
+showing empty-state production panels while data is loading.
+
+The college dashboard header seat widget now receives the seat query's loading
+and refetching state. Until `GET /college/seats` responds it renders a compact,
+non-clickable skeleton matching the final widget instead of displaying
+temporary `0 / 0` usage.
+
+The College Students tab now applies the same request-aware loading treatment
+to every API-backed section. The header seat widget, student table, link-state
+counts, roster imports and referral codes show layout-matched skeletons during
+initial requests and refetches; static filters, invitations and CSV upload
+remain available without waiting for unrelated reads. Its route-level fallback
+also covers the roster-import and referral-code panels.
+
+College Settings now fetches data on demand by active surface instead of
+subscribing every mounted component to every settings query. The shared header
+requests seat usage, College profile requests only the organisation, Users
+requests only the team, Seats & payment requests seats, subscription and plans,
+and the Onboarding form remains mounted and fetched only on its own tab.
+
+The Admin Users college drawer now presents the complete audited college
+drill-down in compact sections: institution and verification dates, subscription
+period, connected and individually visible students, seat utilisation and plan
+allowance, team roles, referral activity, roster imports, invitations, disputes
+and suspension state. The seat editor is initialised from the returned
+allocation instead of `0`, validates the live used-seat floor and plan ceiling,
+and disables updates until the value is both valid and changed.
 
 - **New index `ix_applications_tenant_created (tenant_id, created_at, id)`**,
   in the model and therefore in the baseline. `ix_applications_job_stage`

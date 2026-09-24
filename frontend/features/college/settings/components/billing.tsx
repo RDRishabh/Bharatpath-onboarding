@@ -47,7 +47,7 @@ export function Billing() {
     isCheckingOut,
     cancelSubscription,
     isCancelling,
-  } = useSettings();
+  } = useSettings("billing");
 
   const collegePlans = plans.filter((plan) => plan.audience === "COLLEGE");
 

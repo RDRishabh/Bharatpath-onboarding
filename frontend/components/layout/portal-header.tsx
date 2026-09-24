@@ -20,6 +20,7 @@ import { useGetEmployerSubscriptionQuery } from "@/store/employer/billing";
 import { setActiveTab } from "@/store/employer/settings";
 
 import { NotificationCenter } from "@/features/notifications";
+import { Skeleton } from "@/components/common/loading";
 
 import { SubscriptionStatusButton } from "@/features/employer/billing/components/subscription-status-button";
 
@@ -351,7 +352,36 @@ export function PortalHeader({
             COLLEGE / STUDENT STAT
             ========================================== */}
 
-        {!isEmployer && !isAdmin && stat && (
+        {!isEmployer && !isAdmin && stat?.isLoading ? (
+          <div
+            role="status"
+            aria-label="Loading seat usage"
+            aria-busy="true"
+            className="
+              flex
+              h-[40px]
+              shrink-0
+              items-center
+              gap-[10px]
+              rounded-xl
+              border
+              border-[#e5e7ec]
+              bg-white
+              px-[10px]
+              pl-[6px]
+            "
+          >
+            <span className="sr-only">Loading seat usage…</span>
+            <Skeleton width={28} height={28} radius={8} />
+            <span className="flex flex-col gap-[5px]">
+              <Skeleton width={112} height={13} radius={6} />
+              <Skeleton width={96} height={4} radius={999} />
+            </span>
+            <Skeleton width={14} height={14} radius={5} />
+          </div>
+        ) : null}
+
+        {!isEmployer && !isAdmin && stat && !stat.isLoading ? (
           <button
             type="button"
             aria-label="Seats used — open billing"
@@ -451,7 +481,7 @@ export function PortalHeader({
               className="shrink-0 text-[#777f90]"
             />
           </button>
-        )}
+        ) : null}
 
         {/* ==========================================
             OTHER PAGE ACTION

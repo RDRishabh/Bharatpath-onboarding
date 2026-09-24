@@ -3,6 +3,7 @@ export * from "./queue";
 export * from "./users";
 export * from "./disputes";
 export * from "./settings";
+export * from "./search-filters";
 export * from "./shared";
 
 export { QueuePage } from "./queue";

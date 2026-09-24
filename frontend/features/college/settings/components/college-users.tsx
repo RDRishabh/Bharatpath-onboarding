@@ -15,7 +15,8 @@ const ROLE_OPTIONS: { value: CollegeTeamRole; label: string }[] = [
 ];
 
 export function CollegeUsers() {
-  const { users, isLoadingUsers, inviteUser, removeUser, isInvitingUser } = useSettings();
+  const { users, isLoadingUsers, inviteUser, removeUser, isInvitingUser } =
+    useSettings("users");
 
   const [showInvite, setShowInvite] = useState(false);
   const [email, setEmail] = useState("");

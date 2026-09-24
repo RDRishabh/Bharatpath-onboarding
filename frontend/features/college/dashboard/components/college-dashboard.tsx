@@ -25,7 +25,12 @@ function formatMetric(value: number | null): string | number {
 }
 
 export function CollegeDashboard() {
-  const { data, isLoadingOverview, isLoadingReferralCodes } = useDashboard();
+  const {
+    data,
+    isLoadingOverview,
+    isLoadingSeats,
+    isLoadingReferralCodes,
+  } = useDashboard();
 
   usePageHeader(
     "Dashboard",
@@ -39,6 +44,7 @@ export function CollegeDashboard() {
           data.seatsTotal > 0
             ? (data.seatsUsed / data.seatsTotal) * 100
             : 0,
+        isLoading: isLoadingSeats,
       },
     },
   );

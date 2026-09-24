@@ -33,7 +33,8 @@ export function CollegeSettings() {
     activeTab,
     changeTab,
     seats,
-  } = useSettings();
+    isLoadingSeats,
+  } = useSettings("header");
 
   usePageHeader(
     "Settings & Billing",
@@ -45,6 +46,7 @@ export function CollegeSettings() {
           seats && seats.allocated > 0
             ? (seats.used / seats.allocated) * 100
             : 0,
+        isLoading: isLoadingSeats,
       },
     },
   );

@@ -9,8 +9,6 @@ import type {
   EmployerApplication,
 } from "@/features/employer/applications/types";
 
-import type { EmployerApplicationApiModel } from "./applications.api";
-
 export interface EmployerApplicationsState {
   items: EmployerApplication[];
 
@@ -35,14 +33,14 @@ const applicationsSlice = createSlice({
   reducers: {
     replaceApplications: (
       state,
-      action: PayloadAction<EmployerApplicationApiModel[]>,
+      action: PayloadAction<EmployerApplication[]>,
     ) => {
       state.items = action.payload;
     },
 
     appendApplications: (
       state,
-      action: PayloadAction<EmployerApplicationApiModel[]>,
+      action: PayloadAction<EmployerApplication[]>,
     ) => {
       const existingIds = new Set(
         state.items.map((application) => application.id),
@@ -56,7 +54,7 @@ const applicationsSlice = createSlice({
 
     replaceApplication: (
       state,
-      action: PayloadAction<EmployerApplicationApiModel>,
+      action: PayloadAction<EmployerApplication>,
     ) => {
       const index = state.items.findIndex(
         (application) => application.id === action.payload.id,
@@ -65,6 +63,9 @@ const applicationsSlice = createSlice({
       if (index >= 0) {
         state.items[index] = {
           ...action.payload,
+          jobLocation:
+            action.payload.jobLocation ??
+            state.items[index].jobLocation,
           candidate: {
             ...action.payload.candidate,
             jobTitle: state.items[index].candidate.jobTitle,

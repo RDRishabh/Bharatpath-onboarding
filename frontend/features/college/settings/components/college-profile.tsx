@@ -25,7 +25,7 @@ export function CollegeProfile() {
     setDraftInstitutionType,
     saveProfile,
     isSavingProfile,
-  } = useSettings();
+  } = useSettings("profile");
 
   if (isLoadingProfile) {
     return (
