@@ -31,8 +31,18 @@ interface AppSelectProps {
   onSearchChange?: (value: string) => void;
   /** Shows a progress row while server-backed options are loading. */
   isSearching?: boolean;
+  /** Copy shown in the initial server-backed loading row. */
+  loadingMessage?: string;
   /** Message shown when the current search has no options. */
   noOptionsMessage?: string;
+  /** Notifies server-backed callers when the menu opens or closes. */
+  onOpenChange?: (open: boolean) => void;
+  /** Whether another server-backed option page is available. */
+  hasMoreOptions?: boolean;
+  /** Loads the next option page when the menu scroll reaches its end. */
+  onLoadMoreOptions?: () => void;
+  /** Shows a progress row beneath the currently loaded options. */
+  isLoadingMoreOptions?: boolean;
 }
 
 export function AppSelect({
@@ -48,7 +58,12 @@ export function AppSelect({
   searchPlaceholder = "Search",
   onSearchChange,
   isSearching = false,
+  loadingMessage = "Searching...",
   noOptionsMessage = "No matches",
+  onOpenChange,
+  hasMoreOptions = false,
+  onLoadMoreOptions,
+  isLoadingMoreOptions = false,
 }: Readonly<AppSelectProps>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -72,11 +87,12 @@ export function AppSelect({
 
   const closeMenu = useCallback(() => {
     setOpen(false);
+    onOpenChange?.(false);
     if (query) {
       setQuery("");
       onSearchChange?.("");
     }
-  }, [onSearchChange, query]);
+  }, [onOpenChange, onSearchChange, query]);
 
   /* =====================================================
      CLOSE WHEN CLICKING OUTSIDE
@@ -160,6 +176,20 @@ export function AppSelect({
     onSearchChange?.(value);
   }
 
+  function handleOptionsScroll(event: React.UIEvent<HTMLDivElement>) {
+    const menu = event.currentTarget;
+    const distanceFromBottom =
+      menu.scrollHeight - menu.scrollTop - menu.clientHeight;
+
+    if (
+      distanceFromBottom <= 40 &&
+      hasMoreOptions &&
+      !isLoadingMoreOptions
+    ) {
+      onLoadMoreOptions?.();
+    }
+  }
+
   return (
     <div
       ref={containerRef}
@@ -179,6 +209,7 @@ export function AppSelect({
             closeMenu();
           } else {
             setOpen(true);
+            onOpenChange?.(true);
           }
         }}
         className="
@@ -245,7 +276,10 @@ export function AppSelect({
             </div>
           )}
 
-          <div className={searchable ? "max-h-55 overflow-y-auto" : ""}>
+          <div
+            onScroll={handleOptionsScroll}
+            className={searchable ? "max-h-55 overflow-y-auto" : ""}
+          >
             {isSearching ? (
               <p
                 role="status"
@@ -256,7 +290,7 @@ export function AppSelect({
                   size={13}
                   className="animate-spin"
                 />
-                Searching...
+                {loadingMessage}
               </p>
             ) : visibleOptions.length > 0 ? (
               visibleOptions.map((option) => {
@@ -298,6 +332,19 @@ export function AppSelect({
                 {noOptionsMessage}
               </p>
             )}
+            {isLoadingMoreOptions ? (
+              <p
+                role="status"
+                className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-[#687386]"
+              >
+                <Loader2
+                  aria-hidden="true"
+                  size={13}
+                  className="animate-spin"
+                />
+                Loading more...
+              </p>
+            ) : null}
           </div>
         </div>
       )}

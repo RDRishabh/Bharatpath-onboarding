@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
+import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 import {
   useAppDispatch,
   useAppSelector,
@@ -27,13 +28,14 @@ import {
   useMoveEmployerApplicationMutation,
   useProposeEmployerHireMutation,
 } from "@/store/employer/applications";
-import { useGetEmployerJobsQuery } from "@/store/employer/jobs";
+import { useLazyGetEmployerJobsQuery } from "@/store/employer/jobs";
 import type {
   ApplicationColumnDefinition,
   EmployerApplication,
 } from "../types";
 
 const APPLICATIONS_PAGE_SIZE = 50;
+const JOB_OPTIONS_PAGE_SIZE = 10;
 
 interface ApplicationBatch {
   items: EmployerApplication[];
@@ -64,17 +66,27 @@ export function useApplicationsPage() {
 
   const selectedJobId = jobFilter === "all" ? undefined : jobFilter;
   const [jobSearch, setJobSearch] = useState("");
+  const [jobMenuOpen, setJobMenuOpen] = useState(false);
   const typedJobSearch = jobSearch.trim();
   const debouncedJobSearch = useDebouncedSearch(jobSearch);
-  const jobsSearchState = useGetEmployerJobsQuery(
-    {
-      q: debouncedJobSearch,
-      limit: 20,
-    },
-    {
-      skip: debouncedJobSearch.length === 0,
-      refetchOnMountOrArgChange: true,
-    },
+  const [loadJobs, jobsSearchState] = useLazyGetEmployerJobsQuery();
+  const jobOptionPages = useCursorLoadMore(
+    useCallback(
+      async (cursor: string | undefined) => {
+        const page = await loadJobs({
+          q: debouncedJobSearch || undefined,
+          cursor,
+          limit: JOB_OPTIONS_PAGE_SIZE,
+        }).unwrap();
+        return {
+          items: page.items,
+          nextCursor: page.nextCursor,
+        };
+      },
+      [debouncedJobSearch, loadJobs],
+    ),
+    [debouncedJobSearch],
+    jobMenuOpen,
   );
 
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -104,10 +116,8 @@ export function useApplicationsPage() {
       );
     }
 
-    if (debouncedJobSearch) {
-      for (const job of jobsSearchState.currentData?.items ?? []) {
-        jobs.set(job.id, job.title);
-      }
+    for (const job of jobOptionPages.items) {
+      jobs.set(job.id, job.title);
     }
 
     return [
@@ -116,8 +126,7 @@ export function useApplicationsPage() {
     ];
   }, [
     allApplications,
-    debouncedJobSearch,
-    jobsSearchState.currentData?.items,
+    jobOptionPages.items,
     selectedJobId,
   ]);
   const selectedJobTitle =
@@ -255,6 +264,9 @@ export function useApplicationsPage() {
   );
   const handleJobSearchChange = useCallback((value: string) => {
     setJobSearch(value);
+  }, []);
+  const handleJobMenuOpenChange = useCallback((open: boolean) => {
+    setJobMenuOpen(open);
   }, []);
 
   /*
@@ -432,19 +444,25 @@ export function useApplicationsPage() {
     jobSearch,
     jobOptions,
     isSearchingJobs:
-      jobsSearchState.isFetching ||
-      typedJobSearch !== debouncedJobSearch,
+      jobMenuOpen &&
+      (jobOptionPages.isLoading ||
+        typedJobSearch !== debouncedJobSearch),
+    isLoadingMoreJobOptions: jobOptionPages.isLoadingMore,
+    jobOptionsHaveMore: jobOptionPages.hasMore,
     selectedJobTitle,
     hasNextPage: nextCursor !== null,
     selectedApplication,
     error:
       applicationsState.error ??
+      jobOptionPages.error ??
       jobsSearchState.error ??
       moveState.error ??
       proposeState.error,
 
     handleJobFilterChange,
     handleJobSearchChange,
+    handleJobMenuOpenChange,
+    handleLoadMoreJobOptions: jobOptionPages.loadMore,
     handleLoadMore,
     handleOpenApplication,
     handleCloseApplication,

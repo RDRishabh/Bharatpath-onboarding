@@ -9,6 +9,249 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-24 — admin filter tabs reset search
+
+Switching between the Skills and Cities tabs in Admin Search Filters now clears
+the search field and immediately restores the unfiltered query for the selected
+tab. The internal catalogue-version placeholder beneath both table headings was
+also removed.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, and `git diff --check`.
+
+---
+
+## 2026-09-24 — admin filter search uses readable entered text
+
+The Admin Search Filters search field now applies the intended dark foreground
+color to entered text while retaining the lighter placeholder treatment.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, and `git diff --check`.
+
+---
+
+## 2026-09-24 — admin filter search uses descriptive placeholders
+
+The Admin Search Filters search field now uses explicit, tab-specific copy:
+`Search by skill name or alias` for Skills and `Search by city name or alias`
+for Cities. The same text is also the input's accessible label.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, `git diff --check`, and
+browser checks of both tab states.
+
+---
+
+## 2026-09-24 — search-filter tables support selectable page sizes
+
+The Skills and Cities tables in Admin Search Filters now expose the shared
+rows-per-page dropdown with 10, 25, 50 and 100 options. Ten remains the initial
+page size; changing it resets cursor navigation to page one and sends the
+selected value as the API limit.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, `git diff --check`, a
+production `npm run build` covering all 39 app routes, and a browser check that
+all four options render and selecting 25 requests `limit=25`.
+
+---
+
+## 2026-09-24 — search-filter dialogs include field placeholders
+
+The admin Search Filters Add/Edit dialog now gives every editable field an
+example placeholder: label, city state code, aliases and sort order. Skill and
+city examples are contextual, and a new option leaves sort order visually empty
+with `0` as its placeholder while preserving zero as the default submitted
+value. The Bulk Import dialog retains its existing format-specific placeholder.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, `git diff --check`, and a
+production `npm run build` covering all 39 app routes.
+
+---
+
+## 2026-09-24 — cohort distribution displays proven zero counts
+
+The college dashboard now displays `0` instead of a dash for a score band when
+the scored-student total proves that all otherwise-null distribution cells are
+zero. A null that could still represent a privacy-suppressed small cell remains
+hidden, so the display improvement does not weaken the college analytics
+privacy floor.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, `git diff --check`, and a
+production `npm run build` covering all 39 app routes.
+
+---
+
+## 2026-09-24 — rejected disputes have a separate admin tab
+
+The admin Disputes page now shows Open, Resolved and Rejected as three distinct
+tabs. Resolved and Rejected each request their exact backend state with an
+independent ten-row cursor paginator, loading/count state, retry path and empty
+message; rejected cases are no longer grouped under the Resolved label.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, `git diff --check`, a
+production `npm run build` covering all 39 app routes, and a browser check that
+the Rejected tab renders and becomes active when selected.
+
+---
+
+## 2026-09-24 — audit trail uses animated loading indicators
+
+The admin Disputes audit trail now shows the shared animated spinner instead of
+list skeletons during both its initial request and cursor-based continuation
+requests. Initial loading remains centred in the audit panel, while continuation
+loading appears beneath the retained timeline entries.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, `git diff --check`, and a
+browser check confirming the animated `Loading audit events...` status appears
+without audit skeleton rows.
+
+---
+
+## 2026-09-24 — admin search filters use cursor pages and action dialogs
+
+The admin Search Filters page now uses the shared `DataTable` and requests a
+fixed ten options on its first page and every subsequent cursor page.
+Previous/Next navigation retains the server cursor history and resets to page
+one when the option kind, search text or inactive filter changes. Loading a
+page renders ten structural table skeletons, and the table no longer displays
+the internal sort-order column.
+
+Add, edit and bulk-import forms now open in a reusable accessible modal instead
+of expanding inside the page. Switching an option off or reactivating it uses
+the existing confirmation dialog, and validation or request failures remain
+visible in the active dialog without closing it. The reusable confirmation
+dialog now also accepts in-dialog content and prevents Escape from closing it
+while its action is running.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, `git diff --check`, and a
+production `npm run build` covering all 39 app routes. Browser checks confirmed
+the initial `limit=10` request, ten-row loading skeleton, shared table headers
+without Order, and separate Add, Bulk Import and status-confirmation dialogs.
+
+---
+
+## 2026-09-24 — applications job filter loads options on open
+
+Opening the employer Applications job filter now immediately requests the first
+ten jobs without requiring search text. The custom select keeps those options
+visible, requests the next cursor page when its menu reaches the bottom, and
+appends the new jobs without replacing those already shown. Searching remains
+server-backed: each debounced term starts a fresh ten-job cursor sequence.
+
+The shared cursor accumulator now supports deferred first loads and invalidates
+an in-flight continuation when its query changes. The shared searchable select
+also exposes optional open-state and end-of-menu callbacks plus a separate
+loading-more row, so other select users retain their current behavior.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, and a production
+`npm run build` covering all 39 app routes. Browser network output confirmed
+that opening the menu requests `/employer/jobs?limit=10`; the hosted API's CORS
+response prevented completing the mocked continuation check in that session.
+
+---
+
+## 2026-09-24 — college institution type uses the shared dropdown
+
+The Institution type field in College Settings now uses the shared custom
+dropdown instead of the browser-native select. It preserves the empty
+"Select a type" choice, the existing institution codes and profile save
+behavior, while matching the height and full-width layout of the adjacent
+institution-name field.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, and a production
+`npm run build` covering all 39 app routes.
+
+---
+
+## 2026-09-24 — admin disputes and audit use cursor navigation
+
+The admin disputes page now requests both active (`OPEN` + `IN_REVIEW`) and
+closed (`RESOLVED` + `REJECTED`) queues as server-ordered cursor pages of ten.
+The backend dispute endpoint accepts an explicit `state_group=ACTIVE|CLOSED`,
+so the closed tab no longer merges two unrelated 100-row cursor streams in the
+browser. Both tabs now use Previous/Next cursor navigation with a fixed
+`limit=10`, and each tab has its own loading and error state.
+
+The tab counters render compact skeletons while their current page is loading
+instead of briefly displaying zero. The audit trail requests ten rows initially
+and now observes a sentinel inside its own scroll container, appending
+`cursor=...&limit=10` pages as the user approaches the bottom. Initial and
+continuation failures are visible and retryable.
+
+Validated with targeted frontend ESLint, `npx tsc --noEmit`, a production
+`npm run build` covering all 39 routes, backend Ruff and mypy, and both legal
+vocabulary checks. The focused database-backed admin tests were selected but
+could not start because Docker Desktop (and therefore local Redis) was not
+running; the new grouped-state cursor coverage remains in the integration
+suite for CI.
+
+---
+
+## 2026-09-24 — candidate filter APIs use structural skeletons
+
+The employer candidate filter sidebar no longer shows loading prose followed by
+empty option groups while its catalogue request is in flight. Score bands,
+skills, the state selector, locations, experience and add-on filters now render
+row, pill and field skeletons in the same spaces as their loaded controls. A
+background catalogue refresh keeps the current controls visible and shows a
+small shimmer in the filter header.
+
+Skill and city suggestion requests also render pill/row skeletons beneath their
+search fields while preserving already selected values. This avoids flashing an
+empty suggestion area during the search debounce/request transition.
+
+The location state picker now uses the shared custom dropdown instead of the
+browser-native select. Its compact trigger, constrained scrolling menu, selected
+option check and accessible name are consistent with the other portal filters.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, and a production
+`npm run build` covering all 39 app routes.
+
+---
+
+## 2026-09-24 — employer applications load ten at a time
+
+Opening `/employer/applications` now immediately requests
+`GET /employer/applications?limit=10`. Each pipeline column keeps its own
+vertical scroll, and reaching the end requests the next organisation-wide
+cursor with the same limit and appends the returned applications. A scroll
+gesture also works when a column is not tall enough to overflow; if a fetched
+page adds cards only to other stages, the interacted column continues through
+the cursor until it moves away from the end or no page remains. The explicit
+load-more button remains as a keyboard and sparse-column fallback.
+
+Validated with targeted ESLint, `npx tsc --noEmit`, and a production
+`npm run build` covering all 39 app routes. A browser test against mocked cursor
+responses observed the initial `?limit=10` request and then
+`?cursor=...&limit=10` after a downward wheel gesture; the board count changed
+from one loaded application to two without replacing the first card.
+
+---
+
+## 2026-09-24 — route skeletons keep the final page position
+
+Frontend route loading states now use the same left edge, width, tab height and
+content grid as the pages they replace. This removes the visible jump where the
+employer settings skeleton first appeared in a centred 720 px column and then
+moved left when the page loaded. The same loading-only centring was removed
+from college/admin settings, the admin queue/users/disputes pages, the employer
+jobs list and the create/edit job forms.
+
+The college dashboard and employer jobs list now live in pathless overview/list
+route groups. Their parent loading boundaries previously covered every nested
+route, so a dashboard or jobs-table skeleton could flash before a college
+subpage or job form displayed its own fallback. Job create/edit also share one
+form skeleton, including the edit page's client-side data wait, instead of
+switching through a centred text loader.
+
+Validated with targeted ESLint, regenerated Next route types,
+`npx tsc --noEmit`, and a production `npm run build` covering all 39 app routes.
+Browser verification at 1366 px showed the employer settings form skeleton at
+the final content edge (`x=248`, previously `x=439`) and confirmed that job
+create and college settings now paint their form skeleton first. Full frontend
+lint remains blocked by five unrelated existing errors in college billing and
+settings plus the student score ring and shell.
+
+---
+
 ## 2026-09-24 — employer job and skill selectors search on demand
 
 The Applications job filter no longer fills its dropdown from the currently

@@ -9,7 +9,8 @@ import {
   useGetEmployerCandidateLocationSuggestionsQuery,
   useGetEmployerCandidateSkillSuggestionsQuery,
 } from "@/store/employer/candidates";
-import { ErrorState } from "@/components/ui";
+import { Skeleton } from "@/components/common/loading";
+import { Dropdown, ErrorState } from "@/components/ui";
 
 import type { CandidateBand, CandidateFiltersState } from "./types";
 
@@ -166,6 +167,16 @@ export function CandidateFilters({
     filters.skills.length >= (panel?.limits.max_skills ?? 5);
   const maxCitiesReached =
     filters.locations.length >= (panel?.limits.max_cities ?? 5);
+  const stateOptions = useMemo(
+    () => [
+      { value: "", label: "All states" },
+      ...(panel?.states ?? []).map((state) => ({
+        value: state.code,
+        label: state.name,
+      })),
+    ],
+    [panel?.states],
+  );
 
   return (
     <aside className="flex h-full w-[268px] shrink-0 flex-col border-l border-[#e7eaef] bg-white">
@@ -180,6 +191,16 @@ export function CandidateFilters({
           <span className="text-[14px] font-semibold leading-[18px] text-[#182132]">
             Filters
           </span>
+          {panelFetching ? (
+            <div role="status" aria-busy="true">
+              <span className="sr-only">
+                {panelLoading
+                  ? "Loading filter options"
+                  : "Updating filter options"}
+              </span>
+              <Skeleton width={64} height={10} radius={5} />
+            </div>
+          ) : null}
         </div>
 
         {panelError ? (
@@ -188,17 +209,6 @@ export function CandidateFilters({
             fallback="Filter options could not be loaded."
             onRetry={() => void refetchPanel()}
           />
-        ) : null}
-
-        {panelFetching ? (
-          <p
-            role="status"
-            className="text-[12px] text-[#687386]"
-          >
-            {panelLoading
-              ? "Loading filter options..."
-              : "Updating filter options..."}
-          </p>
         ) : null}
 
         {/* =================================================
@@ -225,16 +235,20 @@ export function CandidateFilters({
             SCORE BAND
             ================================================= */}
         <FilterSection title="SCORE BAND">
-          <div className="flex flex-col gap-[2px]">
-            {(panel?.bands ?? []).map((item) => (
-              <CheckRow
-                key={item.value}
-                label={item.label}
-                checked={filters.bands.includes(item.value)}
-                onClick={() => onToggleBand(item.value)}
-              />
-            ))}
-          </div>
+          {panelLoading ? (
+            <FilterRowsSkeleton label="Loading score bands" count={4} />
+          ) : (
+            <div className="flex flex-col gap-[2px]">
+              {(panel?.bands ?? []).map((item) => (
+                <CheckRow
+                  key={item.value}
+                  label={item.label}
+                  checked={filters.bands.includes(item.value)}
+                  onClick={() => onToggleBand(item.value)}
+                />
+              ))}
+            </div>
+          )}
         </FilterSection>
 
         <Divider />
@@ -249,14 +263,6 @@ export function CandidateFilters({
             maxLength={panel?.limits.max_skill_length ?? 80}
             onChange={setSkillQuery}
           />
-          {skillSuggestionsFetching ? (
-            <p
-              role="status"
-              className="text-[11px] text-[#7b8494]"
-            >
-              Loading skill suggestions...
-            </p>
-          ) : null}
           <div className="flex flex-wrap gap-[6px]">
             {skills.map((skill) => {
               const active =
@@ -288,6 +294,16 @@ export function CandidateFilters({
               );
             })}
           </div>
+          {panelLoading || skillSuggestionsFetching ? (
+            <FilterPillsSkeleton
+              label={
+                panelLoading
+                  ? "Loading skill filters"
+                  : "Loading skill suggestions"
+              }
+              count={panelLoading ? 7 : 4}
+            />
+          ) : null}
           {canAddSkill ? (
             <AddTypedFilter
               label={typedSkill}
@@ -306,35 +322,30 @@ export function CandidateFilters({
             LOCATION
             ================================================= */}
         <FilterSection title="LOCATION">
-          <label className="flex flex-col gap-1 text-[11px] font-semibold text-[#687386]">
-            State
-            <select
-              value={filters.state}
-              onChange={(event) => onStateChange(event.target.value)}
-              className="h-9 rounded-lg border border-[#e2e5eb] bg-white px-2 text-[12px] text-[#273142] outline-none focus:border-[#315c9f]"
-            >
-              <option value="">All states</option>
-              {(panel?.states ?? []).map((state) => (
-                <option key={state.code} value={state.code}>
-                  {state.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {panelLoading ? (
+            <FilterSelectSkeleton />
+          ) : (
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold text-[#687386]">
+                State
+              </span>
+              <Dropdown
+                value={filters.state}
+                options={stateOptions}
+                onChange={onStateChange}
+                ariaLabel="State"
+                width="w-full"
+                buttonClassName="h-9 rounded-lg border-[#e2e5eb] px-2 text-[12px] font-normal text-[#273142] focus:border-[#315c9f] focus:ring-[#315c9f]/10"
+                menuClassName="max-h-[240px]"
+              />
+            </div>
+          )}
           <FilterLookup
             value={locationQuery}
             placeholder="Find or add a city"
             maxLength={panel?.limits.max_city_length ?? 100}
             onChange={setLocationQuery}
           />
-          {locationSuggestionsFetching ? (
-            <p
-              role="status"
-              className="text-[11px] text-[#7b8494]"
-            >
-              Loading city suggestions...
-            </p>
-          ) : null}
           <div className="flex flex-col gap-[2px]">
             {cities.map((location) => (
               <CheckRow
@@ -357,6 +368,16 @@ export function CandidateFilters({
               />
             ))}
           </div>
+          {panelLoading || locationSuggestionsFetching ? (
+            <FilterRowsSkeleton
+              label={
+                panelLoading
+                  ? "Loading location filters"
+                  : "Loading city suggestions"
+              }
+              count={panelLoading ? 4 : 3}
+            />
+          ) : null}
           {canAddCity ? (
             <AddTypedFilter
               label={typedLocation}
@@ -375,20 +396,27 @@ export function CandidateFilters({
             EXPERIENCE
             ================================================= */}
         <FilterSection title="MINIMUM EXPERIENCE">
-          <div className="flex flex-col gap-[2px]">
-            {(panel?.experience ?? []).map((item) => (
-              <CheckRow
-                key={item.min_years}
-                label={item.label}
-                checked={filters.experiences.includes(
-                  String(item.min_years),
-                )}
-                onClick={() =>
-                  onToggleFilter("experiences", String(item.min_years))
-                }
-              />
-            ))}
-          </div>
+          {panelLoading ? (
+            <FilterRowsSkeleton
+              label="Loading experience filters"
+              count={4}
+            />
+          ) : (
+            <div className="flex flex-col gap-[2px]">
+              {(panel?.experience ?? []).map((item) => (
+                <CheckRow
+                  key={item.min_years}
+                  label={item.label}
+                  checked={filters.experiences.includes(
+                    String(item.min_years),
+                  )}
+                  onClick={() =>
+                    onToggleFilter("experiences", String(item.min_years))
+                  }
+                />
+              ))}
+            </div>
+          )}
         </FilterSection>
 
         <Divider />
@@ -397,20 +425,24 @@ export function CandidateFilters({
             COMPLETED ADD ONS
             ================================================= */}
         <FilterSection title="COMPLETED ADD ONS">
-          <div className="flex flex-col gap-[2px]">
-            {(panel?.badges ?? []).map((item) => (
-              <CheckRow
-                key={item.value}
-                label={item.label}
-                checked={filters.addons.includes(
-                  item.value,
-                )}
-                onClick={() =>
-                  onToggleFilter("addons", item.value)
-                }
-              />
-            ))}
-          </div>
+          {panelLoading ? (
+            <FilterRowsSkeleton label="Loading add-on filters" count={3} />
+          ) : (
+            <div className="flex flex-col gap-[2px]">
+              {(panel?.badges ?? []).map((item) => (
+                <CheckRow
+                  key={item.value}
+                  label={item.label}
+                  checked={filters.addons.includes(
+                    item.value,
+                  )}
+                  onClick={() =>
+                    onToggleFilter("addons", item.value)
+                  }
+                />
+              ))}
+            </div>
+          )}
         </FilterSection>
       </div>
     </aside>
@@ -465,6 +497,74 @@ function FilterSection({
 function Divider() {
   return (
     <div className="h-px w-full shrink-0 bg-[#eef0f3]" />
+  );
+}
+
+function FilterRowsSkeleton({
+  label,
+  count,
+}: {
+  label: string;
+  count: number;
+}) {
+  const widths = [72, 104, 86, 112];
+
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      className="flex flex-col gap-[9px] py-1"
+    >
+      <span className="sr-only">{label}</span>
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <Skeleton circle width={15} height={15} />
+          <Skeleton
+            width={widths[index % widths.length]}
+            height={10}
+            radius={5}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FilterPillsSkeleton({
+  label,
+  count,
+}: {
+  label: string;
+  count: number;
+}) {
+  const widths = [112, 90, 126, 104, 118, 82, 96];
+
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      className="flex flex-wrap gap-[6px]"
+    >
+      <span className="sr-only">{label}</span>
+      {Array.from({ length: count }).map((_, index) => (
+        <Skeleton
+          key={index}
+          width={widths[index % widths.length]}
+          height={26}
+          radius={999}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FilterSelectSkeleton() {
+  return (
+    <div role="status" aria-busy="true" className="flex flex-col gap-1">
+      <span className="sr-only">Loading states</span>
+      <Skeleton width={34} height={9} radius={5} />
+      <Skeleton width="100%" height={36} radius={8} />
+    </div>
   );
 }
 

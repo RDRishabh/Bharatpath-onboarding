@@ -14,8 +14,12 @@ interface ApplicationFilterProps {
   options: { value: string; label: string }[];
   search: string;
   isSearching: boolean;
+  isLoadingMoreJobOptions: boolean;
+  jobOptionsHaveMore: boolean;
   onChange: (value: string) => void;
   onSearchChange: (value: string) => void;
+  onJobMenuOpenChange: (open: boolean) => void;
+  onLoadMoreJobOptions: () => void;
   onLoadMore: () => void;
 }
 
@@ -29,8 +33,12 @@ export function ApplicationFilter({
   options,
   search,
   isSearching,
+  isLoadingMoreJobOptions,
+  jobOptionsHaveMore,
   onChange,
   onSearchChange,
+  onJobMenuOpenChange,
+  onLoadMoreJobOptions,
   onLoadMore,
 }: ApplicationFilterProps) {
   return (
@@ -44,8 +52,13 @@ export function ApplicationFilter({
           searchable
           searchPlaceholder="Search jobs"
           onSearchChange={onSearchChange}
-          isSearching={search.length > 0 && isSearching}
+          isSearching={isSearching}
+          loadingMessage={search.length > 0 ? "Searching..." : "Loading jobs..."}
           noOptionsMessage="No jobs found"
+          onOpenChange={onJobMenuOpenChange}
+          hasMoreOptions={jobOptionsHaveMore}
+          onLoadMoreOptions={onLoadMoreJobOptions}
+          isLoadingMoreOptions={isLoadingMoreJobOptions}
         />
 
         <span

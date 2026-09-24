@@ -90,7 +90,6 @@ export function OpenDisputesTab({
       hasNextPage={pagination.hasNextPage}
       onNextPage={pagination.onNextPage}
       onPreviousPage={pagination.onPreviousPage}
-      onPageSizeChange={pagination.onPageSizeChange}
       itemLabel="disputes"
       emptyTitle="No open disputes"
       emptySubtitle=""

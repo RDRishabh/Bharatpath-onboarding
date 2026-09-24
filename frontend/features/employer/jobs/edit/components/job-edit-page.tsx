@@ -5,6 +5,7 @@ import type { CreateJobFormValues } from "@/features/employer/jobs/create";
 import type { EmployerJobApiResponse } from "@/features/employer/jobs/types";
 import { useGetEmployerJobQuery } from "@/store/employer/jobs";
 import { ErrorState } from "@/components/ui";
+import { JobFormSkeleton } from "../../components/job-form-skeleton";
 
 function mapApiJobToFormValues(
   job: EmployerJobApiResponse,
@@ -40,13 +41,7 @@ export function JobEditPage({ jobId }: JobEditPageProps) {
   } = useGetEmployerJobQuery(jobId);
 
   if (isLoading) {
-    return (
-      <main className="grid min-h-full place-items-center bg-[#f7f8fa]">
-        <p className="text-sm font-medium text-[#687386]">
-          Loading job…
-        </p>
-      </main>
-    );
+    return <JobFormSkeleton />;
   }
 
   if (isError || !job) {

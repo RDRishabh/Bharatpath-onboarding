@@ -168,6 +168,7 @@ export const employerJobsApi = baseApi.injectEndpoints({
 
 export const {
   useGetEmployerJobsQuery,
+  useLazyGetEmployerJobsQuery,
   useGetEmployerJobQuery,
   usePreviewEmployerJobThresholdQuery,
   useCreateEmployerJobMutation,

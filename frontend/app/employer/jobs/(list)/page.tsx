@@ -1,5 +1,5 @@
 import { JobsPage } from "@/features/employer/jobs";
 
-export default function EmployerJobsPage() {
+export default function Page() {
   return <JobsPage />;
 }

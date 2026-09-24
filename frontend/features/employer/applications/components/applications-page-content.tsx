@@ -27,6 +27,8 @@ export function ApplicationsPageContent() {
     jobSearch,
     jobOptions,
     isSearchingJobs,
+    isLoadingMoreJobOptions,
+    jobOptionsHaveMore,
     selectedJobTitle,
     hasNextPage,
     selectedApplication,
@@ -34,6 +36,8 @@ export function ApplicationsPageContent() {
 
     handleJobFilterChange,
     handleJobSearchChange,
+    handleJobMenuOpenChange,
+    handleLoadMoreJobOptions,
     handleLoadMore,
     handleOpenApplication,
     handleCloseApplication,
@@ -94,8 +98,12 @@ export function ApplicationsPageContent() {
           options={jobOptions}
           search={jobSearch}
           isSearching={isSearchingJobs}
+          isLoadingMoreJobOptions={isLoadingMoreJobOptions}
+          jobOptionsHaveMore={jobOptionsHaveMore}
           onChange={handleJobFilterChange}
           onSearchChange={handleJobSearchChange}
+          onJobMenuOpenChange={handleJobMenuOpenChange}
+          onLoadMoreJobOptions={handleLoadMoreJobOptions}
           onLoadMore={handleLoadMore}
         />
 
@@ -124,6 +132,7 @@ export function ApplicationsPageContent() {
         ) : (
           <ApplicationPipeline
             applications={applications}
+            loadedApplicationCount={loadedApplicationCount}
             hasNextPage={hasNextPage}
             isLoadingMore={isLoadingMore}
             onLoadMore={handleLoadMore}

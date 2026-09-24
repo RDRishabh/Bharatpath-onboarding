@@ -4,22 +4,27 @@ import {
   DataTable,
   type ColumnDef,
 } from "@/components/ui/table";
+import type { CursorTablePagination } from "@/lib/pagination/use-cursor-pagination";
 
 import { StateBadge } from "../../shared/status-badge";
 
 import type { Dispute } from "../types";
 
-interface ResolvedDisputesTabProps {
+interface ClosedDisputesTabProps {
   disputes: Dispute[];
   onOpen: (id: string) => void;
   isLoading?: boolean;
+  pagination: CursorTablePagination;
+  emptyTitle: string;
 }
 
-export function ResolvedDisputesTab({
+export function ClosedDisputesTab({
   disputes,
   onOpen,
   isLoading,
-}: ResolvedDisputesTabProps) {
+  pagination,
+  emptyTitle,
+}: ClosedDisputesTabProps) {
   const columns: ColumnDef<Dispute>[] = [
     {
       id: "dispute",
@@ -81,10 +86,14 @@ export function ResolvedDisputesTab({
       columns={columns}
       data={disputes}
       keyExtractor={(item) => item.id}
-      pageSize={10}
-      totalCount={disputes.length}
-      itemLabel=""
-      emptyTitle="No resolved disputes"
+      paginationMode="cursor"
+      pageSize={pagination.pageSize}
+      currentPage={pagination.currentPage}
+      hasNextPage={pagination.hasNextPage}
+      onNextPage={pagination.onNextPage}
+      onPreviousPage={pagination.onPreviousPage}
+      itemLabel="disputes"
+      emptyTitle={emptyTitle}
       emptySubtitle=""
       isLoading={isLoading}
     />

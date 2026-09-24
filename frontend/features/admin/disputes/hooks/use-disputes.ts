@@ -69,13 +69,24 @@ export function useDisputes() {
     selectAdminDisputes,
   );
 
-  const openPage = useCursorPagination();
+  const openPage = useCursorPagination([], 10);
+  const resolvedPage = useCursorPagination([], 10);
+  const rejectedPage = useCursorPagination([], 10);
   const openQuery = useGetAdminDisputesQuery({
+    state_group: "ACTIVE",
     limit: openPage.pageSize,
     cursor: openPage.cursor,
   });
-  const resolvedQuery = useGetAdminDisputesQuery({ state: "RESOLVED", limit: 100 });
-  const rejectedQuery = useGetAdminDisputesQuery({ state: "REJECTED", limit: 100 });
+  const resolvedQuery = useGetAdminDisputesQuery({
+    state: "RESOLVED",
+    limit: resolvedPage.pageSize,
+    cursor: resolvedPage.cursor,
+  });
+  const rejectedQuery = useGetAdminDisputesQuery({
+    state: "REJECTED",
+    limit: rejectedPage.pageSize,
+    cursor: rejectedPage.cursor,
+  });
   const [fetchAudit] = useLazyGetAdminAuditEventsQuery();
   const audit = useCursorLoadMore<AuditEventRow>(
     useCallback(
@@ -88,11 +99,11 @@ export function useDisputes() {
     [],
   );
   const openNextCursor = openQuery.data?.next_cursor ?? null;
+  const resolvedNextCursor = resolvedQuery.data?.next_cursor ?? null;
+  const rejectedNextCursor = rejectedQuery.data?.next_cursor ?? null;
   const openDisputes = (openQuery.data?.items ?? []).map(disputeView);
-  const resolvedDisputes = [
-    ...(resolvedQuery.data?.items ?? []),
-    ...(rejectedQuery.data?.items ?? []),
-  ].map(disputeView);
+  const resolvedDisputes = (resolvedQuery.data?.items ?? []).map(disputeView);
+  const rejectedDisputes = (rejectedQuery.data?.items ?? []).map(disputeView);
   const auditItems = audit.items.map(auditView);
 
   return {
@@ -102,9 +113,15 @@ export function useDisputes() {
 
     resolvedDisputes,
 
+    rejectedDisputes,
+
     auditItems,
 
-    isLoading: openQuery.isLoading || resolvedQuery.isLoading || rejectedQuery.isLoading,
+    openLoading: openQuery.isLoading,
+
+    resolvedLoading: resolvedQuery.isLoading,
+
+    rejectedLoading: rejectedQuery.isLoading,
 
     auditLoading: audit.isLoading,
 
@@ -114,16 +131,35 @@ export function useDisputes() {
 
     loadMoreAudit: audit.loadMore,
 
-    error: openQuery.error || resolvedQuery.error || rejectedQuery.error,
+    retryAudit: audit.retry,
+
+    auditError: audit.error,
+
+    disputeError:
+      state.tab === "open"
+        ? openQuery.error
+        : state.tab === "resolved"
+          ? resolvedQuery.error
+          : rejectedQuery.error,
+
+    retryDisputes:
+      state.tab === "open"
+        ? openQuery.refetch
+        : state.tab === "resolved"
+          ? resolvedQuery.refetch
+          : rejectedQuery.refetch,
 
     openCount: openDisputes.length,
-
     openHasMore: Boolean(openNextCursor),
-
     openPagination: tablePagination(openPage, openNextCursor),
 
-    resolvedCount:
-      resolvedDisputes.length,
+    resolvedCount: resolvedDisputes.length,
+    resolvedHasMore: Boolean(resolvedNextCursor),
+    resolvedPagination: tablePagination(resolvedPage, resolvedNextCursor),
+
+    rejectedCount: rejectedDisputes.length,
+    rejectedHasMore: Boolean(rejectedNextCursor),
+    rejectedPagination: tablePagination(rejectedPage, rejectedNextCursor),
 
     setTab: (tab: DisputeTab) => {
       dispatch(setDisputeTab(tab));

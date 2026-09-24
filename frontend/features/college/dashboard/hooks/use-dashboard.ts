@@ -16,12 +16,33 @@ import type { CollegeDashboardView, DashboardBand } from "../types";
 
 function bandsFrom(
   distribution: ScoreDistribution | null,
+  scoredStudents: number | null,
 ): DashboardBand[] {
+  if (!distribution) {
+    return [
+      { label: "Entry", count: null },
+      { label: "Developing", count: null },
+      { label: "Solid", count: null },
+      { label: "Strong", count: null },
+    ];
+  }
+
+  const disclosedTotal = Object.values(distribution).reduce(
+    (sum, count) => sum + (count ?? 0),
+    0,
+  );
+  // A null cell can be a privacy-suppressed small count. It is safe to show
+  // zero only when the scored-student total proves every null cell sums to 0.
+  const suppressedCellsAreZero =
+    scoredStudents !== null && disclosedTotal === scoredStudents;
+  const displayCount = (count: number | null) =>
+    count ?? (suppressedCellsAreZero ? 0 : null);
+
   return [
-    { label: "Entry", count: distribution?.entry ?? null },
-    { label: "Developing", count: distribution?.developing ?? null },
-    { label: "Solid", count: distribution?.solid ?? null },
-    { label: "Strong", count: distribution?.strong ?? null },
+    { label: "Entry", count: displayCount(distribution.entry) },
+    { label: "Developing", count: displayCount(distribution.developing) },
+    { label: "Solid", count: displayCount(distribution.solid) },
+    { label: "Strong", count: displayCount(distribution.strong) },
   ];
 }
 
@@ -49,7 +70,10 @@ function toView(
     interviews: overview?.interviews ?? null,
     belowFloor: overview?.belowFloor ?? false,
     minCohortSize: overview?.minCohortSize ?? 0,
-    bands: bandsFrom(overview?.scoreDistribution ?? null),
+    bands: bandsFrom(
+      overview?.scoreDistribution ?? null,
+      overview?.scoredStudents ?? null,
+    ),
 
     referralCode: activeReferralCode(referralCodes),
 

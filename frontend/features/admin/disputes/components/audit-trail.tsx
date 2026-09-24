@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useEffectEvent, useRef } from "react";
 import {
   CheckCircle2,
   FileText,
@@ -12,7 +13,8 @@ import type {
   AuditIcon,
   AuditItem,
 } from "../types";
-import { ListSkeleton } from "@/components/common/loading";
+import { Spinner } from "@/components/common/loading";
+import { ErrorState } from "@/components/ui";
 
 interface AuditTrailProps {
   items: AuditItem[];
@@ -20,6 +22,8 @@ interface AuditTrailProps {
   isLoadingMore?: boolean;
   hasMore?: boolean;
   onLoadMore?: () => void;
+  error?: unknown;
+  onRetry?: () => void;
 }
 
 function AuditIconComponent({
@@ -77,7 +81,33 @@ export function AuditTrail({
   isLoadingMore,
   hasMore,
   onLoadMore,
+  error,
+  onRetry,
 }: AuditTrailProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const loadMoreFromObserver = useEffectEvent(() => onLoadMore?.());
+
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    const sentinel = loadMoreSentinelRef.current;
+    if (!root || !sentinel || !hasMore || isLoading || isLoadingMore || error) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          loadMoreFromObserver();
+        }
+      },
+      { root, rootMargin: "80px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [error, hasMore, isLoading, isLoadingMore]);
+
   return (
     <section
       className="flex h-fit flex-col gap-4 rounded-[12px] border border-[#e5e8ee] bg-white p-5"
@@ -98,61 +128,74 @@ export function AuditTrail({
 
       {/* Timeline */}
 
-      <div className="bp-scrollbar max-h-[480px] overflow-y-auto pr-1">
+      <div
+        ref={scrollContainerRef}
+        className="bp-scrollbar max-h-[480px] overflow-y-auto pr-1"
+      >
         <div className="relative pb-3">
           {!isLoading && items.length > 0 ? (
             <span className="absolute bottom-0 left-[13px] top-7 w-[2px] bg-[#eef0f3]" />
           ) : null}
 
-        {isLoading ? <ListSkeleton rows={5} /> : null}
-        {!isLoading && items.length === 0 ? <p className="pt-3 text-[12px] text-[#7b8494]">No audit events found.</p> : null}
-        <div className="flex flex-col">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="flex gap-3 pt-3.5"
-            >
-              {/* Timeline icon */}
-
-              <span className="relative z-[1] grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-[#eef0f3] bg-white">
-                <AuditIconComponent
-                  icon={item.icon}
-                />
-              </span>
-
-              {/* Content */}
-
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-[13px] font-normal leading-[18px] text-[#687182] [text-wrap:pretty]">
-                  {item.description}
-                </span>
-
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className="whitespace-nowrap rounded-full bg-[#f0f2f5] px-2.5 py-1 text-[11px] font-semibold leading-[14px] text-[#172033]">
-                    {item.operator}
-                  </span>
-
-                  <span className="text-[11px] font-medium leading-[14px] text-[#7b8494]">
-                    {item.timestamp}
-                  </span>
-                </span>
-              </span>
+          {isLoading ? (
+            <div className="flex min-h-40 items-center justify-center">
+              <Spinner label="Loading audit events..." size={22} />
             </div>
-          ))}
-        </div>
+          ) : null}
+          {!isLoading && !error && items.length === 0 ? (
+            <p className="pt-3 text-[12px] text-[#7b8494]">
+              No audit events found.
+            </p>
+          ) : null}
+          <div className="flex flex-col">
+            {items.map((item) => (
+              <div
+                key={item.id}
+                className="flex gap-3 pt-3.5"
+              >
+                {/* Timeline icon */}
 
-        {hasMore ? (
-          <div className="flex justify-center pt-4">
-            <button
-              type="button"
-              onClick={onLoadMore}
-              disabled={isLoadingMore}
-              className="rounded-lg border border-[#e2e5eb] bg-white px-4 py-2 text-[12px] font-semibold text-[#172033] transition-colors hover:bg-[#f8f9fb] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isLoadingMore ? "Loading…" : "Load more"}
-            </button>
+                <span className="relative z-[1] grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-[#eef0f3] bg-white">
+                  <AuditIconComponent
+                    icon={item.icon}
+                  />
+                </span>
+
+                {/* Content */}
+
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-[13px] font-normal leading-[18px] text-[#687182] [text-wrap:pretty]">
+                    {item.description}
+                  </span>
+
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="whitespace-nowrap rounded-full bg-[#f0f2f5] px-2.5 py-1 text-[11px] font-semibold leading-[14px] text-[#172033]">
+                      {item.operator}
+                    </span>
+
+                    <span className="text-[11px] font-medium leading-[14px] text-[#7b8494]">
+                      {item.timestamp}
+                    </span>
+                  </span>
+                </span>
+              </div>
+            ))}
           </div>
-        ) : null}
+
+          {error ? (
+            <ErrorState
+              error={error}
+              fallback="Could not load audit events."
+              onRetry={onRetry}
+              className="mt-4"
+            />
+          ) : null}
+          {isLoadingMore ? (
+            <div className="flex justify-center pt-4">
+              <Spinner label="Loading more..." size={16} />
+            </div>
+          ) : null}
+          <div ref={loadMoreSentinelRef} className="h-px" aria-hidden="true" />
         </div>
       </div>
 

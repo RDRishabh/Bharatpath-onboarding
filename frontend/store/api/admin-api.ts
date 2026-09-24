@@ -216,6 +216,7 @@ type TenantListParams = AdminListParams & {
 };
 type DisputeListParams = AdminListParams & {
   state?: DisputeRow["state"];
+  state_group?: "ACTIVE" | "CLOSED";
   kind?: DisputeRow["kind"];
   party?: DisputeRow["party"];
 };

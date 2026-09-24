@@ -16,6 +16,7 @@ import { ApplicationColumn } from "./application-column";
 
 interface ApplicationPipelineProps {
   applications: EmployerApplication[];
+  loadedApplicationCount: number;
   hasNextPage: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
@@ -32,6 +33,7 @@ interface ApplicationPipelineProps {
 
 export function ApplicationPipeline({
   applications,
+  loadedApplicationCount,
   hasNextPage,
   isLoadingMore,
   onLoadMore,
@@ -98,6 +100,7 @@ export function ApplicationPipeline({
                 key={column.id}
                 column={column}
                 applications={items}
+                loadedApplicationCount={loadedApplicationCount}
                 hasNextPage={hasNextPage}
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
