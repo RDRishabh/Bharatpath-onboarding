@@ -15,8 +15,10 @@ import { CollegeStudent } from "../types";
 
 export interface StudentTableProps {
   students: CollegeStudent[];
-  totalCount?: number;
-  pageSize?: number;
+  currentPage: number;
+  hasNextPage: boolean;
+  onNextPage: () => void;
+  onPreviousPage: () => void;
   isLoading?: boolean;
   onView?: (student: CollegeStudent) => void;
 }
@@ -37,8 +39,10 @@ function formatDate(value: string): string {
 
 export function StudentTable({
   students,
-  totalCount,
-  pageSize = 10,
+  currentPage,
+  hasNextPage,
+  onNextPage,
+  onPreviousPage,
   isLoading = false,
   onView,
 }: StudentTableProps) {
@@ -143,8 +147,12 @@ export function StudentTable({
     <DataTable
       columns={columns}
       data={students}
-      totalCount={totalCount ?? students.length}
-      pageSize={pageSize}
+      paginationMode="cursor"
+      pageSize={10}
+      currentPage={currentPage}
+      hasNextPage={hasNextPage}
+      onNextPage={onNextPage}
+      onPreviousPage={onPreviousPage}
       keyExtractor={(student) => student.id}
       itemLabel="students"
       isLoading={isLoading}

@@ -9,6 +9,165 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-24 — employer job and skill selectors search on demand
+
+The Applications job filter no longer fills its dropdown from the currently
+loaded application page. The menu now has a search field and requests matching
+job names from `GET /employer/jobs?q=...`; without a search it keeps only
+`All jobs` and the currently selected job. Requests use the shared debounce,
+and loading, empty and API-error states are explicit.
+
+The create/edit job form no longer carries a hard-coded skill list. Its
+required-skills field searches
+`GET /employer/discovery/filters/skills?q=...`, keeps chosen skills as
+removable chips, and still permits a valid skill outside the curated catalogue,
+as the backend contract requires.
+
+Validated with targeted ESLint and an isolated `tsc --noEmit` program covering
+the changed dependency graph. The full frontend type-check remains blocked by
+the pre-existing `achievements`/`ResumeSectionKind` error in
+`features/student/onboarding/components/review-step.tsx`. The shared browser
+session could not complete an authenticated interaction check because its
+employer API requests returned 401.
+
+---
+
+## 2026-09-24 — college students list uses a 10-row cursor
+
+The college portal now sends `limit=10` and the current `cursor` to
+`GET /college/students`. The student table renders the returned page directly
+and provides Previous/Next controls backed by the API's `next_cursor`; it no
+longer requests 100 students and paginates that partial result in the browser.
+The page size is intentionally fixed at 10, so this table does not show a
+rows-per-page selector.
+
+Validated with `tsc --noEmit`, targeted ESLint, and an authenticated request
+against the configured backend, which returned 200 for
+`/college/students?limit=10`.
+
+---
+
+## 2026-09-24 — college roster rows use backend pagination and filters
+
+The roster preview in the college portal now uses the cursor contract from
+`GET /college/roster-imports/{import_id}/rows` instead of requesting the first
+100 rows and paginating that partial result in the browser. The API adapter
+preserves `next_cursor` and sends the selected `row_state`, current `cursor`
+and chosen `limit`. The modal uses the shared cursor-pagination controls,
+offers 10/25/50/100 rows per page, and resets to page 1 when the import or row
+state changes.
+
+Validated with `tsc --noEmit`, targeted ESLint, and the running college portal:
+a 15-row import showed rows 1–10 and 11–15 on separate server-backed pages,
+and selecting the empty INVALID state reset the table to page 1.
+
+---
+
+## 2026-09-24 — candidate sign-up on the web, from the app design
+
+`/signup/student` is the candidate app's first-run flow (the design's "Try it",
+"The score" and "Keep it" screens), rebuilt as a website that works on a
+laptop. The step sits on the left and a sticky context panel on the right;
+below `lg` it collapses to one column. The login page links to it. No backend
+change.
+
+Welcome → language → how it works → **account** → about you → resume
+(upload, paste or form) → reading → check and correct → confirm → scoring →
+the existing `/student/score` screen.
+
+- **The account comes before the resume**, unlike the design. Every
+  `/candidate/resume/*` route needs a candidate (the client reversed guest
+  parsing on 2026-08-27), so "try it without an account" cannot exist.
+- **Email, not phone OTP.** The design's phone screen predates the 2026-09-18
+  decision. `app/api/auth/signup` now takes `pool: CANDIDATE`, with its own
+  deterministic dev subject, so the same email resumes the same account. A
+  signed-up candidate is not in `accounts.json`, so `/login` cannot sign them
+  back in. They return through the sign-up page, and the login error says so.
+- **Language** is saved as the notification locale (`PATCH
+  /notifications/preferences`). The web UI itself is still English only.
+- **Name and city** use `PUT /candidate/profile/name` and `/location`, with the
+  backend's alphabet (letters, marks, `. ' -`). The 36 state codes are copied
+  from `app/core/reference.py`.
+- **Review** renders `sections` as cards. Unclear skills, languages and
+  certificates open the "Fix this skill" sheet. Fixes replace the item inside
+  the section's own text, matched between separators so "Java" never edits
+  "JavaScript", so layout is kept. Any change is sent once as a `sections`
+  edit (a new version), then that version is confirmed. A retry after a
+  failed confirm reuses the version the edit already created. Structured
+  (form) versions are corrected through the form, as a `structured` edit.
+- **Scoring** polls `GET /candidate/score/me` and only counts a score computed
+  after this confirmation. **Seeing the score is pay-first (R13)**: a new
+  candidate with no subscription or college seat gets 402, and the screen then
+  says the resume is saved and needs a subscription. By decision, no checkout
+  was built into this flow.
+- The design's images are not in the repo. The hero and step art are built
+  from shapes and icons, and none of them is a dial or gauge.
+- The screens up to the email step were checked in a browser at 1366×768.
+  Everything after it needs a real account and was not run against a backend.
+
+---
+
+## 2026-09-24 — search boxes wait for the user to stop typing
+
+Every search box that calls the API now waits until typing has stopped for
+**2 seconds** (`SEARCH_DEBOUNCE_MS`, `frontend/lib/hooks/use-debounced-value.ts`)
+before sending a request. Before this, `useDeferredValue` sent roughly one
+request per keystroke. It covers the student job feed, employer jobs,
+employer candidate search and its skill and city suggestions, admin users,
+and admin search filters. Clearing a box applies at once.
+
+- While a suggestion box is waiting, the list already on screen is narrowed
+  locally and the "add this skill/city" option follows the typed text, so the
+  panel still reacts to every keystroke without a request.
+- Candidate search keeps the box's text locally and commits it to the store
+  only once it settles. The store resets the cursor, so committing on every
+  keystroke would refetch the old search's first page.
+- `useCursorPagination` now resets during render instead of in an effect. The
+  effect let one request go out with the new filters and the old page's
+  cursor before the reset landed.
+- Team and college roster search filter in the browser and call nothing, so
+  they are unchanged.
+
+---
+
+## 2026-09-24 — employer sign-up with step-by-step KYB (frontend)
+
+`/signup/employer` takes a new employer from nothing to a KYB submission, one
+step at a time: account, organisation, then **one step per section of the
+published KYB form** (`GET /employer/kyb/form`), a review, and submit. The
+login page links to it. No backend change.
+
+- **The form is rendered from the definition, not hard-coded.** Labels,
+  types, required flags, patterns, max lengths, help text and option lists
+  all come from the API, so a new `FORM_VERSION` renders unchanged. Fields
+  marked `public` are badged "Shown to candidates".
+- **Every step saves** (`PUT /employer/kyb/answers`, that section's fields
+  only; blanks are sent as `null` to clear). Submit saves every section once
+  more and then calls `POST /employer/kyb/submit`, because a section edited and
+  then left through the step list was never saved on its own. Client checks
+  mirror `app/core/forms.py`; the server stays the authority, and a
+  `kyb_answers_invalid` refusal marks every listed field and jumps to the
+  first failing step.
+- **Documents** go ticket → raw PUT to the presigned URL → `complete`. Uploads
+  are serialised and block navigation until they finish; a
+  `kyb_document_rejected` reason becomes its own message.
+- **Resuming.** A signed-in owner lands on the first incomplete step. A
+  non-editable submission (SUBMITTED, UNDER_REVIEW, APPROVED) shows its status
+  instead; MORE_INFO_REQUIRED shows the reviewer's note above the form;
+  REJECTED offers a new submission with the old answers prefilled (documents
+  must be uploaded again, because the next save starts a fresh draft).
+- **Sign-up is local-dev only, like sign-in.** `app/api/auth/signup` mints a
+  BUSINESS-pool token through `/auth/dev/token`, with a subject derived from
+  the email, so signing up again with the same address resumes the same
+  account. The deployed path is Cognito `SignUp` → code → MFA, which the web
+  app does not implement yet; with local tokens off the route answers 503.
+  A signed-up employer is not in `accounts.json`, so they return through
+  `/signup/employer`, not `/login`.
+- Not runtime-tested against a backend in this session; `tsc` and `eslint`
+  pass.
+
+---
+
 ## 2026-09-24 — frontend search filters use the curated catalogue
 
 The employer Candidates screen no longer carries its own skill, city, band,
@@ -204,6 +363,43 @@ counts, roster imports and referral codes show layout-matched skeletons during
 initial requests and refetches; static filters, invitations and CSV upload
 remain available without waiting for unrelated reads. Its route-level fallback
 also covers the roster-import and referral-code panels.
+
+The Link states loading treatment now replaces each complete state card rather
+than only swapping its number for a small block beside a live icon and copy.
+Three equal-height, colour-matched placeholders preserve the final card layout
+and avoid the visually broken mixed loaded/loading state.
+
+Every student portal route now shares one responsive, 1280px-capped content
+container instead of narrowing selected detail, score, notification and add-on
+pages to 768px or 1024px. At ordinary laptop widths, the job and application
+detail screens now use the same 16px content gutter as the board and the rest
+of the portal, without horizontal overflow on mobile.
+
+The student board, application detail, job detail and profile now use
+layout-matched skeletons while their client queries resolve. Application
+detail, job detail and profile also have route-level loading fallbacks. The
+board keeps its skeleton at the query boundary rather than a parent
+`loading.tsx`, because a parent fallback would incorrectly replace the nested
+application-detail skeleton on direct loads.
+
+The student header now uses the same notification centre as the admin,
+employer and college portals. The bell opens the shared paginated dropdown
+with unread state, mark-all-read and dismissal behavior instead of navigating
+to a duplicate full-page implementation. The old `/student/notifications`
+URL redirects to the student home screen for existing bookmarks.
+
+The student dashboard now uses layout-matched skeletons for every asynchronous
+area: the greeting, resume-score card, both add-on cards and the eligible-jobs
+grid. Loading no longer exposes temporary labels such as "Loading score",
+"Loading jobs", "Unavailable" or zero sessions while those requests are still
+in flight, and the skeleton layout has no horizontal overflow.
+
+The student Jobs feed now requests cursor pages of 10 and automatically loads
+the next page as its end sentinel approaches the viewport. The manual
+"Load more" control is gone; next-page requests append to the existing cards
+and show card-shaped skeletons. A failed next page keeps the jobs already
+loaded and offers an explicit retry instead of replacing the feed with a
+full-page error.
 
 College Settings now fetches data on demand by active surface instead of
 subscribing every mounted component to every settings query. The shared header

@@ -22,6 +22,7 @@ export function StudentRoster() {
   const {
     students,
     isLoadingStudents,
+    studentsPagination,
     seats,
     isLoadingSeats,
     referralCodes,
@@ -135,8 +136,10 @@ export function StudentRoster() {
       {/* 2. STUDENT ROSTER TABLE CARD */}
       <StudentTable
         students={filteredStudents}
-        totalCount={filteredStudents.length}
-        pageSize={10}
+        currentPage={studentsPagination.currentPage}
+        hasNextPage={studentsPagination.hasNextPage}
+        onNextPage={studentsPagination.goToNextPage}
+        onPreviousPage={studentsPagination.goToPreviousPage}
         isLoading={isLoadingStudents}
         onView={(student) => setViewingStudentId(student.id)}
       />

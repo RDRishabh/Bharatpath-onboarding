@@ -28,6 +28,17 @@
   }
 }
 
+/* Indeterminate progress sweep (candidate sign-up), from the app design. */
+@keyframes bpSweep {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  100% {
+    transform: translateX(340%);
+  }
+}
+
 /* =========================================================
    Skeleton shimmer — the single loading placeholder surface
    used by every portal (admin / employer / college).

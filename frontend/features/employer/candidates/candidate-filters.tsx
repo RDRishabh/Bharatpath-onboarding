@@ -1,12 +1,9 @@
 "use client";
 
 import { ChevronRight, Plus, Search } from "lucide-react";
-import {
-  useDeferredValue,
-  useMemo,
-  useState,
-} from "react";
+import { useMemo, useState } from "react";
 
+import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import {
   useGetEmployerCandidateFiltersQuery,
   useGetEmployerCandidateLocationSuggestionsQuery,
@@ -31,8 +28,30 @@ function uniqueChoices<T extends { key: string; label: string }>(
   });
 }
 
+/**
+ * While the typed text has not yet settled into a request, narrow what is
+ * already loaded so the list still responds to each keystroke. Once it has
+ * settled, the server's matches (aliases included) are shown as returned.
+ */
+function narrowWhileTyping<T extends { label: string }>(
+  choices: T[],
+  typed: string,
+  settled: string,
+): T[] {
+  if (!typed || typed === settled) {
+    return choices;
+  }
+
+  const needle = typed.toLocaleLowerCase();
+  return choices.filter((choice) =>
+    choice.label.toLocaleLowerCase().includes(needle),
+  );
+}
+
 interface CandidateFiltersProps {
   filters: CandidateFiltersState;
+  /** What is in the search box now; the query only hears it once settled. */
+  search: string;
   onSearch: (value: string) => void;
   onStateChange: (value: string) => void;
   onToggleBand: (value: CandidateBand) => void;
@@ -44,6 +63,7 @@ interface CandidateFiltersProps {
 
 export function CandidateFilters({
   filters,
+  search,
   onSearch,
   onStateChange,
   onToggleBand,
@@ -51,8 +71,12 @@ export function CandidateFilters({
 }: CandidateFiltersProps) {
   const [skillQuery, setSkillQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
-  const deferredSkillQuery = useDeferredValue(skillQuery.trim());
-  const deferredLocationQuery = useDeferredValue(locationQuery.trim());
+  // What the user has typed, used for instant local narrowing and the
+  // "add this" option; the debounced text is what reaches the API.
+  const typedSkill = skillQuery.trim();
+  const typedLocation = locationQuery.trim();
+  const debouncedSkillQuery = useDebouncedSearch(skillQuery);
+  const debouncedLocationQuery = useDebouncedSearch(locationQuery);
   const {
     data: panel,
     error: panelError,
@@ -65,8 +89,8 @@ export function CandidateFilters({
     isFetching: skillSuggestionsFetching,
   } =
     useGetEmployerCandidateSkillSuggestionsQuery(
-      { q: deferredSkillQuery, limit: 10 },
-      { skip: deferredSkillQuery.length === 0 },
+      { q: debouncedSkillQuery, limit: 10 },
+      { skip: debouncedSkillQuery.length === 0 },
     );
   const {
     data: locationSuggestions,
@@ -74,29 +98,30 @@ export function CandidateFilters({
   } =
     useGetEmployerCandidateLocationSuggestionsQuery(
       {
-        q: deferredLocationQuery,
+        q: debouncedLocationQuery,
         state: filters.state || undefined,
         limit: 10,
       },
-      { skip: deferredLocationQuery.length === 0 },
+      { skip: debouncedLocationQuery.length === 0 },
     );
 
   const skills = useMemo(() => {
-    const choices = deferredSkillQuery
+    const loaded = debouncedSkillQuery
       ? skillSuggestions?.items ?? []
       : panel?.skills ?? [];
     return uniqueChoices([
       ...filters.skills.map((label) => ({ key: label, label })),
-      ...choices,
+      ...narrowWhileTyping(loaded, typedSkill, debouncedSkillQuery),
     ]);
   }, [
-    deferredSkillQuery,
+    debouncedSkillQuery,
     filters.skills,
     panel?.skills,
     skillSuggestions?.items,
+    typedSkill,
   ]);
   const cities = useMemo(() => {
-    const choices = deferredLocationQuery
+    const loaded = debouncedLocationQuery
       ? locationSuggestions?.items ?? []
       : (panel?.cities ?? []).filter(
           (city) => !filters.state || city.state_code === filters.state,
@@ -107,34 +132,35 @@ export function CandidateFilters({
         label,
         state_code: filters.state,
       })),
-      ...choices,
+      ...narrowWhileTyping(loaded, typedLocation, debouncedLocationQuery),
     ]);
   }, [
-    deferredLocationQuery,
+    debouncedLocationQuery,
     filters.locations,
     filters.state,
     locationSuggestions?.items,
     panel?.cities,
+    typedLocation,
   ]);
   const canAddSkill =
-    deferredSkillQuery.length > 0 &&
-    deferredSkillQuery.length <= (panel?.limits.max_skill_length ?? 80) &&
+    typedSkill.length > 0 &&
+    typedSkill.length <= (panel?.limits.max_skill_length ?? 80) &&
     !skills.some(
       (skill) =>
         skill.label.toLocaleLowerCase() ===
-          deferredSkillQuery.toLocaleLowerCase() ||
+          typedSkill.toLocaleLowerCase() ||
         skill.key.toLocaleLowerCase() ===
-          deferredSkillQuery.toLocaleLowerCase(),
+          typedSkill.toLocaleLowerCase(),
     );
   const canAddCity =
-    deferredLocationQuery.length > 0 &&
-    deferredLocationQuery.length <= (panel?.limits.max_city_length ?? 100) &&
+    typedLocation.length > 0 &&
+    typedLocation.length <= (panel?.limits.max_city_length ?? 100) &&
     !cities.some(
       (city) =>
         city.label.toLocaleLowerCase() ===
-          deferredLocationQuery.toLocaleLowerCase() ||
+          typedLocation.toLocaleLowerCase() ||
         city.key.toLocaleLowerCase() ===
-          deferredLocationQuery.toLocaleLowerCase(),
+          typedLocation.toLocaleLowerCase(),
     );
   const maxSkillsReached =
     filters.skills.length >= (panel?.limits.max_skills ?? 5);
@@ -187,7 +213,7 @@ export function CandidateFilters({
 
           <input
             type="text"
-            value={filters.search}
+            value={search}
             onChange={(e) => onSearch(e.target.value)}
             placeholder="Search skills"
             aria-label="Search candidates"
@@ -264,10 +290,10 @@ export function CandidateFilters({
           </div>
           {canAddSkill ? (
             <AddTypedFilter
-              label={deferredSkillQuery}
+              label={typedSkill}
               disabled={maxSkillsReached}
               onClick={() => {
-                onToggleFilter("skills", deferredSkillQuery);
+                onToggleFilter("skills", typedSkill);
                 setSkillQuery("");
               }}
             />
@@ -333,10 +359,10 @@ export function CandidateFilters({
           </div>
           {canAddCity ? (
             <AddTypedFilter
-              label={deferredLocationQuery}
+              label={typedLocation}
               disabled={maxCitiesReached}
               onClick={() => {
-                onToggleFilter("locations", deferredLocationQuery);
+                onToggleFilter("locations", typedLocation);
                 setLocationQuery("");
               }}
             />

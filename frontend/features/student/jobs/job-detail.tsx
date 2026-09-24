@@ -33,6 +33,7 @@ import {
   StatusChip,
   StudentCard,
 } from "@/features/student/components";
+import { StudentJobDetailSkeleton } from "@/features/student/loading";
 import { StudentPage, StudentTopBar } from "@/features/student/shell";
 
 export function JobDetail() {
@@ -50,18 +51,12 @@ export function JobDetail() {
   );
 
   if (job.isLoading) {
-    return (
-      <StudentPage width="narrow">
-        <div className="rounded-2xl border border-[#E7E0D4] bg-white p-5 text-sm text-[#5F6B80]">
-          Loading job…
-        </div>
-      </StudentPage>
-    );
+    return <StudentJobDetailSkeleton />;
   }
 
   if (!job.data || job.error) {
     return (
-      <StudentPage width="narrow">
+      <StudentPage>
         <EmptyState
           title="Job unavailable"
           message={getApiErrorMessage(
@@ -92,7 +87,7 @@ export function JobDetail() {
   };
 
   return (
-    <StudentPage width="medium">
+    <StudentPage>
       <StudentTopBar
         title={listing.title}
         right={

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Mail } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -125,6 +126,16 @@ export function LoginForm() {
       <p className="text-center text-[11px] leading-5 text-[#8790a0]">
         Enter the email of a provisioned account. We&apos;ll route you to the
         right portal automatically.
+      </p>
+
+      <p className="text-center text-[13px] text-[#687386]">
+        Looking for a job?{" "}
+        <Link
+          href="/signup/student"
+          className="font-semibold text-[#3566b8] hover:text-[#254f96]"
+        >
+          Create a free candidate account
+        </Link>
       </p>
     </form>
   );

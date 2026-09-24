@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
 /**
  * "Load more" accumulation over a cursor endpoint.
@@ -35,19 +35,20 @@ export function useCursorLoadMore<TItem>(
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  // Keep the latest fetcher without making it a reset dependency.
-  const fetchRef = useRef(fetchPage);
-  fetchRef.current = fetchPage;
+  const fetchInitialPage = useEffectEvent(() => fetchPage(undefined));
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
-    setError(null);
 
-    fetchRef
-      .current(undefined)
-      .then((page) => {
+    Promise.resolve()
+      .then(() => {
         if (cancelled) return;
+        setIsLoading(true);
+        setError(null);
+        return fetchInitialPage();
+      })
+      .then((page) => {
+        if (cancelled || !page) return;
         setItems(page.items);
         setNextCursor(page.nextCursor);
         setIsLoading(false);
@@ -69,19 +70,20 @@ export function useCursorLoadMore<TItem>(
       return;
     }
 
+    setError(null);
     setIsLoadingMore(true);
-    fetchRef
-      .current(nextCursor)
+    fetchPage(nextCursor)
       .then((page) => {
         setItems((previous) => [...previous, ...page.items]);
         setNextCursor(page.nextCursor);
+        setError(null);
         setIsLoadingMore(false);
       })
       .catch((cause) => {
         setError(cause);
         setIsLoadingMore(false);
       });
-  }, [nextCursor, isLoadingMore]);
+  }, [fetchPage, nextCursor, isLoadingMore]);
 
   return {
     items,

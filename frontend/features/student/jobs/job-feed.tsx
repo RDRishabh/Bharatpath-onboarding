@@ -1,6 +1,11 @@
 "use client";
 
-import { useCallback, useDeferredValue } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+} from "react";
 import { Check, Search } from "lucide-react";
 
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -14,34 +19,64 @@ import {
   useLazyGetStudentJobsQuery,
 } from "@/store/student";
 import { getApiErrorMessage } from "@/lib/api/error-message";
+import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 import { EmptyState, JobCard } from "@/features/student/components";
+import { StudentJobGridSkeleton } from "@/features/student/loading";
 import { StudentPage } from "@/features/student/shell";
 
 const WORK_MODES = ["ONSITE", "HYBRID", "REMOTE"] as const;
+const JOBS_PAGE_SIZE = 10;
 
 export function JobFeed() {
   const dispatch = useAppDispatch();
   const search = useAppSelector(selectJobSearch);
-  const deferredSearch = useDeferredValue(search);
+  const debouncedSearch = useDebouncedSearch(search);
   const qualifiedOnly = useAppSelector(selectJobQualifiedOnly);
   const workMode = useAppSelector(selectJobWorkMode);
   const [fetchJobs] = useLazyGetStudentJobsQuery();
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
 
   const jobs = useCursorLoadMore(
     useCallback(
       (cursor: string | undefined) =>
         fetchJobs({
-          q: deferredSearch.trim() || undefined,
+          q: debouncedSearch || undefined,
           workMode: workMode ?? undefined,
           eligibleOnly: qualifiedOnly,
           cursor,
-          limit: 20,
+          limit: JOBS_PAGE_SIZE,
         }).unwrap(),
-      [fetchJobs, deferredSearch, workMode, qualifiedOnly],
+      [fetchJobs, debouncedSearch, workMode, qualifiedOnly],
     ),
-    [deferredSearch, workMode, qualifiedOnly],
+    [debouncedSearch, workMode, qualifiedOnly],
   );
+  const loadMoreFromObserver = useEffectEvent(jobs.loadMore);
+
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (
+      !sentinel ||
+      !jobs.hasMore ||
+      jobs.isLoading ||
+      jobs.isLoadingMore ||
+      jobs.error
+    ) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          loadMoreFromObserver();
+        }
+      },
+      { rootMargin: "240px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [jobs.error, jobs.hasMore, jobs.isLoading, jobs.isLoadingMore]);
 
   return (
     <StudentPage>
@@ -87,10 +122,8 @@ export function JobFeed() {
         </div>
 
         {jobs.isLoading ? (
-          <div className="rounded-2xl border border-[#E7E0D4] bg-white p-5 text-sm text-[#5F6B80]">
-            Loading jobs…
-          </div>
-        ) : jobs.error ? (
+          <StudentJobGridSkeleton count={6} />
+        ) : jobs.error && !jobs.items.length ? (
           <EmptyState
             icon={<Search size={22} />}
             title="Jobs unavailable"
@@ -104,18 +137,32 @@ export function JobFeed() {
               ))}
             </div>
 
-            {jobs.hasMore ? (
-              <div className="flex justify-center pt-1">
+            {jobs.isLoadingMore ? (
+              <StudentJobGridSkeleton
+                label="Loading more jobs"
+              />
+            ) : null}
+
+            {jobs.error && jobs.hasMore ? (
+              <div className="flex flex-col items-center gap-2 pt-1">
+                <span className="text-[13px] text-[#5F6B80]">
+                  Could not load more jobs.
+                </span>
                 <button
                   type="button"
                   onClick={jobs.loadMore}
-                  disabled={jobs.isLoadingMore}
                   className="rounded-full border border-[#E7E0D4] bg-white px-5 py-2.5 text-[13px] font-semibold text-[#0A1931] transition-colors hover:bg-[#F7F3EC] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {jobs.isLoadingMore ? "Loading…" : "Load more"}
+                  Try again
                 </button>
               </div>
             ) : null}
+
+            <div
+              ref={loadMoreSentinelRef}
+              aria-hidden="true"
+              className="h-px w-full"
+            />
           </>
         ) : (
           <EmptyState

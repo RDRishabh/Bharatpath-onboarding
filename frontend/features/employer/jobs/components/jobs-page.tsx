@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo } from "react";
+import { useMemo } from "react";
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dropdown } from "@/components/ui/dropdown";
@@ -18,6 +18,7 @@ import {
 import type { JobsStatusFilter } from "@/store/employer/jobs";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { useCursorPagination } from "@/lib/pagination/use-cursor-pagination";
+import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import type { ApiJobStatus, EmployerJob } from "../types";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -51,13 +52,13 @@ export function JobsPage() {
     const statusFilter = useAppSelector(
         selectJobsStatusFilter
     );
-    const deferredSearch = useDeferredValue(search.trim());
+    const debouncedSearch = useDebouncedSearch(search);
     const apiStatus =
         statusFilter === "all"
             ? undefined
             : STATUS_TO_API[statusFilter];
     const pagination = useCursorPagination(
-        [deferredSearch, apiStatus],
+        [debouncedSearch, apiStatus],
         DEFAULT_PAGE_SIZE,
     );
     const {
@@ -69,7 +70,7 @@ export function JobsPage() {
     } = useGetEmployerJobsQuery(
         {
             status: apiStatus,
-            q: deferredSearch || undefined,
+            q: debouncedSearch || undefined,
             cursor: pagination.cursor,
             limit: pagination.pageSize,
         },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
+import { useState } from "react";
 import {
   ListFilter,
   Pencil,
@@ -10,6 +10,7 @@ import {
 
 import { ErrorState } from "@/components/ui";
 import { usePageHeader } from "@/components/layout/header-context";
+import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import {
   useCreateAdminSearchFilterMutation,
   useGetAdminSearchFiltersQuery,
@@ -154,9 +155,16 @@ export function SearchFiltersPage() {
   const dispatch = useAppDispatch();
   const [kind, setKind] = useState<SearchFilterKind>("SKILL");
   const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search.trim());
+  const debouncedSearch = useDebouncedSearch(search);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [cursorHistory, setCursorHistory] = useState([""]);
+  // Back to page one when the settled search changes, not on each keystroke:
+  // resetting the cursor early would refetch the old search's first page.
+  const [pagedSearch, setPagedSearch] = useState(debouncedSearch);
+  if (pagedSearch !== debouncedSearch) {
+    setPagedSearch(debouncedSearch);
+    setCursorHistory([""]);
+  }
   const [editor, setEditor] = useState<{
     optionId: string | null;
     form: FilterFormState;
@@ -175,7 +183,7 @@ export function SearchFiltersPage() {
     refetch,
   } = useGetAdminSearchFiltersQuery({
     kind,
-    q: deferredSearch || undefined,
+    q: debouncedSearch || undefined,
     includeInactive,
     cursor,
     limit: 50,
@@ -342,10 +350,7 @@ export function SearchFiltersPage() {
           <input
             type="search"
             value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              resetPage();
-            }}
+            onChange={(event) => setSearch(event.target.value)}
             placeholder={`Search ${kind === "SKILL" ? "skills" : "cities"} or aliases`}
             className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-[#8a92a0]"
           />

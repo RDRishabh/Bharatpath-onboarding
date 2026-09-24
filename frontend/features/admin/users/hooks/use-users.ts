@@ -1,7 +1,7 @@
 "use client";
 
-import { useDeferredValue } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 
 import {
   closeUser,
@@ -51,17 +51,17 @@ export function useUsers() {
   const state = useAppSelector(
     selectAdminUsers,
   );
-  const deferredSearch = useDeferredValue(state.search.trim());
+  const debouncedSearch = useDebouncedSearch(state.search);
   const isCandidates = state.segment === "candidates";
   const tenantType = state.segment === "employers" ? "EMPLOYER" : "COLLEGE";
 
-  const pagination = useCursorPagination([state.segment, deferredSearch]);
+  const pagination = useCursorPagination([state.segment, debouncedSearch]);
 
   // Candidates come from GET /admin/candidates; employers and institutions
   // stay on GET /admin/tenants. Exactly one query runs per segment.
   const candidatesQuery = useGetAdminCandidatesQuery(
     {
-      q: deferredSearch || undefined,
+      q: debouncedSearch || undefined,
       limit: pagination.pageSize,
       cursor: pagination.cursor,
     },
@@ -70,7 +70,7 @@ export function useUsers() {
   const tenantsQuery = useGetAdminTenantsQuery(
     {
       type: tenantType,
-      q: deferredSearch || undefined,
+      q: debouncedSearch || undefined,
       limit: pagination.pageSize,
       cursor: pagination.cursor,
     },

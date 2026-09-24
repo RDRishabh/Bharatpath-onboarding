@@ -2,6 +2,8 @@ import { ApiError } from "@/lib/api/errors";
 import {
   LoginRequest,
   LoginResponse,
+  SignupRequest,
+  SignupResponse,
 } from "../types";
 
 async function authRequest<T>(
@@ -61,6 +63,36 @@ export const authService = {
       {
         method: "POST",
         body: JSON.stringify(payload),
+      },
+    );
+  },
+
+  /**
+   * Employer self-registration. Creates (or resumes) a business account for
+   * the email and signs it in, exactly as `login` does.
+   */
+  async signupEmployer(
+    payload: SignupRequest,
+  ): Promise<SignupResponse> {
+    return authRequest<SignupResponse>(
+      "/api/auth/signup",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+  },
+
+  /**
+   * Candidate self-registration. Creates (or resumes) a candidate account for
+   * the email and signs it in.
+   */
+  async signupCandidate(email: string): Promise<SignupResponse> {
+    return authRequest<SignupResponse>(
+      "/api/auth/signup",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, pool: "CANDIDATE" }),
       },
     );
   },

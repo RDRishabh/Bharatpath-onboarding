@@ -24,13 +24,16 @@ export function ApplicationsPageContent() {
     isLoading,
     isLoadingMore,
     jobFilter,
+    jobSearch,
     jobOptions,
+    isSearchingJobs,
     selectedJobTitle,
     hasNextPage,
     selectedApplication,
     error,
 
     handleJobFilterChange,
+    handleJobSearchChange,
     handleLoadMore,
     handleOpenApplication,
     handleCloseApplication,
@@ -89,7 +92,10 @@ export function ApplicationsPageContent() {
           hasNextPage={hasNextPage}
           isLoadingMore={isLoadingMore}
           options={jobOptions}
+          search={jobSearch}
+          isSearching={isSearchingJobs}
           onChange={handleJobFilterChange}
+          onSearchChange={handleJobSearchChange}
           onLoadMore={handleLoadMore}
         />
 

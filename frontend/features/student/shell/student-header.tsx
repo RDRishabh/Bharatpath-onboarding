@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, Bell } from "lucide-react";
+import { Menu } from "lucide-react";
 
-import { useGetNotificationsQuery } from "@/store/api/notification-api";
 import { useGetStudentProfileQuery } from "@/store/student";
 import { initials } from "@/features/student/formatters";
+import { NotificationCenter } from "@/features/notifications";
 
 /*
  * ==========================================================================
@@ -39,9 +39,6 @@ function sectionFor(pathname: string): Section {
   if (pathname.startsWith("/student/profile")) {
     return { title: "Profile", subtitle: "Your account and privacy" };
   }
-  if (pathname.startsWith("/student/notifications")) {
-    return { title: "Notifications", subtitle: "Updates on your applications" };
-  }
   if (pathname.startsWith("/student/privacy")) {
     return { title: "Profile visibility", subtitle: "How your profile is shared" };
   }
@@ -61,10 +58,6 @@ export function StudentHeader({
 }) {
   const pathname = usePathname();
   const { data: profile } = useGetStudentProfileQuery();
-  const { data: notificationPage } = useGetNotificationsQuery(
-    { limit: 1 },
-  );
-  const unread = notificationPage?.unreadCount ?? 0;
   const { title, subtitle } = sectionFor(pathname);
 
   return (
@@ -92,16 +85,7 @@ export function StudentHeader({
       </div>
 
       {/* Actions */}
-      <Link
-        href="/student/notifications"
-        aria-label="Notifications"
-        className="relative grid h-9 w-9 place-items-center rounded-full border border-[#E7E0D4] bg-white text-[#0A1931] transition-colors hover:bg-[#F7F4EC]"
-      >
-        <Bell size={17} />
-        {unread > 0 ? (
-          <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-[1.5px] border-white bg-[#B23A1E]" />
-        ) : null}
-      </Link>
+      <NotificationCenter />
 
       <Link
         href="/student/profile"

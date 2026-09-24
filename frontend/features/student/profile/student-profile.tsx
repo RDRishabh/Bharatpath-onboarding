@@ -34,6 +34,7 @@ import {
   SectionEyebrow,
   StudentCard,
 } from "@/features/student/components";
+import { StudentProfileSkeleton } from "@/features/student/loading";
 import { StudentPage } from "@/features/student/shell";
 
 export function StudentProfile() {
@@ -50,6 +51,17 @@ export function StudentProfile() {
   const notificationsEnabled = preferences.data?.push_enabled ?? false;
   const activeCollegeLinks =
     colleges.data?.filter((link) => link.revokedAt === null).length ?? 0;
+
+  if (
+    profile.isLoading ||
+    score.isLoading ||
+    applications.isLoading ||
+    courses.isLoading ||
+    colleges.isLoading ||
+    preferences.isLoading
+  ) {
+    return <StudentProfileSkeleton />;
+  }
 
   return (
     <StudentPage>

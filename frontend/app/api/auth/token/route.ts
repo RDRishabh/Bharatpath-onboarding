@@ -73,7 +73,7 @@ export async function POST(request: Request) {
 
   if (!account) {
     return NextResponse.json(
-      { detail: "No account found for that email." },
+      { detail: "No account found for that email. Signed up on this site? Continue from the sign-up page with the same email." },
       { status: 401 },
     );
   }

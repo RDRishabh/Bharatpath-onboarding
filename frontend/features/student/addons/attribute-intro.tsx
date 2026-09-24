@@ -26,7 +26,7 @@ export function AttributeIntro() {
   const questionnaire = useGetQuestionnaireQuery();
 
   return (
-    <StudentPage width="medium">
+    <StudentPage>
       <div className="flex flex-col gap-5">
         <StudentTopBar
           title="Attribute check"

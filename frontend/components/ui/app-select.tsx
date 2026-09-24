@@ -1,12 +1,13 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
 
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Loader2, Search } from "lucide-react";
 
 interface AppSelectOption {
   value: string;
@@ -26,6 +27,12 @@ interface AppSelectProps {
   searchable?: boolean;
   /** Placeholder for the search box (only used when searchable). */
   searchPlaceholder?: string;
+  /** Receives search text for server-backed option loading. */
+  onSearchChange?: (value: string) => void;
+  /** Shows a progress row while server-backed options are loading. */
+  isSearching?: boolean;
+  /** Message shown when the current search has no options. */
+  noOptionsMessage?: string;
 }
 
 export function AppSelect({
@@ -39,6 +46,9 @@ export function AppSelect({
   ariaLabel,
   searchable = false,
   searchPlaceholder = "Search",
+  onSearchChange,
+  isSearching = false,
+  noOptionsMessage = "No matches",
 }: Readonly<AppSelectProps>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -60,6 +70,14 @@ export function AppSelect({
         )
       : options;
 
+  const closeMenu = useCallback(() => {
+    setOpen(false);
+    if (query) {
+      setQuery("");
+      onSearchChange?.("");
+    }
+  }, [onSearchChange, query]);
+
   /* =====================================================
      CLOSE WHEN CLICKING OUTSIDE
      ===================================================== */
@@ -74,7 +92,7 @@ export function AppSelect({
           event.target as Node,
         )
       ) {
-        setOpen(false);
+        closeMenu();
       }
     }
 
@@ -89,7 +107,7 @@ export function AppSelect({
         handleOutsideClick,
       );
     };
-  }, []);
+  }, [closeMenu]);
 
   /* =====================================================
      CLOSE WITH ESCAPE
@@ -104,7 +122,7 @@ export function AppSelect({
       event: KeyboardEvent,
     ) {
       if (event.key === "Escape") {
-        setOpen(false);
+        closeMenu();
       }
     }
 
@@ -119,14 +137,7 @@ export function AppSelect({
         handleEscape,
       );
     };
-  }, [open]);
-
-  // Clear the filter each time the menu closes so it reopens fresh.
-  useEffect(() => {
-    if (!open) {
-      setQuery("");
-    }
-  }, [open]);
+  }, [closeMenu, open]);
 
   // Move focus into the search box when a searchable menu opens.
   useEffect(() => {
@@ -141,10 +152,12 @@ export function AppSelect({
 
   function handleSelect(option: AppSelectOption) {
     onChange(option.value);
+    closeMenu();
+  }
 
-    // IMPORTANT:
-    // close dropdown immediately after selection
-    setOpen(false);
+  function handleSearchChange(value: string) {
+    setQuery(value);
+    onSearchChange?.(value);
   }
 
   return (
@@ -161,7 +174,13 @@ export function AppSelect({
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          if (open) {
+            closeMenu();
+          } else {
+            setOpen(true);
+          }
+        }}
         className="
           flex h-[36px] w-full
           items-center justify-between
@@ -218,7 +237,7 @@ export function AppSelect({
                 ref={searchInputRef}
                 type="text"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => handleSearchChange(event.target.value)}
                 placeholder={searchPlaceholder}
                 aria-label={searchPlaceholder}
                 className="w-full bg-transparent text-[11px] text-[#283247] outline-none placeholder:text-[#98a1b0]"
@@ -227,7 +246,19 @@ export function AppSelect({
           )}
 
           <div className={searchable ? "max-h-55 overflow-y-auto" : ""}>
-            {visibleOptions.length > 0 ? (
+            {isSearching ? (
+              <p
+                role="status"
+                className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-[#687386]"
+              >
+                <Loader2
+                  aria-hidden="true"
+                  size={13}
+                  className="animate-spin"
+                />
+                Searching...
+              </p>
+            ) : visibleOptions.length > 0 ? (
               visibleOptions.map((option) => {
                 const selected =
                   option.value === value;
@@ -264,7 +295,7 @@ export function AppSelect({
               })
             ) : (
               <p className="px-2.5 py-2 text-[11px] text-[#98a1b0]">
-                No matches
+                {noOptionsMessage}
               </p>
             )}
           </div>

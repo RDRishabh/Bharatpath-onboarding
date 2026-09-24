@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import {
   useAppDispatch,
   useAppSelector,
@@ -26,6 +27,7 @@ import {
   useMoveEmployerApplicationMutation,
   useProposeEmployerHireMutation,
 } from "@/store/employer/applications";
+import { useGetEmployerJobsQuery } from "@/store/employer/jobs";
 import type {
   ApplicationColumnDefinition,
   EmployerApplication,
@@ -61,6 +63,19 @@ export function useApplicationsPage() {
   }, [jobIdParam, dispatch]);
 
   const selectedJobId = jobFilter === "all" ? undefined : jobFilter;
+  const [jobSearch, setJobSearch] = useState("");
+  const typedJobSearch = jobSearch.trim();
+  const debouncedJobSearch = useDebouncedSearch(jobSearch);
+  const jobsSearchState = useGetEmployerJobsQuery(
+    {
+      q: debouncedJobSearch,
+      limit: 20,
+    },
+    {
+      skip: debouncedJobSearch.length === 0,
+      refetchOnMountOrArgChange: true,
+    },
+  );
 
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(false);
@@ -77,18 +92,34 @@ export function useApplicationsPage() {
 
   const jobOptions = useMemo(() => {
     const jobs = new Map<string, string>();
-    for (const application of allApplications) {
-      jobs.set(application.jobId, application.candidate.jobTitle);
+
+    if (selectedJobId) {
+      const selectedApplication = allApplications.find(
+        (application) => application.jobId === selectedJobId,
+      );
+      jobs.set(
+        selectedJobId,
+        selectedApplication?.candidate.jobTitle ??
+          `Job ${selectedJobId.slice(0, 8)}`,
+      );
     }
-    if (selectedJobId && !jobs.has(selectedJobId)) {
-      jobs.set(selectedJobId, `Job ${selectedJobId.slice(0, 8)}`);
+
+    if (debouncedJobSearch) {
+      for (const job of jobsSearchState.currentData?.items ?? []) {
+        jobs.set(job.id, job.title);
+      }
     }
 
     return [
       { value: "all", label: "All jobs" },
       ...Array.from(jobs, ([value, label]) => ({ value, label })),
     ];
-  }, [allApplications, selectedJobId]);
+  }, [
+    allApplications,
+    debouncedJobSearch,
+    jobsSearchState.currentData?.items,
+    selectedJobId,
+  ]);
   const selectedJobTitle =
     selectedJobId
       ? jobOptions.find((option) => option.value === selectedJobId)?.label ??
@@ -222,6 +253,9 @@ export function useApplicationsPage() {
     },
     [dispatch, jobFilter],
   );
+  const handleJobSearchChange = useCallback((value: string) => {
+    setJobSearch(value);
+  }, []);
 
   /*
    * ============================================================
@@ -395,16 +429,22 @@ export function useApplicationsPage() {
     isLoading,
     isLoadingMore,
     jobFilter,
+    jobSearch,
     jobOptions,
+    isSearchingJobs:
+      jobsSearchState.isFetching ||
+      typedJobSearch !== debouncedJobSearch,
     selectedJobTitle,
     hasNextPage: nextCursor !== null,
     selectedApplication,
     error:
       applicationsState.error ??
+      jobsSearchState.error ??
       moveState.error ??
       proposeState.error,
 
     handleJobFilterChange,
+    handleJobSearchChange,
     handleLoadMore,
     handleOpenApplication,
     handleCloseApplication,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 /**
  * Server-driven (cursor) pagination shared by every list surface.
@@ -31,11 +31,18 @@ export function useCursorPagination(
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const [pageIndex, setPageIndex] = useState(0);
 
-  useEffect(() => {
+  // Reset while rendering, not in an effect: an effect runs after the query
+  // has already fired once with the new filters and the old page's cursor.
+  const keys = [...resetKeys, pageSize];
+  const [seenKeys, setSeenKeys] = useState(keys);
+  if (
+    keys.length !== seenKeys.length ||
+    keys.some((key, index) => !Object.is(key, seenKeys[index]))
+  ) {
+    setSeenKeys(keys);
     setCursors([undefined]);
     setPageIndex(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...resetKeys, pageSize]);
+  }
 
   const goToNextPage = (nextCursor: string | null | undefined) => {
     if (!nextCursor) {

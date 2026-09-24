@@ -320,7 +320,7 @@ export interface CursorPaginationProps {
   isLoading?: boolean;
   onPreviousPage: () => void;
   onNextPage: () => void;
-  onPageSizeChange: (pageSize: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
   itemLabel?: string;
   className?: string;
 }
@@ -347,18 +347,20 @@ export function CursorPagination({
       </span>
 
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 whitespace-nowrap text-[13px] text-[#777f90]">
-          <span>Rows per page</span>
-          <AppSelect
-            value={String(pageSize)}
-            onChange={(value) => onPageSizeChange(Number(value))}
-            options={PAGE_SIZE_SELECT_OPTIONS}
-            ariaLabel="Rows per page"
-            className="w-18.5 [&>button]:h-8 [&>button]:px-2"
-            menuClassName="!min-w-18.5"
-            menuPlacement="top"
-          />
-        </div>
+        {onPageSizeChange && (
+          <div className="flex items-center gap-2 whitespace-nowrap text-[13px] text-[#777f90]">
+            <span>Rows per page</span>
+            <AppSelect
+              value={String(pageSize)}
+              onChange={(value) => onPageSizeChange(Number(value))}
+              options={PAGE_SIZE_SELECT_OPTIONS}
+              ariaLabel="Rows per page"
+              className="w-18.5 [&>button]:h-8 [&>button]:px-2"
+              menuClassName="!min-w-18.5"
+              menuPlacement="top"
+            />
+          </div>
+        )}
 
         <div className="flex items-center gap-1.5">
           <button
@@ -546,7 +548,9 @@ export function DataTable<T>({
             isLoading={isLoading}
             onPreviousPage={onPreviousPage ?? (() => {})}
             onNextPage={onNextPage ?? (() => {})}
-            onPageSizeChange={handlePageSizeChange}
+            onPageSizeChange={
+              onPageSizeChange ? handlePageSizeChange : undefined
+            }
             itemLabel={itemLabel}
           />
         ) : (

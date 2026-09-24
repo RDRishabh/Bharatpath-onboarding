@@ -4,6 +4,10 @@ import React, { useState } from "react";
 import { X } from "lucide-react";
 
 import { DataTable, type ColumnDef } from "@/components/ui/table";
+import {
+  tablePagination,
+  useCursorPagination,
+} from "@/lib/pagination/use-cursor-pagination";
 
 import { useGetRosterImportRowsQuery } from "@/store/college/students/students.api";
 import type { RosterRow, RosterRowState } from "@/store/college/types";
@@ -36,12 +40,15 @@ export function RosterRowsModal({
   const [filter, setFilter] = useState<RosterRowState | "ALL">("ALL");
 
   const isOpen = importId !== null;
+  const pagination = useCursorPagination([importId, filter], 10);
 
-  const { data, isLoading, isFetching } = useGetRosterImportRowsQuery(
+  const { currentData, isLoading, isFetching } = useGetRosterImportRowsQuery(
     importId
       ? {
           importId,
           rowState: filter === "ALL" ? undefined : filter,
+          cursor: pagination.cursor,
+          limit: pagination.pageSize,
         }
       : null,
     { skip: !isOpen },
@@ -151,9 +158,12 @@ export function RosterRowsModal({
           <div className="max-h-[55vh] overflow-y-auto">
             <DataTable
               columns={columns}
-              data={data ?? []}
-              totalCount={(data ?? []).length}
-              pageSize={10}
+              data={currentData?.items ?? []}
+              paginationMode="cursor"
+              {...tablePagination(
+                pagination,
+                currentData?.nextCursor,
+              )}
               keyExtractor={(row) => String(row.rowNumber)}
               itemLabel="rows"
               isLoading={isLoading || isFetching}

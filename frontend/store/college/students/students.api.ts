@@ -6,6 +6,7 @@ import type {
   ReferralCode,
   RosterImport,
   RosterRow,
+  RosterRowsPage,
   VisibleStudent,
   VisibleStudentsPage,
 } from "@/store/college/types";
@@ -324,8 +325,13 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
     }),
 
     getRosterImportRows: builder.query<
-      RosterRow[],
-      { importId: string; rowState?: RosterRow["rowState"] } | null
+      RosterRowsPage,
+      {
+        importId: string;
+        rowState?: RosterRow["rowState"];
+        cursor?: string;
+        limit?: number;
+      } | null
     >({
       query: (args) => {
         if (!args) {
@@ -336,7 +342,8 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
           url: `/college/roster-imports/${args.importId}/rows`,
           method: "GET",
           params: {
-            limit: 100,
+            cursor: args.cursor,
+            limit: args.limit,
             ...(args.rowState
               ? { row_state: args.rowState }
               : {}),
@@ -345,7 +352,10 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
       },
       transformResponse: (
         response: RosterRowsPageResponse,
-      ) => response.items.map(mapRosterRow),
+      ): RosterRowsPage => ({
+        items: response.items.map(mapRosterRow),
+        nextCursor: response.next_cursor,
+      }),
     }),
 
     commitRosterImport: builder.mutation<

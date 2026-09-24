@@ -14,6 +14,7 @@ import {
   useSendRosterInvitationsMutation,
 } from "@/store/college/students/students.api";
 import { useGetCollegeSeatsQuery } from "@/store/college/settings/settings.api";
+import { useCursorPagination } from "@/lib/pagination/use-cursor-pagination";
 
 import type {
   StudentScoreBand,
@@ -51,7 +52,11 @@ function mapStudent(student: VisibleStudent): CollegeStudent {
  * real ways of reaching students (referral codes and roster CSV imports).
  */
 export function useStudents() {
-  const studentsQuery = useGetCollegeStudentsQuery({ limit: 100 });
+  const studentsPagination = useCursorPagination([], 10);
+  const studentsQuery = useGetCollegeStudentsQuery({
+    cursor: studentsPagination.cursor,
+    limit: 10,
+  });
   const seatsQuery = useGetCollegeSeatsQuery();
   const referralCodesQuery = useGetReferralCodesQuery();
   const rosterImportsQuery = useGetRosterImportsQuery();
@@ -70,15 +75,24 @@ export function useStudents() {
     useSendRosterInvitationsMutation();
 
   const students = useMemo<CollegeStudent[]>(
-    () => (studentsQuery.data?.items ?? []).map(mapStudent),
-    [studentsQuery.data],
+    () => (studentsQuery.currentData?.items ?? []).map(mapStudent),
+    [studentsQuery.currentData],
   );
+  const studentsNextCursor =
+    studentsQuery.currentData?.nextCursor ?? null;
 
   return {
     students,
     isLoadingStudents:
       studentsQuery.isLoading || studentsQuery.isFetching,
     studentsError: studentsQuery.isError,
+    studentsPagination: {
+      currentPage: studentsPagination.currentPage,
+      hasNextPage: Boolean(studentsNextCursor),
+      goToNextPage: () =>
+        studentsPagination.goToNextPage(studentsNextCursor),
+      goToPreviousPage: studentsPagination.goToPreviousPage,
+    },
 
     seats: seatsQuery.data ?? null,
     isLoadingSeats:

@@ -1,10 +1,11 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ListSkeleton } from "@/components/common/loading";
 import { CursorPagination, ErrorState } from "@/components/ui";
 import { usePageHeader } from "@/components/layout/header-context";
+import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   goToNextCandidatePage,
@@ -47,9 +48,20 @@ export function CandidatesPage() {
   )
     ? storedPageSize
     : 10;
-  const deferredSearch = useDeferredValue(filters.search.trim());
+  // The box is local; the store (and with it the query and its cursor
+  // reset) only hears the text once typing has settled.
+  const [searchInput, setSearchInput] = useState(filters.search);
+  const debouncedSearch = useDebouncedSearch(searchInput);
+  const committedSearch = filters.search;
+
+  useEffect(() => {
+    if (debouncedSearch !== committedSearch) {
+      dispatch(setCandidateSearch(debouncedSearch));
+    }
+  }, [committedSearch, debouncedSearch, dispatch]);
+
   const query = useMemo(() => ({
-    q: deferredSearch || undefined,
+    q: committedSearch.trim() || undefined,
     band: filters.bands.length ? filters.bands : undefined,
     skill: filters.skills.length ? filters.skills : undefined,
     badge: filters.addons.length ? filters.addons : undefined,
@@ -62,7 +74,7 @@ export function CandidatesPage() {
     limit: pageSize,
   }), [
     cursor,
-    deferredSearch,
+    committedSearch,
     filters.addons,
     filters.bands,
     filters.experiences,
@@ -207,7 +219,8 @@ export function CandidatesPage() {
 
       <CandidateFilters
         filters={filters}
-        onSearch={(value) => dispatch(setCandidateSearch(value))}
+        search={searchInput}
+        onSearch={setSearchInput}
         onStateChange={(value) => dispatch(setCandidateState(value))}
         onToggleBand={(value) => dispatch(toggleCandidateBand(value))}
         onToggleFilter={(key, value) => dispatch(toggleCandidateFilter({ key, value }))}

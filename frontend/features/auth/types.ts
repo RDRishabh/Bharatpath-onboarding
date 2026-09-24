@@ -32,3 +32,18 @@ export interface LoginResponse {
    */
   token?: string;
 }
+
+export interface SignupRequest {
+  email: string;
+  /** Which Cognito pool the account belongs to. Defaults to BUSINESS. */
+  pool?: "CANDIDATE" | "BUSINESS";
+}
+
+export interface SignupResponse extends LoginResponse {
+  /**
+   * True for a new business account that belongs to no organisation yet
+   * (`/auth/me` answered 403 `no_active_membership`). The next step is
+   * creating one.
+   */
+  needsOrganisation: boolean;
+}

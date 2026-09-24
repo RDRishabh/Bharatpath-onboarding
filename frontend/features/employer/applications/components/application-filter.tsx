@@ -12,7 +12,10 @@ interface ApplicationFilterProps {
   hasNextPage: boolean;
   isLoadingMore: boolean;
   options: { value: string; label: string }[];
+  search: string;
+  isSearching: boolean;
   onChange: (value: string) => void;
+  onSearchChange: (value: string) => void;
   onLoadMore: () => void;
 }
 
@@ -24,7 +27,10 @@ export function ApplicationFilter({
   hasNextPage,
   isLoadingMore,
   options,
+  search,
+  isSearching,
   onChange,
+  onSearchChange,
   onLoadMore,
 }: ApplicationFilterProps) {
   return (
@@ -34,7 +40,12 @@ export function ApplicationFilter({
           value={value}
           onChange={onChange}
           options={options}
-          className="w-[178px]"
+          className="w-[222px]"
+          searchable
+          searchPlaceholder="Search jobs"
+          onSearchChange={onSearchChange}
+          isSearching={search.length > 0 && isSearching}
+          noOptionsMessage="No jobs found"
         />
 
         <span

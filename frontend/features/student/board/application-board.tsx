@@ -12,6 +12,7 @@ import {
 } from "@/store/student";
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import { ApplicationCard, EmptyState } from "@/features/student/components";
+import { StudentBoardSkeleton } from "@/features/student/loading";
 import { StudentPage } from "@/features/student/shell";
 
 const FILTERS: { key: BoardFilter; label: string }[] = [
@@ -39,6 +40,10 @@ export function ApplicationBoard() {
     [applications.data?.items, filter],
   );
 
+  if (applications.isLoading) {
+    return <StudentBoardSkeleton />;
+  }
+
   return (
     <StudentPage>
       <div className="flex flex-col gap-5">
@@ -65,11 +70,7 @@ export function ApplicationBoard() {
           </div>
         </div>
 
-        {applications.isLoading ? (
-          <div className="rounded-2xl border border-[#E7E0D4] bg-white p-5 text-sm text-[#5F6B80]">
-            Loading applications…
-          </div>
-        ) : applications.error ? (
+        {applications.error ? (
           <EmptyState
             icon={<ListChecks size={22} />}
             title="Applications unavailable"
