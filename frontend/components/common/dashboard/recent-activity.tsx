@@ -81,7 +81,7 @@ export function RecentActivityList({
   }
 
   return (
-    <div className="flex min-h-[220px] flex-col rounded-xl border border-[#e5e7ec] bg-white p-5">
+    <div className="flex min-h-[220px] flex-col rounded-xl border border-[#e5e7ec] bg-white p-5 transition-all duration-150 hover:-translate-y-px hover:border-[#d9dce4] hover:shadow-[0_6px_18px_rgba(19,26,38,0.05)]">
       <h2 className="text-sm font-semibold text-[#252b3b]">
         Recent activity
       </h2>

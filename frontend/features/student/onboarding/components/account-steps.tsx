@@ -7,6 +7,7 @@ import { Mail, MapPin, User } from "lucide-react";
 import { AppSelect } from "@/components/ui/app-select";
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import { ApiError } from "@/lib/api/errors";
+import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import { authService } from "@/features/auth/services/auth.service";
 import type { SignupResponse } from "@/features/auth/types";
 import {
@@ -56,6 +57,7 @@ export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) 
     setSubmitting(true);
     try {
       const result = await authService.signupCandidate(value);
+      showSuccessFeedback("Your account is ready.");
       await onSignedUp(result, value);
     } catch (error) {
       setExisting(error instanceof ApiError && error.status === 409);
@@ -83,7 +85,7 @@ export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) 
             existing ? (
               <Link
                 href={`/login?email=${encodeURIComponent(email.trim())}`}
-                className="w-fit font-semibold text-[#0A1931] underline underline-offset-2"
+                className="w-fit font-semibold text-[#0A1931] underline underline-offset-2 transition-colors hover:text-[#5F4DB2]"
               >
                 Sign in instead
               </Link>
@@ -198,6 +200,7 @@ export function AboutStep({ initial, onBack, onDone }: Readonly<AboutStepProps>)
           stateCode: stateCode || null,
         }).unwrap();
       }
+      showSuccessFeedback("Your details are saved.");
       onDone();
     } catch (error) {
       setServerError(error);

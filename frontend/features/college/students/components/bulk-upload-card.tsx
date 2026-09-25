@@ -3,6 +3,7 @@
 import React, { useRef, useState, DragEvent, ChangeEvent } from "react";
 import { Upload, CheckCircle2, FileText, AlertCircle } from "lucide-react";
 
+import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import type { RosterImport } from "@/store/college/types";
 
 export interface BulkUploadCardProps {
@@ -39,6 +40,7 @@ export function BulkUploadCard({ onUpload }: BulkUploadCardProps) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    showSuccessFeedback("Roster template downloaded successfully.");
   };
 
   const processFile = (file: File) => {
@@ -113,7 +115,10 @@ export function BulkUploadCard({ onUpload }: BulkUploadCardProps) {
   };
 
   return (
-    <div className="rounded-[16px] border border-[#e7e9ee] bg-white p-6 shadow-2xs flex flex-col justify-between">
+    <div
+      id="bulk-upload"
+      className="scroll-mt-4 rounded-[16px] border border-[#e7e9ee] bg-white p-6 shadow-2xs flex flex-col justify-between"
+    >
       <div>
         {/* TITLE & DESCRIPTION */}
         <h3 className="text-[16px] font-bold text-[#151b2b] tracking-[-0.01em]">

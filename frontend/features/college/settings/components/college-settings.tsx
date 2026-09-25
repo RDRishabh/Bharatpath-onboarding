@@ -88,7 +88,7 @@ export function CollegeSettings() {
       </div>
 
       {/* Settings Content */}
-      <main className="min-h-[calc(100vh-125px)] py-5">
+      <main className="min-h-[calc(100vh-125px)] pt-5">
         {activeTab === "profile" && (
           <CollegeProfile />
         )}

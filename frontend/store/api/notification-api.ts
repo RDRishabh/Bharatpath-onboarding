@@ -39,26 +39,28 @@ function toNotification(item: NotificationInboxItem): Notification {
   };
 }
 
+const rawBaseQuery = fetchBaseQuery({
+  baseUrl: API_BASE_URL,
+
+  credentials: "include",
+
+  prepareHeaders: (headers) => {
+    headers.set("Accept", "application/json");
+
+    const bearerToken =
+      getStoredToken() ?? process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
+    if (bearerToken) {
+      headers.set("Authorization", `Bearer ${bearerToken}`);
+    }
+
+    return headers;
+  },
+});
+
 export const notificationApi = createApi({
   reducerPath: "notificationApi",
 
-  baseQuery: fetchBaseQuery({
-    baseUrl: API_BASE_URL,
-
-    credentials: "include",
-
-    prepareHeaders: (headers) => {
-      headers.set("Accept", "application/json");
-
-      const bearerToken =
-        getStoredToken() ?? process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
-      if (bearerToken) {
-        headers.set("Authorization", `Bearer ${bearerToken}`);
-      }
-
-      return headers;
-    },
-  }),
+  baseQuery: rawBaseQuery,
 
   tagTypes: ["Notifications", "NotificationPreferences"],
 

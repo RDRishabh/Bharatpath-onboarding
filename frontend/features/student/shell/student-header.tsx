@@ -90,7 +90,7 @@ export function StudentHeader({
       <Link
         href="/student/profile"
         aria-label="Your profile"
-        className="grid h-9 w-9 place-items-center rounded-full bg-[#5F4DB2] text-[12px] font-bold text-white"
+        className="grid h-9 w-9 place-items-center rounded-full bg-[#5F4DB2] text-[12px] font-bold text-white transition-all hover:bg-[#4A3E8F] hover:ring-2 hover:ring-[#C9BEEB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/40"
       >
         {initials(profile?.fullName)}
       </Link>

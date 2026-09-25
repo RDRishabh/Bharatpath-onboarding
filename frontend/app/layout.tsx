@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { SuccessFeedback } from "@/components/common/success-feedback";
 import { ReduxProvider } from "@/store/provider";
 
 export const metadata: Metadata = {
@@ -17,6 +18,7 @@ export default function RootLayout({
       <body>
         <ReduxProvider>
           {children}
+          <SuccessFeedback />
         </ReduxProvider>
       </body>
     </html>

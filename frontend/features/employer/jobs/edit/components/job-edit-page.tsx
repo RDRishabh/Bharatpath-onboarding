@@ -2,6 +2,7 @@
 
 import { JobCreatePage } from "@/features/employer/jobs/create";
 import type { CreateJobFormValues } from "@/features/employer/jobs/create";
+import { thresholdFromApi } from "@/features/employer/jobs/create/threshold";
 import type { EmployerJobApiResponse } from "@/features/employer/jobs/types";
 import { useGetEmployerJobQuery } from "@/store/employer/jobs";
 import { ErrorState } from "@/components/ui";
@@ -24,7 +25,7 @@ function mapApiJobToFormValues(
     skills: job.skills,
     salaryMin: job.salary_min_minor / 100,
     salaryMax: job.salary_max_minor / 100,
-    minScore: job.min_score ?? 750,
+    minScore: thresholdFromApi(job.min_score),
   };
 }
 

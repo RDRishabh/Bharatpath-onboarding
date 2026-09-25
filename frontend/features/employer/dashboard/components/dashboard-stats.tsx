@@ -1,9 +1,12 @@
+"use client";
+
 import {
   BriefcaseBusiness,
   CalendarCheck,
   ListChecks,
   UserPlus,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { MetricCard } from "@/components/common/dashboard/metric-card";
 
@@ -16,6 +19,8 @@ interface DashboardStatsProps {
 export function DashboardStats({
   stats,
 }: DashboardStatsProps) {
+  const router = useRouter();
+
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
       <MetricCard
@@ -23,6 +28,7 @@ export function DashboardStats({
         value={stats.activeJobs}
         icon={BriefcaseBusiness}
         tone="blue"
+        onClick={() => router.push("/employer/jobs")}
       />
 
       <MetricCard
@@ -30,6 +36,7 @@ export function DashboardStats({
         value={stats.applicantsInPipeline}
         icon={ListChecks}
         tone="green"
+        onClick={() => router.push("/employer/applications")}
       />
 
       <MetricCard
@@ -37,6 +44,7 @@ export function DashboardStats({
         value={stats.interviewsInProgress}
         icon={CalendarCheck}
         tone="orange"
+        onClick={() => router.push("/employer/applications")}
       />
 
       <MetricCard
@@ -45,6 +53,7 @@ export function DashboardStats({
         icon={UserPlus}
         tone="purple"
         status="Last 7 days"
+        onClick={() => router.push("/employer/applications")}
       />
     </div>
   );

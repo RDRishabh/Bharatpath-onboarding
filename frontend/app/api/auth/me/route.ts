@@ -64,19 +64,21 @@ export async function GET() {
   const me = (await upstream.json()) as {
     user_id?: string;
     role?: string;
-    email?: string;
     tenant_id?: string | null;
   };
 
   const mapping = portalForRole(
     typeof me.role === "string" ? me.role : "",
   );
+  // The backend's /auth/me carries no email. The token it has just accepted
+  // does, so read the signed-in person's own address from it.
+  const email = emailClaim(token);
 
   return NextResponse.json({
     user: {
       id: me.user_id ?? "",
-      email: me.email ?? "",
-      name: me.email ?? "",
+      email,
+      name: email,
       role: mapping.authRole,
       tenantId: me.tenant_id ?? undefined,
     },
@@ -84,4 +86,24 @@ export async function GET() {
     path: mapping.path,
     backendRole: me.role ?? "",
   });
+}
+
+function emailClaim(token: string): string {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) {
+      return "";
+    }
+    const claims: unknown = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf-8"),
+    );
+    return claims &&
+      typeof claims === "object" &&
+      "email" in claims &&
+      typeof claims.email === "string"
+      ? claims.email
+      : "";
+  } catch {
+    return "";
+  }
 }

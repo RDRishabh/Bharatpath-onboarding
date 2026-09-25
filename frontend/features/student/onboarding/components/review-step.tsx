@@ -254,6 +254,7 @@ function SectionsReview({
         const created = await editVersion({
           resumeVersionId: target,
           edit: { sections: edited },
+          __suppressSuccessFeedback: true,
         }).unwrap();
         target = created.resumeVersionId;
         setCreatedId(target);

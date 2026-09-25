@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import {
   selectIsJobSaved,
   toggleSavedJob,
@@ -94,7 +95,14 @@ export function JobDetail() {
           <div className="flex items-center gap-2">
             <IconCircleButton
               aria-label={saved ? "Remove saved job" : "Save job"}
-              onClick={() => dispatch(toggleSavedJob(listing.id))}
+              onClick={() => {
+                dispatch(toggleSavedJob(listing.id));
+                showSuccessFeedback(
+                  saved
+                    ? "Job removed from saved jobs."
+                    : "Job saved successfully.",
+                );
+              }}
             >
               <Bookmark
                 size={16}

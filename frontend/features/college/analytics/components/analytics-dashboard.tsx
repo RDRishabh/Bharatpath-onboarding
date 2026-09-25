@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Download } from "lucide-react";
 
 import { usePageHeader } from "@/components/layout/header-context";
+import { useScrollToHash } from "@/lib/hooks/use-scroll-to-hash";
 import {
   BarChart,
   Button,
@@ -34,7 +35,9 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 export function AnalyticsDashboard() {
-  const { data, isError } = useAnalytics();
+  const { data, isLoading, isError } = useAnalytics();
+
+  useScrollToHash(!isLoading);
 
   const headerAction = useMemo(
     () => (
@@ -91,7 +94,10 @@ export function AnalyticsDashboard() {
         ))}
       </div>
 
-      <div className="grid items-stretch gap-4 lg:grid-cols-[1.55fr_1fr]">
+      <div
+        id="hires"
+        className="grid scroll-mt-4 items-stretch gap-4 lg:grid-cols-[1.55fr_1fr]"
+      >
         <Panel
           title="Hires by month"
           footer="Platform-sourced hires among students who consented to share."

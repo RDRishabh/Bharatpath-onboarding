@@ -7,6 +7,7 @@ import type {
   EmployerJobPageApiResponse,
 } from "@/features/employer/jobs/types";
 import type { CreateJobFormValues } from "@/features/employer/jobs/create";
+import { thresholdForApi } from "@/features/employer/jobs/create/threshold";
 
 export interface ThresholdPreview {
   min_score: number;
@@ -35,7 +36,7 @@ function jobBody(values: CreateJobFormValues) {
     work_mode: "ONSITE" as const,
     salary_min_minor: Number(values.salaryMin) * 100,
     salary_max_minor: Number(values.salaryMax) * 100,
-    min_score: values.minScore,
+    min_score: thresholdForApi(values.minScore),
   };
 }
 

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ListSkeleton } from "@/components/common/loading";
 import { CursorPagination, ErrorState } from "@/components/ui";
 import { usePageHeader } from "@/components/layout/header-context";
+import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -101,6 +102,7 @@ export function CandidatesPage() {
     const result = await revealCandidate(candidateId);
     if (result.data) {
       setRevealed(result.data);
+      showSuccessFeedback("Candidate profile opened successfully.");
     }
   }
 

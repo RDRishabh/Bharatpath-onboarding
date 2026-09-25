@@ -190,10 +190,10 @@ function FilterButton({
       type="button"
       onClick={onClick}
       className={[
-        "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-semibold transition-colors",
+        "flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30",
         active
-          ? "border border-[#C9BEEB] bg-[#F1EAF7] text-[#4A3E8F]"
-          : "border border-[#E7E0D4] bg-white text-[#0A1931]",
+          ? "border border-[#C9BEEB] bg-[#F1EAF7] text-[#4A3E8F] hover:bg-[#E8DEF3]"
+          : "border border-[#E7E0D4] bg-white text-[#0A1931] hover:border-[#C9BEEB] hover:bg-[#F7F4EC]",
       ].join(" ")}
     >
       {children}

@@ -9,6 +9,193 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-25 — job threshold slider runs 0–990
+
+The create and edit job forms' minimum-score slider now runs from 0 to 990 in
+steps of 10 (it was 700–990 in steps of 1). The backend still requires
+`min_score` to be null or 700–990 (request schema, `ck_jobs_min_score_range`,
+preview query). Candidate scores start at 700, so any threshold below it
+filters nobody. The form therefore sends such a value as `min_score: null`
+(no threshold), and the backend is unchanged. Below 700 the form shows "No
+minimum" and skips the threshold-preview request.
+
+The rule lives in `features/employer/jobs/create/threshold.ts`, shared by the
+slider, validation, request body and edit mapping. Two bugs fixed on the way:
+- Validation still used the pre-v5 scale ("between 680 and 999").
+- The slider's step of 1 let it request previews the endpoint rejects, since
+  it accepts only multiples of 10.
+
+Editing a job saved with no threshold now shows 0 rather than an invented 750.
+
+Validated with workspace TypeScript diagnostics. Browser checks omitted for
+manual testing.
+
+---
+
+## 2026-09-25 — sidebar account section shows the signed-in person
+
+The admin, employer and college sidebar footer showed an organisation name
+read from the tenant slice, which sign-in never fills. So it always fell back
+to hardcoded text: "BharatPath Employer", or "Sinhgad Institute of Technology"
+for **both** college and admin. Admin was also labelled "Placement cell". No
+portal showed who was actually signed in, and the logout button disappeared
+when the sidebar was collapsed.
+
+The footer now shows the signed-in email, then role and organisation: "Owner ·
+<legal name>" from `GET /employer/organisation`, "College admin · <name>" from
+`GET /college/organisation`, or "Platform admin · BharatPath operations" for
+staff. Initials come from the email. A skeleton shows while the identity loads,
+and logout stays available in the collapsed rail. The student sidebar keeps the
+profile name and shows the email beneath it, falling back to the email when no
+name has been entered yet.
+
+`lib/auth/use-session-identity.ts` supplies the person. Sign-in already stores
+them in the auth slice, now with `backendRole`. After a reload the slice is
+empty, so the hook fills it once from `/api/auth/me`. The backend's `/auth/me`
+returns no email, so that route used to answer with an empty one. It now reads
+the `email` claim from the session token, but only after the backend has
+accepted that same token; both the local and Cognito providers issue the
+claim. `cognito_sub` is not read or exposed.
+
+Validated with workspace TypeScript diagnostics. Browser checks omitted for
+manual testing.
+
+---
+
+## 2026-09-25 — student portal hover states
+
+Student dashboard cards, and most other clickable student surfaces, had only
+a press effect (`active:scale`) and no hover. `features/student/components/
+primitives.tsx` now exports `interactiveCardClass` (lift, warmer border,
+shadow, keyboard focus ring), applied to job, application and notification
+cards, profile stat tiles and the profile-visibility row. The purple score card
+and the lilac add-on cards on the dashboard get the same lift in their own
+tones.
+
+The shared `PillButton` and `IconCircleButton` now have hover colours
+matching the onboarding flow's existing palette (primary `#4A3E8F`, secondary
+`#F7F4EC`). Pill hovers use `enabled:`, so disabled buttons do not react.
+Because every non-onboarding student page uses these two primitives, this
+covers the Jobs, Job detail, Board, Application detail, Score, Profile and
+add-on pages at once. Job-feed and board filter chips, questionnaire choices,
+the push-notification switch, the header avatar, the "All jobs" link and text
+links also gained hover states. The only button left without one is the
+mobile menu backdrop.
+
+Validated with workspace TypeScript diagnostics and a script re-count of
+clickable elements per file. Browser checks omitted for manual testing.
+
+---
+
+## 2026-09-25 — every success popup says what happened; sign-in shows none
+
+The global popup no longer says "Action completed successfully." Each RTK
+Query mutation has its own message in `store/success-messages.ts`, and a few
+build it from the request ("Candidate shortlisted.", "Push notifications
+turned off.", "Role changed to Admin."). All 64 mutation endpoints have an
+entry. An entry of `null` stays silent for one of two reasons: the mutation is
+one step of a larger action whose caller announces the whole thing (resume
+upload ticket, job create-then-publish, name-then-location), or its page
+already reports a more specific result (admin decisions, the import count).
+An endpoint left out of the map shows nothing and logs a development warning.
+
+Sign-in no longer shows a popup: the auth service announced every request,
+login included. Sign-up now says "Your account is ready." explicitly, and
+sign-out and session checks stay silent. The unused method-based
+`showRequestSuccessFeedback` helper was removed.
+
+Intermediate saves inside one action are marked `__suppressSuccessFeedback`
+(the final KYB save before submit, the resume edit before confirm), so only
+the final result is announced. The admin queue drawer now names the decision
+(approved, rejected, more information requested, cleared, confirmed). Job
+draft/publish success moved to the global popup; that page's local dark toast
+now carries only errors. "Mark all as read" and dismissing a notification
+also announce themselves.
+
+Validated with workspace TypeScript diagnostics and a script check that every
+`builder.mutation` has a map entry. Browser checks omitted for manual testing.
+
+---
+
+## 2026-09-25 — dashboard links land on the right section or tab
+
+College dashboard quick actions now deep-link to their section rather than the
+top of the Students page: "Issue a referral code" opens
+`/college/students#referral-codes` and "Bulk upload a roster" opens
+`#bulk-upload`. "Hired via platform" opens `/college/analytics#hires`.
+`lib/hooks/use-scroll-to-hash.ts` scrolls to the hash only once the target
+page's data has loaded; Next's own hash scroll runs before the skeletons above
+the target are replaced, so it lands in the wrong place.
+
+The admin dashboard's "Integrity flags" card opened the Queue on its default
+KYB tab, because the tab lived only in Redux. The Queue page now honours
+`?tab=kyb|integrity` and the Users page `?segment=candidates|employers|institutions`;
+the dashboard links "KYB awaiting review", "Integrity flags" and "Active
+employers" to the matching tab.
+
+Validated with workspace TypeScript diagnostics. Browser checks were omitted
+for manual testing.
+
+---
+
+## 2026-09-25 — consistent bottom padding on every table page
+
+Admin Users, Queue and Settings tables ran flush to the bottom of the page:
+`PortalShell` gave tabbed pages (settings, queue, users, disputes) `py-0` so
+their tab bars could sit against the header, which also removed the bottom
+gutter. Those pages now get `pb-4`, matching the `p-4` every other portal page
+and every student page already has.
+
+The per-page workarounds that would have stacked on top of it were removed:
+Disputes' `pb-6`, the employer settings `py-4` (now `pt-4`), the college
+settings `py-5` (now `pt-5`), and `pb-10` in the college Users and Billing
+tabs. Candidates keeps its fixed pagination footer and Applications its own
+`p-4`, as both already had a bottom gutter.
+
+Validated with workspace TypeScript diagnostics. Browser checks were omitted
+for manual testing.
+
+---
+
+## 2026-09-25 — employer and college dashboard cards are interactive
+
+Employer and college dashboard cards now use the shared lift, border and shadow
+hover treatment. Employer metric cards link to Jobs or Applications, and each
+top-job row opens Applications filtered to that job. College metric cards link
+to Students or Analytics, while the score-distribution and cohort-activity
+cards open Analytics. Quick-action cards retain their existing destinations
+and now use the same hover and keyboard-focus treatment.
+
+Non-navigating dashboard panels also receive the visual hover treatment for
+consistency. Copying the college dashboard referral code now uses the global
+success popup.
+
+Validated with workspace TypeScript diagnostics and focused source review.
+Browser and Playwright checks were omitted for manual testing.
+
+---
+
+## 2026-09-25 — successful frontend actions use one global popup
+
+The web frontend now mounts one accessible success popup at the application
+root, using the existing green bottom-right presentation across the admin,
+employer, college and candidate surfaces. Successful RTK Query mutations,
+direct API-client mutations and authentication actions all feed that popup.
+Existing admin and employer-specific success messages are bridged into the
+same component instead of rendering separate notification styles.
+
+Local successful actions that do not call a mutation are also covered:
+save/unsave job, audited candidate and application opens, referral-code copies
+and the roster-template download. Internal resume-upload steps and intermediate
+saves inside compound submissions are suppressed so a partial operation cannot
+produce a misleading success message.
+
+Validated with workspace TypeScript diagnostics and focused source review.
+Browser and Playwright checks were intentionally omitted at the request of the
+manual tester.
+
+---
+
 ## 2026-09-24 — admin filter tabs reset search
 
 Switching between the Skills and Cities tabs in Admin Search Filters now clears

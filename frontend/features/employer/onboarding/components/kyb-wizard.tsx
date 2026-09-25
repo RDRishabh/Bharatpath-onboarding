@@ -339,7 +339,10 @@ function KybFlow({
     ) as KybAnswers;
 
     try {
-      await saveAnswers({ answers: payload }).unwrap();
+      await saveAnswers({
+        answers: payload,
+        __suppressSuccessFeedback: true,
+      }).unwrap();
       const result = await submitKyb().unwrap();
       setSubmission(result);
       setEditing(EDITABLE_KYB_STATES.has(result.state));

@@ -1,6 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+
 import { usePageHeader } from "@/components/layout/header-context";
+import { useAppDispatch } from "@/store/hooks";
+import { setQueueTab } from "@/store/admin/queue/slice";
 
 import { DataTable } from "@/components/ui/table";
 import type { ColumnDef } from "@/components/ui/table";
@@ -41,6 +46,15 @@ export function QueuePage() {
   } = useQueue();
 
   const isKyb = tab === "kyb";
+
+  // Links such as the dashboard's "Integrity flags" card name the tab to open.
+  const dispatch = useAppDispatch();
+  const requestedTab = useSearchParams().get("tab");
+  useEffect(() => {
+    if (requestedTab === "kyb" || requestedTab === "integrity") {
+      dispatch(setQueueTab(requestedTab));
+    }
+  }, [dispatch, requestedTab]);
 
   const columns: ColumnDef<QueueItem>[] = [
     {

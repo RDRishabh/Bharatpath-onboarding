@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 import {
@@ -282,6 +283,7 @@ export function useApplicationsPage() {
         .unwrap()
         .then((application) => {
           dispatch(replaceApplication(application));
+          showSuccessFeedback("Application opened successfully.");
         })
         .catch(() => undefined);
     },

@@ -153,7 +153,7 @@ export function ApplicationDetail() {
                 href={item.interview.meetingUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-3 inline-flex items-center gap-2 text-[14px] font-semibold text-[#5F4DB2]"
+                className="mt-3 inline-flex items-center gap-2 text-[14px] font-semibold text-[#5F4DB2] underline-offset-2 transition-colors hover:text-[#4A3E8F] hover:underline"
               >
                 Join interview <ExternalLink size={14} />
               </a>

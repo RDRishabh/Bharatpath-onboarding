@@ -67,6 +67,11 @@ export function QuickActions({
         bg-white
         p-4
         shadow-[0_4px_12px_rgba(19,26,38,0.024)]
+        transition-all
+        duration-150
+        hover:-translate-y-px
+        hover:border-[#d9dce4]
+        hover:shadow-[0_6px_18px_rgba(19,26,38,0.05)]
       "
     >
       {/* ==========================================
@@ -115,10 +120,11 @@ export function QuickActions({
                 bg-white
                 px-2
                 text-center
-                transition-colors
+                transition-all
+                duration-150
                 ${disabled
                   ? "cursor-not-allowed opacity-55"
-                  : "cursor-pointer hover:bg-[#f8fafc]"}
+                  : "cursor-pointer hover:-translate-y-px hover:border-[#d9dce4] hover:bg-[#f8fafc] hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-[#5b4fcf]/20"}
                 ${action.cardClass}
               `}
             >

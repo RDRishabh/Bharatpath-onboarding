@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Copy, Check, Link2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import type { ReferralCode } from "@/store/college/types";
 
 export interface InviteStudentModalProps {
@@ -66,6 +67,7 @@ export function InviteStudentModal({
     if (!issuedCode) return;
     await navigator.clipboard.writeText(issuedCode.code);
     setCopied(true);
+    showSuccessFeedback("Referral code copied successfully.");
     setTimeout(() => setCopied(false), 1500);
   };
 

@@ -26,40 +26,42 @@ function serializeParams(params: Record<string, unknown>) {
   return searchParams.toString();
 }
 
+const rawBaseQuery = fetchBaseQuery({
+  baseUrl: API_URL,
+
+  paramsSerializer: serializeParams,
+
+  credentials: "include",
+
+  prepareHeaders: (headers) => {
+    headers.set(
+      "Accept",
+      "application/json",
+    );
+
+    /*
+     * The signed-in user's token, minted at login and kept in local
+     * storage, authenticates every direct backend call. Falls back to the
+     * local-dev NEXT_PUBLIC_API_BEARER_TOKEN when no one is signed in.
+     */
+    const bearerToken =
+      getStoredToken() ?? process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
+
+    if (bearerToken) {
+      headers.set(
+        "Authorization",
+        `Bearer ${bearerToken}`,
+      );
+    }
+
+    return headers;
+  },
+});
+
 export const baseApi = createApi({
   reducerPath: "api",
 
-  baseQuery: fetchBaseQuery({
-    baseUrl: API_URL,
-
-    paramsSerializer: serializeParams,
-
-    credentials: "include",
-
-    prepareHeaders: (headers) => {
-      headers.set(
-        "Accept",
-        "application/json",
-      );
-
-      /*
-       * The signed-in user's token, minted at login and kept in local
-       * storage, authenticates every direct backend call. Falls back to the
-       * local-dev NEXT_PUBLIC_API_BEARER_TOKEN when no one is signed in.
-       */
-      const bearerToken =
-        getStoredToken() ?? process.env.NEXT_PUBLIC_API_BEARER_TOKEN;
-
-      if (bearerToken) {
-        headers.set(
-          "Authorization",
-          `Bearer ${bearerToken}`,
-        );
-      }
-
-      return headers;
-    },
-  }),
+  baseQuery: rawBaseQuery,
 
   tagTypes: [
     "Auth",

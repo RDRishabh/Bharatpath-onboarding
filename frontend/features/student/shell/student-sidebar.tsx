@@ -6,6 +6,10 @@ import { ArrowLeftToLine, LogOut, X } from "lucide-react";
 
 import { useGetStudentProfileQuery } from "@/store/student";
 import { initials } from "@/features/student/formatters";
+import {
+  identityInitials,
+  useSessionIdentity,
+} from "@/lib/auth/use-session-identity";
 
 import { studentNavItems, isNavItemActive } from "./nav-items";
 
@@ -36,7 +40,13 @@ export function StudentSidebarContent({
 }) {
   const pathname = usePathname();
   const { data: profile } = useGetStudentProfileQuery();
-  const displayName = profile?.fullName ?? "Student";
+  const { user: identity } = useSessionIdentity();
+  const email = identity?.email || null;
+  const displayName = profile?.fullName ?? email ?? "Student";
+  const detail = profile?.fullName && email ? email : "Student account";
+  const avatarInitials = profile?.fullName
+    ? initials(profile.fullName)
+    : identityInitials(email);
 
   const rowClass = (active: boolean) =>
     [
@@ -164,15 +174,21 @@ export function StudentSidebarContent({
             ].join(" ")}
           >
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#5F4DB2] text-[13px] font-bold text-white">
-              {initials(profile?.fullName)}
+              {avatarInitials}
             </span>
             {!collapsed ? (
               <span className="flex min-w-0 flex-col">
-                <span className="truncate text-[13px] font-semibold text-[#0A1931]">
+                <span
+                  className="truncate text-[13px] font-semibold text-[#0A1931]"
+                  title={displayName}
+                >
                   {displayName}
                 </span>
-                <span className="truncate text-[12px] text-[#5F6B80]">
-                  Student account
+                <span
+                  className="truncate text-[12px] text-[#5F6B80]"
+                  title={detail}
+                >
+                  {detail}
                 </span>
               </span>
             ) : null}

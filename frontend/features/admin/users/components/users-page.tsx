@@ -1,8 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 
 import { usePageHeader } from "@/components/layout/header-context";
+import { useAppDispatch } from "@/store/hooks";
+import { setUserSegment } from "@/store/admin/users/slice";
 
 import { useUsers } from "../hooks/use-users";
 
@@ -35,6 +39,19 @@ export function UsersPage() {
     goToNextPage,
     goToPreviousPage,
   } = useUsers();
+
+  // Links such as the dashboard's "Active employers" card name the segment.
+  const dispatch = useAppDispatch();
+  const requestedSegment = useSearchParams().get("segment");
+  useEffect(() => {
+    if (
+      requestedSegment === "candidates" ||
+      requestedSegment === "employers" ||
+      requestedSegment === "institutions"
+    ) {
+      dispatch(setUserSegment(requestedSegment));
+    }
+  }, [dispatch, requestedSegment]);
 
   const pagination = {
     pageSize,

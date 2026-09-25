@@ -15,8 +15,17 @@ import { ConfigurableForm } from "@/components/forms/configurable-form";
 import type { FormFieldConfig } from "@/components/forms/configurable-form.types";
 import { usePageHeader } from "@/components/layout/header-context";
 import { getApiErrorMessage } from "@/lib/api/error-message";
+import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 
 import { useJobCreateForm } from "../hooks/use-job-create-form";
+import {
+  hasThreshold,
+  previewThreshold,
+  SCORE_FLOOR,
+  THRESHOLD_MAX,
+  THRESHOLD_MIN,
+  THRESHOLD_STEP,
+} from "../threshold";
 import type { CreateJobFormValues } from "../types";
 import { JobSkillsField } from "./job-skills-field";
 import {
@@ -63,7 +72,11 @@ export function JobCreatePage({
   } = useJobCreateForm(initialValues);
   const { data: organisation } = useGetEmployerOrganisationQuery();
   const canPublish = organisation?.kybStatus === "APPROVED";
-  const { data: thresholdPreview } = usePreviewEmployerJobThresholdQuery(values.minScore);
+  const { data: thresholdPreview } = usePreviewEmployerJobThresholdQuery(
+    previewThreshold(values.minScore),
+    { skip: !hasThreshold(values.minScore) },
+  );
+  const thresholdSet = hasThreshold(values.minScore);
   const [createJob, { isLoading: isCreating }] = useCreateEmployerJobMutation();
   const [updateJob, { isLoading: isUpdating }] = useUpdateEmployerJobMutation();
   const [publish, { isLoading: isPublishing }] = usePublishEmployerJobMutation();
@@ -127,7 +140,7 @@ export function JobCreatePage({
     try {
       if (jobId) await updateJob({ id: jobId, values }).unwrap();
       else await createJob(values).unwrap();
-      showToast("Draft saved");
+      showSuccessFeedback(jobId ? "Job changes saved as a draft." : "Job saved as a draft.");
       window.setTimeout(() => router.push("/employer/jobs"), 450);
     } catch (error) {
       showToast(getApiErrorMessage(error, "Could not save the job"));
@@ -148,7 +161,7 @@ export function JobCreatePage({
         ? await updateJob({ id: jobId, values }).unwrap()
         : await createJob(values).unwrap();
       await publish(saved.id).unwrap();
-      showToast("Job published");
+      showSuccessFeedback("Job published.");
       window.setTimeout(() => router.push("/employer/jobs"), 650);
     } catch (error) {
       showToast(getApiErrorMessage(error, "Could not publish the job"));
@@ -291,16 +304,22 @@ export function JobCreatePage({
               label="Minimum score threshold"
               trailing={
                 <span className="text-[15px] font-bold text-[#151b2b]">
-                  {values.minScore}
+                  {thresholdSet ? values.minScore : `${values.minScore} · No minimum`}
                 </span>
               }
               error={errors.minScore}
             >
               <input
                 type="range"
-                min={700}
-                max={990}
+                min={THRESHOLD_MIN}
+                max={THRESHOLD_MAX}
+                step={THRESHOLD_STEP}
                 value={values.minScore}
+                aria-valuetext={
+                  thresholdSet
+                    ? `Minimum score ${values.minScore}`
+                    : "No minimum score"
+                }
                 onChange={(event) =>
                   setValue(
                     "minScore",
@@ -313,9 +332,13 @@ export function JobCreatePage({
               />
 
               <div className="mt-1.5 flex justify-between text-[11px] text-[#7b8493]">
-                <span>700</span>
-                <span>990</span>
+                <span>{THRESHOLD_MIN}</span>
+                <span>{THRESHOLD_MAX}</span>
               </div>
+              <p className="mt-1 text-[11px] leading-4 text-[#7b8493]">
+                Candidate scores start at {SCORE_FLOOR}, so anything below it
+                sets no minimum.
+              </p>
             </FieldShell>
 
             <div className="flex items-center gap-2.5 rounded-[10px] bg-[#edf2fa] px-3.5 py-3">
@@ -326,9 +349,11 @@ export function JobCreatePage({
               />
 
               <span className="text-[13px] font-medium leading-[17px] text-[#28578f]">
-                {thresholdPreview?.fewer_than_ten
-                  ? "Fewer than 10 candidates"
-                  : `${thresholdPreview?.approximate_count ?? "—"} candidates`} in your pool currently meet this bar
+                {!thresholdSet
+                  ? "No minimum score. Every scored candidate in your pool meets this bar"
+                  : `${thresholdPreview?.fewer_than_ten
+                      ? "Fewer than 10 candidates"
+                      : `${thresholdPreview?.approximate_count ?? "—"} candidates`} in your pool currently meet this bar`}
               </span>
             </div>
           </div>

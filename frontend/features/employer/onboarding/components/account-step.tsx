@@ -6,6 +6,7 @@ import { ArrowRight, Mail } from "lucide-react";
 
 import { Button, ErrorState } from "@/components/ui";
 import { ApiError } from "@/lib/api/errors";
+import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import { authService } from "@/features/auth/services/auth.service";
 import type { SignupResponse } from "@/features/auth/types";
 
@@ -41,6 +42,7 @@ export function AccountStep({ onSignedUp }: Readonly<AccountStepProps>) {
 
     try {
       const result = await authService.signupEmployer({ email: value });
+      showSuccessFeedback("Your employer account is ready.");
       onSignedUp(result, value);
     } catch (error) {
       setExistingAccount(error instanceof ApiError && error.status === 409);

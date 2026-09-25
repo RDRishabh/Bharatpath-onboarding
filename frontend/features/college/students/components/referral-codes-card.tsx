@@ -5,6 +5,7 @@ import { KeyRound, Ban, Copy, Check } from "lucide-react";
 
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Skeleton } from "@/components/common/loading";
+import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 
 import type {
   ReferralCode,
@@ -59,6 +60,7 @@ export function ReferralCodesCard({
   const handleCopy = async (code: ReferralCode) => {
     await navigator.clipboard.writeText(code.code);
     setCopiedId(code.id);
+    showSuccessFeedback("Referral code copied successfully.");
     setTimeout(() => setCopiedId(null), 1500);
   };
 
@@ -72,7 +74,10 @@ export function ReferralCodesCard({
   };
 
   return (
-    <div className="rounded-2xl border border-[#e7e9ee] bg-white p-6 shadow-2xs">
+    <div
+      id="referral-codes"
+      className="scroll-mt-4 rounded-2xl border border-[#e7e9ee] bg-white p-6 shadow-2xs"
+    >
       <div className="flex items-center gap-2.5 mb-4">
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#edf2fa] text-[#5b4fcf]">
           <KeyRound size={18} strokeWidth={2.2} />

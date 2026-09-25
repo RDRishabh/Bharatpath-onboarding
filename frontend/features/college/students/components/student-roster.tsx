@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import { Armchair, Mail } from "lucide-react";
 import { usePageHeader } from "@/components/layout/header-context";
 import { Button } from "@/components/ui/button";
+import { useScrollToHash } from "@/lib/hooks/use-scroll-to-hash";
 import type { RosterImport } from "@/store/college/types";
 
 import { StudentStatus } from "../types";
@@ -49,6 +50,10 @@ export function StudentRoster() {
     null,
   );
   const [rowsPreview, setRowsPreview] = useState<RosterImport | null>(null);
+
+  useScrollToHash(
+    !isLoadingStudents && !isLoadingRosterImports && !isLoadingReferralCodes,
+  );
 
   /*
    * The roster only lists individually-visible (linked) students. Invited and

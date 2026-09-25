@@ -49,7 +49,7 @@ export function DisputesPage() {
 
   return (
     <>
-      <div className="min-w-0 space-y-0 pb-6">
+      <div className="min-w-0 space-y-0">
         {/* ============================================================
             TABS
             ============================================================ */}

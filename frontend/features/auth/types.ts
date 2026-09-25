@@ -9,6 +9,8 @@ export interface AuthUser {
   email: string;
   name: string;
   role: UserRole;
+  /** The backend membership role (e.g. EMPLOYER_OWNER, PLATFORM_ADMIN). */
+  backendRole?: string;
   tenantId?: string;
   tenantSlug?: string;
   tenantName?: string;

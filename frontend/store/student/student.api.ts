@@ -346,12 +346,15 @@ export const studentApi = baseApi.injectEndpoints({
     }),
     saveQuestionnaireAnswers: builder.mutation<
       QuestionnaireView,
-      Record<string, unknown>
+      {
+        answers: Record<string, unknown>;
+        __suppressSuccessFeedback?: boolean;
+      }
     >({
-      query: (answers) => ({
+      query: (payload) => ({
         url: "/candidate/questionnaire/answers",
         method: "PUT",
-        body: { answers },
+        body: { answers: payload.answers },
       }),
       transformResponse: mapQuestionnaire,
       invalidatesTags: [{ type: "Student", id: "QUESTIONNAIRE" }],

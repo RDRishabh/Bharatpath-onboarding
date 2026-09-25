@@ -228,7 +228,7 @@ export function ParsingStep({
           <button
             type="button"
             onClick={onPaste}
-            className="cursor-pointer font-semibold text-[#5F4DB2] underline underline-offset-2"
+            className="cursor-pointer font-semibold text-[#5F4DB2] underline underline-offset-2 transition-colors hover:text-[#4A3E8F]"
           >
             paste the text instead
           </button>

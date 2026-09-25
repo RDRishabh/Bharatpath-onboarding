@@ -53,7 +53,9 @@ export function LoginForm() {
         setStoredToken(result.token);
       }
 
-      dispatch(setUser(result.user));
+      dispatch(
+        setUser({ ...result.user, backendRole: result.backendRole }),
+      );
       dispatch(
         setTenant({
           portal: portalTypeByName[result.portal] ?? null,

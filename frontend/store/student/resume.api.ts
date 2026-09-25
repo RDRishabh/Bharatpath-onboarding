@@ -287,7 +287,11 @@ export const studentResumeApi = baseApi.injectEndpoints({
 
     editResumeVersion: builder.mutation<
       ResumeVersionCreated,
-      { resumeVersionId: string; edit: ResumeEdit }
+      {
+        resumeVersionId: string;
+        edit: ResumeEdit;
+        __suppressSuccessFeedback?: boolean;
+      }
     >({
       query: ({ resumeVersionId, edit }) => ({
         url: `/candidate/resume/versions/${resumeVersionId}/edit`,
