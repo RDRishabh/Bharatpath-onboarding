@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Armchair, Mail } from "lucide-react";
 import { usePageHeader } from "@/components/layout/header-context";
 import { Button } from "@/components/ui/button";
 import { useScrollToHash } from "@/lib/hooks/use-scroll-to-hash";
-import type { RosterImport } from "@/store/college/types";
 
 import { StudentStatus } from "../types";
 import { useStudents } from "../hooks/use-students";
@@ -17,9 +17,9 @@ import { InviteStudentModal } from "./invite-student-modal";
 import { StudentDetailModal } from "./student-detail-modal";
 import { ReferralCodesCard } from "./referral-codes-card";
 import { RosterImportsCard } from "./roster-imports-card";
-import { RosterRowsModal } from "./roster-rows-modal";
 
 export function StudentRoster() {
+  const router = useRouter();
   const {
     students,
     isLoadingStudents,
@@ -49,7 +49,6 @@ export function StudentRoster() {
   const [viewingStudentId, setViewingStudentId] = useState<string | null>(
     null,
   );
-  const [rowsPreview, setRowsPreview] = useState<RosterImport | null>(null);
 
   useScrollToHash(
     !isLoadingStudents && !isLoadingRosterImports && !isLoadingReferralCodes,
@@ -167,7 +166,11 @@ export function StudentRoster() {
         <RosterImportsCard
           imports={rosterImports}
           isLoading={isLoadingRosterImports}
-          onViewRows={(import_) => setRowsPreview(import_)}
+          onViewRows={(import_) =>
+            router.push(
+              `/college/students/roster-imports/${encodeURIComponent(import_.id)}`,
+            )
+          }
           onCommit={(id) => commitRosterImport(id).unwrap()}
           isCommitting={isCommittingRoster}
           onDiscard={(id) => discardRosterImport(id).unwrap()}
@@ -195,13 +198,6 @@ export function StudentRoster() {
       <StudentDetailModal
         candidateId={viewingStudentId}
         onClose={() => setViewingStudentId(null)}
-      />
-
-      {/* 7. ROSTER ROWS PREVIEW */}
-      <RosterRowsModal
-        importId={rowsPreview?.id ?? null}
-        fileName={rowsPreview?.fileName}
-        onClose={() => setRowsPreview(null)}
       />
     </div>
   );

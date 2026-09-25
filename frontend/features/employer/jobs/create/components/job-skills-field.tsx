@@ -20,12 +20,14 @@ const MAX_SKILL_LENGTH = 80;
 interface JobSkillsFieldProps {
   value: string[];
   error?: JobValidationErrors["skills"];
+  disabled?: boolean;
   onChange: (skills: string[]) => void;
 }
 
 export function JobSkillsField({
   value,
   error,
+  disabled = false,
   onChange,
 }: JobSkillsFieldProps) {
   const [query, setQuery] = useState("");
@@ -42,7 +44,7 @@ export function JobSkillsField({
   } = useGetEmployerCandidateSkillSuggestionsQuery(
     { q: debouncedQuery, limit: 10 },
     {
-      skip: debouncedQuery.length === 0,
+      skip: disabled || debouncedQuery.length === 0,
       refetchOnMountOrArgChange: true,
     },
   );
@@ -93,6 +95,7 @@ export function JobSkillsField({
 
   function addSkill(skill: string) {
     if (
+      disabled ||
       value.length >= MAX_SKILLS ||
       value.some(
         (item) => item.toLocaleLowerCase() === skill.toLocaleLowerCase(),
@@ -107,6 +110,9 @@ export function JobSkillsField({
   }
 
   function removeSkill(skill: string) {
+    if (disabled) {
+      return;
+    }
     onChange(value.filter((item) => item !== skill));
   }
 
@@ -124,14 +130,16 @@ export function JobSkillsField({
               className="inline-flex items-center gap-1.5 rounded-full bg-[#edf2fa] px-3 py-2 text-xs font-semibold text-[#28578f] ring-1 ring-[#2f5da8]/20"
             >
               {skill}
-              <button
-                type="button"
-                onClick={() => removeSkill(skill)}
-                aria-label={`Remove ${skill}`}
-                className="cursor-pointer rounded-full text-[#687386] hover:text-[#b42318]"
-              >
-                <X aria-hidden="true" size={13} />
-              </button>
+              {!disabled ? (
+                <button
+                  type="button"
+                  onClick={() => removeSkill(skill)}
+                  aria-label={`Remove ${skill}`}
+                  className="cursor-pointer rounded-full text-[#687386] hover:text-[#b42318]"
+                >
+                  <X aria-hidden="true" size={13} />
+                </button>
+              ) : null}
             </span>
           ))}
         </div>
@@ -151,21 +159,23 @@ export function JobSkillsField({
           aria-controls="job-skill-suggestions"
           value={query}
           maxLength={MAX_SKILL_LENGTH}
-          disabled={value.length >= MAX_SKILLS}
+          disabled={disabled || value.length >= MAX_SKILLS}
           onFocus={() => setOpen(true)}
           onChange={(event) => {
             setQuery(event.target.value);
             setOpen(true);
           }}
           placeholder={
-            value.length >= MAX_SKILLS
+            disabled
+              ? "Required skills"
+              : value.length >= MAX_SKILLS
               ? "Maximum 50 skills selected"
               : "Search required skills"
           }
           className="h-10 w-full rounded-[9px] border border-[#e1e5ea] bg-white pl-9 pr-3 text-[12px] text-[#182132] outline-none placeholder:text-[#8a919d] focus:border-[#9bb4d4] focus:ring-2 focus:ring-[#315f9b]/10 disabled:cursor-not-allowed disabled:bg-[#f5f6f8]"
         />
 
-        {open && typedQuery ? (
+        {!disabled && open && typedQuery ? (
           <div
             id="job-skill-suggestions"
             role="listbox"
@@ -222,7 +232,7 @@ export function JobSkillsField({
         ) : null}
       </div>
 
-      {suggestionsError && debouncedQuery ? (
+      {!disabled && suggestionsError && debouncedQuery ? (
         <ErrorState
           error={suggestionsError}
           fallback="Skill suggestions could not be loaded."

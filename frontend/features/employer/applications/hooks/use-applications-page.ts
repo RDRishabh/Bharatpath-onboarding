@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 import {
@@ -29,7 +28,7 @@ import {
   useMoveEmployerApplicationMutation,
   useProposeEmployerHireMutation,
 } from "@/store/employer/applications";
-import { useLazyGetEmployerJobsQuery } from "@/store/employer/jobs";
+import { useGetEmployerJobQuery, useLazyGetEmployerJobsQuery } from "@/store/employer/jobs";
 import type {
   ApplicationColumnDefinition,
   EmployerApplication,
@@ -103,17 +102,29 @@ export function useApplicationsPage() {
     selectEmployerApplications,
   );
 
+  // The focused job's title comes from the job itself, not from whichever
+  // applications or dropdown page happen to be loaded yet.
+  const selectedJobQuery = useGetEmployerJobQuery(selectedJobId ?? "", {
+    skip: !selectedJobId,
+  });
+  const selectedJobTitle = selectedJobId
+    ? selectedJobQuery.data?.title ??
+      jobOptionPages.items.find((job) => job.id === selectedJobId)?.title ??
+      null
+    : null;
+  const isSelectedJobTitleLoading =
+    Boolean(selectedJobId) &&
+    !selectedJobTitle &&
+    (selectedJobQuery.isLoading || selectedJobQuery.isFetching);
+
   const jobOptions = useMemo(() => {
     const jobs = new Map<string, string>();
 
     if (selectedJobId) {
-      const selectedApplication = allApplications.find(
-        (application) => application.jobId === selectedJobId,
-      );
       jobs.set(
         selectedJobId,
-        selectedApplication?.candidate.jobTitle ??
-          `Job ${selectedJobId.slice(0, 8)}`,
+        selectedJobTitle ??
+          (isSelectedJobTitleLoading ? "Loading job…" : "Selected job"),
       );
     }
 
@@ -126,15 +137,11 @@ export function useApplicationsPage() {
       ...Array.from(jobs, ([value, label]) => ({ value, label })),
     ];
   }, [
-    allApplications,
+    isSelectedJobTitleLoading,
     jobOptionPages.items,
     selectedJobId,
+    selectedJobTitle,
   ]);
-  const selectedJobTitle =
-    selectedJobId
-      ? jobOptions.find((option) => option.value === selectedJobId)?.label ??
-        null
-      : null;
 
   const loadApplicationBatch = useCallback(
     async (cursor?: string): Promise<ApplicationBatch> => {
@@ -283,7 +290,6 @@ export function useApplicationsPage() {
         .unwrap()
         .then((application) => {
           dispatch(replaceApplication(application));
-          showSuccessFeedback("Application opened successfully.");
         })
         .catch(() => undefined);
     },
@@ -454,6 +460,7 @@ export function useApplicationsPage() {
     selectedJobTitle,
     hasNextPage: nextCursor !== null,
     selectedApplication,
+    isSelectedJobTitleLoading,
     error:
       applicationsState.error ??
       jobOptionPages.error ??

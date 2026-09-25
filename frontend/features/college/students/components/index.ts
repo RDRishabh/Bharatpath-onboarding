@@ -8,4 +8,4 @@ export * from "./student-status-badge";
 export * from "./student-detail-modal";
 export * from "./referral-codes-card";
 export * from "./roster-imports-card";
-export * from "./roster-rows-modal";
+export * from "./roster-import-rows-page";

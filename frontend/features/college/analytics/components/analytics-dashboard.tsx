@@ -16,6 +16,7 @@ import {
 
 import { useAnalytics } from "../hooks/use-analytics";
 import { CollegeAnalyticsView } from "../types";
+import { AnalyticsSkeleton } from "./analytics-skeleton";
 import { PlacementsByLocationTable } from "./outcomes-table";
 
 function downloadCsv(filename: string, rows: string[][]) {
@@ -47,12 +48,13 @@ export function AnalyticsDashboard() {
         size="md"
         icon={<Download size={15} strokeWidth={2.2} />}
         onClick={() => exportPlacements(data)}
+        disabled={isLoading}
         className="shadow-sm"
       >
         Export report
       </Button>
     ),
-    [data],
+    [data, isLoading],
   );
 
   usePageHeader(
@@ -65,10 +67,15 @@ export function AnalyticsDashboard() {
           data.seatsTotal > 0
             ? (data.seatsUsed / data.seatsTotal) * 100
             : 0,
+        isLoading,
       },
       action: headerAction,
     },
   );
+
+  if (isLoading) {
+    return <AnalyticsSkeleton />;
+  }
 
   const maxLocationHires = Math.max(
     ...data.placementsByLocation.map((entry) => entry.hires),

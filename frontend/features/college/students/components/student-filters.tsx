@@ -38,7 +38,8 @@ export function StudentFilters({
       <SelectDropdown
         options={STATUS_OPTIONS}
         value={status}
-        onChange={(e) => onStatusChange(e.target.value as StudentStatus | "all")}
+        onChange={(value) => onStatusChange(value as StudentStatus | "all")}
+        ariaLabel="Filter students by link state"
         containerClassName="w-full sm:w-[170px]"
       />
     </div>

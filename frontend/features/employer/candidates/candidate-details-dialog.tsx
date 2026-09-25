@@ -101,22 +101,22 @@ export function CandidateDetailsDialog({
     "Location not shared";
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center p-4 sm:p-6">
+    <div className="fixed inset-0 z-[100]">
       <button
         type="button"
         aria-label="Close candidate profile"
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-[#172033]/45 backdrop-blur-[1px]"
+        className="bp-drawer-backdrop absolute inset-0 cursor-default bg-[#172033]/30"
       />
 
-      <section
+      <aside
         role="dialog"
         aria-modal="true"
         aria-labelledby="candidate-profile-title"
         aria-busy={isLoading}
-        className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_28px_80px_-24px_rgba(15,23,42,0.5)]"
+        className="bp-drawer-right absolute inset-y-0 right-0 flex h-full w-[520px] max-w-full flex-col bg-white shadow-[-20px_0_60px_-24px_rgba(0,0,0,0.5)]"
       >
-        <header className="flex items-start justify-between gap-4 border-b border-[#e8ebf0] px-5 py-4 sm:px-6">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#e8ebf0] px-5 py-4">
           <div className="flex min-w-0 items-center gap-3">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#eeecff] text-[13px] font-bold text-[#51449a]">
               {candidate ? initialsOf(candidate.full_name) : "C"}
@@ -146,7 +146,7 @@ export function CandidateDetailsDialog({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+        <div className="bp-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-5">
           {isLoading ? <CandidateProfileSkeleton /> : null}
 
           {!isLoading && error ? (
@@ -268,7 +268,7 @@ export function CandidateDetailsDialog({
           ) : null}
         </div>
 
-        <footer className="flex justify-end border-t border-[#e8ebf0] bg-[#fafbfc] px-5 py-3 sm:px-6">
+        <footer className="flex shrink-0 justify-end border-t border-[#e8ebf0] bg-[#fafbfc] px-5 py-3">
           <button
             type="button"
             onClick={onClose}
@@ -277,7 +277,7 @@ export function CandidateDetailsDialog({
             Close
           </button>
         </footer>
-      </section>
+      </aside>
     </div>
   );
 }

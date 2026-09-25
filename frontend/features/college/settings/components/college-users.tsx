@@ -4,6 +4,7 @@ import { useState } from "react";
 import { UserPlus, X } from "lucide-react";
 
 import { ListSkeleton } from "@/components/common/loading";
+import { Dropdown } from "@/components/ui/dropdown";
 
 import type { CollegeTeamRole } from "@/store/college/types";
 
@@ -184,25 +185,20 @@ export function CollegeUsers() {
               </label>
 
               {/* Role */}
-              <label className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
                 <span className="text-[13px] font-semibold leading-[17px] text-[#131A26]">
                   Role
                 </span>
 
-                <select
+                <Dropdown<CollegeTeamRole>
                   value={role}
-                  onChange={(event) =>
-                    setRole(event.target.value as CollegeTeamRole)
-                  }
-                  className="w-full rounded-[10px] border border-[#e1e5eb] bg-white px-4 py-3 text-[14px] font-medium leading-5 text-[#131A26] outline-none focus:border-[#5a4bd6] focus:ring-2 focus:ring-[#5a4bd6]/10"
-                >
-                  {ROLE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  options={ROLE_OPTIONS}
+                  onChange={setRole}
+                  ariaLabel="Role"
+                  width="w-full"
+                  buttonClassName="h-[46px] rounded-[10px] border-[#e1e5eb] px-4 text-[14px] font-medium leading-5 text-[#131A26] focus:border-[#5a4bd6] focus:ring-[#5a4bd6]/10"
+                />
+              </div>
 
               {error && (
                 <p className="text-[12px] font-medium text-[#c43d3d]">

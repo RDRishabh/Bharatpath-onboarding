@@ -30,6 +30,7 @@ export function ApplicationsPageContent() {
     isLoadingMoreJobOptions,
     jobOptionsHaveMore,
     selectedJobTitle,
+    isSelectedJobTitleLoading,
     hasNextPage,
     selectedApplication,
     error,
@@ -49,16 +50,19 @@ export function ApplicationsPageContent() {
 
   // When a specific job is in focus (a stage number was clicked on the jobs
   // table), show `Jobs > {job} > Applications`, matching the approved design.
+  // While the job's title loads, that crumb is a skeleton, never a guess.
   const breadcrumbs = useMemo<Breadcrumb[] | undefined>(() => {
-    if (jobFilter === "all" || !selectedJobTitle) {
+    if (jobFilter === "all" || (!selectedJobTitle && !isSelectedJobTitleLoading)) {
       return undefined;
     }
     return [
       { label: "Jobs", href: "/employer/jobs" },
-      { label: selectedJobTitle },
+      selectedJobTitle
+        ? { label: selectedJobTitle }
+        : { label: "Loading job", isLoading: true },
       { label: "Applications" },
     ];
-  }, [jobFilter, selectedJobTitle]);
+  }, [isSelectedJobTitleLoading, jobFilter, selectedJobTitle]);
 
   usePageHeader(
     "Applications",

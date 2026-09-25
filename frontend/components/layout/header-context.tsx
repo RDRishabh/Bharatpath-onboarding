@@ -18,6 +18,8 @@ export interface HeaderBadge {
 export interface Breadcrumb {
   label: string;
   href?: string;
+  /** Render a skeleton in place of the label while it is still loading. */
+  isLoading?: boolean;
 }
 
 export interface HeaderStat {

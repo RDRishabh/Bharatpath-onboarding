@@ -1,33 +1,10 @@
 "use client";
 
 import { JobCreatePage } from "@/features/employer/jobs/create";
-import type { CreateJobFormValues } from "@/features/employer/jobs/create";
-import { thresholdFromApi } from "@/features/employer/jobs/create/threshold";
-import type { EmployerJobApiResponse } from "@/features/employer/jobs/types";
+import { mapApiJobToFormValues } from "@/features/employer/jobs/create/job-form-values";
 import { useGetEmployerJobQuery } from "@/store/employer/jobs";
 import { ErrorState } from "@/components/ui";
 import { JobFormSkeleton } from "../../components/job-form-skeleton";
-
-function mapApiJobToFormValues(
-  job: EmployerJobApiResponse,
-): CreateJobFormValues {
-  return {
-    title: job.title,
-
-    /*
-     * Not returned by GET /employer/jobs/:id yet —
-     * defaults to the same value the create form starts with.
-     */
-    employmentType: "Full time",
-
-    location: job.location ?? "",
-    description: job.description,
-    skills: job.skills,
-    salaryMin: job.salary_min_minor / 100,
-    salaryMax: job.salary_max_minor / 100,
-    minScore: thresholdFromApi(job.min_score),
-  };
-}
 
 export interface JobEditPageProps {
   jobId: string;
@@ -59,8 +36,10 @@ export function JobEditPage({ jobId }: JobEditPageProps) {
 
   return (
     <JobCreatePage
+      key={jobId}
       heading="Edit job"
       jobId={jobId}
+      jobStatus={job.status}
       initialValues={mapApiJobToFormValues(job)}
     />
   );

@@ -6,15 +6,14 @@ import { ErrorState } from "@/components/ui";
 
 import { useDisputes } from "../hooks/use-disputes";
 
-import { AuditTrail } from "./audit-trail";
 import { ClosedDisputesTab } from "./closed-disputes-tab";
 import { DisputeDrawer } from "./dispute-drawer";
 import { OpenDisputesTab } from "./open-disputes-tab";
 
 export function DisputesPage() {
   usePageHeader(
-    "Disputes & Audit",
-    "Investigate disputes and trace every operator action",
+    "Disputes",
+    "Investigate and resolve disputes raised by candidates, employers and colleges",
   );
 
   const {
@@ -22,16 +21,9 @@ export function DisputesPage() {
     openDisputes,
     resolvedDisputes,
     rejectedDisputes,
-    auditItems,
     openLoading,
     resolvedLoading,
     rejectedLoading,
-    auditLoading,
-    auditLoadingMore,
-    auditHasMore,
-    loadMoreAudit,
-    retryAudit,
-    auditError,
     disputeError,
     retryDisputes,
     openCount,
@@ -115,7 +107,7 @@ export function DisputesPage() {
             CONTENT
             ============================================================ */}
 
-        <div className="grid min-w-0 grid-cols-1 gap-4 pt-4 md:grid-cols-[minmax(0,1fr)_305px]">
+        <div className="min-w-0 pt-4">
           {/* ==========================================================
               DISPUTES
               ========================================================== */}
@@ -158,20 +150,6 @@ export function DisputesPage() {
               />
             )}
           </div>
-
-          {/* ==========================================================
-              AUDIT TRAIL
-              ========================================================== */}
-
-          <AuditTrail
-            items={auditItems}
-            isLoading={auditLoading}
-            isLoadingMore={auditLoadingMore}
-            hasMore={auditHasMore}
-            onLoadMore={loadMoreAudit}
-            error={auditError}
-            onRetry={retryAudit}
-          />
         </div>
       </div>
 

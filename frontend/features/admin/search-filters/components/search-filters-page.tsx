@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import {
-  ListFilter,
   Pencil,
   Plus,
+  Search,
   Upload,
 } from "lucide-react";
 
@@ -30,12 +30,14 @@ import {
 import { showAdminFeedback } from "@/store/admin";
 import { useAppDispatch } from "@/store/hooks";
 
+import { parseImportCsv, type ParsedImport } from "../csv";
+import { CsvImportPanel } from "./csv-import-panel";
+
 interface FilterFormState {
   label: string;
   aliases: string;
   stateCode: string;
   featured: boolean;
-  sortOrder: string;
 }
 
 const EMPTY_FORM: FilterFormState = {
@@ -43,7 +45,6 @@ const EMPTY_FORM: FilterFormState = {
   aliases: "",
   stateCode: "",
   featured: false,
-  sortOrder: "",
 };
 
 function formFor(option: SearchFilterOption): FilterFormState {
@@ -52,7 +53,6 @@ function formFor(option: SearchFilterOption): FilterFormState {
     aliases: option.aliases.join(", "),
     stateCode: option.state_code ?? "",
     featured: option.featured,
-    sortOrder: String(option.sort_order),
   };
 }
 
@@ -69,7 +69,6 @@ function formPayload(
         .filter(Boolean),
     ),
   );
-  const sortOrder = Number(form.sortOrder);
   const stateCode = form.stateCode.trim().toUpperCase();
 
   if (!label) {
@@ -77,13 +76,6 @@ function formPayload(
   }
   if (aliases.length > 10) {
     return { error: "An option can have at most 10 aliases." };
-  }
-  if (
-    !Number.isInteger(sortOrder) ||
-    sortOrder < 0 ||
-    sortOrder > 10_000
-  ) {
-    return { error: "Sort order must be a whole number from 0 to 10,000." };
   }
   if (kind === "CITY" && !/^[A-Z]{2}$/.test(stateCode)) {
     return { error: "A city needs a two-letter state code." };
@@ -96,66 +88,13 @@ function formPayload(
       aliases,
       state_code: kind === "CITY" ? stateCode : null,
       featured: form.featured,
-      sort_order: sortOrder,
     },
   };
 }
 
-function importPayload(
-  kind: SearchFilterKind,
-  source: string,
-): { value?: CreateSearchFilterOption[]; error?: string } {
-  const lines = source
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (lines.length === 0) {
-    return { error: "Enter at least one option." };
-  }
-  if (lines.length > 500) {
-    return { error: "One import can contain at most 500 options." };
-  }
-
-  const items: CreateSearchFilterOption[] = [];
-  for (const [index, line] of lines.entries()) {
-    const parts = line.split("|").map((part) => part.trim());
-    const label = parts[0];
-    const stateCode = kind === "CITY" ? parts[1]?.toUpperCase() : undefined;
-    const aliasesSource = kind === "CITY" ? parts[2] : parts[1];
-    const aliases = (aliasesSource ?? "")
-      .split(",")
-      .map((alias) => alias.trim())
-      .filter(Boolean);
-
-    if (!label) {
-      return { error: `Line ${index + 1} needs a label.` };
-    }
-    if (aliases.length > 10) {
-      return { error: `Line ${index + 1} has more than 10 aliases.` };
-    }
-    if (kind === "CITY" && !/^[A-Z]{2}$/.test(stateCode ?? "")) {
-      return {
-        error: `Line ${index + 1} needs a two-letter state code.`,
-      };
-    }
-
-    items.push({
-      kind,
-      label,
-      aliases,
-      state_code: kind === "CITY" ? stateCode : null,
-      featured: false,
-      sort_order: 0,
-    });
-  }
-
-  return { value: items };
-}
-
 export function SearchFiltersPage() {
   usePageHeader(
-    "Search filters",
+    "Attributes",
     "Curate the skills and cities employers can select when searching",
   );
 
@@ -175,7 +114,10 @@ export function SearchFiltersPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [pendingToggle, setPendingToggle] =
     useState<SearchFilterOption | null>(null);
-  const [importText, setImportText] = useState("");
+  const [importFile, setImportFile] = useState<{
+    name: string;
+    parsed: ParsedImport;
+  } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [requestError, setRequestError] = useState<unknown>(null);
 
@@ -210,6 +152,7 @@ export function SearchFiltersPage() {
     }
     setEditor(null);
     setImportOpen(false);
+    setImportFile(null);
     setPendingToggle(null);
     setFormError(null);
     setRequestError(null);
@@ -237,13 +180,12 @@ export function SearchFiltersPage() {
             aliases: parsed.value.aliases,
             state_code: parsed.value.state_code,
             featured: parsed.value.featured,
-            sort_order: parsed.value.sort_order,
           },
         }).unwrap();
-        dispatch(showAdminFeedback("Search filter updated."));
+        dispatch(showAdminFeedback("Attribute updated."));
       } else {
         await createOption(parsed.value).unwrap();
-        dispatch(showAdminFeedback("Search filter created."));
+        dispatch(showAdminFeedback("Attribute created."));
       }
       setEditor(null);
     } catch (mutationError) {
@@ -251,24 +193,49 @@ export function SearchFiltersPage() {
     }
   }
 
+  async function chooseImportFile(file: File) {
+    setFormError(null);
+    setRequestError(null);
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setImportFile(null);
+      setFormError("Choose a .csv file. Download the template to start.");
+      return;
+    }
+
+    try {
+      setImportFile({
+        name: file.name,
+        parsed: parseImportCsv(kind, await file.text()),
+      });
+    } catch {
+      setImportFile(null);
+      setFormError("The file could not be read. Save it as CSV and try again.");
+    }
+  }
+
   async function saveImport() {
-    const parsed = importPayload(kind, importText);
-    if (!parsed.value) {
-      setFormError(parsed.error ?? "Check the import values.");
+    const parsed = importFile?.parsed;
+    if (!parsed || parsed.fileError || parsed.errors.length > 0) {
+      setFormError(
+        parsed
+          ? "Fix the rows listed below, then choose the file again."
+          : "Choose a CSV file to import.",
+      );
       return;
     }
 
     setFormError(null);
     setRequestError(null);
     try {
-      const result = await importOptions(parsed.value).unwrap();
+      const result = await importOptions(parsed.items).unwrap();
       dispatch(
         showAdminFeedback(
-          `${result.items.length} search filter${result.items.length === 1 ? "" : "s"} imported.`,
+          `${result.items.length} attribute${result.items.length === 1 ? "" : "s"} imported.`,
         ),
       );
       setImportOpen(false);
-      setImportText("");
+      setImportFile(null);
     } catch (mutationError) {
       setRequestError(mutationError);
     }
@@ -289,8 +256,8 @@ export function SearchFiltersPage() {
       dispatch(
         showAdminFeedback(
           option.active
-            ? "Search filter switched off."
-            : "Search filter reactivated.",
+            ? "Attribute switched off."
+            : "Attribute reactivated.",
         ),
       );
       setPendingToggle(null);
@@ -305,6 +272,7 @@ export function SearchFiltersPage() {
     }
     setEditor(null);
     setImportOpen(false);
+    setImportFile(null);
     setPendingToggle(null);
     setFormError(null);
     setRequestError(null);
@@ -480,7 +448,7 @@ export function SearchFiltersPage() {
 
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex h-9 min-w-64 flex-1 items-center gap-2 rounded-lg border border-[#e2e5eb] bg-white px-3 focus-within:border-[#315c9f]">
-          <ListFilter className="h-4 w-4 text-[#687182]" />
+          <Search className="h-4 w-4 text-[#687182]" />
           <input
             type="search"
             value={search}
@@ -503,7 +471,7 @@ export function SearchFiltersPage() {
       {error ? (
         <ErrorState
           error={error}
-          fallback="Search filters could not be loaded."
+          fallback="Attributes could not be loaded."
           onRetry={() => void refetch()}
         />
       ) : null}
@@ -522,7 +490,7 @@ export function SearchFiltersPage() {
           {requestError ? (
             <ErrorState
               error={requestError}
-              fallback="The search filter change could not be saved."
+              fallback="The attribute change could not be saved."
               className="mb-4"
             />
           ) : null}
@@ -546,50 +514,55 @@ export function SearchFiltersPage() {
         <Modal
           open
           title={`Bulk import ${kind === "SKILL" ? "skills" : "cities"}`}
-          description={
-            kind === "SKILL"
-              ? "One per line: Label | alias one, alias two"
-              : "One per line: Label | state code | alias one, alias two"
-          }
+          description="Upload a CSV file. It is checked here first, then every row is imported together, or none are."
           onClose={closeActionDialog}
           closeDisabled={isSaving}
-          panelClassName="max-w-[640px]"
+          panelClassName="max-w-[680px]"
         >
           {requestError ? (
             <ErrorState
               error={requestError}
-              fallback="The search filters could not be imported."
+              fallback="The attributes could not be imported."
               className="mb-4"
             />
           ) : null}
           {formError ? <ErrorState message={formError} className="mb-4" /> : null}
-          <textarea
-            value={importText}
-            onChange={(event) => setImportText(event.target.value)}
-            rows={7}
-            placeholder={
-              kind === "SKILL"
-                ? "Microsoft Excel | Excel, MS Excel"
-                : "Bengaluru | KA | Bangalore"
-            }
-            className="mt-3 w-full rounded-lg border border-[#dfe4ec] p-3 font-mono text-[12px] outline-none focus:border-[#315c9f]"
+          <CsvImportPanel
+            kind={kind}
+            file={importFile}
+            isSaving={isSaving}
+            onChooseFile={(file) => void chooseImportFile(file)}
+            onClearFile={() => {
+              setImportFile(null);
+              setFormError(null);
+              setRequestError(null);
+            }}
           />
-          <div className="mt-3 flex justify-end gap-2">
+          <div className="mt-4 flex justify-end gap-2">
             <button
               type="button"
               onClick={closeActionDialog}
               disabled={isSaving}
-              className="rounded-lg border border-[#d9dee7] px-3 py-2 text-[12px] font-semibold text-[#566176]"
+              className="rounded-lg border border-[#d9dee7] px-3 py-2 text-[12px] font-semibold text-[#566176] hover:bg-[#f7f8fa]"
             >
               Cancel
             </button>
             <button
               type="button"
-              disabled={isSaving}
+              disabled={
+                isSaving ||
+                !importFile ||
+                Boolean(importFile.parsed.fileError) ||
+                importFile.parsed.errors.length > 0
+              }
               onClick={() => void saveImport()}
-              className="rounded-lg bg-[#315c9f] px-3 py-2 text-[12px] font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-[#315c9f] px-3 py-2 text-[12px] font-semibold text-white hover:bg-[#284f89] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isSaving ? "Importing..." : "Import"}
+              {isSaving
+                ? "Importing..."
+                : importFile && !importFile.parsed.fileError && importFile.parsed.errors.length === 0
+                  ? `Import ${importFile.parsed.items.length} row${importFile.parsed.items.length === 1 ? "" : "s"}`
+                  : "Import"}
             </button>
           </div>
         </Modal>
@@ -613,7 +586,7 @@ export function SearchFiltersPage() {
           keyExtractor={(option) => option.id}
           isLoading={tableLoading}
           skeletonRows={10}
-          emptyTitle="No search filters match this view."
+          emptyTitle="No attributes match this view."
           emptySubtitle=""
           paginationMode="cursor"
           pageSize={pagination.pageSize}
@@ -627,8 +600,8 @@ export function SearchFiltersPage() {
         open={pendingToggle !== null}
         title={
           pendingToggle?.active
-            ? "Switch off search filter?"
-            : "Reactivate search filter?"
+            ? "Switch off attribute?"
+            : "Reactivate attribute?"
         }
         description={
           pendingToggle
@@ -646,7 +619,7 @@ export function SearchFiltersPage() {
         {requestError ? (
           <ErrorState
             error={requestError}
-            fallback="The search filter status could not be changed."
+            fallback="The attribute status could not be changed."
           />
         ) : null}
       </ConfirmModal>
@@ -671,7 +644,7 @@ function FilterEditor({
 }) {
   return (
     <div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3">
         <Field label="Label">
           <input
             value={form.label}
@@ -711,19 +684,6 @@ function FilterEditor({
             }
             onChange={(event) =>
               onChange({ ...form, aliases: event.target.value })
-            }
-            className="h-9 w-full rounded-lg border border-[#dfe4ec] px-3 text-[12px] outline-none placeholder:text-[#a0a7b4] focus:border-[#315c9f]"
-          />
-        </Field>
-        <Field label="Sort order">
-          <input
-            type="number"
-            min={0}
-            max={10_000}
-            value={form.sortOrder}
-            placeholder="e.g. 0"
-            onChange={(event) =>
-              onChange({ ...form, sortOrder: event.target.value })
             }
             className="h-9 w-full rounded-lg border border-[#dfe4ec] px-3 text-[12px] outline-none placeholder:text-[#a0a7b4] focus:border-[#315c9f]"
           />
