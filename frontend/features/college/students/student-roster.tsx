@@ -8,16 +8,22 @@ import { usePageHeader } from "@/components/layout/header-context";
 import { Button } from "@/components/ui/button";
 import { useScrollToHash } from "@/lib/hooks/use-scroll-to-hash";
 
-import { StudentStatus } from "../types";
-import { useStudents } from "../hooks/use-students";
-import { StudentFilters } from "./student-filters";
-import { StudentTable } from "./student-table";
-import { BulkUploadCard } from "./bulk-upload-card";
-import { LinkStatesSummary } from "./link-states-summary";
-import { InviteStudentModal } from "./invite-student-modal";
-import { StudentDetailDrawer } from "./student-detail-drawer";
-import { ReferralCodesCard } from "./referral-codes-card";
-import { RosterImportsCard } from "./roster-imports-card";
+import { LinkStatesSummary } from "./link-states";
+import {
+  InviteStudentModal,
+  ReferralCodesCard,
+} from "./referral-codes";
+import {
+  StudentDetailDrawer,
+  StudentFilters,
+  StudentTable,
+  type StudentStatus,
+} from "./roster";
+import {
+  BulkUploadCard,
+  RosterImportsCard,
+} from "./roster-imports";
+import { useStudents } from "./use-students";
 
 function StudentRosterSkeleton() {
   return (
@@ -198,7 +204,7 @@ export function StudentRoster() {
       {/* 3. BOTTOM CARDS: BULK UPLOAD & LINK STATES */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1">
         <BulkUploadCard
-          onUpload={(args) => uploadRosterImport(args).unwrap()}
+          onUpload={uploadRosterImport}
         />
         <LinkStatesSummary
           linkedCount={linkedCount}
@@ -224,9 +230,9 @@ export function StudentRoster() {
               `/college/students/roster-imports/${import_.id}`,
             )
           }
-          onCommit={(id) => commitRosterImport(id).unwrap()}
+          onCommit={commitRosterImport}
           isCommitting={isCommittingRoster}
-          onDiscard={(id) => discardRosterImport(id).unwrap()}
+          onDiscard={discardRosterImport}
           isDiscarding={isDiscardingRoster}
           onSend={(id) => sendRosterInvitations(id).unwrap()}
           isSending={isSendingInvitations}

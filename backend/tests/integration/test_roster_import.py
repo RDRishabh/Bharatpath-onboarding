@@ -209,7 +209,8 @@ async def test_commit_rechecks_the_roster_and_keeps_only_what_will_be_invited(
 
 async def test_a_discarded_preview_takes_its_rows_with_it(client: Any, mint_token: Any) -> None:
     college = await _college(client, mint_token)
-    preview = (await _upload(client, college, f"phone\n{_phone()}\n{_phone()}\n")).json()
+    csv = f"phone\n{_phone()}\n{_phone()}\n"
+    preview = (await _upload(client, college, csv)).json()
     discarded = await client.post(f"{IMPORTS}/{preview['id']}/discard", headers=college["headers"])
     assert discarded.status_code == 200 and discarded.json()["state"] == "DISCARDED"
     assert (
@@ -222,6 +223,19 @@ async def test_a_discarded_preview_takes_its_rows_with_it(client: Any, mint_toke
         f"{IMPORTS}/{preview['id']}/invitations/send", headers=college["headers"]
     )
     assert sent.status_code == 409
+
+    retried = await _upload(client, college, csv, name="retried-roster.csv")
+    assert retried.status_code == 201, retried.text
+    retried_preview = retried.json()
+    assert retried_preview["id"] != preview["id"]
+    assert retried_preview["state"] == "PREVIEW"
+    assert (retried_preview["total_rows"], retried_preview["valid_rows"]) == (2, 2)
+    rows = await client.get(
+        f"{IMPORTS}/{retried_preview['id']}/rows",
+        headers=college["headers"],
+    )
+    assert rows.status_code == 200
+    assert len(rows.json()["items"]) == 2
 
 
 async def test_sending_queues_one_event_per_invitation_with_no_contact_in_it(

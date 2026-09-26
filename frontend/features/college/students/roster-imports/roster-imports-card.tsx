@@ -16,8 +16,8 @@ import { Skeleton } from "@/components/common/loading";
 import type {
   RosterImport,
   RosterImportState,
-} from "@/store/college/types";
-import { InfiniteScrollArea } from "./infinite-scroll-area";
+} from "@/store/college/roster-imports";
+import { InfiniteScrollArea } from "../shared";
 
 export interface RosterImportsCardProps {
   imports: RosterImport[];
@@ -113,7 +113,7 @@ export function RosterImportsCard({
         </div>
       </div>
 
-      {isLoading ? (
+      {isLoading && imports.length === 0 ? (
         <div className="space-y-2.5">
           <Skeleton className="h-20 w-full" radius={12} />
           <Skeleton className="h-20 w-full" radius={12} />
@@ -156,7 +156,7 @@ export function RosterImportsCard({
                   key={import_.id}
                   className="rounded-xl border border-[#e7e9ee] px-4 py-3"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-[13px] font-semibold text-[#151b2b]">
@@ -177,16 +177,19 @@ export function RosterImportsCard({
                       )}
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        icon={<Eye size={14} />}
-                        onClick={() => onViewRows(import_)}
-                      >
-                        Rows
-                      </Button>
+                    <div className="flex w-full shrink-0 flex-wrap items-center justify-start gap-1.5 xl:w-auto xl:justify-end">
+                      {import_.state !== "DISCARDED" && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          icon={<Eye size={14} />}
+                          className="!px-2"
+                          onClick={() => onViewRows(import_)}
+                        >
+                          Preview
+                        </Button>
+                      )}
 
                       {import_.state === "PREVIEW" && (
                         <>
@@ -195,6 +198,7 @@ export function RosterImportsCard({
                             variant="primary"
                             size="sm"
                             icon={<CheckCircle2 size={14} />}
+                            className="!px-2"
                             isLoading={busy && isCommitting}
                             disabled={busy}
                             onClick={() => run(import_.id, onCommit)}
@@ -206,6 +210,7 @@ export function RosterImportsCard({
                             variant="outline"
                             size="sm"
                             icon={<Trash2 size={14} />}
+                            className="!px-2"
                             disabled={busy}
                             onClick={() => setPendingDiscard(import_)}
                           >

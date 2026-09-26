@@ -3,7 +3,7 @@
 import React from "react";
 import { SearchInput } from "@/components/ui/search-input";
 import { AppSelect } from "@/components/ui/app-select";
-import { StudentStatus } from "../types";
+import type { StudentStatus } from "./types";
 
 export interface StudentFiltersProps {
   search: string;

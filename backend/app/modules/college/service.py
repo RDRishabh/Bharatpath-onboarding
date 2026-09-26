@@ -960,7 +960,9 @@ async def upload_roster(
 
     **Nothing is invited here.** Every row is kept with its state and issues
     so the college can see what will happen before it commits (SRS 2.25.3).
-    The same file again returns the same import (`created` false).
+    The same file again returns its existing PREVIEW or COMMITTED import
+    (`created` false). A discarded file may be uploaded again because discard
+    permanently removed its staged rows.
     """
     tenant_id = await _bind(session, ctx)
     now = _now(now)

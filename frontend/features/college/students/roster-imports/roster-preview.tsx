@@ -14,8 +14,9 @@ import {
 import {
   useGetRosterImportQuery,
   useGetRosterImportRowsQuery,
-} from "@/store/college/students/students.api";
-import type { RosterRow, RosterRowState } from "@/store/college/types";
+  type RosterRow,
+  type RosterRowState,
+} from "@/store/college/roster-imports";
 
 export interface RosterPreviewProps {
   importId: string;

@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Copy, Check, Link2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
-import type { ReferralCode } from "@/store/college/types";
+import type { ReferralCode } from "@/store/college/referral-codes";
 
 export interface InviteStudentModalProps {
   isOpen: boolean;

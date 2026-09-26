@@ -9,6 +9,111 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-26 — college Students frontend split into feature modules
+
+The college Students frontend is no longer one flat feature backed by one
+monolithic API file. The page is now a thin composition layer over four
+sections: visible-student roster and detail, roster imports and previews,
+referral codes, and link-state summaries. Each section owns its components,
+hook and public barrel; the infinite-scroll viewport is the only
+Students-shared component.
+
+The RTK Query layer now follows the same boundaries. Visible students,
+roster imports and referral codes have separate API and type modules, while
+college-wide settings, analytics and billing remain outside the Students
+feature. The college dashboard was moved to the referral-code API rather than
+depending on the visible-students API. Unused student slice, schema, action,
+status-badge and duplicate roster-preview files were removed.
+
+The latest-upload pinning remains in the roster-import hook, so the
+successfully uploaded PREVIEW row stays visible even against a stale empty
+list response. Workspace diagnostics report no frontend errors. Browser
+validation covered the student list and audited detail drawer, referral-code
+invite modal, all four Students sections, a valid CSV upload with Preview,
+Commit and Discard actions, and the nested roster-preview route rendering its
+uploaded row.
+
+---
+
+## 2026-09-26 — deployed college student listing migration
+
+Fixed the deployed `GET /college/students` 500 introduced by name search. The
+application called `college_visible_students` with a fourth search argument,
+but the change had been edited into the already-applied baseline migration, so
+an existing database still exposed only the original three-argument function.
+
+The baseline is restored to its historical definition. Migration
+`0002_college_student_search` now replaces the function with its searchable
+four-argument form and creates the referral-code, roster-import, and
+roster-stage pagination indexes added with the same feature. The production
+migrate service applies it through the existing `alembic upgrade head` step.
+
+Static workspace diagnostics pass. Runtime migration and integration tests
+could not run because the sandbox denied shell access to the workspace.
+
+---
+
+## 2026-09-26 — roster upload restores its preview row immediately
+
+A valid college roster CSV now inserts the successful upload response into the
+RTK Query roster-import cache and keeps a deduplicated collection of recent
+uploads above the server results. Each new PREVIEW therefore appears
+immediately with Preview, Commit and Discard actions, remains visible when the
+paginated list response is stale or unavailable, and survives opening its
+preview route and returning to Students. Re-uploading a retained PREVIEW or
+COMMITTED file remains idempotent and cannot create a duplicate import.
+
+Upload does not invalidate and immediately refetch the list: a lagging list
+response could overwrite the successful POST response and make the new preview
+disappear. Later commit, discard and send actions still invalidate the
+server-backed list. The file input is reset after each attempt so the same file
+can be deliberately selected again, and a new PREVIEW scrolls the Roster
+imports card into view.
+
+Discard is different because it permanently deletes the staged rows. Migration
+`0003_roster_reupload` replaces the all-state fingerprint constraint with a
+partial unique index over PREVIEW and COMMITTED imports. Uploading identical
+content after discard now creates a fresh PREVIEW and fresh rows; uploading
+content already in PREVIEW or COMMITTED still returns that retained import.
+
+Workspace TypeScript diagnostics pass for every changed frontend file. A fresh
+browser context started with an empty imports response, uploaded a valid
+one-row CSV, deliberately kept the imports response stale and empty, and still
+observed the upload as one PREVIEW row with its Preview, Commit and Discard
+actions. The row remained after opening its preview and navigating back. At
+the 1024px layout, import details now stack above a single compact action row
+instead of competing for the narrow half-width card; 768px, 1024px and 1440px
+browser checks all have no row or page overflow. Discarding an import deletes
+its staged rows in the backend, so a DISCARDED entry no longer offers Preview;
+the successful discard response updates the local list immediately and cannot
+be overwritten by a stale PREVIEW list response.
+
+The exact upload, discard, same-file upload sequence was browser-tested at
+1024px with a stale empty list response: the discarded history row remained
+without actions and a second, new PREVIEW row appeared above it with Preview,
+Commit and Discard. The focused backend regression was added, but the editor
+test runner did not discover the Python test; shell-based pytest remains
+blocked by the workspace sandbox policy.
+
+---
+
+## 2026-09-26 — candidate loading skeleton matches result cards
+
+The employer Candidates screen now uses one shared candidate-card skeleton for
+both route transitions and API loading/refetches. Its avatar, candidate
+metadata, band/add-on pills, skills and profile action preserve the loaded
+card's footprint instead of showing a compact divided-list placeholder. The
+route fallback also preserves the fixed pagination footer and filter rail, so
+the page does not resize when it becomes interactive.
+
+Workspace TypeScript diagnostics pass for every changed frontend file. The
+loading state was checked in the browser at 1440x900 with the candidate request
+held open; the card stack, footer and filter rail remain aligned. The live API
+returned 401 after the request was released because the local browser session
+was expired, unrelated to this loading-state change.
+
+---
+
 ## 2026-09-26 — frontend diagnostics cleanup
 
 Resolved the frontend errors introduced around the college roster updates:

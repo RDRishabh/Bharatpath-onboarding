@@ -12,9 +12,9 @@ import {
 import { ScoreBandBadge } from "@/components/ui/score-band-badge";
 import { Skeleton } from "@/components/common/loading";
 
-import { useGetCollegeStudentQuery } from "@/store/college/students/students.api";
+import { useGetCollegeStudentQuery } from "@/store/college/students";
 
-import { mapScoreBand } from "../hooks/use-students";
+import { mapScoreBand } from "./model";
 
 export interface StudentDetailDrawerProps {
   /** The candidate to open, or null when the drawer is closed. */

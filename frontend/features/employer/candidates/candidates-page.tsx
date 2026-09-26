@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { ListSkeleton } from "@/components/common/loading";
 import { CursorPagination, ErrorState } from "@/components/ui";
 import { usePageHeader } from "@/components/layout/header-context";
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
@@ -27,6 +26,7 @@ import {
 import { CandidateCard } from "./candidate-card";
 import { CandidateDetailsDialog } from "./candidate-details-dialog";
 import { CandidateFilters } from "./candidate-filters";
+import { CandidateListSkeleton } from "./candidate-list-skeleton";
 import type { Candidate } from "./types";
 
 const EMPTY_CANDIDATES: Candidate[] = [];
@@ -162,7 +162,7 @@ export function CandidatesPage() {
           <div className="flex min-h-full flex-col gap-3">
 
             {isCandidateListLoading && (
-              <ListSkeleton rows={Math.min(pageSize, 10)} trailing />
+              <CandidateListSkeleton count={Math.min(pageSize, 10)} />
             )}
 
             {!isCandidateListLoading && candidates.map((candidate) => (

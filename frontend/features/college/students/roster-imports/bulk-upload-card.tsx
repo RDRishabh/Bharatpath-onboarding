@@ -4,7 +4,7 @@ import React, { useRef, useState, DragEvent, ChangeEvent } from "react";
 import { Upload, CheckCircle2, FileText, AlertCircle } from "lucide-react";
 
 import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
-import type { RosterImport } from "@/store/college/types";
+import type { RosterImport } from "@/store/college/roster-imports";
 
 export interface BulkUploadCardProps {
   onUpload: (args: {
@@ -21,6 +21,7 @@ export function BulkUploadCard({ onUpload }: BulkUploadCardProps) {
     rowCount?: number;
     validRows?: number;
     invalidRows?: number;
+    importState?: RosterImport["state"];
     status: "idle" | "uploading" | "success" | "error";
     errorMsg?: string;
   }>({ status: "idle" });
@@ -70,13 +71,29 @@ export function BulkUploadCard({ onUpload }: BulkUploadCardProps) {
           rowCount: result.totalRows,
           validRows: result.validRows,
           invalidRows: result.invalidRows,
+          importState: result.state,
         });
+
+        if (result.state === "PREVIEW") {
+          requestAnimationFrame(() => {
+            document
+              .getElementById("roster-imports")
+              ?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+          });
+        }
       } catch {
         setUploadState({
           status: "error",
           fileName: file.name,
           errorMsg: "The roster could not be read. Check the header row.",
         });
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
       }
     };
     reader.onerror = () => {
@@ -167,7 +184,12 @@ export function BulkUploadCard({ onUpload }: BulkUploadCardProps) {
                 {uploadState.fileName}
               </p>
               <p className="text-[12px] text-[#23805d] mt-0.5">
-                Preview ready • {uploadState.validRows ?? 0} valid of{" "}
+                {uploadState.importState === "PREVIEW"
+                  ? "Preview ready"
+                  : uploadState.importState === "COMMITTED"
+                    ? "This roster was already committed"
+                    : "This roster was already discarded"}{" "}
+                • {uploadState.validRows ?? 0} valid of{" "}
                 {uploadState.rowCount ?? 0} rows
               </p>
             </div>

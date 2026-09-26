@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 
 import { useGetCohortOverviewQuery } from "@/store/college/analytics/analytics.api";
-import { useGetActiveReferralCodeQuery } from "@/store/college/students/students.api";
+import { useGetActiveReferralCodeQuery } from "@/store/college/referral-codes";
 import { useGetCollegeSeatsQuery } from "@/store/college/settings/settings.api";
 
 import type {

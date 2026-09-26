@@ -394,8 +394,9 @@ async def upload_roster(
     payload: RosterUploadRequest, response: Response, user: CurrentUser, session: DbSession
 ) -> RosterImportResponse:
     """Nothing is invited until the import is committed. Every row comes back
-    with its state and issues. The same file again answers 200 with the
-    import it already made. 422 `roster_*` when the file itself is unusable."""
+    with its state and issues. The same retained file answers 200 with the
+    import it already made; a discarded file creates a fresh preview. 422
+    `roster_*` when the file itself is unusable."""
     view = await service.upload_roster(
         session, ctx=user, file_name=payload.file_name, csv_text=payload.csv
     )

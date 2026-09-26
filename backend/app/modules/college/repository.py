@@ -341,7 +341,9 @@ async def import_by_source(
 ) -> RosterImport | None:
     result = await session.execute(
         select(RosterImport).where(
-            RosterImport.tenant_id == tenant_id, RosterImport.source_sha256 == source_sha256
+            RosterImport.tenant_id == tenant_id,
+            RosterImport.source_sha256 == source_sha256,
+            RosterImport.state != "DISCARDED",
         )
     )
     return result.scalar_one_or_none()

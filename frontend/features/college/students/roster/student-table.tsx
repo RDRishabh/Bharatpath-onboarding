@@ -11,7 +11,7 @@ import {
 import { Avatar } from "@/components/ui/avatar";
 import { LinkStateBadge } from "@/components/ui/link-state-badge";
 
-import { CollegeStudent } from "../types";
+import type { CollegeStudent } from "./types";
 
 export interface StudentTableProps {
   students: CollegeStudent[];

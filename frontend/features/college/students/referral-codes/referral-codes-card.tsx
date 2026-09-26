@@ -10,8 +10,8 @@ import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import type {
   ReferralCode,
   ReferralCodeState,
-} from "@/store/college/types";
-import { InfiniteScrollArea } from "./infinite-scroll-area";
+} from "@/store/college/referral-codes";
+import { InfiniteScrollArea } from "../shared";
 
 export interface ReferralCodesCardProps {
   codes: ReferralCode[];

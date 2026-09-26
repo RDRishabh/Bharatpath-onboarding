@@ -1,4 +1,4 @@
-import { RosterPreview } from "@/features/college/students/components/roster-preview";
+import { RosterPreview } from "@/features/college/students";
 
 export interface RosterPreviewPageProps {
   params: Promise<{
