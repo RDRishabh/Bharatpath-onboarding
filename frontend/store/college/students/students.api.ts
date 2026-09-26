@@ -2,6 +2,8 @@ import { baseApi } from "@/store/api/base-api";
 
 import type {
   CollegeStudentDetail,
+  CollegeStudentLinkState,
+  CollegeStudentStageFilter,
   InvitationsSent,
   ReferralCode,
   RosterImport,
@@ -12,13 +14,16 @@ import type {
 } from "@/store/college/types";
 
 /* =========================================================
-   Students (INDIVIDUAL consent)
+   Students by roster link stage
 ========================================================= */
 
 interface VisibleStudentResponse {
-  candidate_id: string;
+  candidate_id: string | null;
+  roster_entry_id: string | null;
   full_name: string | null;
-  visible_since: string;
+  stage_since: string;
+  visible_since: string | null;
+  link_state: CollegeStudentLinkState;
 }
 
 function mapVisibleStudent(
@@ -26,8 +31,11 @@ function mapVisibleStudent(
 ): VisibleStudent {
   return {
     candidateId: student.candidate_id,
+    rosterEntryId: student.roster_entry_id,
     fullName: student.full_name,
+    stageSince: student.stage_since,
     visibleSince: student.visible_since,
+    linkState: student.link_state,
   };
 }
 
@@ -43,8 +51,10 @@ interface StudentHireResponse {
   source: "PLATFORM";
 }
 
-interface CollegeStudentDetailResponse
-  extends VisibleStudentResponse {
+interface CollegeStudentDetailResponse {
+  candidate_id: string;
+  full_name: string | null;
+  visible_since: string;
   score: number | null;
   band: "ENTRY" | "DEVELOPING" | "SOLID" | "STRONG" | null;
   scored_at: string | null;
@@ -207,12 +217,22 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getCollegeStudents: builder.query<
       VisibleStudentsPage,
-      { cursor?: string; limit?: number } | void
+      {
+        q?: string;
+        stage?: CollegeStudentStageFilter;
+        cursor?: string;
+        limit?: number;
+      } | void
     >({
       query: (args) => ({
         url: "/college/students",
         method: "GET",
-        params: args ?? {},
+        params: {
+          q: args?.q,
+          stage: args?.stage,
+          limit: args?.limit ?? 10,
+          cursor: args?.cursor,
+        },
       }),
       transformResponse: (
         response: VisibleStudentsPageResponse,

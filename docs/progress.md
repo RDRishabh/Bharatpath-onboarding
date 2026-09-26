@@ -9,6 +9,56 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-26 — college student stage filter uses the custom select
+
+The college students page now uses the shared `AppSelect` dropdown for its
+link-stage filter instead of the native HTML select wrapper, while preserving
+the ALL, LINKED, INVITED and CONSENT_PENDING backend values.
+
+---
+
+## 2026-09-26 — college students page keeps a structured loading skeleton
+
+The first load of the college students page now holds a layout-matched
+skeleton for its filters, ten-row roster table and supporting cards until all
+initial page requests resolve. Later search and stage refetches keep the page
+mounted and show the table's row skeleton, avoiding a full-screen layout jump.
+
+---
+
+## 2026-09-26 — college student detail uses a right-side drawer
+
+Opening a LINKED student from the college roster now presents the audited
+student detail in a full-height right-side drawer, consistent with the
+employer application and admin review surfaces. The backdrop closes the
+drawer, its header remains fixed, and the detail content scrolls independently.
+
+---
+
+## 2026-09-26 — college student search is server-side
+
+`GET /college/students` now accepts `q`, searches student names
+case-insensitively before cursor pagination, and keeps the live INDIVIDUAL and
+ROSTER consent joins inside `college_visible_students`. The search uses the
+same profile-or-structured-resume name the list displays.
+
+The frontend debounces the Students search field, sends `q` with `limit=10`,
+and resets cursor pagination when the query changes. It no longer filters only
+the ten rows already loaded in the browser. The API query itself defaults
+`limit` to 10 when a caller omits it. Existing local databases need the normal
+`reset_local_db.sh` rebuild because the consent-gated database function gained
+the optional search argument.
+
+The endpoint also accepts `stage=ALL|LINKED|INVITED|CONSENT_PENDING`, applied
+before cursor pagination. LINKED rows come from the consent-gated individual
+view. INVITED rows are active sent invitations, and CONSENT_PENDING rows are
+accepted roster links without individual visibility; those two expose only
+the name the college itself uploaded and no candidate id. The frontend keeps
+all three options in its custom dropdown, sends the selected stage, resets
+pagination on a change, and disables profile opening until the row is LINKED.
+
+---
+
 ## 2026-09-26 — college overview contains no null values
 
 `GET /college/analytics/overview` now uses `0` for every unavailable or

@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Armchair, Mail } from "lucide-react";
+import { Skeleton } from "@/components/common/loading";
 import { usePageHeader } from "@/components/layout/header-context";
 import { Button } from "@/components/ui/button";
 import { useScrollToHash } from "@/lib/hooks/use-scroll-to-hash";
@@ -14,12 +15,52 @@ import { StudentTable } from "./student-table";
 import { BulkUploadCard } from "./bulk-upload-card";
 import { LinkStatesSummary } from "./link-states-summary";
 import { InviteStudentModal } from "./invite-student-modal";
-import { StudentDetailModal } from "./student-detail-modal";
+import { StudentDetailDrawer } from "./student-detail-drawer";
 import { ReferralCodesCard } from "./referral-codes-card";
 import { RosterImportsCard } from "./roster-imports-card";
 import { RosterRowsModal } from "./roster-rows-modal";
 
+function StudentRosterSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      className="mx-auto max-w-[1280px] space-y-5"
+      style={{ fontFamily: "'General Sans', sans-serif" }}
+    >
+      <span className="sr-only">Loading students…</span>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Skeleton className="h-10 w-full sm:w-[320px]" radius={10} />
+        <Skeleton className="h-10 w-full sm:w-[170px]" radius={10} />
+      </div>
+
+      <StudentTable
+        students={[]}
+        currentPage={1}
+        hasNextPage={false}
+        onNextPage={() => {}}
+        onPreviousPage={() => {}}
+        isLoading
+      />
+
+      <div className="grid grid-cols-1 gap-5 pt-1 md:grid-cols-2">
+        <Skeleton className="h-[340px] w-full" radius={16} />
+        <Skeleton className="h-[340px] w-full" radius={16} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Skeleton className="h-[190px] w-full" radius={16} />
+        <Skeleton className="h-[190px] w-full" radius={16} />
+      </div>
+    </div>
+  );
+}
+
 export function StudentRoster() {
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StudentStatus | "all">("all");
   const {
     students,
     isLoadingStudents,
@@ -41,25 +82,36 @@ export function StudentRoster() {
     isDiscardingRoster,
     sendRosterInvitations,
     isSendingInvitations,
-  } = useStudents();
+  } = useStudents(search, status);
+  const initialRequestsLoading =
+    isLoadingStudents ||
+    isLoadingSeats ||
+    isLoadingReferralCodes ||
+    isLoadingRosterImports;
+  const [hasResolvedInitialLoad, setHasResolvedInitialLoad] = useState(false);
 
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StudentStatus | "all">("all");
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [viewingStudentId, setViewingStudentId] = useState<string | null>(
     null,
   );
   const [rowsPreview, setRowsPreview] = useState<RosterImport | null>(null);
 
+  useEffect(() => {
+    if (!initialRequestsLoading) {
+      setHasResolvedInitialLoad(true);
+    }
+  }, [initialRequestsLoading]);
+
+  const showInitialSkeleton =
+    !hasResolvedInitialLoad && initialRequestsLoading;
+
   useScrollToHash(
     !isLoadingStudents && !isLoadingRosterImports && !isLoadingReferralCodes,
   );
 
-  /*
-   * The roster only lists individually-visible (linked) students. Invited and
-   * consent-pending counts come from the outstanding roster-import invitations.
-   */
-  const linkedCount = students.length;
+  const linkedCount = students.filter(
+    (student) => student.status === "linked",
+  ).length;
 
   const { invitedCount, consentPendingCount } = useMemo(() => {
     let invited = 0;
@@ -67,24 +119,11 @@ export function StudentRoster() {
 
     for (const roster of rosterImports) {
       invited += roster.invitations.sent;
-      pending += roster.invitations.pending;
+      pending += roster.invitations.accepted;
     }
 
     return { invitedCount: invited, consentPendingCount: pending };
   }, [rosterImports]);
-
-  const filteredStudents = useMemo(() => {
-    const query = search.toLowerCase().trim();
-
-    return students.filter((student) => {
-      const matchesSearch =
-        !query || student.name.toLowerCase().includes(query);
-
-      const matchesStatus = status === "all" || student.status === status;
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [students, search, status]);
 
   const headerAction = useMemo(
     () => (
@@ -94,12 +133,13 @@ export function StudentRoster() {
         size="md"
         icon={<Mail size={15} strokeWidth={2.2} />}
         onClick={() => setIsInviteModalOpen(true)}
+        disabled={showInitialSkeleton}
         className="shadow-sm"
       >
         Invite students
       </Button>
     ),
-    [],
+    [showInitialSkeleton],
   );
 
   const seatLabel = seats
@@ -125,6 +165,10 @@ export function StudentRoster() {
     },
   );
 
+  if (showInitialSkeleton) {
+    return <StudentRosterSkeleton />;
+  }
+
   return (
     <div
       className="mx-auto max-w-[1280px] space-y-5"
@@ -140,13 +184,13 @@ export function StudentRoster() {
 
       {/* 2. STUDENT ROSTER TABLE CARD */}
       <StudentTable
-        students={filteredStudents}
+        students={students}
         currentPage={studentsPagination.currentPage}
         hasNextPage={studentsPagination.hasNextPage}
         onNextPage={studentsPagination.goToNextPage}
         onPreviousPage={studentsPagination.goToPreviousPage}
         isLoading={isLoadingStudents}
-        onView={(student) => setViewingStudentId(student.id)}
+        onView={(student) => setViewingStudentId(student.candidateId)}
       />
 
       {/* 3. BOTTOM CARDS: BULK UPLOAD & LINK STATES */}
@@ -192,7 +236,7 @@ export function StudentRoster() {
       />
 
       {/* 6. STUDENT DETAIL — audited open of a single visible student */}
-      <StudentDetailModal
+      <StudentDetailDrawer
         candidateId={viewingStudentId}
         onClose={() => setViewingStudentId(null)}
       />

@@ -31,7 +31,7 @@ import io
 import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Final, Literal
 
 # ---------------------------------------------------------------------------
 # Consent
@@ -71,6 +71,8 @@ INDIVIDUAL_CONSENT_TEXT: Final = (
 ROSTER: Final = "ROSTER"
 INDIVIDUAL: Final = "INDIVIDUAL"
 SCOPES: Final = (ROSTER, INDIVIDUAL)
+StudentLinkState = Literal["LINKED", "INVITED", "CONSENT_PENDING"]
+StudentStageFilter = Literal["ALL", "LINKED", "INVITED", "CONSENT_PENDING"]
 GRANTED_VIA_REFERRAL_CODE: Final = "REFERRAL_CODE"
 GRANTED_VIA_INVITE: Final = "INVITE"
 #: INDIVIDUAL scope, granted by the student from their own settings. **The

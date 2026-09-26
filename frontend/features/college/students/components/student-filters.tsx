@@ -2,7 +2,7 @@
 
 import React from "react";
 import { SearchInput } from "@/components/ui/search-input";
-import { SelectDropdown } from "@/components/ui/select-dropdown";
+import { AppSelect } from "@/components/ui/app-select";
 import { StudentStatus } from "../types";
 
 export interface StudentFiltersProps {
@@ -31,15 +31,19 @@ export function StudentFilters({
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         onClear={() => onSearchChange("")}
-        placeholder="Name, course or code"
+        placeholder="Search by student name"
         containerClassName="w-full sm:w-[320px]"
       />
 
-      <SelectDropdown
+      <AppSelect
         options={STATUS_OPTIONS}
         value={status}
-        onChange={(e) => onStatusChange(e.target.value as StudentStatus | "all")}
-        containerClassName="w-full sm:w-[170px]"
+        onChange={(value) =>
+          onStatusChange(value as StudentStatus | "all")
+        }
+        ariaLabel="Filter students by link state"
+        className="w-full sm:w-[170px] [&>button]:h-10 [&>button]:rounded-xl [&>button]:px-3.5"
+        menuClassName="min-w-[170px]"
       />
     </div>
   );

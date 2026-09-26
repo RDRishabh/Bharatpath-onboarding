@@ -126,7 +126,7 @@ export function LinkStatesSummary({
                   </h4>
                 </div>
                 <p className="mt-1 text-[12px] leading-snug text-[#5d6673]">
-                  Linked, but score sharing not yet approved.
+                  Roster link accepted; profile visibility not yet granted.
                 </p>
               </div>
             </>

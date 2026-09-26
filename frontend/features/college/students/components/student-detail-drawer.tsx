@@ -16,7 +16,7 @@ import { useGetCollegeStudentQuery } from "@/store/college/students/students.api
 
 import { mapScoreBand } from "../hooks/use-students";
 
-export interface StudentDetailModalProps {
+export interface StudentDetailDrawerProps {
   /** The candidate to open, or null when the modal is closed. */
   candidateId: string | null;
   onClose: () => void;
@@ -40,10 +40,10 @@ function formatDate(value: string | null): string {
  * activity — and every open is audited server-side (SRS §6). The list view is
  * deliberately name-only so that rendering the roster does not audit everyone.
  */
-export function StudentDetailModal({
+export function StudentDetailDrawer({
   candidateId,
   onClose,
-}: StudentDetailModalProps) {
+}: StudentDetailDrawerProps) {
   const isOpen = candidateId !== null;
 
   const { data, isLoading, isError } = useGetCollegeStudentQuery(
@@ -54,18 +54,31 @@ export function StudentDetailModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-      <div
-        className="w-full max-w-lg rounded-2xl bg-white shadow-xl border border-[#e7e9ee] overflow-hidden"
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        aria-label="Close student drawer"
+        onClick={onClose}
+        className="absolute inset-0 cursor-default bg-[rgba(19,26,38,0.4)]"
+      />
+
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="student-detail-drawer-title"
+        className="absolute right-0 top-0 flex h-full w-[520px] max-w-full flex-col bg-white shadow-[-8px_0_30px_rgba(19,26,38,0.14)] animate-in slide-in-from-right duration-200"
         style={{ fontFamily: "'General Sans', sans-serif" }}
       >
         {/* HEADER */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#e7e9ee]">
-          <div>
-            <h3 className="text-[16px] font-bold text-[#151b2b]">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e7e9ee] px-6 py-5">
+          <div className="min-w-0 flex-1">
+            <h3
+              id="student-detail-drawer-title"
+              className="truncate text-[16px] font-bold text-[#151b2b]"
+            >
               {data?.fullName ?? "Student"}
             </h3>
-            <p className="text-[12px] text-[#777f90]">
+            <p className="truncate text-[12px] text-[#777f90]">
               Individually visible since{" "}
               {formatDate(data?.visibleSince ?? null)}
             </p>
@@ -73,14 +86,15 @@ export function StudentDetailModal({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close student"
-            className="grid h-8 w-8 place-items-center rounded-lg text-[#777f90] hover:bg-[#f3f4f7] hover:text-[#151b2b] transition-colors"
+            aria-label="Close student drawer"
+            title="Close"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#e1e5eb] bg-white text-[#151b2b] transition hover:bg-[#f3f4f7]"
           >
             <X size={16} />
           </button>
         </div>
 
-        <div className="px-6 py-5">
+        <div className="flex-1 overflow-y-auto px-6 py-6">
           {isLoading ? (
             <div className="space-y-4">
               <Skeleton className="h-20 w-full rounded-xl" />
@@ -190,7 +204,7 @@ export function StudentDetailModal({
             </div>
           )}
         </div>
-      </div>
+      </aside>
     </div>
   );
 }

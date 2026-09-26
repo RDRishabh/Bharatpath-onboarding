@@ -321,6 +321,20 @@ class RosterEntry(Base, UUIDPrimaryKey, TenantScoped):
             "email",
             postgresql_where=text("invite_state = 'SENT'"),
         ),
+        Index(
+            "ix_roster_entries_tenant_sent_stage",
+            "tenant_id",
+            "sent_at",
+            "id",
+            postgresql_where=text("invite_state = 'SENT'"),
+        ),
+        Index(
+            "ix_roster_entries_tenant_accepted_stage",
+            "tenant_id",
+            "responded_at",
+            "id",
+            postgresql_where=text("invite_state = 'ACCEPTED'"),
+        ),
     )
 
 

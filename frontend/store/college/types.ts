@@ -174,7 +174,7 @@ export interface Payment {
 }
 
 /* =========================================================
-   Students (INDIVIDUAL consent)
+   Students by roster link stage
 ========================================================= */
 
 export type StudentScoreBand =
@@ -183,10 +183,22 @@ export type StudentScoreBand =
   | "SOLID"
   | "STRONG";
 
+export type CollegeStudentLinkState =
+  | "LINKED"
+  | "INVITED"
+  | "CONSENT_PENDING";
+
+export type CollegeStudentStageFilter =
+  | "ALL"
+  | CollegeStudentLinkState;
+
 export interface VisibleStudent {
-  candidateId: string;
+  candidateId: string | null;
+  rosterEntryId: string | null;
   fullName: string | null;
-  visibleSince: string;
+  stageSince: string;
+  visibleSince: string | null;
+  linkState: CollegeStudentLinkState;
 }
 
 export interface VisibleStudentsPage {
@@ -201,8 +213,10 @@ export interface StudentHire {
   source: "PLATFORM";
 }
 
-export interface CollegeStudentDetail
-  extends VisibleStudent {
+export interface CollegeStudentDetail {
+  candidateId: string;
+  fullName: string | null;
+  visibleSince: string;
   score: number | null;
   band: StudentScoreBand | null;
   scoredAt: string | null;

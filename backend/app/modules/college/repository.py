@@ -21,7 +21,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -124,6 +124,16 @@ async def insert_code(
 ) -> ReferralCode | None:
     """None when the code collides with an existing one -- at 60 bits that is
     a CSPRNG failure, and the service draws again rather than guessing."""
+    params: dict[str, Any] = {
+        "tenant_id": str(tenant_id),
+        "query": query,
+        "since": after[0] if after else None,
+        "after_id": str(after[1]) if after else None,
+        "limit": limit,
+    }
+    if stage == "INVITED":
+        params["invited_after"] = invited_after
+
     result = await session.execute(
         pg_insert(ReferralCode)
         .values(
@@ -641,19 +651,24 @@ class VisibleStudentRow:
 
 
 async def visible_students(
-    session: AsyncSession, *, limit: int, after: tuple[datetime, uuid.UUID] | None
+    session: AsyncSession,
+    *,
+    limit: int,
+    after: tuple[datetime, uuid.UUID] | None,
+    query: str | None,
 ) -> list[VisibleStudentRow]:
     """Through `college_visible_students`, which INNER JOINs live INDIVIDUAL
     and ROSTER consent for the bound college. Never a table read."""
     result = await session.execute(
         text(
             "SELECT candidate_id, consent_id, visible_since, full_name, score_resume_version_id "
-            "FROM college_visible_students(:limit, :since, :after_id)"
+            "FROM college_visible_students(:limit, :since, :after_id, :query)"
         ),
         {
             "limit": limit,
             "since": after[0] if after else None,
             "after_id": str(after[1]) if after else None,
+            "query": query,
         },
     )
     return [
@@ -661,6 +676,95 @@ async def visible_students(
             r.candidate_id, r.consent_id, r.visible_since, r.full_name, r.score_resume_version_id
         )
         for r in result
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class RosterStageStudentRow:
+    roster_entry_id: uuid.UUID
+    full_name: str | None
+    stage_since: datetime
+
+
+async def roster_stage_students(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    stage: Literal["INVITED", "CONSENT_PENDING"],
+    limit: int,
+    after: tuple[datetime, uuid.UUID] | None,
+    query: str | None,
+    invited_after: datetime,
+) -> list[RosterStageStudentRow]:
+    """College-supplied roster names before individual visibility.
+
+    INVITED is a live SENT invitation. CONSENT_PENDING is an accepted roster
+    link with no live INDIVIDUAL grant. Candidate ids never leave this query.
+    """
+    if stage == "INVITED":
+        statement = text(
+            """
+            SELECT e.id AS roster_entry_id, e.full_name, e.sent_at AS stage_since
+              FROM roster_entries e
+             WHERE e.tenant_id = :tenant_id
+               AND e.invite_state = 'SENT'
+               AND e.sent_at IS NOT NULL
+               AND e.sent_at > :invited_after
+               AND (
+                    CAST(:query AS text) IS NULL
+                    OR strpos(lower(coalesce(e.full_name, '')), lower(CAST(:query AS text))) > 0
+                   )
+               AND (
+                    CAST(:since AS timestamptz) IS NULL
+                    OR (e.sent_at, e.id) >
+                       (CAST(:since AS timestamptz), CAST(:after_id AS uuid))
+                   )
+             ORDER BY e.sent_at, e.id
+             LIMIT :limit
+            """
+        )
+    elif stage == "CONSENT_PENDING":
+        statement = text(
+            """
+            SELECT e.id AS roster_entry_id, e.full_name, e.responded_at AS stage_since
+              FROM roster_entries e
+              JOIN student_consents roster
+                ON roster.roster_entry_id = e.id
+               AND roster.scope = 'ROSTER'
+               AND roster.revoked_at IS NULL
+              LEFT JOIN student_consents individual
+                ON individual.tenant_id = roster.tenant_id
+               AND individual.candidate_id = roster.candidate_id
+               AND individual.scope = 'INDIVIDUAL'
+               AND individual.revoked_at IS NULL
+             WHERE e.tenant_id = :tenant_id
+               AND e.invite_state = 'ACCEPTED'
+               AND e.responded_at IS NOT NULL
+               AND individual.id IS NULL
+               AND (
+                    CAST(:query AS text) IS NULL
+                    OR strpos(lower(coalesce(e.full_name, '')), lower(CAST(:query AS text))) > 0
+                   )
+               AND (
+                    CAST(:since AS timestamptz) IS NULL
+                    OR (e.responded_at, e.id) >
+                       (CAST(:since AS timestamptz), CAST(:after_id AS uuid))
+                   )
+             ORDER BY e.responded_at, e.id
+             LIMIT :limit
+            """
+        )
+    else:  # pragma: no cover - the service supplies the closed literal set
+        raise ValueError(f"unsupported student stage: {stage}")
+
+    result = await session.execute(statement, params)
+    return [
+        RosterStageStudentRow(
+            roster_entry_id=row.roster_entry_id,
+            full_name=row.full_name,
+            stage_since=row.stage_since,
+        )
+        for row in result
     ]
 
 
