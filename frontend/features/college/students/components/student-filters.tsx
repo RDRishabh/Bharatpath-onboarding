@@ -24,7 +24,7 @@ export function StudentFilters({
   onSearchChange,
   status,
   onStatusChange,
-}: StudentFiltersProps) {
+}: Readonly<StudentFiltersProps>) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <SearchInput
@@ -42,7 +42,7 @@ export function StudentFilters({
           onStatusChange(value as StudentStatus | "all")
         }
         ariaLabel="Filter students by link state"
-        className="w-full sm:w-[170px] [&>button]:h-10 [&>button]:rounded-xl [&>button]:px-3.5"
+        className="w-full sm:w-42.5 [&>button]:h-10 [&>button]:rounded-xl [&>button]:px-3.5"
         menuClassName="min-w-[170px]"
       />
     </div>

@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { ListSkeleton } from "@/components/common/loading";
 import { CursorPagination, ErrorState } from "@/components/ui";
 import { usePageHeader } from "@/components/layout/header-context";
-import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -102,7 +101,6 @@ export function CandidatesPage() {
     const result = await revealCandidate(candidateId);
     if (result.data) {
       setRevealed(result.data);
-      showSuccessFeedback("Candidate profile opened successfully.");
     }
   }
 
@@ -156,10 +154,12 @@ export function CandidatesPage() {
 
         <div
           aria-busy={isCandidateListLoading}
-          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3"
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pt-3 pb-4"
         >
 
-          <div className="flex h-full flex-col gap-3">
+          {/* min-h-full, not h-full: a fixed-height column would let the cards
+              overflow it and scroll past the bottom padding. */}
+          <div className="flex min-h-full flex-col gap-3">
 
             {isCandidateListLoading && (
               <ListSkeleton rows={Math.min(pageSize, 10)} trailing />

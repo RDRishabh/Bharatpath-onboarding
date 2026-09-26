@@ -6,7 +6,10 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-import { DataTable } from "@/components/ui/table";
+import {
+  DataTable,
+  type ColumnDef,
+} from "@/components/ui/table";
 
 import type { EmployerJob, JobStatus } from "../types";
 
@@ -30,7 +33,9 @@ function formatSalary(min: number, max: number) {
   return `₹${minLpa.toFixed(1)}–${maxLpa.toFixed(1)} LPA`;
 }
 
-function StatusBadge({ status }: { status: JobStatus }) {
+function StatusBadge({
+  status,
+}: Readonly<{ status: JobStatus }>) {
   const config = {
     live: {
       label: "Live",
@@ -69,18 +74,18 @@ function CountButton({
   value,
   disabled = false,
   onClick,
-}: {
+}: Readonly<{
   value: number;
   disabled?: boolean;
   onClick?: () => void;
-}) {
+}>) {
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
       className={[
-        "inline-flex min-w-[40px] items-center justify-center",
+        "inline-flex min-w-10 items-center justify-center",
         "gap-1 rounded-full px-2.5 py-1",
         "text-[12px] font-medium",
         "transition-colors",
@@ -101,19 +106,11 @@ function CountButton({
   );
 }
 
-export function JobsTable({
-  jobs,
-  currentPage,
-  pageSize,
-  hasNextPage,
-  isLoading = false,
-  onNextPage,
-  onPreviousPage,
-  onPageSizeChange,
+function createJobColumns({
   onViewApplicants,
   onEditJob,
-}: JobsTableProps) {
-  const columns = [
+}: Pick<JobsTableProps, "onViewApplicants" | "onEditJob">): ColumnDef<EmployerJob>[] {
+  return [
     {
       id: "job",
       header: "Job",
@@ -234,7 +231,7 @@ export function JobsTable({
             type="button"
             aria-label={`View applicants for ${job.title}`}
             onClick={() => onViewApplicants(job)}
-            className="grid h-8 w-8 place-items-center rounded-[8px] border border-[#e2e5eb] bg-white text-[#151b2b] transition-colors hover:bg-[#f7f8fa]"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-[#e2e5eb] bg-white text-[#151b2b] transition-colors hover:bg-[#f7f8fa]"
           >
             <Users size={15} strokeWidth={1.8} />
           </button>
@@ -243,7 +240,7 @@ export function JobsTable({
             type="button"
             aria-label={`Edit ${job.title}`}
             onClick={() => onEditJob(job)}
-            className="grid h-8 w-8 place-items-center rounded-[8px] border border-[#e2e5eb] bg-white text-[#151b2b] transition-colors hover:bg-[#f7f8fa]"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-[#e2e5eb] bg-white text-[#151b2b] transition-colors hover:bg-[#f7f8fa]"
           >
             <Pencil size={15} strokeWidth={1.8} />
           </button>
@@ -251,6 +248,24 @@ export function JobsTable({
       ),
     },
   ];
+}
+
+export function JobsTable({
+  jobs,
+  currentPage,
+  pageSize,
+  hasNextPage,
+  isLoading = false,
+  onNextPage,
+  onPreviousPage,
+  onPageSizeChange,
+  onViewApplicants,
+  onEditJob,
+}: Readonly<JobsTableProps>) {
+  const columns = createJobColumns({
+    onViewApplicants,
+    onEditJob,
+  });
 
   return (
     <DataTable

@@ -9,106 +9,338 @@ states. Newest entries first.
 
 ---
 
-## 2026-09-26 — employer jobs list removes the initials image
+## 2026-09-26 — frontend diagnostics cleanup
 
-The employer Jobs table now displays the job title directly without the
-profile-like generated initials tile.
+Resolved the frontend errors introduced around the college roster updates:
+removed the duplicate roster-preview route export, repaired the student drawer
+header markup, made reported component props read-only, moved table column
+renderers outside their parent components, and adopted the canonical Tailwind
+utilities reported by the editor. The employer Jobs table now displays only
+the job title without its generated initials tile.
 
----
-
-## 2026-09-26 — roster previews open as dedicated pages
-
-The Rows action on a college roster import now navigates to
-`/college/students/roster-imports/{import_id}`. The dedicated page fetches the
-import metadata for direct navigation, retains row-state filters and cursor
-pagination, and links back to the roster-imports section of the students page.
-The former centered preview modal has been removed.
+Workspace diagnostics pass for every changed frontend file. The sandbox denied
+shell access to the frontend path, so ESLint and the TypeScript CLI could not
+be run.
 
 ---
 
-## 2026-09-26 — referral codes and roster imports load in cursor pages
+## 2026-09-25 — attribute modal no longer asks for sort order
 
-The college referral-code and roster-import lists now return stable,
-newest-first cursor pages with a default size of 30. Their cards use RTK
-Query's infinite-query cache and automatically fetch the next page near the
-bottom of each independently scrollable list. Roster invitation summary
-counts are returned separately from page contents so the summary does not
-change as more import history is loaded.
+The Admin Attributes add/edit modal no longer exposes `sort_order` for skills
+or cities. New options use the backend's default order, while editing an
+existing option leaves its stored order unchanged because the PATCH omits the
+field. Label, state code, aliases and the featured control are now laid out in
+one vertical column.
 
-The change also repaired a misplaced parameter block from the student-stage
-work that had left referral-code creation and roster-stage queries with
-undefined local names.
+Validated with workspace TypeScript diagnostics. Browser checks were omitted.
 
 ---
 
-## 2026-09-26 — college student stage filter uses the custom select
+## 2026-09-25 — job edit actions follow the lifecycle
 
-The college students page now uses the shared `AppSelect` dropdown for its
-link-stage filter instead of the native HTML select wrapper, while preserving
-the ALL, LINKED, INVITED and CONSENT_PENDING backend values.
+The employer job edit page now shows actions that match the job's current
+state. Draft and paused jobs can be updated, published or closed; live jobs
+can be paused or closed. Live and closed job fields are read-only, matching the
+backend rule that a live job must be paused before its terms change and that a
+closed job is terminal. Closing asks for confirmation.
 
----
+A closed job now offers "Duplicate job". It opens the create route with the
+closed job as its source, loads the previous details into an editable form, and
+creates a separate job that the employer can save as a draft or publish. The
+source id stays in the URL so refreshing the duplicate form preserves the
+prefill.
 
-## 2026-09-26 — college students page keeps a structured loading skeleton
-
-The first load of the college students page now holds a layout-matched
-skeleton for its filters, ten-row roster table and supporting cards until all
-initial page requests resolve. Later search and stage refetches keep the page
-mounted and show the table's row skeleton, avoiding a full-screen layout jump.
-
----
-
-## 2026-09-26 — college student detail uses a right-side drawer
-
-Opening a LINKED student from the college roster now presents the audited
-student detail in a full-height right-side drawer, consistent with the
-employer application and admin review surfaces. The backdrop closes the
-drawer, its header remains fixed, and the detail content scrolls independently.
+Validated with workspace TypeScript diagnostics for every changed frontend
+file. Browser checks were omitted.
 
 ---
 
-## 2026-09-26 — college student search is server-side
+## 2026-09-25 — jobs table controls are left-aligned
 
-`GET /college/students` now accepts `q`, searches student names
-case-insensitively before cursor pagination, and keeps the live INDIVIDUAL and
-ROSTER consent joins inside `college_visible_students`. The search uses the
-same profile-or-structured-resume name the list displays.
+The employer Jobs table toolbar no longer shows the current-page job and live
+job counts. Search and the status filter now start at the left edge of the
+toolbar, and the route loading skeleton matches the revised layout.
 
-The frontend debounces the Students search field, sends `q` with `limit=10`,
-and resets cursor pagination when the query changes. It no longer filters only
-the ten rows already loaded in the browser. The API query itself defaults
-`limit` to 10 when a caller omits it. Existing local databases need the normal
-`reset_local_db.sh` rebuild because the consent-gated database function gained
-the optional search argument.
-
-The endpoint also accepts `stage=ALL|LINKED|INVITED|CONSENT_PENDING`, applied
-before cursor pagination. LINKED rows come from the consent-gated individual
-view. INVITED rows are active sent invitations, and CONSENT_PENDING rows are
-accepted roster links without individual visibility; those two expose only
-the name the college itself uploaded and no candidate id. The frontend keeps
-all three options in its custom dropdown, sends the selected stage, resets
-pagination on a change, and disables profile opening until the row is LINKED.
+Reviewed in source. Automated lint and TypeScript validation were blocked by
+the sandbox policy for the frontend workspace path.
 
 ---
 
-## 2026-09-26 — college overview contains no null values
+## 2026-09-25 — Disputes and Audit trail are separate admin tabs
 
-`GET /college/analytics/overview` now uses `0` for every unavailable or
-privacy-withheld numeric value. `score_distribution` is always an object with
-all four bands; unavailable and withheld bands are `0`. The `below_floor`
-flag remains the way clients distinguish a privacy-withheld overview.
+The admin "Disputes & Audit" page was split into two sidebar items:
+- **Disputes** (`/admin/disputes`, `Gavel`): the Open / Resolved / Rejected
+  tabs, drawer and pagination, now full width instead of sharing space with a
+  305px audit column. The header reads "Disputes".
+- **Audit trail** (`/admin/audit`, `ScrollText`, new): the whole audit log,
+  newest first, loading 20 events at a time as the page scrolls. It has its
+  own `loading.tsx` timeline skeleton.
+
+`AuditTrail` gained `variant: "panel" | "page"`:
+- `panel` is the old fixed 480px scroll box with its own observer root.
+- `page` grows with the page, observes the viewport, and drops its duplicate
+  heading.
+
+The audit query moved out of `useDisputes` into
+`features/admin/audit/hooks/use-audit-trail.ts`. `AdminShell` and the
+Disputes loading skeleton were updated to match. No backend change: both pages
+call the same endpoints as before (`/admin/disputes`,
+`/admin/audit-events`).
+
+Validated with workspace TypeScript diagnostics. Browser checks omitted for
+manual testing.
 
 ---
 
-## 2026-09-26 — placement months return exact counts
+## 2026-09-25 — admin "Search Filters" renamed to "Attributes"
 
-`GET /college/analytics/placements` now returns exact monthly hire counts once
-the college has reached the minimum cohort size. A month with no hire is `0`,
-and counts from 1 to 4 are no longer replaced with `null`. When the whole
-cohort is below the minimum size, all monthly values remain `null` and
-`below_floor` remains true.
+The admin page for curating the skills and cities employers pick from is now
+called **Attributes** everywhere it is visible:
+- the sidebar label (and the legacy `AdminShell` link)
+- the page header
+- every popup, e.g. "Attribute created." and "3 attributes imported."
+- error and empty states, and the switch-off / reactivate dialog titles
+- the CSV template file names (`attributes-skills-template.csv`,
+  `attributes-cities-template.csv`)
 
-Score-band cell suppression and small-location pooling are unchanged.
+Icons: the sidebar item uses `Tags` instead of `ListFilter`, and the page's
+search box uses `Search` instead of the filter funnel.
+
+Unchanged on purpose: the route `/admin/search-filters`, the nav key, the file
+and component names, the API endpoints and the backend capability
+`search_filters`. Bookmarks and links keep working and no backend change was
+needed.
+
+---
+
+## 2026-09-25 — opening an application shows no popup
+
+Opening an application on employer Applications no longer shows "Application
+opened successfully." Opening something to read it is not an action worth
+announcing, and the drawer appearing is the feedback. This matches the
+candidate profile, whose popup was removed earlier. No "opened successfully"
+popups remain anywhere; stage moves, hires and interviews still announce
+themselves.
+
+---
+
+## 2026-09-25 — Applications breadcrumb loads without a placeholder title
+
+Opening Applications for one job (e.g. from the employer dashboard's top-jobs
+card, `?jobId=`) showed the breadcrumb as "Jobs › Job 1a2b3c4d ›
+Applications" until data arrived. The title came only from loaded
+applications or the job dropdown, which loads on open. Otherwise the hook
+used the id's first eight characters. `useApplicationsPage` now fetches the
+focused job itself (`GET /employer/jobs/{id}`, cached) and exposes
+`isSelectedJobTitleLoading`. While that is true, the middle crumb is a
+skeleton. `Breadcrumb` gained `isLoading`, rendered by `PortalHeader` as a
+skeleton with a screen-reader label, so any page can use it. If the job cannot
+be loaded, the filter shows "Selected job" rather than an id fragment.
+
+Validated with workspace TypeScript diagnostics. Browser checks omitted for
+manual testing.
+
+---
+
+## 2026-09-25 — college analytics shows a skeleton while loading
+
+Analytics & Outcomes used to render at once with placeholder values ("—"
+metrics, empty charts and table) while its three queries loaded. The route's
+`loading.tsx` covered only the page-code load. Both now render one shared
+`AnalyticsSkeleton` (`features/college/analytics/components/`), which has
+four metric cards, the two placement panels and the table, so route load and
+data load look the same with no jump. The header seat counter shows its
+loading state, and Export report is disabled until the data has arrived,
+since it would otherwise download an empty CSV. The `#hires` deep link still
+lands correctly because `useScrollToHash` waits for `!isLoading`.
+
+Validated with workspace TypeScript diagnostics. Browser checks omitted for
+manual testing.
+
+---
+
+## 2026-09-25 — employer candidate list has bottom padding
+
+On employer Candidates, the last card sat against the pagination bar. The
+scroll area's inner column was `h-full`, fixed to the viewport height, so the
+cards overflowed it and scrolled past the container's bottom padding. The
+column is now `min-h-full`, which grows with its content, and the scroll area
+uses `pt-3 pb-4`: 16px below the last card, the portal's standard gutter. An
+empty or short list still fills the area as before.
+
+---
+
+## 2026-09-25 — live-job update reverted
+
+Reverted at the client's request: the "a live job can be updated" change below
+is undone. A published job's edit form is read-only again, with "This job is
+live. Pause it before changing its details." and only Pause and Close.
+Drafts and paused jobs keep Update job, Publish and Close. The pause →
+save → republish flow, its KYB guard and messages are gone.
+`pauseEmployerJob` is back to "Job paused." in `SUCCESS_MESSAGES`. The job form
+now matches its state before that change exactly.
+
+---
+
+## 2026-09-25 — no native dropdowns left in the frontend
+
+The last four browser-native `<select>`s now use the shared custom
+`Dropdown`, so every dropdown looks and behaves alike:
+
+| Where | Field |
+|---|---|
+| `ConfigurableForm` (employer create/edit job) | Employment type |
+| College Settings → Users → Add user | Role |
+| College Settings → Onboarding | SELECT-type questions |
+| College Students filter bar | Link-state filter |
+
+Form dropdowns match their neighbouring inputs (46px, `rounded-[10px]`, the
+same focus colour) and turn red with the field's validation error.
+`ConfigurableForm` keeps its blur-to-touch validation by wrapping the dropdown
+in a `div` that receives the bubbling `onBlur`. Onboarding's select row is a
+`div` rather than a `label`, so label clicks are not forwarded to the trigger.
+`SelectDropdown` is now a thin wrapper around `Dropdown` at the filter-bar size
+(40px, `rounded-xl`). Its `onChange` now receives the value rather than a
+change event; its only caller was updated. No `<select>` or `<option>`
+elements remain under `app`, `components` or `features`.
+
+Validated with workspace TypeScript diagnostics. Browser checks omitted for
+manual testing.
+
+---
+
+## 2026-09-25 — profile drawers open from the right
+
+Correction to the two left-drawer entries below: the employer candidate
+profile and the college student details drawers now slide in from the
+**right** edge, matching the Applications and admin drawers. The shared
+animation is renamed `bp-drawer-right` (`bpSlideInRight`), and its shadow
+now falls to the left. The width, backdrop, content and closing behaviour are
+unchanged. No `bp-drawer-left` usages remain.
+
+---
+
+## 2026-09-25 — a live job can be updated from its edit page
+
+A published job's edit form was read-only, offering only Pause and Close. The
+backend refuses `PATCH` on a published job (`EDITABLE_STATES = {DRAFT,
+PAUSED}`) as a bait-and-switch guard: nobody may apply on terms that then
+change. The backend is unchanged. Instead the form is now editable for every
+status except CLOSED, and "Update job" on a live job runs pause → save →
+publish, so the job is off the board only while it changes. Each failure is
+handled:
+- Pause fails: nothing changed; an error is shown.
+- Save fails: the job is republished unchanged, and the error says so.
+- Republish fails (e.g. KYB no longer approved): the changes are kept, the job
+  stays PAUSED, and the message says to publish again.
+
+The update is disabled with an explanation when KYB is not approved, because
+it would otherwise leave the job paused. Success reads "Job updated and
+republished." `pauseEmployerJob` is now silent in `SUCCESS_MESSAGES`, so the
+intermediate pause shows no popup; the standalone Pause button says "Job
+paused." itself. Draft and paused updates are unchanged.
+
+Validated with workspace TypeScript diagnostics. Browser checks omitted for
+manual testing.
+
+---
+
+## 2026-09-25 — college student details open as a left drawer
+
+Opening a student on college Students showed a centred modal. It now uses
+the same left drawer as the employer candidate profile: 520px, full height,
+the `bp-drawer-left` slide and `bp-drawer-backdrop` fade, and a fixed header
+and footer around a scrolling body. The content is unchanged: name, visible
+since, score and band, application and interview counts, hires, the loading
+skeleton, and the "no longer visible" state. The drawer also gained Escape to
+close, a footer Close button and initial focus on the close control, none of
+which the modal had.
+
+Validated with workspace TypeScript diagnostics. Browser checks omitted for
+manual testing.
+
+---
+
+## 2026-09-25 — roster import rows open on their own page
+
+"View rows" on a college roster import used to open a centred modal with a
+55vh scroll box. It now navigates to
+`/college/students/roster-imports/[importId]` (`RosterImportRowsPage`, with
+its own `loading.tsx`). The table is the same shared `DataTable`: the same
+columns (row, name, phone/email, student ref, state with issues), the same
+All/Valid/Invalid/Duplicate filters, and the same server-side row-state filter
+and 10-row cursor pagination with page-size choice.
+
+The page adds:
+- the header breadcrumb Students › file name › Rows, and a back link;
+- the import's state and upload date;
+- per-filter counts from `GET /college/roster-imports/{id}`;
+- retryable errors for both the import and its rows.
+
+The table now uses the full page width rather than a nested scroll. Students
+stays highlighted in the sidebar on the new page.
+
+`roster-rows-modal.tsx` is no longer imported or exported. The sandbox blocked
+deleting it, so it (and `store/success-feedback-middleware.ts.new`) need
+removing by hand.
+
+Validated with workspace TypeScript diagnostics. Browser checks omitted for
+manual testing.
+
+---
+
+## 2026-09-25 — employer candidate profile opens as a left drawer
+
+Opening a candidate on employer Candidates showed a centred modal and a
+"Candidate profile opened successfully." popup. It now opens as a
+full-height drawer that slides in from the left edge (520px, like the admin
+drawers), over a lighter backdrop, and the popup is gone. The content is
+unchanged: the header, profile summary, score, contact information, skills,
+completed add-ons, and the loading, error and retry states. Escape, the
+backdrop and both close buttons still close it. The drawer is 520px wide on
+every screen size, so the summary and score stay side by side.
+
+The slide and backdrop fade are shared classes in `globals.css`
+(`bp-drawer-left`, `bp-drawer-backdrop`), turned off under
+`prefers-reduced-motion`.
+
+Validated with workspace TypeScript diagnostics. Browser checks omitted for
+manual testing.
+
+---
+
+## 2026-09-25 — search filter bulk import takes a CSV file
+
+Admin → Search filters → Bulk import now accepts a `.csv` file instead of
+pasted `Label | aliases` text. The dialog offers a downloadable template per
+tab (`search-filter-skills-template.csv`, `search-filter-cities-template.csv`),
+each with the header and three worked examples.
+
+| Tab | Columns (label required; state_code required for cities) |
+|---|---|
+| Skills | `label, aliases, featured, sort_order` |
+| Cities | `label, state_code, aliases, featured, sort_order` |
+
+Aliases share one cell separated by `;`, since the comma is the CSV delimiter.
+`featured` takes true/false/yes/no/1/0 and defaults to false. `sort_order`
+defaults to 0. Headers are case-insensitive and may come in any order;
+missing or unknown columns are named.
+
+`features/admin/search-filters/csv.ts` parses in the browser. It follows
+RFC 4180 (quoted commas, doubled quotes, embedded line breaks, CRLF, Excel's
+BOM) and validates every row against the backend's rules: label 1–100
+characters, at most 10 aliases, two-letter state code, the city-name
+character rule, `sort_order` 0–10,000, no duplicate labels in the file, and
+1–500 rows. Every problem is listed with its spreadsheet row number, and blank
+rows are counted so the numbers match Excel. A clean file shows a preview and
+an "Import N rows" button. The request body is unchanged: the parsed items are
+sent as JSON to `POST /admin/search-filters/import`, which still validates and
+accepts all rows or none. The backend is unchanged.
+
+Validated with workspace TypeScript diagnostics. The sandbox would not run
+Node, so the parser's edge cases were traced by hand. A check script for them
+is kept in the session files (`csv-check.mjs`, run with
+`node --experimental-strip-types`).
 
 ---
 

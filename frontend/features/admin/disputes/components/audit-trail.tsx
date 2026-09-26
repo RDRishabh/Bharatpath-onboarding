@@ -24,6 +24,12 @@ interface AuditTrailProps {
   onLoadMore?: () => void;
   error?: unknown;
   onRetry?: () => void;
+  /**
+   * `panel` scrolls inside a fixed-height card; `page` grows with the page
+   * and loads more as the page itself scrolls. The page header already
+   * names it, so `page` drops the card's own heading.
+   */
+  variant?: "panel" | "page";
 }
 
 function AuditIconComponent({
@@ -83,15 +89,17 @@ export function AuditTrail({
   onLoadMore,
   error,
   onRetry,
+  variant = "panel",
 }: AuditTrailProps) {
+  const isPage = variant === "page";
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const loadMoreFromObserver = useEffectEvent(() => onLoadMore?.());
 
   useEffect(() => {
-    const root = scrollContainerRef.current;
+    const root = isPage ? null : scrollContainerRef.current;
     const sentinel = loadMoreSentinelRef.current;
-    if (!root || !sentinel || !hasMore || isLoading || isLoadingMore || error) {
+    if ((!isPage && !root) || !sentinel || !hasMore || isLoading || isLoadingMore || error) {
       return;
     }
 
@@ -101,12 +109,12 @@ export function AuditTrail({
           loadMoreFromObserver();
         }
       },
-      { root, rootMargin: "80px 0px" },
+      { root, rootMargin: isPage ? "240px 0px" : "80px 0px" },
     );
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [error, hasMore, isLoading, isLoadingMore]);
+  }, [error, hasMore, isLoading, isLoadingMore, isPage]);
 
   return (
     <section
@@ -118,19 +126,21 @@ export function AuditTrail({
     >
       {/* Header */}
 
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[14px] font-semibold leading-[18px] text-[#172033]">
-          Audit trail
-        </span>
+      {!isPage ? (
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[14px] font-semibold leading-[18px] text-[#172033]">
+            Audit trail
+          </span>
 
-        <span className="text-[11px] text-[#7b8494]">Recent activity</span>
-      </div>
+          <span className="text-[11px] text-[#7b8494]">Recent activity</span>
+        </div>
+      ) : null}
 
       {/* Timeline */}
 
       <div
         ref={scrollContainerRef}
-        className="bp-scrollbar max-h-[480px] overflow-y-auto pr-1"
+        className={isPage ? "" : "bp-scrollbar max-h-[480px] overflow-y-auto pr-1"}
       >
         <div className="relative pb-3">
           {!isLoading && items.length > 0 ? (

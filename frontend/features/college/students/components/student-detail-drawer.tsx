@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import {
   X,
   Briefcase,
@@ -17,7 +17,7 @@ import { useGetCollegeStudentQuery } from "@/store/college/students/students.api
 import { mapScoreBand } from "../hooks/use-students";
 
 export interface StudentDetailDrawerProps {
-  /** The candidate to open, or null when the modal is closed. */
+  /** The candidate to open, or null when the drawer is closed. */
   candidateId: string | null;
   onClose: () => void;
 }
@@ -51,6 +51,21 @@ export function StudentDetailDrawer({
     { skip: !isOpen },
   );
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
@@ -66,7 +81,7 @@ export function StudentDetailDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby="student-detail-drawer-title"
-        className="absolute right-0 top-0 flex h-full w-[520px] max-w-full flex-col bg-white shadow-[-8px_0_30px_rgba(19,26,38,0.14)] animate-in slide-in-from-right duration-200"
+        className="absolute right-0 top-0 flex h-full w-130 max-w-full flex-col bg-white shadow-[-8px_0_30px_rgba(19,26,38,0.14)] animate-in slide-in-from-right duration-200"
         style={{ fontFamily: "'General Sans', sans-serif" }}
       >
         {/* HEADER */}
@@ -85,6 +100,7 @@ export function StudentDetailDrawer({
           </div>
           <button
             type="button"
+            autoFocus
             onClick={onClose}
             aria-label="Close student drawer"
             title="Close"

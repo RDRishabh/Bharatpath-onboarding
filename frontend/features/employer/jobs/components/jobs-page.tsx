@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dropdown } from "@/components/ui/dropdown";
@@ -105,12 +104,6 @@ export function JobsPage() {
         label: string;
     }[];
 
-    const liveJobsCount = useMemo(() => {
-        return employerJobs.filter(
-            (job) => job.status === "live"
-        ).length;
-    }, [employerJobs]);
-
     function handleSearch(value: string) {
         dispatch(setJobsSearch(value));
     }
@@ -150,7 +143,6 @@ export function JobsPage() {
                     className="
             flex
             items-center
-            justify-between
             gap-4
             border-b
             border-[#edf0f3]
@@ -158,21 +150,6 @@ export function JobsPage() {
             py-3
           "
                 >
-                    {/* Summary */}
-                    <div className="flex items-center gap-2 text-[12px]">
-                        <span className="font-medium text-[#3566b8]">
-                            {employerJobs.length} jobs on this page
-                        </span>
-
-                        <span className="text-[#b0b5bd]">
-                            |
-                        </span>
-
-                        <span className="font-medium text-[#1f7a4d]">
-                            {liveJobsCount} live on this page
-                        </span>
-                    </div>
-
                     {/* Filters */}
                     <div className="flex items-center gap-2">
                         {/* Search */}

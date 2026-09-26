@@ -25,14 +25,14 @@ function StudentRosterSkeleton() {
       role="status"
       aria-live="polite"
       aria-busy="true"
-      className="mx-auto max-w-[1280px] space-y-5"
+      className="mx-auto max-w-7xl space-y-5"
       style={{ fontFamily: "'General Sans', sans-serif" }}
     >
       <span className="sr-only">Loading students…</span>
 
       <div className="flex flex-wrap items-center gap-3">
         <Skeleton className="h-10 w-full sm:w-[320px]" radius={10} />
-        <Skeleton className="h-10 w-full sm:w-[170px]" radius={10} />
+        <Skeleton className="h-10 w-full sm:w-42.5" radius={10} />
       </div>
 
       <StudentTable
@@ -45,13 +45,13 @@ function StudentRosterSkeleton() {
       />
 
       <div className="grid grid-cols-1 gap-5 pt-1 md:grid-cols-2">
-        <Skeleton className="h-[340px] w-full" radius={16} />
-        <Skeleton className="h-[340px] w-full" radius={16} />
+        <Skeleton className="h-85 w-full" radius={16} />
+        <Skeleton className="h-85 w-full" radius={16} />
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Skeleton className="h-[190px] w-full" radius={16} />
-        <Skeleton className="h-[190px] w-full" radius={16} />
+        <Skeleton className="h-47.5 w-full" radius={16} />
+        <Skeleton className="h-47.5 w-full" radius={16} />
       </div>
     </div>
   );
@@ -173,7 +173,7 @@ export function StudentRoster() {
 
   return (
     <div
-      className="mx-auto max-w-[1280px] space-y-5"
+      className="mx-auto max-w-7xl space-y-5"
       style={{ fontFamily: "'General Sans', sans-serif" }}
     >
       {/* 1. FILTER & SEARCH BAR */}

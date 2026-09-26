@@ -8,11 +8,10 @@ export default function AdminDisputesLoading() {
         <Skeleton className="mx-4" width={82} height={12} radius={6} />
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 pt-4 md:grid-cols-[minmax(0,1fr)_305px]">
+      <div className="min-w-0 pt-4">
         <div className="overflow-hidden rounded-2xl border border-[#e7e9ee] bg-white">
           <TableSkeleton columns={5} rows={8} />
         </div>
-        <Skeleton height={420} radius={12} />
       </div>
     </div>
   );

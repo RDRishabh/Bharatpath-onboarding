@@ -1,7 +1,5 @@
 "use client";
 
-import { useCallback } from "react";
-
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 
 import {
@@ -15,18 +13,15 @@ import {
 } from "@/store/admin/disputes/selectors";
 
 import {
-  type AuditEventRow,
   type DisputeRow,
-  useLazyGetAdminAuditEventsQuery,
   useGetAdminDisputesQuery,
 } from "@/store/api/admin-api";
 import {
   tablePagination,
   useCursorPagination,
 } from "@/lib/pagination/use-cursor-pagination";
-import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 
-import type { AuditIcon, AuditItem, Dispute, DisputeStatus, DisputeTab } from "../types";
+import type { Dispute, DisputeStatus, DisputeTab } from "../types";
 
 function age(value: string) {
   const hours = Math.floor(Math.max(0, Date.now() - new Date(value).getTime()) / 3_600_000);
@@ -48,17 +43,6 @@ function disputeView(item: DisputeRow): Dispute {
     age: age(item.created_at),
     claim: "Open this dispute to view the submitted claim.",
     evidence: [],
-  };
-}
-
-function auditView(item: AuditEventRow): AuditItem {
-  const icon: AuditIcon = item.action.includes("dispute") ? "gavel" : item.action.includes("integrity") ? "alert" : "check";
-  return {
-    id: String(item.id),
-    description: `${item.action.replaceAll("_", " ")} · ${item.target_type}`,
-    operator: item.actor_role,
-    timestamp: new Date(item.occurred_at).toLocaleString(),
-    icon,
   };
 }
 
@@ -87,24 +71,12 @@ export function useDisputes() {
     limit: rejectedPage.pageSize,
     cursor: rejectedPage.cursor,
   });
-  const [fetchAudit] = useLazyGetAdminAuditEventsQuery();
-  const audit = useCursorLoadMore<AuditEventRow>(
-    useCallback(
-      async (cursor) => {
-        const page = await fetchAudit({ limit: 10, cursor }).unwrap();
-        return { items: page.items, nextCursor: page.next_cursor };
-      },
-      [fetchAudit],
-    ),
-    [],
-  );
   const openNextCursor = openQuery.data?.next_cursor ?? null;
   const resolvedNextCursor = resolvedQuery.data?.next_cursor ?? null;
   const rejectedNextCursor = rejectedQuery.data?.next_cursor ?? null;
   const openDisputes = (openQuery.data?.items ?? []).map(disputeView);
   const resolvedDisputes = (resolvedQuery.data?.items ?? []).map(disputeView);
   const rejectedDisputes = (rejectedQuery.data?.items ?? []).map(disputeView);
-  const auditItems = audit.items.map(auditView);
 
   return {
     state,
@@ -115,25 +87,11 @@ export function useDisputes() {
 
     rejectedDisputes,
 
-    auditItems,
-
     openLoading: openQuery.isLoading,
 
     resolvedLoading: resolvedQuery.isLoading,
 
     rejectedLoading: rejectedQuery.isLoading,
-
-    auditLoading: audit.isLoading,
-
-    auditLoadingMore: audit.isLoadingMore,
-
-    auditHasMore: audit.hasMore,
-
-    loadMoreAudit: audit.loadMore,
-
-    retryAudit: audit.retry,
-
-    auditError: audit.error,
 
     disputeError:
       state.tab === "open"

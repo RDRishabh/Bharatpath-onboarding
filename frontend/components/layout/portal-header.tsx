@@ -222,7 +222,12 @@ export function PortalHeader({
                     key={`${crumb.label}-${index}`}
                     className="flex min-w-0 items-center gap-[6px]"
                   >
-                    {crumb.href && !isLast ? (
+                    {crumb.isLoading ? (
+                      <span role="status" className="flex items-center">
+                        <span className="sr-only">{crumb.label}</span>
+                        <Skeleton width={112} height={12} radius={6} />
+                      </span>
+                    ) : crumb.href && !isLast ? (
                       <button
                         type="button"
                         onClick={() => router.push(crumb.href as string)}
