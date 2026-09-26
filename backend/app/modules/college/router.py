@@ -36,6 +36,7 @@ import uuid
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from pydantic import BeforeValidator
 
 from app.core.deps import (
     CANDIDATE,
@@ -52,9 +53,9 @@ from app.core.deps import (
 from app.modules.college import service
 from app.modules.college.domain import (
     StudentStageFilter,
-    consent_terms as terms_for,
     format_code,
 )
+from app.modules.college.domain import consent_terms as terms_for
 from app.modules.college.models import ReferralCode
 from app.modules.college.schemas import (
     AddTeamMemberRequest,
@@ -93,6 +94,16 @@ from app.modules.college.schemas import (
 
 router = APIRouter()
 candidate_router = APIRouter()
+
+
+def _normalise_student_stage(value: object) -> object:
+    return value.upper() if isinstance(value, str) else value
+
+
+StudentStageQuery = Annotated[
+    StudentStageFilter,
+    BeforeValidator(_normalise_student_stage),
+]
 
 AnyCollegeRole = Depends(require_role(COLLEGE_ADMIN, COLLEGE_STAFF))
 AdminOnly = Depends(require_role(COLLEGE_ADMIN))
@@ -715,7 +726,7 @@ async def list_students(
         str | None,
         Query(max_length=100, description="Part of the student's name"),
     ] = None,
-    stage: StudentStageFilter = "ALL",
+    stage: StudentStageQuery = "ALL",
     cursor: Annotated[str | None, Query(max_length=512)] = None,
     limit: int | None = Query(default=None, ge=1, le=100),
 ) -> VisibleStudentsPage:

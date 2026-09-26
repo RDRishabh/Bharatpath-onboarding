@@ -597,6 +597,18 @@ async def test_the_list_filters_every_link_stage(client: Any, mint_token: Any) -
         "CONSENT_PENDING",
     }
 
+    title_case_all = await client.get(
+        STUDENTS,
+        params={"stage": "All"},
+        headers=college["headers"],
+    )
+    assert title_case_all.status_code == 200, title_case_all.text
+    assert {item["link_state"] for item in title_case_all.json()["items"]} == {
+        "LINKED",
+        "INVITED",
+        "CONSENT_PENDING",
+    }
+
     invalid = await client.get(
         STUDENTS,
         params={"stage": "UNKNOWN"},

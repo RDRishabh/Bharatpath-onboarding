@@ -9,6 +9,28 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-26 — college Students API accepts the deployed stage casing
+
+The deployed Students page called
+`GET /college/students?stage=All&limit=10`, while the backend contract names
+the enum value `ALL`. The current frontend already maps its "All link states"
+label to `ALL`, but an older deployed frontend can remain cached or live during
+a rolling deployment. The route now normalizes known stage values
+case-insensitively before validating the same closed enum. `All`, `linked`,
+`Invited` and `consent_pending` therefore work; an unknown value still returns
+422, and OpenAPI still advertises only `ALL`, `LINKED`, `INVITED` and
+`CONSENT_PENDING`.
+
+The original screenshot's 500 preceded the migration-lineage repair below.
+After that repair, all three queries used by the `ALL` view were executed
+against the configured shared database: linked, invited and consent-pending
+reads all completed. Pylance reports no diagnostics, Ruff passes, the focused
+normalization and migration tests pass (7 tests), and the database-backed
+integration regression collects successfully. It still cannot execute locally
+without Docker Desktop and its Postgres/Redis services.
+
+---
+
 ## 2026-09-26 — restored the deployed Alembic migration lineage
 
 The configured shared database was stamped at
