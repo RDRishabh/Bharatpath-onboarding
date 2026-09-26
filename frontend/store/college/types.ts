@@ -246,6 +246,11 @@ export interface ReferralCode {
   createdAt: string;
 }
 
+export interface ReferralCodesPage {
+  items: ReferralCode[];
+  nextCursor: string | null;
+}
+
 /* =========================================================
    Roster imports
 ========================================================= */
@@ -280,6 +285,12 @@ export interface RosterImport {
   createdAt: string;
   committedAt: string | null;
   invitations: InvitationCounts;
+}
+
+export interface RosterImportsPage {
+  items: RosterImport[];
+  nextCursor: string | null;
+  invitationTotals: InvitationCounts;
 }
 
 export interface RosterRow {

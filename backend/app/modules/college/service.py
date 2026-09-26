@@ -202,6 +202,27 @@ def _now(now: datetime | None) -> datetime:
     return now or datetime.now(UTC)
 
 
+def _created_cursor(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    decoded = decode_cursor(cursor)
+    try:
+        return (
+            datetime.fromisoformat(str(decoded["created_at"])),
+            uuid.UUID(str(decoded["id"])),
+        )
+    except (KeyError, ValueError) as exc:
+        raise AppValidationError(code="invalid_cursor") from exc
+
+
+def _next_created_cursor(
+    *,
+    created_at: datetime,
+    record_id: uuid.UUID,
+) -> str:
+    return encode_cursor({"created_at": created_at.isoformat(), "id": str(record_id)})
+
+
 def _tenant_of(ctx: TenantContext) -> uuid.UUID:
     if ctx.tenant_id is None:
         raise PermissionDeniedError()
@@ -576,9 +597,41 @@ async def issue_code(
     return row
 
 
-async def list_codes(session: AsyncSession, *, ctx: TenantContext) -> list[ReferralCode]:
+@dataclass(frozen=True, slots=True)
+class ReferralCodesPage:
+    items: list[ReferralCode]
+    next_cursor: str | None
+
+
+async def list_codes(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    cursor: str | None,
+    limit: int | None,
+    active_only: bool = False,
+    now: datetime | None = None,
+) -> ReferralCodesPage:
     tenant_id = await _bind(session, ctx)
-    return await repository.list_codes(session, tenant_id=tenant_id)
+    size = clamp_limit(limit)
+    now = _now(now)
+    rows = await repository.list_codes(
+        session,
+        tenant_id=tenant_id,
+        after=_created_cursor(cursor),
+        limit=size + 1,
+        active_only=active_only,
+        now=now,
+    )
+    page = rows[:size]
+    return ReferralCodesPage(
+        items=page,
+        next_cursor=(
+            _next_created_cursor(created_at=page[-1].created_at, record_id=page[-1].id)
+            if len(rows) > size
+            else None
+        ),
+    )
 
 
 async def revoke_code(
@@ -949,15 +1002,51 @@ async def get_import(
     return await _view(session, record, now=_now(now))
 
 
+@dataclass(frozen=True, slots=True)
+class ImportViewsPage:
+    items: list[ImportView]
+    next_cursor: str | None
+    invitation_totals: dict[str, int]
+
+
 async def list_imports(
-    session: AsyncSession, *, ctx: TenantContext, now: datetime | None = None
-) -> list[ImportView]:
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    cursor: str | None,
+    limit: int | None,
+    now: datetime | None = None,
+) -> ImportViewsPage:
     tenant_id = await _bind(session, ctx)
     now = _now(now)
-    return [
-        await _view(session, record, now=now)
-        for record in await repository.list_imports(session, tenant_id=tenant_id)
-    ]
+    size = clamp_limit(limit)
+    records = await repository.list_imports(
+        session,
+        tenant_id=tenant_id,
+        after=_created_cursor(cursor),
+        limit=size + 1,
+    )
+    page = records[:size]
+    totals = dict.fromkeys(
+        (INVITE_PENDING, INVITE_SENT, INVITE_ACCEPTED, INVITE_DECLINED, INVITE_EXPIRED),
+        0,
+    )
+    totals.update(
+        await repository.invitation_counts_for_tenant(
+            session,
+            tenant_id=tenant_id,
+            expired_before=now - INVITATION_VALID_FOR,
+        )
+    )
+    return ImportViewsPage(
+        items=[await _view(session, record, now=now) for record in page],
+        next_cursor=(
+            _next_created_cursor(created_at=page[-1].created_at, record_id=page[-1].id)
+            if len(records) > size
+            else None
+        ),
+        invitation_totals=totals,
+    )
 
 
 @dataclass(frozen=True, slots=True)

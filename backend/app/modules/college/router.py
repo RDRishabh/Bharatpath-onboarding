@@ -74,9 +74,11 @@ from app.modules.college.schemas import (
     LinkByCodeRequest,
     OnboardingResponse,
     ReferralCodeResponse,
+    ReferralCodesPage,
     RevokeConsentRequest,
     RevokeConsentResponse,
     RosterImportResponse,
+    RosterImportsPage,
     RosterRowResponse,
     RosterRowsPage,
     RosterUploadRequest,
@@ -340,12 +342,28 @@ async def issue_code(
 
 @router.get(
     "/referral-codes",
-    response_model=list[ReferralCodeResponse],
+    response_model=ReferralCodesPage,
     dependencies=[AnyCollegeRole],
     summary="The college's referral codes, newest first",
 )
-async def list_codes(user: CurrentUser, session: DbSession) -> list[ReferralCodeResponse]:
-    return [_code(row) for row in await service.list_codes(session, ctx=user)]
+async def list_codes(
+    user: CurrentUser,
+    session: DbSession,
+    cursor: str | None = None,
+    limit: int = Query(default=30, ge=1, le=100),
+    active_only: bool = False,
+) -> ReferralCodesPage:
+    page = await service.list_codes(
+        session,
+        ctx=user,
+        cursor=cursor,
+        limit=limit,
+        active_only=active_only,
+    )
+    return ReferralCodesPage(
+        items=[_code(row) for row in page.items],
+        next_cursor=page.next_cursor,
+    )
 
 
 @router.post(
@@ -388,12 +406,22 @@ async def upload_roster(
 
 @router.get(
     "/roster-imports",
-    response_model=list[RosterImportResponse],
+    response_model=RosterImportsPage,
     dependencies=[AnyCollegeRole],
     summary="The college's roster imports, newest first",
 )
-async def list_imports(user: CurrentUser, session: DbSession) -> list[RosterImportResponse]:
-    return [_import(view) for view in await service.list_imports(session, ctx=user)]
+async def list_imports(
+    user: CurrentUser,
+    session: DbSession,
+    cursor: str | None = None,
+    limit: int = Query(default=30, ge=1, le=100),
+) -> RosterImportsPage:
+    page = await service.list_imports(session, ctx=user, cursor=cursor, limit=limit)
+    return RosterImportsPage(
+        items=[_import(view) for view in page.items],
+        next_cursor=page.next_cursor,
+        invitation_totals=_counts(page.invitation_totals),
+    )
 
 
 @router.get(

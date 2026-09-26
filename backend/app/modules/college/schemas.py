@@ -136,6 +136,11 @@ class ReferralCodeResponse(_Base):
     created_at: datetime
 
 
+class ReferralCodesPage(_Base):
+    items: list[ReferralCodeResponse]
+    next_cursor: str | None = None
+
+
 # --- roster imports --------------------------------------------------------------
 class RosterUploadRequest(_Base):
     """A CSV with a header row: `name`, `phone`, `email`, `student_ref`. Phone
@@ -174,6 +179,12 @@ class RosterImportResponse(_Base):
     created_at: datetime
     committed_at: datetime | None
     invitations: InvitationCounts
+
+
+class RosterImportsPage(_Base):
+    items: list[RosterImportResponse]
+    next_cursor: str | None = None
+    invitation_totals: InvitationCounts
 
 
 class RosterRowResponse(_Base):

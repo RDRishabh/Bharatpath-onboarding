@@ -23,13 +23,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final, Literal
 
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import case, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.college.domain import (
     GRANTED_VIA_DIRECT,
     INDIVIDUAL,
+    INVITE_EXPIRED,
     INVITE_PENDING,
     INVITE_SENT,
     ROSTER,
@@ -124,16 +125,6 @@ async def insert_code(
 ) -> ReferralCode | None:
     """None when the code collides with an existing one -- at 60 bits that is
     a CSPRNG failure, and the service draws again rather than guessing."""
-    params: dict[str, Any] = {
-        "tenant_id": str(tenant_id),
-        "query": query,
-        "since": after[0] if after else None,
-        "after_id": str(after[1]) if after else None,
-        "limit": limit,
-    }
-    if stage == "INVITED":
-        params["invited_after"] = invited_after
-
     result = await session.execute(
         pg_insert(ReferralCode)
         .values(
@@ -165,11 +156,33 @@ async def get_code(
     return (await session.execute(query)).scalar_one_or_none()
 
 
-async def list_codes(session: AsyncSession, *, tenant_id: uuid.UUID) -> list[ReferralCode]:
+async def list_codes(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    after: tuple[datetime, uuid.UUID] | None,
+    limit: int,
+    active_only: bool,
+    now: datetime,
+) -> list[ReferralCode]:
+    query = select(ReferralCode).where(ReferralCode.tenant_id == tenant_id)
+    if active_only:
+        query = query.where(
+            ReferralCode.revoked_at.is_(None),
+            ReferralCode.expires_at > now,
+            (ReferralCode.max_uses.is_(None)) | (ReferralCode.uses < ReferralCode.max_uses),
+        )
+    if after is not None:
+        created_at, code_id = after
+        query = query.where(
+            (ReferralCode.created_at < created_at)
+            | (
+                (ReferralCode.created_at == created_at)
+                & (ReferralCode.id < code_id)
+            )
+        )
     result = await session.execute(
-        select(ReferralCode)
-        .where(ReferralCode.tenant_id == tenant_id)
-        .order_by(ReferralCode.created_at.desc(), ReferralCode.id)
+        query.order_by(ReferralCode.created_at.desc(), ReferralCode.id.desc()).limit(limit)
     )
     return list(result.scalars())
 
@@ -411,13 +424,52 @@ async def get_import(
     return (await session.execute(query)).scalar_one_or_none()
 
 
-async def list_imports(session: AsyncSession, *, tenant_id: uuid.UUID) -> list[RosterImport]:
+async def list_imports(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    after: tuple[datetime, uuid.UUID] | None,
+    limit: int,
+) -> list[RosterImport]:
+    query = select(RosterImport).where(RosterImport.tenant_id == tenant_id)
+    if after is not None:
+        created_at, import_id = after
+        query = query.where(
+            (RosterImport.created_at < created_at)
+            | (
+                (RosterImport.created_at == created_at)
+                & (RosterImport.id < import_id)
+            )
+        )
     result = await session.execute(
-        select(RosterImport)
-        .where(RosterImport.tenant_id == tenant_id)
-        .order_by(RosterImport.created_at.desc(), RosterImport.id)
+        query.order_by(RosterImport.created_at.desc(), RosterImport.id.desc()).limit(limit)
     )
     return list(result.scalars())
+
+
+async def invitation_counts_for_tenant(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    expired_before: datetime,
+) -> dict[str, int]:
+    displayed_state = case(
+        (
+            (RosterEntry.invite_state == INVITE_SENT)
+            & (RosterEntry.sent_at <= expired_before),
+            INVITE_EXPIRED,
+        ),
+        else_=RosterEntry.invite_state,
+    ).label("displayed_state")
+    result = await session.execute(
+        select(displayed_state, func.count(RosterEntry.id))
+        .where(
+            RosterEntry.tenant_id == tenant_id,
+            RosterEntry.invite_state.is_not(None),
+        )
+        .group_by(displayed_state)
+    )
+    return {str(state): int(count) for state, count in result}
 
 
 async def list_rows(
@@ -756,6 +808,16 @@ async def roster_stage_students(
         )
     else:  # pragma: no cover - the service supplies the closed literal set
         raise ValueError(f"unsupported student stage: {stage}")
+
+    params: dict[str, Any] = {
+        "tenant_id": str(tenant_id),
+        "query": query,
+        "since": after[0] if after else None,
+        "after_id": str(after[1]) if after else None,
+        "limit": limit,
+    }
+    if stage == "INVITED":
+        params["invited_after"] = invited_after
 
     result = await session.execute(statement, params)
     return [

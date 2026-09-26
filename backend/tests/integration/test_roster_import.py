@@ -134,6 +134,47 @@ async def test_roster_import_is_paid_and_staff_can_run_it(client: Any, mint_toke
     assert staffed.status_code == 201
 
 
+async def test_roster_imports_are_cursor_paginated(client: Any, mint_token: Any) -> None:
+    college = await _college(client, mint_token)
+    uploaded = []
+    for index in range(3):
+        response = await _upload(
+            client,
+            college,
+            f"name,phone\nStudent {index},{_phone()}\n",
+            name=f"roster-{index}.csv",
+        )
+        assert response.status_code == 201, response.text
+        uploaded.append(response.json())
+
+    first_response = await client.get(
+        IMPORTS,
+        params={"limit": 2},
+        headers=college["headers"],
+    )
+    assert first_response.status_code == 200, first_response.text
+    first = first_response.json()
+    assert [item["id"] for item in first["items"]] == [
+        uploaded[2]["id"],
+        uploaded[1]["id"],
+    ]
+    assert first["next_cursor"]
+    assert first["invitation_totals"] == dict.fromkeys(
+        ("pending", "sent", "accepted", "declined", "expired"),
+        0,
+    )
+
+    second_response = await client.get(
+        IMPORTS,
+        params={"limit": 2, "cursor": first["next_cursor"]},
+        headers=college["headers"],
+    )
+    assert second_response.status_code == 200, second_response.text
+    second = second_response.json()
+    assert [item["id"] for item in second["items"]] == [uploaded[0]["id"]]
+    assert second["next_cursor"] is None
+
+
 # ===========================================================================
 # Commit, discard, send
 # ===========================================================================

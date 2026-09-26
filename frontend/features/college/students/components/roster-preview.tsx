@@ -1,22 +1,24 @@
 "use client";
 
 import React, { useState } from "react";
-import { X } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
+import { usePageHeader } from "@/components/layout/header-context";
 import { DataTable, type ColumnDef } from "@/components/ui/table";
 import {
   tablePagination,
   useCursorPagination,
 } from "@/lib/pagination/use-cursor-pagination";
 
-import { useGetRosterImportRowsQuery } from "@/store/college/students/students.api";
+import {
+  useGetRosterImportQuery,
+  useGetRosterImportRowsQuery,
+} from "@/store/college/students/students.api";
 import type { RosterRow, RosterRowState } from "@/store/college/types";
 
-export interface RosterRowsModalProps {
-  /** The import to inspect, or null when the modal is closed. */
-  importId: string | null;
-  fileName?: string;
-  onClose: () => void;
+export interface RosterPreviewProps {
+  importId: string;
 }
 
 const FILTERS: { label: string; value: RosterRowState | "ALL" }[] = [
@@ -32,26 +34,27 @@ const ROW_STATE_STYLES: Record<RosterRowState, string> = {
   DUPLICATE: "bg-[#fff5df] text-[#9a6b18]",
 };
 
-export function RosterRowsModal({
-  importId,
-  fileName,
-  onClose,
-}: RosterRowsModalProps) {
+export function RosterPreview({ importId }: Readonly<RosterPreviewProps>) {
   const [filter, setFilter] = useState<RosterRowState | "ALL">("ALL");
-
-  const isOpen = importId !== null;
   const pagination = useCursorPagination([importId, filter], 10);
+  const importQuery = useGetRosterImportQuery(importId);
 
-  const { currentData, isLoading, isFetching } = useGetRosterImportRowsQuery(
-    importId
-      ? {
-          importId,
-          rowState: filter === "ALL" ? undefined : filter,
-          cursor: pagination.cursor,
-          limit: pagination.pageSize,
-        }
-      : null,
-    { skip: !isOpen },
+  const {
+    currentData,
+    isLoading,
+    isFetching,
+    isError,
+    refetch,
+  } = useGetRosterImportRowsQuery({
+    importId,
+    rowState: filter === "ALL" ? undefined : filter,
+    cursor: pagination.cursor,
+    limit: pagination.pageSize,
+  });
+
+  usePageHeader(
+    "Roster preview",
+    importQuery.data?.fileName ?? "Review imported student rows",
   );
 
   const columns: ColumnDef<RosterRow>[] = [
@@ -110,31 +113,28 @@ export function RosterRowsModal({
     },
   ];
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-      <div
-        className="w-full max-w-3xl rounded-2xl bg-white shadow-xl border border-[#e7e9ee] overflow-hidden"
-        style={{ fontFamily: "'General Sans', sans-serif" }}
+    <div
+      className="mx-auto max-w-[1280px] space-y-4"
+      style={{ fontFamily: "'General Sans', sans-serif" }}
+    >
+      <Link
+        href="/college/students#roster-imports"
+        className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#5d6673] transition-colors hover:text-[#151b2b]"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#e7e9ee]">
-          <div>
-            <h3 className="text-[16px] font-bold text-[#151b2b]">
-              Roster preview
-            </h3>
-            <p className="text-[12px] text-[#777f90]">
-              {fileName ?? "Review rows before committing"}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close preview"
-            className="grid h-8 w-8 place-items-center rounded-lg text-[#777f90] hover:bg-[#f3f4f7] hover:text-[#151b2b] transition-colors"
-          >
-            <X size={16} />
-          </button>
+        <ArrowLeft size={15} />
+        Back to students
+      </Link>
+
+      <section className="overflow-hidden rounded-2xl border border-[#e7e9ee] bg-white shadow-2xs">
+        <div className="border-b border-[#e7e9ee] px-6 py-4">
+          <h2 className="text-[16px] font-bold text-[#151b2b]">
+            Imported rows
+          </h2>
+          <p className="mt-0.5 text-[12px] text-[#777f90]">
+            {importQuery.data?.fileName ??
+              "Review rows before committing the roster."}
+          </p>
         </div>
 
         <div className="px-6 py-4">
@@ -155,7 +155,26 @@ export function RosterRowsModal({
             ))}
           </div>
 
-          <div className="max-h-[55vh] overflow-y-auto">
+          {importQuery.isError || isError ? (
+            <div
+              role="alert"
+              className="rounded-xl border border-[#f3d6d6] bg-[#fdf2f2] px-5 py-8 text-center"
+            >
+              <p className="text-[13px] text-[#9d2d2d]">
+                This roster preview could not be loaded.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void importQuery.refetch();
+                  void refetch();
+                }}
+                className="mt-2 text-[12px] font-semibold text-[#3566b8] hover:underline"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
             <DataTable
               columns={columns}
               data={currentData?.items ?? []}
@@ -166,14 +185,17 @@ export function RosterRowsModal({
               )}
               keyExtractor={(row) => String(row.rowNumber)}
               itemLabel="rows"
-              isLoading={isLoading || isFetching}
+              isLoading={
+                importQuery.isLoading || isLoading || isFetching
+              }
+              skeletonRows={10}
               emptyTitle="No rows"
               emptySubtitle="No rows match this filter."
               className="overflow-hidden"
             />
-          </div>
+          )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

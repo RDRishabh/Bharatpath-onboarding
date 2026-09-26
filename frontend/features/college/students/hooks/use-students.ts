@@ -4,8 +4,8 @@ import { useMemo } from "react";
 
 import {
   useGetCollegeStudentsQuery,
-  useGetReferralCodesQuery,
-  useGetRosterImportsQuery,
+  useGetReferralCodesInfiniteQuery,
+  useGetRosterImportsInfiniteQuery,
   useIssueReferralCodeMutation,
   useRevokeReferralCodeMutation,
   useUploadRosterImportMutation,
@@ -19,6 +19,7 @@ import { useCursorPagination } from "@/lib/pagination/use-cursor-pagination";
 
 import type {
   CollegeStudentStageFilter,
+  InvitationCounts,
   StudentScoreBand,
   VisibleStudent,
 } from "@/store/college/types";
@@ -50,6 +51,14 @@ const STAGE_FILTER_MAP: Record<
   linked: "LINKED",
   invited: "INVITED",
   consent_pending: "CONSENT_PENDING",
+};
+
+const EMPTY_INVITATION_COUNTS: InvitationCounts = {
+  pending: 0,
+  sent: 0,
+  accepted: 0,
+  declined: 0,
+  expired: 0,
 };
 
 export function mapScoreBand(
@@ -99,8 +108,10 @@ export function useStudents(
     limit: studentsPagination.pageSize,
   });
   const seatsQuery = useGetCollegeSeatsQuery();
-  const referralCodesQuery = useGetReferralCodesQuery();
-  const rosterImportsQuery = useGetRosterImportsQuery();
+  const referralCodesQuery =
+    useGetReferralCodesInfiniteQuery(undefined);
+  const rosterImportsQuery =
+    useGetRosterImportsInfiniteQuery(undefined);
 
   const [issueReferralCode, issueState] =
     useIssueReferralCodeMutation();
@@ -121,6 +132,19 @@ export function useStudents(
   );
   const studentsNextCursor =
     studentsQuery.currentData?.nextCursor ?? null;
+  const referralCodes = useMemo(
+    () =>
+      referralCodesQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [referralCodesQuery.data],
+  );
+  const rosterImports = useMemo(
+    () =>
+      rosterImportsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [rosterImportsQuery.data],
+  );
+  const rosterInvitationTotals =
+    rosterImportsQuery.data?.pages[0]?.invitationTotals ??
+    EMPTY_INVITATION_COUNTS;
 
   return {
     students,
@@ -139,13 +163,36 @@ export function useStudents(
     isLoadingSeats:
       seatsQuery.isLoading || seatsQuery.isFetching,
 
-    referralCodes: referralCodesQuery.data ?? [],
-    isLoadingReferralCodes:
-      referralCodesQuery.isLoading || referralCodesQuery.isFetching,
+    referralCodes,
+    isLoadingReferralCodes: referralCodesQuery.isLoading,
+    referralCodesError:
+      referralCodesQuery.isError && referralCodesQuery.data === undefined,
+    isLoadingMoreReferralCodes: referralCodesQuery.isFetchingNextPage,
+    hasMoreReferralCodes: referralCodesQuery.hasNextPage,
+    referralCodesLoadMoreError:
+      referralCodesQuery.isError && referralCodesQuery.data !== undefined,
+    loadMoreReferralCodes: () => {
+      void referralCodesQuery.fetchNextPage();
+    },
+    retryReferralCodes: () => {
+      void referralCodesQuery.refetch();
+    },
 
-    rosterImports: rosterImportsQuery.data ?? [],
-    isLoadingRosterImports:
-      rosterImportsQuery.isLoading || rosterImportsQuery.isFetching,
+    rosterImports,
+    rosterInvitationTotals,
+    isLoadingRosterImports: rosterImportsQuery.isLoading,
+    rosterImportsError:
+      rosterImportsQuery.isError && rosterImportsQuery.data === undefined,
+    isLoadingMoreRosterImports: rosterImportsQuery.isFetchingNextPage,
+    hasMoreRosterImports: rosterImportsQuery.hasNextPage,
+    rosterImportsLoadMoreError:
+      rosterImportsQuery.isError && rosterImportsQuery.data !== undefined,
+    loadMoreRosterImports: () => {
+      void rosterImportsQuery.fetchNextPage();
+    },
+    retryRosterImports: () => {
+      void rosterImportsQuery.refetch();
+    },
 
     issueReferralCode,
     isIssuingCode: issueState.isLoading,

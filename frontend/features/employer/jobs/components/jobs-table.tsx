@@ -117,27 +117,11 @@ export function JobsTable({
     {
       id: "job",
       header: "Job",
-      cell: (job: EmployerJob) => {
-        const initials = job.title
-          .split(" ")
-          .filter(Boolean)
-          .slice(0, 2)
-          .map((word) => word[0])
-          .join("")
-          .toUpperCase();
-
-        return (
-          <div className="flex min-w-[210px] items-center gap-3">
-            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[#edf3fc] text-[10px] font-bold text-[#3566b8]">
-              {initials}
-            </div>
-
-            <span className="font-semibold text-[#151b2b]">
-              {job.title}
-            </span>
-          </div>
-        );
-      },
+      cell: (job: EmployerJob) => (
+        <span className="font-semibold text-[#151b2b]">
+          {job.title}
+        </span>
+      ),
       headerClassName: "min-w-[220px]",
     },
 

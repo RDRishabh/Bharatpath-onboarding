@@ -17,10 +17,17 @@ import type {
   RosterImport,
   RosterImportState,
 } from "@/store/college/types";
+import { InfiniteScrollArea } from "./infinite-scroll-area";
 
 export interface RosterImportsCardProps {
   imports: RosterImport[];
   isLoading: boolean;
+  isError: boolean;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  loadMoreError: boolean;
+  onLoadMore: () => void;
+  onRetry: () => void;
   onViewRows: (import_: RosterImport) => void;
   onCommit: (importId: string) => Promise<unknown>;
   isCommitting: boolean;
@@ -49,6 +56,12 @@ function StateBadge({ state }: { state: RosterImportState }) {
 export function RosterImportsCard({
   imports,
   isLoading,
+  isError,
+  hasMore,
+  isLoadingMore,
+  loadMoreError,
+  onLoadMore,
+  onRetry,
   onViewRows,
   onCommit,
   isCommitting,
@@ -82,7 +95,10 @@ export function RosterImportsCard({
   };
 
   return (
-    <div className="rounded-2xl border border-[#e7e9ee] bg-white p-6 shadow-2xs">
+    <div
+      id="roster-imports"
+      className="scroll-mt-4 rounded-2xl border border-[#e7e9ee] bg-white p-6 shadow-2xs"
+    >
       <div className="flex items-center gap-2.5 mb-4">
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#edf2fa] text-[#5b4fcf]">
           <FileSpreadsheet size={18} strokeWidth={2.2} />
@@ -102,99 +118,123 @@ export function RosterImportsCard({
           <Skeleton className="h-20 w-full" radius={12} />
           <Skeleton className="h-20 w-full" radius={12} />
         </div>
+      ) : isError ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-[#f3d6d6] bg-[#fdf2f2] px-4 py-5 text-center"
+        >
+          <p className="text-[13px] text-[#9d2d2d]">
+            Roster imports could not be loaded.
+          </p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-2 text-[12px] font-semibold text-[#3566b8] hover:underline"
+          >
+            Retry
+          </button>
+        </div>
       ) : imports.length === 0 ? (
         <p className="rounded-xl border border-dashed border-[#dfe2e8] bg-[#fcfdfe] px-4 py-6 text-center text-[13px] text-[#777f90]">
           No roster imports yet. Upload a CSV to preview and invite students.
         </p>
       ) : (
-        <ul className="space-y-3">
-          {imports.map((import_) => {
-            const busy = actingId === import_.id;
-            const pendingInvites = import_.invitations.pending;
+        <InfiniteScrollArea
+          hasMore={hasMore}
+          isLoadingMore={isLoadingMore}
+          loadError={loadMoreError}
+          onLoadMore={onLoadMore}
+          ariaLabel="Roster imports"
+        >
+          <ul className="space-y-3">
+            {imports.map((import_) => {
+              const busy = actingId === import_.id;
+              const pendingInvites = import_.invitations.pending;
 
-            return (
-              <li
-                key={import_.id}
-                className="rounded-xl border border-[#e7e9ee] px-4 py-3"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-[13px] font-semibold text-[#151b2b]">
-                        {import_.fileName}
-                      </span>
-                      <StateBadge state={import_.state} />
-                    </div>
-                    <p className="mt-0.5 text-[12px] text-[#777f90]">
-                      {import_.validRows} valid • {import_.invalidRows} invalid
-                      • {import_.duplicateRows} duplicate of {import_.totalRows}
-                    </p>
-                    {import_.state === "COMMITTED" && (
-                      <p className="mt-0.5 text-[12px] text-[#23805d]">
-                        {import_.invitations.sent} sent •{" "}
-                        {import_.invitations.accepted} accepted •{" "}
-                        {pendingInvites} pending
+              return (
+                <li
+                  key={import_.id}
+                  className="rounded-xl border border-[#e7e9ee] px-4 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-[13px] font-semibold text-[#151b2b]">
+                          {import_.fileName}
+                        </span>
+                        <StateBadge state={import_.state} />
+                      </div>
+                      <p className="mt-0.5 text-[12px] text-[#777f90]">
+                        {import_.validRows} valid • {import_.invalidRows} invalid
+                        • {import_.duplicateRows} duplicate of {import_.totalRows}
                       </p>
-                    )}
-                  </div>
-
-                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      icon={<Eye size={14} />}
-                      onClick={() => onViewRows(import_)}
-                    >
-                      Rows
-                    </Button>
-
-                    {import_.state === "PREVIEW" && (
-                      <>
-                        <Button
-                          type="button"
-                          variant="primary"
-                          size="sm"
-                          icon={<CheckCircle2 size={14} />}
-                          isLoading={busy && isCommitting}
-                          disabled={busy}
-                          onClick={() => run(import_.id, onCommit)}
-                        >
-                          Commit
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          icon={<Trash2 size={14} />}
-                          disabled={busy}
-                          onClick={() => setPendingDiscard(import_)}
-                        >
-                          Discard
-                        </Button>
-                      </>
-                    )}
-
-                    {import_.state === "COMMITTED" &&
-                      pendingInvites > 0 && (
-                        <Button
-                          type="button"
-                          variant="primary"
-                          size="sm"
-                          icon={<Send size={14} />}
-                          isLoading={busy && isSending}
-                          disabled={busy}
-                          onClick={() => run(import_.id, onSend)}
-                        >
-                          Send invites
-                        </Button>
+                      {import_.state === "COMMITTED" && (
+                        <p className="mt-0.5 text-[12px] text-[#23805d]">
+                          {import_.invitations.sent} sent •{" "}
+                          {import_.invitations.accepted} accepted •{" "}
+                          {pendingInvites} pending
+                        </p>
                       )}
+                    </div>
+
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        icon={<Eye size={14} />}
+                        onClick={() => onViewRows(import_)}
+                      >
+                        Rows
+                      </Button>
+
+                      {import_.state === "PREVIEW" && (
+                        <>
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            icon={<CheckCircle2 size={14} />}
+                            isLoading={busy && isCommitting}
+                            disabled={busy}
+                            onClick={() => run(import_.id, onCommit)}
+                          >
+                            Commit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            icon={<Trash2 size={14} />}
+                            disabled={busy}
+                            onClick={() => setPendingDiscard(import_)}
+                          >
+                            Discard
+                          </Button>
+                        </>
+                      )}
+
+                      {import_.state === "COMMITTED" &&
+                        pendingInvites > 0 && (
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            icon={<Send size={14} />}
+                            isLoading={busy && isSending}
+                            disabled={busy}
+                            onClick={() => run(import_.id, onSend)}
+                          >
+                            Send invites
+                          </Button>
+                        )}
+                    </div>
                   </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </InfiniteScrollArea>
       )}
 
       <ConfirmModal

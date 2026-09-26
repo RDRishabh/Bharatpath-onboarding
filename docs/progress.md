@@ -9,6 +9,38 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-26 — employer jobs list removes the initials image
+
+The employer Jobs table now displays the job title directly without the
+profile-like generated initials tile.
+
+---
+
+## 2026-09-26 — roster previews open as dedicated pages
+
+The Rows action on a college roster import now navigates to
+`/college/students/roster-imports/{import_id}`. The dedicated page fetches the
+import metadata for direct navigation, retains row-state filters and cursor
+pagination, and links back to the roster-imports section of the students page.
+The former centered preview modal has been removed.
+
+---
+
+## 2026-09-26 — referral codes and roster imports load in cursor pages
+
+The college referral-code and roster-import lists now return stable,
+newest-first cursor pages with a default size of 30. Their cards use RTK
+Query's infinite-query cache and automatically fetch the next page near the
+bottom of each independently scrollable list. Roster invitation summary
+counts are returned separately from page contents so the summary does not
+change as more import history is loaded.
+
+The change also repaired a misplaced parameter block from the student-stage
+work that had left referral-code creation and roster-stage queries with
+undefined local names.
+
+---
+
 ## 2026-09-26 — college student stage filter uses the custom select
 
 The college students page now uses the shared `AppSelect` dropdown for its

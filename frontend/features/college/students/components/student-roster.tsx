@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Armchair, Mail } from "lucide-react";
 import { Skeleton } from "@/components/common/loading";
 import { usePageHeader } from "@/components/layout/header-context";
 import { Button } from "@/components/ui/button";
 import { useScrollToHash } from "@/lib/hooks/use-scroll-to-hash";
-import type { RosterImport } from "@/store/college/types";
 
 import { StudentStatus } from "../types";
 import { useStudents } from "../hooks/use-students";
@@ -18,7 +18,6 @@ import { InviteStudentModal } from "./invite-student-modal";
 import { StudentDetailDrawer } from "./student-detail-drawer";
 import { ReferralCodesCard } from "./referral-codes-card";
 import { RosterImportsCard } from "./roster-imports-card";
-import { RosterRowsModal } from "./roster-rows-modal";
 
 function StudentRosterSkeleton() {
   return (
@@ -59,6 +58,7 @@ function StudentRosterSkeleton() {
 }
 
 export function StudentRoster() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StudentStatus | "all">("all");
   const {
@@ -69,8 +69,21 @@ export function StudentRoster() {
     isLoadingSeats,
     referralCodes,
     isLoadingReferralCodes,
+    referralCodesError,
+    isLoadingMoreReferralCodes,
+    hasMoreReferralCodes,
+    referralCodesLoadMoreError,
+    loadMoreReferralCodes,
+    retryReferralCodes,
     rosterImports,
+    rosterInvitationTotals,
     isLoadingRosterImports,
+    rosterImportsError,
+    isLoadingMoreRosterImports,
+    hasMoreRosterImports,
+    rosterImportsLoadMoreError,
+    loadMoreRosterImports,
+    retryRosterImports,
     issueReferralCode,
     isIssuingCode,
     revokeReferralCode,
@@ -94,8 +107,6 @@ export function StudentRoster() {
   const [viewingStudentId, setViewingStudentId] = useState<string | null>(
     null,
   );
-  const [rowsPreview, setRowsPreview] = useState<RosterImport | null>(null);
-
   useEffect(() => {
     if (!initialRequestsLoading) {
       setHasResolvedInitialLoad(true);
@@ -113,17 +124,8 @@ export function StudentRoster() {
     (student) => student.status === "linked",
   ).length;
 
-  const { invitedCount, consentPendingCount } = useMemo(() => {
-    let invited = 0;
-    let pending = 0;
-
-    for (const roster of rosterImports) {
-      invited += roster.invitations.sent;
-      pending += roster.invitations.accepted;
-    }
-
-    return { invitedCount: invited, consentPendingCount: pending };
-  }, [rosterImports]);
+  const invitedCount = rosterInvitationTotals.sent;
+  const consentPendingCount = rosterInvitationTotals.accepted;
 
   const headerAction = useMemo(
     () => (
@@ -211,7 +213,17 @@ export function StudentRoster() {
         <RosterImportsCard
           imports={rosterImports}
           isLoading={isLoadingRosterImports}
-          onViewRows={(import_) => setRowsPreview(import_)}
+          isError={rosterImportsError}
+          hasMore={hasMoreRosterImports}
+          isLoadingMore={isLoadingMoreRosterImports}
+          loadMoreError={rosterImportsLoadMoreError}
+          onLoadMore={loadMoreRosterImports}
+          onRetry={retryRosterImports}
+          onViewRows={(import_) =>
+            router.push(
+              `/college/students/roster-imports/${import_.id}`,
+            )
+          }
           onCommit={(id) => commitRosterImport(id).unwrap()}
           isCommitting={isCommittingRoster}
           onDiscard={(id) => discardRosterImport(id).unwrap()}
@@ -222,6 +234,12 @@ export function StudentRoster() {
         <ReferralCodesCard
           codes={referralCodes}
           isLoading={isLoadingReferralCodes}
+          isError={referralCodesError}
+          hasMore={hasMoreReferralCodes}
+          isLoadingMore={isLoadingMoreReferralCodes}
+          loadMoreError={referralCodesLoadMoreError}
+          onLoadMore={loadMoreReferralCodes}
+          onRetry={retryReferralCodes}
           onRevoke={(id) => revokeReferralCode(id).unwrap()}
           isRevoking={isRevokingCode}
         />
@@ -239,13 +257,6 @@ export function StudentRoster() {
       <StudentDetailDrawer
         candidateId={viewingStudentId}
         onClose={() => setViewingStudentId(null)}
-      />
-
-      {/* 7. ROSTER ROWS PREVIEW */}
-      <RosterRowsModal
-        importId={rowsPreview?.id ?? null}
-        fileName={rowsPreview?.fileName}
-        onClose={() => setRowsPreview(null)}
       />
     </div>
   );
