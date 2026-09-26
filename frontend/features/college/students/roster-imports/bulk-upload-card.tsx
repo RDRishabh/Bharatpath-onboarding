@@ -29,8 +29,8 @@ export function BulkUploadCard({ onUpload }: BulkUploadCardProps) {
   const handleDownloadTemplate = () => {
     const csvContent =
       "name,phone,email,student_ref\n" +
-      "Anjali Kulkarni,+919876543210,anjali.k@svit.edu.in,STU001\n" +
-      "Rohit Patil,+919812345678,rohit.p@svit.edu.in,STU002\n";
+      "Anjali Kulkarni,91 98765 43210,anjali.k@svit.edu.in,STU001\n" +
+      "Rohit Patil,91 98123 45678,rohit.p@svit.edu.in,STU002\n";
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -144,6 +144,10 @@ export function BulkUploadCard({ onUpload }: BulkUploadCardProps) {
         <p className="mt-1 text-[13px] text-[#777f90] leading-relaxed">
           CSV with name, phone, email and student_ref. Students still confirm
           consent in their app before any score is shared.
+        </p>
+        <p className="mt-1 text-[12px] text-[#777f90] leading-relaxed">
+          The template uses 91 98765 43210 so spreadsheets keep phones as
+          text. Plain 10-digit and +91 formats are also accepted.
         </p>
 
         {/* DROPZONE */}

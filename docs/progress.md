@@ -9,6 +9,37 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-26 — restored the deployed Alembic migration lineage
+
+The configured shared database was stamped at
+`0002_search_filter_options`, but that revision no longer existed in the
+repository. Alembic therefore could not resolve the database's current state
+and refused every `current` or `upgrade` command before it could apply the
+college-search and roster re-upload migrations.
+
+The deployed catalog confirmed that the lost revision had created the
+`search_filter_options` table with the same columns, constraints, indexes and
+app-role privileges now present in the baseline. The revision has been
+restored as a compatibility migration: it uses `IF NOT EXISTS` DDL so an old
+baseline receives the table while a database built from the current baseline
+keeps its existing table. The already-merged college and roster revisions were
+not rewritten. `0004_merge_migration_heads` joins their branch to the restored
+search-filter branch, preserving every revision that a shared database may
+already hold.
+
+`python -m alembic upgrade head` completed against the configured Neon
+database. It is now at the single head `0004_merge_migration_heads`; the four
+college pagination indexes exist, `college_visible_students` accepts its
+fourth `p_query` argument, `uq_roster_import_source` is gone, and
+`uq_roster_import_source_retained` is present. Full offline SQL generation
+from `base` to `head`, Ruff, and 49 focused unit tests pass. A migration-history
+unit test now requires one head and keeps the deployed search-filter revision
+resolvable. The database-backed roster re-upload test could not run locally
+because Docker Desktop is unavailable, so neither local Postgres nor Redis
+could be started.
+
+---
+
 ## 2026-09-26 — college Students frontend split into feature modules
 
 The college Students frontend is no longer one flat feature backed by one
@@ -94,6 +125,20 @@ without actions and a second, new PREVIEW row appeared above it with Preview,
 Commit and Discard. The focused backend regression was added, but the editor
 test runner did not discover the Python test; shell-based pytest remains
 blocked by the workspace sandbox policy.
+
+The downloadable roster CSV now writes sample phones as `91 98765 43210`.
+The embedded spaces make spreadsheet applications retain the field as text,
+while the roster parser accepts it and stores `+919876543210`. The upload card
+also states that plain 10-digit and `+91` forms are accepted. A focused runtime
+check parsed both template rows as VALID with normalized `+91` values.
+
+The first container deployment exposed that migration `0003_roster_reupload`
+had not been applied: the new service tried to insert the second import while
+PostgreSQL still enforced `uq_roster_import_source`, and raised
+`UniqueViolationError`. Container startup remains Uvicorn-only by deployment
+decision. Apply `python -m alembic upgrade head` separately with
+`DATABASE_URL_MIGRATOR` before deploying the application image; the official
+Compose deployment already does this through its dedicated migrator service.
 
 ---
 
