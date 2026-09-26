@@ -174,7 +174,7 @@ export interface Payment {
 }
 
 /* =========================================================
-   Students (INDIVIDUAL consent)
+   Students by roster link stage
 ========================================================= */
 
 export type StudentScoreBand =
@@ -183,10 +183,22 @@ export type StudentScoreBand =
   | "SOLID"
   | "STRONG";
 
+export type CollegeStudentLinkState =
+  | "LINKED"
+  | "INVITED"
+  | "CONSENT_PENDING";
+
+export type CollegeStudentStageFilter =
+  | "ALL"
+  | CollegeStudentLinkState;
+
 export interface VisibleStudent {
-  candidateId: string;
+  candidateId: string | null;
+  rosterEntryId: string | null;
   fullName: string | null;
-  visibleSince: string;
+  stageSince: string;
+  visibleSince: string | null;
+  linkState: CollegeStudentLinkState;
 }
 
 export interface VisibleStudentsPage {
@@ -201,8 +213,10 @@ export interface StudentHire {
   source: "PLATFORM";
 }
 
-export interface CollegeStudentDetail
-  extends VisibleStudent {
+export interface CollegeStudentDetail {
+  candidateId: string;
+  fullName: string | null;
+  visibleSince: string;
   score: number | null;
   band: StudentScoreBand | null;
   scoredAt: string | null;
@@ -230,6 +244,11 @@ export interface ReferralCode {
   expiresAt: string;
   revokedAt: string | null;
   createdAt: string;
+}
+
+export interface ReferralCodesPage {
+  items: ReferralCode[];
+  nextCursor: string | null;
 }
 
 /* =========================================================
@@ -268,6 +287,12 @@ export interface RosterImport {
   invitations: InvitationCounts;
 }
 
+export interface RosterImportsPage {
+  items: RosterImport[];
+  nextCursor: string | null;
+  invitationTotals: InvitationCounts;
+}
+
 export interface RosterRow {
   rowNumber: number;
   fullName: string | null;
@@ -294,10 +319,10 @@ export interface InvitationsSent {
 ========================================================= */
 
 export interface ScoreDistribution {
-  entry: number | null;
-  developing: number | null;
-  solid: number | null;
-  strong: number | null;
+  entry: number;
+  developing: number;
+  solid: number;
+  strong: number;
 }
 
 export interface CohortOverview {
@@ -305,13 +330,13 @@ export interface CohortOverview {
   individuallyVisible: number;
   minCohortSize: number;
   belowFloor: boolean;
-  scoredStudents: number | null;
-  scoreDistribution: ScoreDistribution | null;
-  medianScore: number | null;
-  applicants: number | null;
-  applications: number | null;
-  interviews: number | null;
-  platformHires: number | null;
+  scoredStudents: number;
+  scoreDistribution: ScoreDistribution;
+  medianScore: number;
+  applicants: number;
+  applications: number;
+  interviews: number;
+  platformHires: number;
 }
 
 export interface MonthHires {

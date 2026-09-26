@@ -72,6 +72,8 @@ from app.modules.college.domain import (
     LINK_ATTEMPTS_PER_USER_PER_HOUR,
     ROSTER,
     RosterFileInvalid,
+    StudentLinkState,
+    StudentStageFilter,
     allocation_refusal,
     code_from_bytes,
     code_state,
@@ -198,6 +200,27 @@ class RosterImportClosedError(ConflictError):
 
 def _now(now: datetime | None) -> datetime:
     return now or datetime.now(UTC)
+
+
+def _created_cursor(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    decoded = decode_cursor(cursor)
+    try:
+        return (
+            datetime.fromisoformat(str(decoded["created_at"])),
+            uuid.UUID(str(decoded["id"])),
+        )
+    except (KeyError, ValueError) as exc:
+        raise AppValidationError(code="invalid_cursor") from exc
+
+
+def _next_created_cursor(
+    *,
+    created_at: datetime,
+    record_id: uuid.UUID,
+) -> str:
+    return encode_cursor({"created_at": created_at.isoformat(), "id": str(record_id)})
 
 
 def _tenant_of(ctx: TenantContext) -> uuid.UUID:
@@ -574,9 +597,41 @@ async def issue_code(
     return row
 
 
-async def list_codes(session: AsyncSession, *, ctx: TenantContext) -> list[ReferralCode]:
+@dataclass(frozen=True, slots=True)
+class ReferralCodesPage:
+    items: list[ReferralCode]
+    next_cursor: str | None
+
+
+async def list_codes(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    cursor: str | None,
+    limit: int | None,
+    active_only: bool = False,
+    now: datetime | None = None,
+) -> ReferralCodesPage:
     tenant_id = await _bind(session, ctx)
-    return await repository.list_codes(session, tenant_id=tenant_id)
+    size = clamp_limit(limit)
+    now = _now(now)
+    rows = await repository.list_codes(
+        session,
+        tenant_id=tenant_id,
+        after=_created_cursor(cursor),
+        limit=size + 1,
+        active_only=active_only,
+        now=now,
+    )
+    page = rows[:size]
+    return ReferralCodesPage(
+        items=page,
+        next_cursor=(
+            _next_created_cursor(created_at=page[-1].created_at, record_id=page[-1].id)
+            if len(rows) > size
+            else None
+        ),
+    )
 
 
 async def revoke_code(
@@ -947,15 +1002,51 @@ async def get_import(
     return await _view(session, record, now=_now(now))
 
 
+@dataclass(frozen=True, slots=True)
+class ImportViewsPage:
+    items: list[ImportView]
+    next_cursor: str | None
+    invitation_totals: dict[str, int]
+
+
 async def list_imports(
-    session: AsyncSession, *, ctx: TenantContext, now: datetime | None = None
-) -> list[ImportView]:
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    cursor: str | None,
+    limit: int | None,
+    now: datetime | None = None,
+) -> ImportViewsPage:
     tenant_id = await _bind(session, ctx)
     now = _now(now)
-    return [
-        await _view(session, record, now=now)
-        for record in await repository.list_imports(session, tenant_id=tenant_id)
-    ]
+    size = clamp_limit(limit)
+    records = await repository.list_imports(
+        session,
+        tenant_id=tenant_id,
+        after=_created_cursor(cursor),
+        limit=size + 1,
+    )
+    page = records[:size]
+    totals = dict.fromkeys(
+        (INVITE_PENDING, INVITE_SENT, INVITE_ACCEPTED, INVITE_DECLINED, INVITE_EXPIRED),
+        0,
+    )
+    totals.update(
+        await repository.invitation_counts_for_tenant(
+            session,
+            tenant_id=tenant_id,
+            expired_before=now - INVITATION_VALID_FOR,
+        )
+    )
+    return ImportViewsPage(
+        items=[await _view(session, record, now=now) for record in page],
+        next_cursor=(
+            _next_created_cursor(created_at=page[-1].created_at, record_id=page[-1].id)
+            if len(records) > size
+            else None
+        ),
+        invitation_totals=totals,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1342,9 +1433,13 @@ async def _name(
 
 @dataclass(frozen=True, slots=True)
 class VisibleStudent:
-    candidate_id: uuid.UUID
+    record_id: uuid.UUID
+    candidate_id: uuid.UUID | None
+    roster_entry_id: uuid.UUID | None
     full_name: str | None
-    visible_since: datetime
+    stage_since: datetime
+    visible_since: datetime | None
+    link_state: StudentLinkState
 
 
 @dataclass(frozen=True, slots=True)
@@ -1359,11 +1454,17 @@ async def list_visible_students(
     ctx: TenantContext,
     cursor: str | None,
     limit: int | None,
+    query: str | None = None,
+    stage: StudentStageFilter = "ALL",
     request_id: str | None = None,
+    now: datetime | None = None,
 ) -> VisibleStudentsPage:
-    """Students with live INDIVIDUAL consent to this college, oldest grant
-    first. **It names people, so it is audited**: one row per page, the ids
-    shown in its metadata, in the same transaction as the read."""
+    """The college's roster by link stage, oldest stage change first.
+
+    LINKED names come only through live INDIVIDUAL consent. Earlier stages use
+    names the college supplied in its own roster; candidate ids stay hidden.
+    Every page is audited in the same transaction as the read.
+    """
     tenant_id = await _bind(session, ctx)
     size = clamp_limit(limit)
     after: tuple[datetime, uuid.UUID] | None = None
@@ -1373,22 +1474,66 @@ async def list_visible_students(
             after = (datetime.fromisoformat(str(decoded["since"])), uuid.UUID(str(decoded["id"])))
         except (KeyError, ValueError) as exc:
             raise AppValidationError(code="invalid_cursor") from exc
-    rows = await repository.visible_students(session, limit=size + 1, after=after)
-    page = rows[:size]
-    items = [
-        VisibleStudent(
-            candidate_id=r.candidate_id,
-            full_name=await _name(
-                session,
-                candidate_id=r.candidate_id,
-                full_name=r.full_name,
-                resume_version_id=r.score_resume_version_id,
-            ),
-            visible_since=r.visible_since,
+    search = query.strip() if query and query.strip() else None
+    selected_stages: tuple[StudentLinkState, ...] = (
+        ("LINKED", "INVITED", "CONSENT_PENDING") if stage == "ALL" else (stage,)
+    )
+    items: list[VisibleStudent] = []
+
+    if "LINKED" in selected_stages:
+        rows = await repository.visible_students(
+            session,
+            limit=size + 1,
+            after=after,
+            query=search,
         )
-        for r in page
-    ]
-    if items:
+        for row in rows:
+            items.append(
+                VisibleStudent(
+                    record_id=row.candidate_id,
+                    candidate_id=row.candidate_id,
+                    roster_entry_id=None,
+                    full_name=await _name(
+                        session,
+                        candidate_id=row.candidate_id,
+                        full_name=row.full_name,
+                        resume_version_id=row.score_resume_version_id,
+                    ),
+                    stage_since=row.visible_since,
+                    visible_since=row.visible_since,
+                    link_state="LINKED",
+                )
+            )
+
+    now = _now(now)
+    for roster_stage in ("INVITED", "CONSENT_PENDING"):
+        if roster_stage not in selected_stages:
+            continue
+        roster_rows = await repository.roster_stage_students(
+            session,
+            tenant_id=tenant_id,
+            stage=roster_stage,
+            limit=size + 1,
+            after=after,
+            query=search,
+            invited_after=now - INVITATION_VALID_FOR,
+        )
+        items.extend(
+            VisibleStudent(
+                record_id=row.roster_entry_id,
+                candidate_id=None,
+                roster_entry_id=row.roster_entry_id,
+                full_name=row.full_name,
+                stage_since=row.stage_since,
+                visible_since=None,
+                link_state=roster_stage,
+            )
+            for row in roster_rows
+        )
+
+    items.sort(key=lambda item: (item.stage_since, item.record_id))
+    page = items[:size]
+    if page:
         await audit_event(
             session,
             action=AuditAction.COLLEGE_STUDENTS_LISTED,
@@ -1398,15 +1543,24 @@ async def list_visible_students(
             target_id=tenant_id,
             tenant_id=tenant_id,
             request_id=request_id,
-            metadata={"candidate_ids": [str(i.candidate_id) for i in items]},
+            metadata={
+                "candidate_ids": [
+                    str(item.candidate_id) for item in page if item.candidate_id is not None
+                ],
+                "roster_entry_ids": [
+                    str(item.roster_entry_id)
+                    for item in page
+                    if item.roster_entry_id is not None
+                ],
+            },
         )
     next_cursor = None
-    if len(rows) > size:
+    if len(items) > size:
         last = page[-1]
         next_cursor = encode_cursor(
-            {"since": last.visible_since.isoformat(), "id": str(last.candidate_id)}
+            {"since": last.stage_since.isoformat(), "id": str(last.record_id)}
         )
-    return VisibleStudentsPage(items=items, next_cursor=next_cursor)
+    return VisibleStudentsPage(items=page, next_cursor=next_cursor)
 
 
 @dataclass(frozen=True, slots=True)

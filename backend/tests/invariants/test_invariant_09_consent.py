@@ -161,7 +161,7 @@ async def test_revoking_consent_removes_a_student_from_analytics_at_once(
 
     before = (await client.get(OVERVIEW, headers=college["headers"])).json()
     assert before["connected_students"] == 10 and before["below_floor"] is False
-    assert before["score_distribution"]["STRONG"] is None, "one STRONG student is withheld"
+    assert before["score_distribution"]["STRONG"] == 0, "one STRONG student is withheld as zero"
     scores = await _as_college(
         college["tenant_id"], "SELECT stored_score FROM college_cohort_scores()"
     )

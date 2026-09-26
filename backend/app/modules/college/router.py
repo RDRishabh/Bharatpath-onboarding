@@ -23,15 +23,17 @@ is how a seated student gets access at all; putting it behind a subscription
 would ask them to pay for the thing their college has paid for. Granting and
 revoking consent are the student's, and never wait on anyone's payment.
 
-**Day 18.** A college sees a student as a person only through `/college/students`,
-behind a live INDIVIDUAL consent read on every request, audited on every
-read, and behind payment like the analytics beside it.
+**Day 18.** `/college/students` combines names from the college's own roster
+with individually visible candidates. A candidate id and profile open are
+available only behind live INDIVIDUAL consent, read on every request. List
+pages and profile opens are audited and paywalled like the analytics beside
+them.
 """
 
 from __future__ import annotations
 
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 
@@ -48,8 +50,11 @@ from app.core.deps import (
     require_role,
 )
 from app.modules.college import service
-from app.modules.college.domain import consent_terms as terms_for
-from app.modules.college.domain import format_code
+from app.modules.college.domain import (
+    StudentStageFilter,
+    consent_terms as terms_for,
+    format_code,
+)
 from app.modules.college.models import ReferralCode
 from app.modules.college.schemas import (
     AddTeamMemberRequest,
@@ -69,9 +74,11 @@ from app.modules.college.schemas import (
     LinkByCodeRequest,
     OnboardingResponse,
     ReferralCodeResponse,
+    ReferralCodesPage,
     RevokeConsentRequest,
     RevokeConsentResponse,
     RosterImportResponse,
+    RosterImportsPage,
     RosterRowResponse,
     RosterRowsPage,
     RosterUploadRequest,
@@ -335,12 +342,28 @@ async def issue_code(
 
 @router.get(
     "/referral-codes",
-    response_model=list[ReferralCodeResponse],
+    response_model=ReferralCodesPage,
     dependencies=[AnyCollegeRole],
     summary="The college's referral codes, newest first",
 )
-async def list_codes(user: CurrentUser, session: DbSession) -> list[ReferralCodeResponse]:
-    return [_code(row) for row in await service.list_codes(session, ctx=user)]
+async def list_codes(
+    user: CurrentUser,
+    session: DbSession,
+    cursor: str | None = None,
+    limit: int = Query(default=30, ge=1, le=100),
+    active_only: bool = False,
+) -> ReferralCodesPage:
+    page = await service.list_codes(
+        session,
+        ctx=user,
+        cursor=cursor,
+        limit=limit,
+        active_only=active_only,
+    )
+    return ReferralCodesPage(
+        items=[_code(row) for row in page.items],
+        next_cursor=page.next_cursor,
+    )
 
 
 @router.post(
@@ -383,12 +406,22 @@ async def upload_roster(
 
 @router.get(
     "/roster-imports",
-    response_model=list[RosterImportResponse],
+    response_model=RosterImportsPage,
     dependencies=[AnyCollegeRole],
     summary="The college's roster imports, newest first",
 )
-async def list_imports(user: CurrentUser, session: DbSession) -> list[RosterImportResponse]:
-    return [_import(view) for view in await service.list_imports(session, ctx=user)]
+async def list_imports(
+    user: CurrentUser,
+    session: DbSession,
+    cursor: str | None = None,
+    limit: int = Query(default=30, ge=1, le=100),
+) -> RosterImportsPage:
+    page = await service.list_imports(session, ctx=user, cursor=cursor, limit=limit)
+    return RosterImportsPage(
+        items=[_import(view) for view in page.items],
+        next_cursor=page.next_cursor,
+        invitation_totals=_counts(page.invitation_totals),
+    )
 
 
 @router.get(
@@ -671,24 +704,44 @@ async def revoke_consent(
     "/students",
     response_model=VisibleStudentsPage,
     dependencies=[AnyCollegeRole, Paid],
-    summary="Students who let the college see them by name",
+    summary="The college roster by link stage",
 )
 async def list_students(
     request: Request,
     user: CurrentUser,
     session: DbSession,
-    cursor: str | None = None,
+    q: Annotated[
+        str | None,
+        Query(max_length=100, description="Part of the student's name"),
+    ] = None,
+    stage: StudentStageFilter = "ALL",
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
     limit: int | None = Query(default=None, ge=1, le=100),
 ) -> VisibleStudentsPage:
-    """Only students with a live individual-visibility consent; everyone else
-    is counted in analytics and never named. Every page read is audited."""
+    """`q` matches part of the displayed student name, case-insensitively.
+
+    LINKED rows use the student's live individual-visibility grant. INVITED
+    and CONSENT_PENDING rows use only names from the college's own roster and
+    never expose a candidate id. Every page read is audited.
+    """
     page = await service.list_visible_students(
-        session, ctx=user, cursor=cursor, limit=limit, request_id=get_request_id(request)
+        session,
+        ctx=user,
+        cursor=cursor,
+        limit=limit,
+        query=q,
+        stage=stage,
+        request_id=get_request_id(request),
     )
     return VisibleStudentsPage(
         items=[
             VisibleStudentResponse(
-                candidate_id=s.candidate_id, full_name=s.full_name, visible_since=s.visible_since
+                candidate_id=s.candidate_id,
+                roster_entry_id=s.roster_entry_id,
+                full_name=s.full_name,
+                stage_since=s.stage_since,
+                visible_since=s.visible_since,
+                link_state=s.link_state,
             )
             for s in page.items
         ],

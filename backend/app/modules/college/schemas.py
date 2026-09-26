@@ -6,17 +6,13 @@ Separate Create / Update / Read schemas. ORM models are never exposed
 directly - the schema IS the API contract, and for several modules it is also
 where an invariant is enforced structurally.
 
-**No college-facing schema names a student.** A college sees seat counts and
-invitation counts, and the rows of its own uploaded files. Which of those
-students have accounts, who they are once linked, and anything about their
-score is absent here by construction: ROSTER consent is counting, not seeing
-(PRD 3.8), and INDIVIDUAL visibility is Day 18's separate grant.
-
-**The one exception is `CollegeStudentResponse`**, and it exists only behind a
-live INDIVIDUAL consent, read on every request and audited on every open. It
-has no field for a phone number, an email, a CV, a raw score, a breakdown, or
-anything an employer wrote: `tests/invariants/test_invariant_09_consent.py`
-holds its field list.
+**No college-facing schema reveals a candidate before individual consent.**
+The roster list may repeat a name the college itself uploaded for an invitation,
+but its `candidate_id` stays null until the student grants INDIVIDUAL visibility.
+`CollegeStudentResponse` is the only detailed view, behind live INDIVIDUAL
+consent and audited on every open. It has no phone number, email, CV, raw score,
+breakdown, or anything an employer wrote:
+`tests/invariants/test_invariant_09_consent.py` holds its field list.
 """
 
 from __future__ import annotations
@@ -33,6 +29,7 @@ from app.modules.college.domain import (
     MAX_CODE_USES,
     MAX_CODE_VALID_DAYS,
     MAX_ROSTER_BYTES,
+    StudentLinkState,
 )
 
 InstitutionType = Literal[
@@ -139,6 +136,11 @@ class ReferralCodeResponse(_Base):
     created_at: datetime
 
 
+class ReferralCodesPage(_Base):
+    items: list[ReferralCodeResponse]
+    next_cursor: str | None = None
+
+
 # --- roster imports --------------------------------------------------------------
 class RosterUploadRequest(_Base):
     """A CSV with a header row: `name`, `phone`, `email`, `student_ref`. Phone
@@ -177,6 +179,12 @@ class RosterImportResponse(_Base):
     created_at: datetime
     committed_at: datetime | None
     invitations: InvitationCounts
+
+
+class RosterImportsPage(_Base):
+    items: list[RosterImportResponse]
+    next_cursor: str | None = None
+    invitation_totals: InvitationCounts
 
 
 class RosterRowResponse(_Base):
@@ -270,9 +278,20 @@ class RevokeConsentResponse(_Base):
 
 # --- students who let their college see them (Day 18) ------------------------------
 class VisibleStudentResponse(_Base):
-    candidate_id: uuid.UUID
-    full_name: str | None = Field(description="None when the student has not given one.")
-    visible_since: datetime
+    candidate_id: uuid.UUID | None = Field(
+        description="Present only after the student grants individual visibility."
+    )
+    roster_entry_id: uuid.UUID | None = Field(
+        description="Present for invited and consent-pending roster rows."
+    )
+    full_name: str | None = Field(
+        description="Student-approved name when LINKED; otherwise the college's roster name."
+    )
+    stage_since: datetime
+    visible_since: datetime | None = Field(
+        description="When individual visibility began; present only for LINKED students."
+    )
+    link_state: StudentLinkState
 
 
 class VisibleStudentsPage(_Base):

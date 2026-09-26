@@ -3,12 +3,11 @@
 import { useMemo } from "react";
 
 import { useGetCohortOverviewQuery } from "@/store/college/analytics/analytics.api";
-import { useGetReferralCodesQuery } from "@/store/college/students/students.api";
+import { useGetActiveReferralCodeQuery } from "@/store/college/students/students.api";
 import { useGetCollegeSeatsQuery } from "@/store/college/settings/settings.api";
 
 import type {
   CohortOverview,
-  ReferralCode,
   ScoreDistribution,
 } from "@/store/college/types";
 
@@ -46,19 +45,10 @@ function bandsFrom(
   ];
 }
 
-/*
- * The most useful code to surface is the newest one a student can still act
- * on. Fall back to nothing rather than showing an expired or revoked code.
- */
-function activeReferralCode(codes: ReferralCode[]): string | null {
-  const active = codes.find((code) => code.state === "ACTIVE");
-  return active?.code ?? null;
-}
-
 function toView(
   overview: CohortOverview | undefined,
   seats: { allocated: number; used: number; available: number; subscriptionActive: boolean } | undefined,
-  referralCodes: ReferralCode[],
+  referralCode: string | null,
 ): CollegeDashboardView {
   return {
     connectedStudents: overview?.connectedStudents ?? 0,
@@ -75,7 +65,7 @@ function toView(
       overview?.scoredStudents ?? null,
     ),
 
-    referralCode: activeReferralCode(referralCodes),
+    referralCode,
 
     seatsUsed: seats?.used ?? 0,
     seatsTotal: seats?.allocated ?? 0,
@@ -92,16 +82,16 @@ function toView(
 export function useDashboard() {
   const overviewQuery = useGetCohortOverviewQuery();
   const seatsQuery = useGetCollegeSeatsQuery();
-  const referralCodesQuery = useGetReferralCodesQuery();
+  const referralCodeQuery = useGetActiveReferralCodeQuery();
 
   const data = useMemo<CollegeDashboardView>(
     () =>
       toView(
         overviewQuery.data,
         seatsQuery.data ?? undefined,
-        referralCodesQuery.data ?? [],
+        referralCodeQuery.data?.code ?? null,
       ),
-    [overviewQuery.data, seatsQuery.data, referralCodesQuery.data],
+    [overviewQuery.data, seatsQuery.data, referralCodeQuery.data],
   );
 
   return {
@@ -109,13 +99,13 @@ export function useDashboard() {
     isLoading:
       overviewQuery.isLoading ||
       seatsQuery.isLoading ||
-      referralCodesQuery.isLoading,
+      referralCodeQuery.isLoading,
     isLoadingOverview: overviewQuery.isLoading,
     isLoadingSeats: seatsQuery.isLoading || seatsQuery.isFetching,
-    isLoadingReferralCodes: referralCodesQuery.isLoading,
+    isLoadingReferralCodes: referralCodeQuery.isLoading,
     isError:
       overviewQuery.isError ||
       seatsQuery.isError ||
-      referralCodesQuery.isError,
+      referralCodeQuery.isError,
   };
 }

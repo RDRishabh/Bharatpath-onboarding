@@ -1,9 +1,7 @@
 /*
- * These mirror what the backend actually exposes. A college only ever sees
- * students who have granted INDIVIDUAL visibility, and the list endpoint is
- * deliberately narrow (name + when they became visible) so that rendering the
- * roster does not open — and therefore audit — every student. Score, band and
- * activity counts come only from opening a single student.
+ * LINKED rows use names the student allowed the college to see. Earlier
+ * stages use only names from the college's own uploaded roster. Score, band
+ * and activity counts remain available only when opening a LINKED student.
  */
 
 export type StudentStatus =
@@ -17,12 +15,14 @@ export type ScoreBand =
   | "exceptional"
   | "not_scored";
 
-/* A row in the visible-students roster (INDIVIDUAL consent). */
+/* A row in the college roster, before or after individual visibility. */
 export interface CollegeStudent {
   id: string;
+  candidateId: string | null;
   name: string;
   status: StudentStatus;
-  visibleSince: string;
+  stageSince: string;
+  visibleSince: string | null;
   scoreBand?: ScoreBand;
   score?: number | null;
 }

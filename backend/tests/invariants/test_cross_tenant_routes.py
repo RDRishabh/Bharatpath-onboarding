@@ -262,7 +262,9 @@ async def _revoke_other_colleges_code(client: Any, attacker: dict, victim: dict)
     response = await client.post(
         f"{API}/college/referral-codes/{code.json()['id']}/revoke", headers=college_a["headers"]
     )
-    codes = (await client.get(f"{API}/college/referral-codes", headers=college_b["headers"])).json()
+    codes = (
+        await client.get(f"{API}/college/referral-codes", headers=college_b["headers"])
+    ).json()["items"]
     assert codes[0]["state"] == "ACTIVE", "the other college's code was revoked"
     return response
 
@@ -482,7 +484,7 @@ async def test_college_routes_without_an_id_only_ever_return_the_callers_own(
         )
 
     def ids(response: Any) -> set[str]:
-        return {item["id"] for item in response.json()}
+        return {item["id"] for item in response.json()["items"]}
 
     a, b = college_a["headers"], college_b["headers"]
     org = (await client.get(f"{API}/college/organisation", headers=a)).json()

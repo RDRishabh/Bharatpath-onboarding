@@ -2,9 +2,13 @@ import { baseApi } from "@/store/api/base-api";
 
 import type {
   CollegeStudentDetail,
+  CollegeStudentLinkState,
+  CollegeStudentStageFilter,
   InvitationsSent,
   ReferralCode,
+  ReferralCodesPage,
   RosterImport,
+  RosterImportsPage,
   RosterRow,
   RosterRowsPage,
   VisibleStudent,
@@ -12,13 +16,16 @@ import type {
 } from "@/store/college/types";
 
 /* =========================================================
-   Students (INDIVIDUAL consent)
+   Students by roster link stage
 ========================================================= */
 
 interface VisibleStudentResponse {
-  candidate_id: string;
+  candidate_id: string | null;
+  roster_entry_id: string | null;
   full_name: string | null;
-  visible_since: string;
+  stage_since: string;
+  visible_since: string | null;
+  link_state: CollegeStudentLinkState;
 }
 
 function mapVisibleStudent(
@@ -26,8 +33,11 @@ function mapVisibleStudent(
 ): VisibleStudent {
   return {
     candidateId: student.candidate_id,
+    rosterEntryId: student.roster_entry_id,
     fullName: student.full_name,
+    stageSince: student.stage_since,
     visibleSince: student.visible_since,
+    linkState: student.link_state,
   };
 }
 
@@ -43,8 +53,10 @@ interface StudentHireResponse {
   source: "PLATFORM";
 }
 
-interface CollegeStudentDetailResponse
-  extends VisibleStudentResponse {
+interface CollegeStudentDetailResponse {
+  candidate_id: string;
+  full_name: string | null;
+  visible_since: string;
   score: number | null;
   band: "ENTRY" | "DEVELOPING" | "SOLID" | "STRONG" | null;
   scored_at: string | null;
@@ -89,6 +101,11 @@ interface ReferralCodeResponse {
   created_at: string;
 }
 
+interface ReferralCodesPageResponse {
+  items: ReferralCodeResponse[];
+  next_cursor: string | null;
+}
+
 function mapReferralCode(
   code: ReferralCodeResponse,
 ): ReferralCode {
@@ -128,6 +145,12 @@ interface RosterImportResponse {
   created_at: string;
   committed_at: string | null;
   invitations: InvitationCountsResponse;
+}
+
+interface RosterImportsPageResponse {
+  items: RosterImportResponse[];
+  next_cursor: string | null;
+  invitation_totals: InvitationCountsResponse;
 }
 
 function mapRosterImport(
@@ -207,12 +230,22 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getCollegeStudents: builder.query<
       VisibleStudentsPage,
-      { cursor?: string; limit?: number } | void
+      {
+        q?: string;
+        stage?: CollegeStudentStageFilter;
+        cursor?: string;
+        limit?: number;
+      } | void
     >({
       query: (args) => ({
         url: "/college/students",
         method: "GET",
-        params: args ?? {},
+        params: {
+          q: args?.q,
+          stage: args?.stage,
+          limit: args?.limit ?? 10,
+          cursor: args?.cursor,
+        },
       }),
       transformResponse: (
         response: VisibleStudentsPageResponse,
@@ -237,14 +270,47 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
       ],
     }),
 
-    getReferralCodes: builder.query<ReferralCode[], void>({
+    getReferralCodes: builder.infiniteQuery<
+      ReferralCodesPage,
+      void,
+      string | undefined
+    >({
+      infiniteQueryOptions: {
+        initialPageParam: undefined,
+        getNextPageParam: (lastPage) =>
+          lastPage.nextCursor ?? undefined,
+      },
+      query: ({ pageParam }) => ({
+        url: "/college/referral-codes",
+        method: "GET",
+        params: {
+          cursor: pageParam,
+          limit: 30,
+        },
+      }),
+      transformResponse: (
+        response: ReferralCodesPageResponse,
+      ): ReferralCodesPage => ({
+        items: response.items.map(mapReferralCode),
+        nextCursor: response.next_cursor,
+      }),
+      providesTags: [
+        { type: "College", id: "REFERRAL_CODES" },
+      ],
+    }),
+
+    getActiveReferralCode: builder.query<ReferralCode | null, void>({
       query: () => ({
         url: "/college/referral-codes",
         method: "GET",
+        params: {
+          active_only: true,
+          limit: 1,
+        },
       }),
       transformResponse: (
-        response: ReferralCodeResponse[],
-      ) => response.map(mapReferralCode),
+        response: ReferralCodesPageResponse,
+      ) => response.items[0] ? mapReferralCode(response.items[0]) : null,
       providesTags: [
         { type: "College", id: "REFERRAL_CODES" },
       ],
@@ -300,14 +366,37 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
       ],
     }),
 
-    getRosterImports: builder.query<RosterImport[], void>({
-      query: () => ({
+    getRosterImports: builder.infiniteQuery<
+      RosterImportsPage,
+      void,
+      string | undefined
+    >({
+      infiniteQueryOptions: {
+        initialPageParam: undefined,
+        getNextPageParam: (lastPage) =>
+          lastPage.nextCursor ?? undefined,
+      },
+      query: ({ pageParam }) => ({
         url: "/college/roster-imports",
         method: "GET",
+        params: {
+          cursor: pageParam,
+          limit: 30,
+        },
       }),
       transformResponse: (
-        response: RosterImportResponse[],
-      ) => response.map(mapRosterImport),
+        response: RosterImportsPageResponse,
+      ): RosterImportsPage => ({
+        items: response.items.map(mapRosterImport),
+        nextCursor: response.next_cursor,
+        invitationTotals: {
+          pending: response.invitation_totals.pending,
+          sent: response.invitation_totals.sent,
+          accepted: response.invitation_totals.accepted,
+          declined: response.invitation_totals.declined,
+          expired: response.invitation_totals.expired,
+        },
+      }),
       providesTags: [
         { type: "College", id: "ROSTER_IMPORTS" },
       ],
@@ -409,11 +498,12 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
 export const {
   useGetCollegeStudentsQuery,
   useGetCollegeStudentQuery,
-  useGetReferralCodesQuery,
+  useGetReferralCodesInfiniteQuery,
+  useGetActiveReferralCodeQuery,
   useIssueReferralCodeMutation,
   useRevokeReferralCodeMutation,
   useUploadRosterImportMutation,
-  useGetRosterImportsQuery,
+  useGetRosterImportsInfiniteQuery,
   useGetRosterImportQuery,
   useGetRosterImportRowsQuery,
   useCommitRosterImportMutation,

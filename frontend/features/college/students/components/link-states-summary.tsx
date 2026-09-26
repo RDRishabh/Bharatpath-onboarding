@@ -23,11 +23,11 @@ export function LinkStatesSummary({
   invitedCount = 2,
   consentPendingCount = 2,
   isLoading = false,
-}: LinkStatesSummaryProps) {
+}: Readonly<LinkStatesSummaryProps>) {
   return (
     <div
       aria-busy={isLoading}
-      className="rounded-[16px] border border-[#e7e9ee] bg-white p-6 shadow-2xs flex flex-col justify-between"
+      className="flex flex-col justify-between rounded-2xl border border-[#e7e9ee] bg-white p-6 shadow-2xs"
     >
       <div>
         {/* TITLE & DESCRIPTION */}
@@ -44,7 +44,7 @@ export function LinkStatesSummary({
             LINK_STATE_SKELETON_STYLES.map((className, index) => (
               <div
                 key={className}
-                className={`flex min-h-[183px] flex-col rounded-xl border p-4 ${className}`}
+                className={`flex min-h-45.75 flex-col rounded-xl border p-4 ${className}`}
               >
                 <div className="flex items-center gap-2">
                   <Skeleton circle width={18} height={18} />
@@ -126,7 +126,7 @@ export function LinkStatesSummary({
                   </h4>
                 </div>
                 <p className="mt-1 text-[12px] leading-snug text-[#5d6673]">
-                  Linked, but score sharing not yet approved.
+                  Roster link accepted; profile visibility not yet granted.
                 </p>
               </div>
             </>

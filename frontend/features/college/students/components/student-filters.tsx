@@ -2,7 +2,7 @@
 
 import React from "react";
 import { SearchInput } from "@/components/ui/search-input";
-import { SelectDropdown } from "@/components/ui/select-dropdown";
+import { AppSelect } from "@/components/ui/app-select";
 import { StudentStatus } from "../types";
 
 export interface StudentFiltersProps {
@@ -24,23 +24,26 @@ export function StudentFilters({
   onSearchChange,
   status,
   onStatusChange,
-}: StudentFiltersProps) {
+}: Readonly<StudentFiltersProps>) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <SearchInput
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         onClear={() => onSearchChange("")}
-        placeholder="Name, course or code"
+        placeholder="Search by student name"
         containerClassName="w-full sm:w-[320px]"
       />
 
-      <SelectDropdown
+      <AppSelect
         options={STATUS_OPTIONS}
         value={status}
-        onChange={(value) => onStatusChange(value as StudentStatus | "all")}
+        onChange={(value) =>
+          onStatusChange(value as StudentStatus | "all")
+        }
         ariaLabel="Filter students by link state"
-        containerClassName="w-full sm:w-[170px]"
+        className="w-full sm:w-42.5 [&>button]:h-10 [&>button]:rounded-xl [&>button]:px-3.5"
+        menuClassName="min-w-[170px]"
       />
     </div>
   );

@@ -1,5 +1,14 @@
-import { RosterImportRowsPage } from "@/features/college/students/components/roster-import-rows-page";
+import { RosterPreview } from "@/features/college/students/components/roster-preview";
 
-export default function RosterImportRowsRoute() {
-  return <RosterImportRowsPage />;
+export interface RosterPreviewPageProps {
+  params: Promise<{
+    importId: string;
+  }>;
+}
+
+export default async function RosterPreviewPage({
+  params,
+}: Readonly<RosterPreviewPageProps>) {
+  const { importId } = await params;
+  return <RosterPreview importId={importId} />;
 }

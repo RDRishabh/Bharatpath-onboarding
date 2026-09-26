@@ -11,10 +11,17 @@ import type {
   ReferralCode,
   ReferralCodeState,
 } from "@/store/college/types";
+import { InfiniteScrollArea } from "./infinite-scroll-area";
 
 export interface ReferralCodesCardProps {
   codes: ReferralCode[];
   isLoading: boolean;
+  isError: boolean;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  loadMoreError: boolean;
+  onLoadMore: () => void;
+  onRetry: () => void;
   onRevoke: (codeId: string) => Promise<unknown>;
   isRevoking: boolean;
 }
@@ -49,6 +56,12 @@ function StateBadge({ state }: { state: ReferralCodeState }) {
 export function ReferralCodesCard({
   codes,
   isLoading,
+  isError,
+  hasMore,
+  isLoadingMore,
+  loadMoreError,
+  onLoadMore,
+  onRetry,
   onRevoke,
   isRevoking,
 }: ReferralCodesCardProps) {
@@ -97,61 +110,85 @@ export function ReferralCodesCard({
           <Skeleton className="h-14 w-full" radius={12} />
           <Skeleton className="h-14 w-full" radius={12} />
         </div>
+      ) : isError ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-[#f3d6d6] bg-[#fdf2f2] px-4 py-5 text-center"
+        >
+          <p className="text-[13px] text-[#9d2d2d]">
+            Referral codes could not be loaded.
+          </p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-2 text-[12px] font-semibold text-[#3566b8] hover:underline"
+          >
+            Retry
+          </button>
+        </div>
       ) : codes.length === 0 ? (
         <p className="rounded-xl border border-dashed border-[#dfe2e8] bg-[#fcfdfe] px-4 py-6 text-center text-[13px] text-[#777f90]">
           No referral codes yet. Use “Invite students” to issue one.
         </p>
       ) : (
-        <ul className="space-y-2.5">
-          {codes.map((code) => (
-            <li
-              key={code.id}
-              className="flex items-center justify-between gap-3 rounded-xl border border-[#e7e9ee] px-4 py-3"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[14px] font-bold tracking-wider text-[#151b2b]">
-                    {code.code}
-                  </span>
-                  <StateBadge state={code.state} />
+        <InfiniteScrollArea
+          hasMore={hasMore}
+          isLoadingMore={isLoadingMore}
+          loadError={loadMoreError}
+          onLoadMore={onLoadMore}
+          ariaLabel="Referral codes"
+        >
+          <ul className="space-y-2.5">
+            {codes.map((code) => (
+              <li
+                key={code.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-[#e7e9ee] px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[14px] font-bold tracking-wider text-[#151b2b]">
+                      {code.code}
+                    </span>
+                    <StateBadge state={code.state} />
+                  </div>
+                  <p className="mt-0.5 text-[12px] text-[#777f90]">
+                    {code.uses}
+                    {code.maxUses !== null ? ` / ${code.maxUses}` : ""} uses •
+                    expires {formatDate(code.expiresAt)}
+                  </p>
                 </div>
-                <p className="mt-0.5 text-[12px] text-[#777f90]">
-                  {code.uses}
-                  {code.maxUses !== null ? ` / ${code.maxUses}` : ""} uses •
-                  expires {formatDate(code.expiresAt)}
-                </p>
-              </div>
 
-              <div className="flex shrink-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleCopy(code)}
-                  aria-label="Copy code"
-                  title="Copy code"
-                  className="grid h-8 w-8 place-items-center rounded-lg border border-[#e2e5eb] bg-white text-[#6c7482] transition-colors hover:bg-[#f8f9fb] hover:text-[#151b2b]"
-                >
-                  {copiedId === code.id ? (
-                    <Check size={14} strokeWidth={2} />
-                  ) : (
-                    <Copy size={14} strokeWidth={2} />
-                  )}
-                </button>
-
-                {code.state === "ACTIVE" && (
+                <div className="flex shrink-0 items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setPendingRevoke(code)}
-                    aria-label="Revoke code"
-                    title="Revoke code"
-                    className="grid h-8 w-8 place-items-center rounded-lg border border-[#f3d6d6] bg-white text-[#e02424] transition-colors hover:bg-[#fdf2f2]"
+                    onClick={() => handleCopy(code)}
+                    aria-label="Copy code"
+                    title="Copy code"
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-[#e2e5eb] bg-white text-[#6c7482] transition-colors hover:bg-[#f8f9fb] hover:text-[#151b2b]"
                   >
-                    <Ban size={14} strokeWidth={2} />
+                    {copiedId === code.id ? (
+                      <Check size={14} strokeWidth={2} />
+                    ) : (
+                      <Copy size={14} strokeWidth={2} />
+                    )}
                   </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
+
+                  {code.state === "ACTIVE" && (
+                    <button
+                      type="button"
+                      onClick={() => setPendingRevoke(code)}
+                      aria-label="Revoke code"
+                      title="Revoke code"
+                      className="grid h-8 w-8 place-items-center rounded-lg border border-[#f3d6d6] bg-white text-[#e02424] transition-colors hover:bg-[#fdf2f2]"
+                    >
+                      <Ban size={14} strokeWidth={2} />
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </InfiniteScrollArea>
       )}
 
       <ConfirmModal

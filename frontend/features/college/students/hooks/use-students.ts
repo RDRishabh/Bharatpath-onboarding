@@ -4,8 +4,8 @@ import { useMemo } from "react";
 
 import {
   useGetCollegeStudentsQuery,
-  useGetReferralCodesQuery,
-  useGetRosterImportsQuery,
+  useGetReferralCodesInfiniteQuery,
+  useGetRosterImportsInfiniteQuery,
   useIssueReferralCodeMutation,
   useRevokeReferralCodeMutation,
   useUploadRosterImportMutation,
@@ -14,20 +14,51 @@ import {
   useSendRosterInvitationsMutation,
 } from "@/store/college/students/students.api";
 import { useGetCollegeSeatsQuery } from "@/store/college/settings/settings.api";
+import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useCursorPagination } from "@/lib/pagination/use-cursor-pagination";
 
 import type {
+  CollegeStudentStageFilter,
+  InvitationCounts,
   StudentScoreBand,
   VisibleStudent,
 } from "@/store/college/types";
 
-import type { CollegeStudent, ScoreBand } from "../types";
+import type {
+  CollegeStudent,
+  ScoreBand,
+  StudentStatus,
+} from "../types";
 
 const BAND_MAP: Record<StudentScoreBand, ScoreBand> = {
   ENTRY: "building",
   DEVELOPING: "building",
   SOLID: "strong",
   STRONG: "exceptional",
+};
+
+const LINK_STATE_MAP: Record<VisibleStudent["linkState"], StudentStatus> = {
+  LINKED: "linked",
+  INVITED: "invited",
+  CONSENT_PENDING: "consent_pending",
+};
+
+const STAGE_FILTER_MAP: Record<
+  StudentStatus | "all",
+  CollegeStudentStageFilter
+> = {
+  all: "ALL",
+  linked: "LINKED",
+  invited: "INVITED",
+  consent_pending: "CONSENT_PENDING",
+};
+
+const EMPTY_INVITATION_COUNTS: InvitationCounts = {
+  pending: 0,
+  sent: 0,
+  accepted: 0,
+  declined: 0,
+  expired: 0,
 };
 
 export function mapScoreBand(
@@ -37,11 +68,20 @@ export function mapScoreBand(
 }
 
 function mapStudent(student: VisibleStudent): CollegeStudent {
+  const id = student.candidateId ?? student.rosterEntryId;
+  if (!id) {
+    throw new Error("College student list item has no identifier");
+  }
+
   return {
-    id: student.candidateId,
-    /* Every student in this list is INDIVIDUAL-visible, i.e. linked. */
+    id:
+      student.candidateId === null
+        ? `roster:${id}`
+        : id,
+    candidateId: student.candidateId,
     name: student.fullName ?? "Unnamed student",
-    status: "linked",
+    status: LINK_STATE_MAP[student.linkState],
+    stageSince: student.stageSince,
     visibleSince: student.visibleSince,
   };
 }
@@ -51,15 +91,27 @@ function mapStudent(student: VisibleStudent): CollegeStudent {
  * from the backend through RTK Query — the roster, seat usage and the two
  * real ways of reaching students (referral codes and roster CSV imports).
  */
-export function useStudents() {
-  const studentsPagination = useCursorPagination([], 10);
+export function useStudents(
+  search: string,
+  status: StudentStatus | "all",
+) {
+  const debouncedSearch = useDebouncedSearch(search);
+  const stage = STAGE_FILTER_MAP[status];
+  const studentsPagination = useCursorPagination(
+    [debouncedSearch, stage],
+    10,
+  );
   const studentsQuery = useGetCollegeStudentsQuery({
+    q: debouncedSearch || undefined,
+    stage,
     cursor: studentsPagination.cursor,
-    limit: 10,
+    limit: studentsPagination.pageSize,
   });
   const seatsQuery = useGetCollegeSeatsQuery();
-  const referralCodesQuery = useGetReferralCodesQuery();
-  const rosterImportsQuery = useGetRosterImportsQuery();
+  const referralCodesQuery =
+    useGetReferralCodesInfiniteQuery(undefined);
+  const rosterImportsQuery =
+    useGetRosterImportsInfiniteQuery(undefined);
 
   const [issueReferralCode, issueState] =
     useIssueReferralCodeMutation();
@@ -80,6 +132,19 @@ export function useStudents() {
   );
   const studentsNextCursor =
     studentsQuery.currentData?.nextCursor ?? null;
+  const referralCodes = useMemo(
+    () =>
+      referralCodesQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [referralCodesQuery.data],
+  );
+  const rosterImports = useMemo(
+    () =>
+      rosterImportsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [rosterImportsQuery.data],
+  );
+  const rosterInvitationTotals =
+    rosterImportsQuery.data?.pages[0]?.invitationTotals ??
+    EMPTY_INVITATION_COUNTS;
 
   return {
     students,
@@ -98,13 +163,36 @@ export function useStudents() {
     isLoadingSeats:
       seatsQuery.isLoading || seatsQuery.isFetching,
 
-    referralCodes: referralCodesQuery.data ?? [],
-    isLoadingReferralCodes:
-      referralCodesQuery.isLoading || referralCodesQuery.isFetching,
+    referralCodes,
+    isLoadingReferralCodes: referralCodesQuery.isLoading,
+    referralCodesError:
+      referralCodesQuery.isError && referralCodesQuery.data === undefined,
+    isLoadingMoreReferralCodes: referralCodesQuery.isFetchingNextPage,
+    hasMoreReferralCodes: referralCodesQuery.hasNextPage,
+    referralCodesLoadMoreError:
+      referralCodesQuery.isError && referralCodesQuery.data !== undefined,
+    loadMoreReferralCodes: () => {
+      void referralCodesQuery.fetchNextPage();
+    },
+    retryReferralCodes: () => {
+      void referralCodesQuery.refetch();
+    },
 
-    rosterImports: rosterImportsQuery.data ?? [],
-    isLoadingRosterImports:
-      rosterImportsQuery.isLoading || rosterImportsQuery.isFetching,
+    rosterImports,
+    rosterInvitationTotals,
+    isLoadingRosterImports: rosterImportsQuery.isLoading,
+    rosterImportsError:
+      rosterImportsQuery.isError && rosterImportsQuery.data === undefined,
+    isLoadingMoreRosterImports: rosterImportsQuery.isFetchingNextPage,
+    hasMoreRosterImports: rosterImportsQuery.hasNextPage,
+    rosterImportsLoadMoreError:
+      rosterImportsQuery.isError && rosterImportsQuery.data !== undefined,
+    loadMoreRosterImports: () => {
+      void rosterImportsQuery.fetchNextPage();
+    },
+    retryRosterImports: () => {
+      void rosterImportsQuery.refetch();
+    },
 
     issueReferralCode,
     isIssuingCode: issueState.isLoading,

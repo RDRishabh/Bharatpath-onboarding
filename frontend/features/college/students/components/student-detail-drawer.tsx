@@ -16,8 +16,8 @@ import { useGetCollegeStudentQuery } from "@/store/college/students/students.api
 
 import { mapScoreBand } from "../hooks/use-students";
 
-export interface StudentDetailModalProps {
-  /** The candidate to open, or null when the modal is closed. */
+export interface StudentDetailDrawerProps {
+  /** The candidate to open, or null when the drawer is closed. */
   candidateId: string | null;
   onClose: () => void;
 }
@@ -40,10 +40,10 @@ function formatDate(value: string | null): string {
  * activity — and every open is audited server-side (SRS §6). The list view is
  * deliberately name-only so that rendering the roster does not audit everyone.
  */
-export function StudentDetailModal({
+export function StudentDetailDrawer({
   candidateId,
   onClose,
-}: StudentDetailModalProps) {
+}: StudentDetailDrawerProps) {
   const isOpen = candidateId !== null;
 
   const { data, isLoading, isError } = useGetCollegeStudentQuery(
@@ -69,27 +69,26 @@ export function StudentDetailModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
-        aria-label="Close student"
+        aria-label="Close student drawer"
         onClick={onClose}
-        className="bp-drawer-backdrop absolute inset-0 cursor-default bg-[#172033]/30"
+        className="absolute inset-0 cursor-default bg-[rgba(19,26,38,0.4)]"
       />
 
       <aside
         role="dialog"
         aria-modal="true"
-        aria-labelledby="college-student-title"
-        aria-busy={isLoading}
-        className="bp-drawer-right absolute inset-y-0 right-0 flex h-full w-[520px] max-w-full flex-col bg-white shadow-[-20px_0_60px_-24px_rgba(0,0,0,0.5)]"
+        aria-labelledby="student-detail-drawer-title"
+        className="absolute right-0 top-0 flex h-full w-130 max-w-full flex-col bg-white shadow-[-8px_0_30px_rgba(19,26,38,0.14)] animate-in slide-in-from-right duration-200"
         style={{ fontFamily: "'General Sans', sans-serif" }}
       >
         {/* HEADER */}
-        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[#e7e9ee] px-5 py-4">
-          <div className="min-w-0">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e7e9ee] px-6 py-5">
+          <div className="min-w-0 flex-1">
             <h3
-              id="college-student-title"
+              id="student-detail-drawer-title"
               className="truncate text-[16px] font-bold text-[#151b2b]"
             >
               {data?.fullName ?? "Student"}
@@ -103,14 +102,15 @@ export function StudentDetailModal({
             type="button"
             autoFocus
             onClick={onClose}
-            aria-label="Close student"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#777f90] hover:bg-[#f3f4f7] hover:text-[#151b2b] transition-colors"
+            aria-label="Close student drawer"
+            title="Close"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#e1e5eb] bg-white text-[#151b2b] transition hover:bg-[#f3f4f7]"
           >
             <X size={16} />
           </button>
         </div>
 
-        <div className="bp-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-5">
+        <div className="flex-1 overflow-y-auto px-6 py-6">
           {isLoading ? (
             <div className="space-y-4">
               <Skeleton className="h-20 w-full rounded-xl" />
@@ -220,16 +220,6 @@ export function StudentDetailModal({
             </div>
           )}
         </div>
-
-        <footer className="flex shrink-0 justify-end border-t border-[#e7e9ee] bg-[#fafbfc] px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-[#d9dee7] bg-white px-4 py-2 text-[12px] font-semibold text-[#344054] transition-colors hover:bg-[#f5f6f8]"
-          >
-            Close
-          </button>
-        </footer>
       </aside>
     </div>
   );

@@ -2219,7 +2219,8 @@ def _create_college_student_reads() -> None:
     op.execute(
         f"""
         CREATE OR REPLACE FUNCTION college_visible_students(
-          p_limit integer, p_after_since timestamptz, p_after_id uuid
+          p_limit integer, p_after_since timestamptz, p_after_id uuid,
+          p_query text DEFAULT NULL
         )
         RETURNS TABLE (
           candidate_id uuid, consent_id uuid, visible_since timestamptz,
@@ -2233,8 +2234,24 @@ def _create_college_student_reads() -> None:
             FROM individually_visible v
             LEFT JOIN candidate_profiles p ON p.user_id = v.candidate_id
             {_LATEST_SCORE}
-           WHERE p_after_since IS NULL
-              OR (v.visible_since, v.candidate_id) > (p_after_since, p_after_id)
+            LEFT JOIN resume_versions rv ON rv.id = ls.resume_version_id
+           WHERE (
+                  p_after_since IS NULL
+                  OR (v.visible_since, v.candidate_id) > (p_after_since, p_after_id)
+                 )
+             AND (
+                  p_query IS NULL
+                  OR strpos(
+                       lower(
+                         COALESCE(
+                           NULLIF(btrim(p.full_name), ''),
+                           NULLIF(btrim(rv.parsed ->> 'full_name'), ''),
+                           ''
+                         )
+                       ),
+                       lower(p_query)
+                     ) > 0
+                 )
            ORDER BY v.visible_since, v.candidate_id
            LIMIT LEAST(GREATEST(p_limit, 1), 101)
         $$;

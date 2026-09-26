@@ -44,6 +44,7 @@ GROWING = frozenset(
         "college_seat_assignments", "roster_entries", "interview_sessions", "interview_answers",
         "device_checks", "interview_checkout_notices", "dsr_requests", "disputes",
         "streak_point_events", "questionnaire_responses", "course_completions", "entitlements",
+        "referral_codes", "roster_imports",
     }
 )  # fmt: skip
 
@@ -122,6 +123,10 @@ HOT_PATHS: tuple[tuple[str, str], ...] = (
     ("integrity queue","SELECT * FROM integrity_signals WHERE state = 'OPEN' AND severity = 'HIGH' ORDER BY created_at LIMIT 50"),
     ("my consents", "SELECT * FROM student_consents WHERE candidate_id = :u"),
     ("college roster consents", "SELECT * FROM student_consents WHERE tenant_id = :u"),
+    ("college sent roster", "SELECT * FROM roster_entries WHERE tenant_id = :u AND invite_state = 'SENT' AND sent_at > now() ORDER BY sent_at, id LIMIT 51"),
+    ("college accepted roster", "SELECT * FROM roster_entries WHERE tenant_id = :u AND invite_state = 'ACCEPTED' ORDER BY responded_at, id LIMIT 51"),
+    ("college referral codes", "SELECT * FROM referral_codes WHERE tenant_id = :u AND (created_at, id) < (now(), :u) ORDER BY created_at DESC, id DESC LIMIT 31"),
+    ("college roster imports", "SELECT * FROM roster_imports WHERE tenant_id = :u AND (created_at, id) < (now(), :u) ORDER BY created_at DESC, id DESC LIMIT 31"),
     ("my requests", "SELECT * FROM dsr_requests WHERE user_id = :u ORDER BY created_at DESC"),
     ("due erasures", "SELECT id FROM dsr_requests WHERE type = 'DELETE' AND state = 'RECEIVED' AND created_at <= now() ORDER BY created_at LIMIT 50"),
     ("expired exports", "SELECT id FROM dsr_requests WHERE type = 'EXPORT' AND export_s3_key IS NOT NULL AND completed_at IS NOT NULL AND completed_at <= now() ORDER BY completed_at LIMIT 50"),

@@ -37,78 +37,57 @@ function formatDate(value: string): string {
   });
 }
 
-export function StudentTable({
-  students,
-  currentPage,
-  hasNextPage,
-  onNextPage,
-  onPreviousPage,
-  isLoading = false,
-  onView,
-}: StudentTableProps) {
-  const columns = useMemo<ColumnDef<CollegeStudent>[]>(
-    () => [
-      /* =========================================================
-         STUDENT
-      ========================================================= */
-      {
-        id: "student",
-        header: "Student",
-        headerClassName: "whitespace-nowrap",
-        cellClassName: "min-w-[240px]",
-        cell: (student) => (
-          <div className="flex min-w-0 items-center gap-3">
-            <Avatar
-              name={student.name}
-              size="sm"
-            />
+function createStudentColumns(
+  onView: StudentTableProps["onView"],
+): ColumnDef<CollegeStudent>[] {
+  return [
+    {
+      id: "student",
+      header: "Student",
+      headerClassName: "whitespace-nowrap",
+      cellClassName: "min-w-[240px]",
+      cell: (student) => (
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar
+            name={student.name}
+            size="sm"
+          />
 
-            <div className="min-w-0">
-              <div className="truncate text-[13px] font-semibold leading-[17px] text-[#151b2b]">
-                {student.name}
-              </div>
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold leading-4.25 text-[#151b2b]">
+              {student.name}
             </div>
           </div>
-        ),
-      },
-
-      /* =========================================================
-         LINK STATE
-      ========================================================= */
-      {
-        id: "link-state",
-        header: "Link State",
-        headerClassName: "whitespace-nowrap",
-        cellClassName: "whitespace-nowrap",
-        cell: (student) => (
-          <LinkStateBadge state={student.status} />
-        ),
-      },
-
-      /* =========================================================
-         VISIBLE SINCE
-      ========================================================= */
-      {
-        id: "visible-since",
-        header: "Visible since",
-        headerClassName: "whitespace-nowrap",
-        cellClassName: "whitespace-nowrap",
-        cell: (student) => (
-          <span className="text-[12px] text-[#777f90]">
-            {formatDate(student.visibleSince)}
-          </span>
-        ),
-      },
-
-      /* =========================================================
-         ACTIONS
-      ========================================================= */
-      {
-        id: "actions",
-        header: "Actions",
-        headerClassName: "whitespace-nowrap text-right",
-        cellClassName: "whitespace-nowrap text-right",
-        cell: (student) => (
+        </div>
+      ),
+    },
+    {
+      id: "link-state",
+      header: "Link State",
+      headerClassName: "whitespace-nowrap",
+      cellClassName: "whitespace-nowrap",
+      cell: (student) => (
+        <LinkStateBadge state={student.status} />
+      ),
+    },
+    {
+      id: "visible-since",
+      header: "Stage since",
+      headerClassName: "whitespace-nowrap",
+      cellClassName: "whitespace-nowrap",
+      cell: (student) => (
+        <span className="text-[12px] text-[#777f90]">
+          {formatDate(student.stageSince)}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      headerClassName: "whitespace-nowrap text-right",
+      cellClassName: "whitespace-nowrap text-right",
+      cell: (student) =>
+        student.candidateId ? (
           <div className="flex items-center justify-end gap-1.5">
             <button
               type="button"
@@ -121,7 +100,7 @@ export function StudentTable({
                 w-8
                 shrink-0
                 place-items-center
-                rounded-[8px]
+                rounded-lg
                 border
                 border-[#e2e5eb]
                 bg-white
@@ -137,9 +116,24 @@ export function StudentTable({
               />
             </button>
           </div>
+        ) : (
+          <span className="text-[12px] text-[#a0a6b2]">—</span>
         ),
-      },
-    ],
+    },
+  ];
+}
+
+export function StudentTable({
+  students,
+  currentPage,
+  hasNextPage,
+  onNextPage,
+  onPreviousPage,
+  isLoading = false,
+  onView,
+}: Readonly<StudentTableProps>) {
+  const columns = useMemo<ColumnDef<CollegeStudent>[]>(
+    () => createStudentColumns(onView),
     [onView],
   );
 
@@ -156,6 +150,7 @@ export function StudentTable({
       keyExtractor={(student) => student.id}
       itemLabel="students"
       isLoading={isLoading}
+      skeletonRows={10}
       emptyTitle="No individually-visible students yet"
       emptySubtitle="Students appear here only after they grant your college individual visibility."
       className="overflow-hidden"

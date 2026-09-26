@@ -236,6 +236,7 @@ class RosterImport(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
             name="ck_roster_imports_committed",
         ),
         UniqueConstraint("tenant_id", "source_sha256", name="uq_roster_import_source"),
+        Index("ix_roster_imports_tenant_created", "tenant_id", "created_at", "id"),
     )
 
 
@@ -320,6 +321,20 @@ class RosterEntry(Base, UUIDPrimaryKey, TenantScoped):
             "ix_roster_entries_sent_email",
             "email",
             postgresql_where=text("invite_state = 'SENT'"),
+        ),
+        Index(
+            "ix_roster_entries_tenant_sent_stage",
+            "tenant_id",
+            "sent_at",
+            "id",
+            postgresql_where=text("invite_state = 'SENT'"),
+        ),
+        Index(
+            "ix_roster_entries_tenant_accepted_stage",
+            "tenant_id",
+            "responded_at",
+            "id",
+            postgresql_where=text("invite_state = 'ACCEPTED'"),
         ),
     )
 
@@ -430,4 +445,5 @@ class ReferralCode(Base, UUIDPrimaryKey, TenantScoped, Timestamps):
             "code",
             postgresql_where="revoked_at IS NULL",
         ),
+        Index("ix_referral_codes_tenant_created", "tenant_id", "created_at", "id"),
     )
