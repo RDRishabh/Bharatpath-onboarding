@@ -1,14 +1,15 @@
 """Day 18: what an aggregate may show about students who agreed only to be counted.
 
 The floors are the protection, so they are tested as rules rather than as
-numbers: below the cohort floor nothing but the count shows; a small cell is
-withheld and so is its complement, so a published total cannot give it back;
-a config row can raise a floor and never remove one.
+numbers: below the cohort floor metrics are zero-filled; a small score band is
+withheld as zero; monthly placements are exact once the cohort floor is met; a
+config row can raise a floor and never remove one.
 """
 
 from __future__ import annotations
 
 import itertools
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -31,6 +32,7 @@ from app.modules.analytics.domain import (
     suppress_cells,
     trailing_months,
 )
+from app.modules.analytics.schemas import CohortOverviewResponse
 
 FLOORS = PrivacyFloors(min_cohort_size=10, min_cell_size=5, median_step=10)
 
@@ -144,15 +146,22 @@ def test_there_is_no_median_of_nobody() -> None:
 
 
 # --- overview ----------------------------------------------------------------------
-def test_below_the_cohort_floor_only_the_counts_show() -> None:
+def test_below_the_cohort_floor_uses_zero_for_every_withheld_metric() -> None:
     view = build_overview(_counts(9), [800] * 9, FLOORS)
     assert view.below_floor and (view.connected_students, view.individually_visible) == (9, 1)
-    assert view.score_distribution is None and view.median_score is None
+    assert view.scored_students == 0
+    assert view.score_distribution == {
+        "ENTRY": 0,
+        "DEVELOPING": 0,
+        "SOLID": 0,
+        "STRONG": 0,
+    }
+    assert view.median_score == 0
     assert (view.applicants, view.applications, view.interviews, view.platform_hires) == (
-        None,
-        None,
-        None,
-        None,
+        0,
+        0,
+        0,
+        0,
     )
 
 
@@ -162,18 +171,37 @@ def test_at_the_floor_the_cohort_is_described() -> None:
     assert not view.below_floor
     assert view.score_distribution == {
         "ENTRY": 6,
-        "DEVELOPING": None,
+        "DEVELOPING": 0,
         "SOLID": 0,
-        "STRONG": None,
+        "STRONG": 0,
     }
     assert view.median_score == 720
     assert (view.applications, view.interviews, view.platform_hires) == (9, 3, 2)
 
 
-def test_a_connected_cohort_with_too_few_scores_shows_no_distribution() -> None:
+def test_a_connected_cohort_with_too_few_scores_shows_a_zero_distribution() -> None:
     view = build_overview(_counts(30, scored=9), [800] * 9, FLOORS)
     assert not view.below_floor and view.scored_students == 9
-    assert view.score_distribution is None and view.median_score is None
+    assert view.score_distribution == {
+        "ENTRY": 0,
+        "DEVELOPING": 0,
+        "SOLID": 0,
+        "STRONG": 0,
+    }
+    assert view.median_score == 0
+
+
+@pytest.mark.parametrize(
+    ("connected", "scores"),
+    [
+        (3, [800] * 3),
+        (10, [720] * 6 + [800] * 2 + [900] * 2),
+        (30, [800] * 9),
+    ],
+)
+def test_overview_response_never_serializes_null(connected: int, scores: list[int]) -> None:
+    response = CohortOverviewResponse(**asdict(build_overview(_counts(connected), scores, FLOORS)))
+    assert "null" not in response.model_dump_json()
 
 
 # --- placements --------------------------------------------------------------------
@@ -201,7 +229,7 @@ def test_placements_are_labelled_platform_sourced_and_floored() -> None:
     assert all(n is None for _, n in report.by_month)
 
 
-def test_small_months_are_withheld_and_small_places_are_pooled() -> None:
+def test_months_are_exact_with_zero_for_no_hires_and_small_places_are_pooled() -> None:
     hires = (
         [Hire(NOW, "Pune")] * 5
         + [Hire(NOW, "  bengaluru ")] * 3
@@ -215,8 +243,8 @@ def test_small_months_are_withheld_and_small_places_are_pooled() -> None:
     assert report.total_hires == 21
     months = dict(report.by_month)
     assert months["2026-09"] == 11
-    assert months["2026-07"] is None, "three hires in July is too few to show"
-    assert months["2026-08"] is None, "and the smallest other month goes with it"
+    assert months["2026-08"] == 6
+    assert months["2026-07"] == 3
     assert months["2026-06"] == 0
     assert report.by_location == [
         ("Bengaluru", 6),
@@ -226,10 +254,12 @@ def test_small_months_are_withheld_and_small_places_are_pooled() -> None:
     ]
 
 
-def test_withholding_one_of_two_months_withholds_both() -> None:
+def test_months_include_counts_below_the_cell_floor() -> None:
     hires = [Hire(NOW, "Pune")] * 11 + [Hire(NOW - timedelta(days=62), "Pune")] * 3
     months = dict(build_placements(40, hires, FLOORS, now=NOW).by_month)
-    assert months["2026-09"] is None and months["2026-07"] is None
+    assert months["2026-09"] == 11
+    assert months["2026-07"] == 3
+    assert months["2026-08"] == 0
 
 
 def test_a_location_is_grouped_however_it_was_typed() -> None:

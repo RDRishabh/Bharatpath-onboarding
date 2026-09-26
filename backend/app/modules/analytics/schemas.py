@@ -8,7 +8,7 @@ where an invariant is enforced structurally.
 
 **No schema here can hold a person.** There is no field for an id, a name, a
 contact or a single student's score: `tests/invariants/test_invariant_09_consent.py`
-walks these models. A withheld figure is `null`, never an estimate.
+walks these models. The overview uses zero for withheld or unavailable figures.
 """
 
 from __future__ import annotations
@@ -26,12 +26,12 @@ class _Base(ApiSchema):
 
 
 class ScoreDistribution(_Base):
-    """Students per band. `null` means withheld: too few to show safely."""
+    """Students per band. Zero also represents a privacy-withheld cell."""
 
-    ENTRY: int | None
-    DEVELOPING: int | None
-    SOLID: int | None
-    STRONG: int | None
+    ENTRY: int
+    DEVELOPING: int
+    SOLID: int
+    STRONG: int
 
 
 class CohortOverviewResponse(_Base):
@@ -41,22 +41,30 @@ class CohortOverviewResponse(_Base):
     )
     min_cohort_size: int = Field(description="Below this many, only the two counts above show.")
     below_floor: bool
-    scored_students: int | None
-    score_distribution: ScoreDistribution | None = Field(
-        description="`null` until at least `min_cohort_size` connected students have a score."
+    scored_students: int
+    score_distribution: ScoreDistribution = Field(
+        description=(
+            "All bands are `0` until enough students have scores. A privacy-withheld "
+            "band is also represented as `0`."
+        )
     )
-    median_score: int | None = Field(description="Rounded. `null` with the distribution.")
-    applicants: int | None
-    applications: int | None
-    interviews: int | None = Field(description="Applications that reached an interview.")
-    platform_hires: int | None = Field(
+    median_score: int = Field(description="Rounded. `0` when unavailable.")
+    applicants: int
+    applications: int
+    interviews: int = Field(description="Applications that reached an interview.")
+    platform_hires: int = Field(
         description="Hires both sides confirmed on BharatPath. Never includes outside placements."
     )
 
 
 class MonthCount(_Base):
     month: str = Field(description="`YYYY-MM`, India time.")
-    hires: int | None = Field(description="`null` means withheld: too few to show safely.")
+    hires: int | None = Field(
+        description=(
+            "Exact monthly hires, including `0` when there were none. `null` only when "
+            "the entire placement report is below `min_cohort_size`."
+        )
+    )
 
 
 class LocationCount(_Base):

@@ -9,6 +9,27 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-26 — college overview contains no null values
+
+`GET /college/analytics/overview` now uses `0` for every unavailable or
+privacy-withheld numeric value. `score_distribution` is always an object with
+all four bands; unavailable and withheld bands are `0`. The `below_floor`
+flag remains the way clients distinguish a privacy-withheld overview.
+
+---
+
+## 2026-09-26 — placement months return exact counts
+
+`GET /college/analytics/placements` now returns exact monthly hire counts once
+the college has reached the minimum cohort size. A month with no hire is `0`,
+and counts from 1 to 4 are no longer replaced with `null`. When the whole
+cohort is below the minimum size, all monthly values remain `null` and
+`below_floor` remains true.
+
+Score-band cell suppression and small-location pooling are unchanged.
+
+---
+
 ## 2026-09-25 — job threshold slider runs 0–990
 
 The create and edit job forms' minimum-score slider now runs from 0 to 990 in
@@ -1967,7 +1988,7 @@ Pushed to PR #11 as `e1f3a97`: **all five CI jobs green on the first push**.
 | **Revocation** | `POST /candidate/colleges/{college_id}/revoke {scope}`. INDIVIDUAL keeps the link and the seat. **ROSTER disconnects**: the seat is released and INDIVIDUAL revoked by trigger, in the same UPDATE, at the same instant. Never paywalled; idempotent; 404 for a college never linked. One audit row per scope ended and one `college.consent_revoked` event (consent id, tenant, scopes — no student id). |
 | **The database's copy** | `ck_student_consents_scope_via` (INDIVIDUAL ⇔ DIRECT); `guard_student_consent_insert` (INDIVIDUAL needs a live ROSTER link, locked FOR SHARE against a racing disconnect; a consent starts live); `revoke_individual_with_roster`; a candidate UPDATE policy for revoking their own live rows; and **two RESTRICTIVE policies** so only the student a consent names can insert or revoke it. |
 | **Analytics** | `GET /college/analytics/overview`: connected and individually visible counts, score distribution by band, median, applicants, applications, interviews, platform hires. `GET /college/analytics/placements`: confirmed platform hires by IST month (12) and by job location, `source: PLATFORM`. Both for admin and staff, behind payment, never cached. |
-| **Floors** | `analytics.domain`, config `analytics.privacy` (strict; bad row = 500 `analytics_floors_invalid`). Under 10 connected students only the counts show. A band or month under 5 is `null`, with a complementary cell withheld beside it. Median rounded to 10. Locations under 5 hires pooled as `OTHER`. A row may raise a floor, never set one below 5 / 3. |
+| **Floors** | `analytics.domain`, config `analytics.privacy` (strict; bad row = 500 `analytics_floors_invalid`). Under 10 connected students only the counts show. A band under 5 is `null`, with a complementary cell withheld beside it. Median rounded to 10. Locations under 5 hires pooled as `OTHER`. Monthly placement suppression was superseded on 2026-09-26: after the cohort floor, months are exact and empty months are `0`. A row may raise a floor, never set one below 5 / 3. |
 | **Reads** | Six SECURITY DEFINER functions (`COLLEGE_STUDENT_READS`) over two consent CTEs, keyed on `bound_college_tenant()` — the tenant bound from the membership, which must be an ACTIVE COLLEGE. No tenant parameter. The three aggregate functions return no identifier. |
 | **Individual view** | `GET /college/students` (keyset page) and `GET /college/students/{candidate_id}`: name (sign-up, else structured form), display score and band, application and interview counts, confirmed platform hires with job title and employer. **404 unless the INDIVIDUAL consent is live now.** Every page and every open writes an audit row in the transaction (`college_students_listed` with the ids shown; `college_student_viewed` with the consent id). |
 | **Invariant 9** | `tests/invariants/test_invariant_09_consent.py` — see *Guarantees* below. Plus a cross-tenant case for `/college/students/{candidate_id}`. |
@@ -2013,7 +2034,8 @@ Pushed to PR #11 as `e1f3a97`: **all five CI jobs green on the first push**.
 - **Suppression found its own bug.** The exhaustive test over every
   four-cell combination of 0–7 caught the case the first version missed: one
   small cell and every other cell zero, which had no partner to withhold. The
-  partner is now a zero cell when nothing else is available.
+  partner is now a zero cell when nothing else is available. This remains the
+  score-band rule; monthly placement suppression was removed on 2026-09-26.
 - **Interviews** means applications that reached INTERVIEW (from
   `application_events`), not mock interviews. **Hires** means HIRED, both
   confirmations; a disputed hire counts as none (E12).

@@ -294,10 +294,10 @@ export interface InvitationsSent {
 ========================================================= */
 
 export interface ScoreDistribution {
-  entry: number | null;
-  developing: number | null;
-  solid: number | null;
-  strong: number | null;
+  entry: number;
+  developing: number;
+  solid: number;
+  strong: number;
 }
 
 export interface CohortOverview {
@@ -305,13 +305,13 @@ export interface CohortOverview {
   individuallyVisible: number;
   minCohortSize: number;
   belowFloor: boolean;
-  scoredStudents: number | null;
-  scoreDistribution: ScoreDistribution | null;
-  medianScore: number | null;
-  applicants: number | null;
-  applications: number | null;
-  interviews: number | null;
-  platformHires: number | null;
+  scoredStudents: number;
+  scoreDistribution: ScoreDistribution;
+  medianScore: number;
+  applicants: number;
+  applications: number;
+  interviews: number;
+  platformHires: number;
 }
 
 export interface MonthHires {
