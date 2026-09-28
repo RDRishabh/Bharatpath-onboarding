@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -38,6 +39,7 @@ import { Skeleton } from "@/components/common/loading";
 import { useGetCollegeOrganisationQuery } from "@/store/college/settings/settings.api";
 import { useGetEmployerDashboardQuery } from "@/store/employer/dashboard";
 import { useGetEmployerOrganisationQuery } from "@/store/employer/settings";
+import logo from "@/assets/Logo.png";
 
 interface PortalSidebarProps {
   collapsed: boolean;
@@ -227,21 +229,19 @@ export function PortalSidebar({
               className="
                 absolute
                 inset-0
-                flex
                 cursor-pointer
-                items-center
-                justify-center
-                rounded-lg
-                bg-[#151b2b]
-                text-sm
-                font-bold
-                text-white
                 opacity-100
                 transition-opacity
                 group-hover:opacity-0
               "
             >
-              B
+              <Image
+                src={logo}
+                alt=""
+                className="h-full w-full object-contain"
+                sizes="32px"
+                priority
+              />
             </Link>
 
             {/* =====================================================
@@ -286,21 +286,19 @@ export function PortalSidebar({
               href={basePath}
               aria-label="Go to dashboard"
               className="
-                flex
                 h-8
                 w-8
                 shrink-0
                 cursor-pointer
-                items-center
-                justify-center
-                rounded-lg
-                bg-[#151b2b]
-                text-sm
-                font-bold
-                text-white
               "
             >
-              B
+              <Image
+                src={logo}
+                alt=""
+                className="h-full w-full object-contain"
+                sizes="32px"
+                priority
+              />
             </Link>
 
             {/* =====================================================

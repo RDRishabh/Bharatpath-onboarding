@@ -9,6 +9,19 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-28 — product logo replaces panel monograms
+
+The supplied BharatPath logo now replaces the square `B` / `BP` monograms in
+the shared employer, college and admin sidebar and in both desktop and mobile
+student sidebars. The root Next.js metadata also points the browser-tab icon at
+the same bundled PNG, so every frontend surface uses one brand asset.
+
+Targeted ESLint and the Next.js production build pass. Browser validation
+confirmed the rendered logo in both sidebar implementations and the generated
+`rel="icon"` link.
+
+---
+
 ## 2026-09-28 — student header shows the daily engagement streak
 
 The student shell now calls the idempotent

@@ -1,9 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowLeftToLine, LogOut, X } from "lucide-react";
 
+import logo from "@/assets/Logo.png";
 import { useGetStudentProfileQuery } from "@/store/student";
 import { initials } from "@/features/student/formatters";
 import {
@@ -72,9 +74,15 @@ export function StudentSidebarContent({
               href="/student"
               onClick={onNavigate}
               aria-label="Student home"
-              className="absolute inset-0 grid place-items-center rounded-xl bg-[#5F4DB2] text-[15px] font-bold text-white transition-opacity group-hover:opacity-0"
+              className="absolute inset-0 transition-opacity group-hover:opacity-0"
             >
-              BP
+              <Image
+                src={logo}
+                alt=""
+                className="h-full w-full object-contain"
+                sizes="36px"
+                priority
+              />
             </Link>
             {onToggleCollapse ? (
               <button
@@ -96,8 +104,14 @@ export function StudentSidebarContent({
               aria-label="Student home"
               className="flex min-w-0 flex-1 items-center gap-2.5"
             >
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#5F4DB2] text-[15px] font-bold text-white">
-                BP
+              <span className="h-9 w-9 shrink-0">
+                <Image
+                  src={logo}
+                  alt=""
+                  className="h-full w-full object-contain"
+                  sizes="36px"
+                  priority
+                />
               </span>
               <span className="flex min-w-0 flex-col leading-tight">
                 <span className="truncate text-[15px] font-bold tracking-[-0.02em] text-[#0A1931]">
