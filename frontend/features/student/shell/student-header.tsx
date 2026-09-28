@@ -8,6 +8,8 @@ import { useGetStudentProfileQuery } from "@/store/student";
 import { initials } from "@/features/student/formatters";
 import { NotificationCenter } from "@/features/notifications";
 
+import { StudentStreak } from "./student-streak";
+
 /*
  * ==========================================================================
  * STUDENT HEADER
@@ -85,6 +87,8 @@ export function StudentHeader({
       </div>
 
       {/* Actions */}
+      <StudentStreak />
+
       <NotificationCenter />
 
       <Link

@@ -141,6 +141,7 @@ export const SUCCESS_MESSAGES: Record<string, SuccessMessage> = {
   /* Candidate — name and location are saved together; callers announce them. */
   updateStudentName: null,
   updateStudentLocation: null,
+  checkInStudentStreak: null,
   applyToStudentJob: "Application submitted.",
   withdrawStudentApplication: "Application withdrawn.",
   confirmStudentHire: "Hire confirmed.",

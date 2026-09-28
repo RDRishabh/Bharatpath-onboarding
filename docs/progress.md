@@ -9,6 +9,25 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-28 — student header shows the daily engagement streak
+
+The student shell now calls the idempotent
+`POST /candidate/streak/me/check-in` endpoint when it opens and maps the full
+response into typed frontend models. The student header alone renders the
+current streak as a compact amber flame-and-count pill, following the familiar
+LeetCode treatment without presenting engagement points as the BharatPath
+score. Loading and retry states stay within the same header footprint, and
+successful automatic check-ins do not trigger a global success popup. No
+backend code changed.
+
+Targeted ESLint, the Next.js production build and TypeScript all pass. A
+browser pass with a mocked 12-day response verified the loaded desktop header
+and the 390px mobile header with no horizontal overflow. The repository-wide
+frontend lint still reports six unrelated pre-existing errors in college
+settings/roster and existing student animation/shell effects.
+
+---
+
 ## 2026-09-28 — email sign-in bundles its account directory
 
 Deployed sign-in (`POST /api/auth/token` on Vercel) answered 500 "The account
