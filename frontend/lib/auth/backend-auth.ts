@@ -3,6 +3,8 @@ import "server-only";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import bundledAccounts from "./accounts.json";
+
 /**
  * The HTTP-only cookie that carries the backend RS256 bearer token for the
  * signed-in user, set by the sign-in route (`app/api/auth/token`). Never
@@ -44,38 +46,33 @@ export function backendBaseUrl(): string {
   return base.replace(/\/$/, "");
 }
 
-function accountsFilePath(): string {
+/*
+ * The seeded account directory (written by backend/scripts/seed_demo.py) is
+ * bundled with the frontend so a deployment that ships only this folder, such
+ * as Vercel, can still resolve sign-ins. DEV_ACCOUNTS_FILE overrides it.
+ */
+async function readAccounts(): Promise<DevAccount[]> {
   const configured = process.env.DEV_ACCOUNTS_FILE;
 
-  if (configured) {
-    return configured;
+  if (!configured) {
+    return bundledAccounts as DevAccount[];
   }
 
-  // Defaults to the seed manifest produced by backend/scripts/seed_demo.py,
-  // resolved relative to the frontend working directory.
-  return path.resolve(
-    process.cwd(),
-    "..",
-    "backend",
-    "scripts",
-    "seed_output",
-    "accounts.json",
+  const raw = await fs.readFile(
+    /* turbopackIgnore: true */ path.resolve(configured),
+    "utf-8",
   );
+  return JSON.parse(raw) as DevAccount[];
 }
 
 /**
- * Look up a seeded account by email. Read fresh each call so a re-seed is
- * picked up without restarting the dev server. Returns `null` when the email
- * is not in the directory; throws when the directory itself cannot be read.
+ * Look up a seeded account by email. Returns `null` when the email is not in
+ * the directory; throws when the directory itself cannot be read.
  */
 export async function loadAccount(
   email: string,
 ): Promise<DevAccount | null> {
-  const raw = await fs.readFile(
-    /* turbopackIgnore: true */ accountsFilePath(),
-    "utf-8",
-  );
-  const list = JSON.parse(raw) as DevAccount[];
+  const list = await readAccounts();
   const target = email.trim().toLowerCase();
 
   return (

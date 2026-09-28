@@ -9,6 +9,34 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-28 — email sign-in bundles its account directory
+
+Deployed sign-in (`POST /api/auth/token` on Vercel) answered 500 "The account
+directory is unavailable on this server." The route read
+`../backend/scripts/seed_output/accounts.json` from disk, a file outside the
+frontend that is untracked and never shipped with the deployment.
+
+The directory now lives at `frontend/lib/auth/accounts.json` and is imported
+statically, so Next bundles it into the server chunks (verified absent from
+`.next/static`). `DEV_ACCOUNTS_FILE` still overrides it. `seed_demo.py` writes
+the manifest to both places, so a re-seed keeps them in step; the frontend copy
+must be committed and redeployed after one. `credentials.json` was not moved:
+the frontend never reads it, and it holds bearer tokens. `tsc` and `next build`
+pass.
+
+---
+
+## 2026-09-28 — restored frontend success-feedback type safety
+
+The success-feedback middleware now narrows fulfilled actions to the RTK Query
+mutation metadata shape before reading the endpoint name or original arguments.
+This resolves the TypeScript errors introduced by Redux Toolkit's stricter
+`unknown` metadata typing while preserving suppression flags, mapped success
+messages, and development warnings for unmapped mutations. VS Code reports no
+diagnostics in the middleware.
+
+---
+
 ## 2026-09-26 — college Students API accepts the deployed stage casing
 
 The deployed Students page called
