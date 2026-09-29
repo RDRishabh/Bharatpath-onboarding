@@ -9,39 +9,56 @@ states. Newest entries first.
 
 ---
 
-## 2026-09-29 — `main` merged into the portal-dashboards branch (PR 23)
+## 2026-09-29 — `main` made correct again after PRs 21, 22 and 23
 
-`feat/mobile-app` reached `main` by a direct push (399736f), without review and
-with red CI, and PR 23 then conflicted. Resolved:
+PR 21 (college APIs) was merged with red CI; the mobile branch (PR 22) and
+several fixes reached `main` by direct push, also red. Everything below lands
+through PR 23.
 
-- **Two Alembic heads on `main`.** `0002_interviews_in_subscription` revises
-  the baseline directly, beside `0004_merge_migration_heads`, so
-  `alembic upgrade head` refused and `test_migration_graph_has_one_head`
-  failed. `0005_portal_dashboards` now revises both and is the merge point.
-  Checked both ways: a fresh build, and a database built at `0004` (runs
-  `0002_interviews_in_subscription`, then `0005`).
-- `interview/service.start_session`: text conflict only. The merged code
-  starts a subscription-included session (`purchase_id = NULL`) whose first
-  question is written by the model.
-- `CLAUDE.md`: the placeholder table kept this branch's rows (main had only
-  re-aligned the columns). The Day 16 section now says sessions are
-  subscription-included, and that **no client decision is recorded for it**.
+**Put right**
 
-- **CI's lint job was red for a reason in no PR.** CI installs fresh, and
-  picked up SQLAlchemy 2.1.1, whose stubs type `text(...)` results so that
-  three `scalar_one()` assignments need annotations (mypy `var-annotated`).
-  Local venvs had 2.0.52, so every local run was green. Pinned
-  `sqlalchemy<2.1` (upgrading is a decision, not a drift) and annotated the
-  three lines, so the check passes on either version.
+- **A fresh database would not build on `main`** (0002/0003 created indexes
+  the baseline already had). Fixed in PR 23's first commit.
+- **Migration heads.** The mobile branch's `0002_interviews_in_subscription`
+  revised the baseline beside `0004`; `main` then merged the two with
+  `0005_merge_migration_heads`. `0005_portal_dashboards` follows that, and
+  `0006_interviews_are_bought` is the single head. Checked: a fresh build, a
+  database at `0004`, and one at `main`'s head.
+- **Interviews are bought again.** The mobile branch had made sessions free
+  for any subscriber (`purchase_id` NULL, a guard accepting a live
+  subscription): unlimited sessions and the whole +60 unpaid, past the
+  "will not increase your score" acknowledgement. The client never decided
+  that. Code and tests are back to one purchase per session; `0006` restores
+  the baseline guard and NOT NULL, and **stops if a database already holds an
+  unpaid session** rather than deleting or backfilling it.
+- **College analytics floors restored** (PR 21 had removed them and edited
+  `test_invariant_09_consent.py` and `test_analytics_domain.py` to match): a
+  withheld band is `null` again, not `0`; below the cohort floor only the two
+  counts show, not a `median_score` of 0; small months in the placement trend
+  are withheld with their complement. The college frontend already rendered
+  `null` as "—"; its API types now say so, and a withheld month is labelled
+  "—" on the chart instead of drawn as 0.
+- **CI.** Lint was red because a fresh install picked up SQLAlchemy 2.1
+  (pinned `<2.1`, three annotations); "publish openapi.json" failed because
+  Settings needs an OpenAI key unless `INTERVIEW_QUESTION_PROVIDER=stub`, now
+  set for that job.
+- Removed `E501` from the `scripts/**` ignores: it was added for
+  `seed_test_jobs.py`, which is not in the repository, and nothing that is
+  needs it.
+- Kept from the mobile branch, and correct: `resume.file_uploaded` now routes
+  to the parse task (before it nothing parsed an uploaded CV), one event loop
+  per Celery worker, and presigned URLs a phone can reach in local dev.
 
-Not changed, reported instead (PR 21, merged 2026-09-26 with red CI): the
-college analytics now show a withheld score band as `0`, fill every metric
-with `0` below the cohort floor (`median_score: 0`), and no longer suppress
-small monthly placement cells. It edited `test_invariant_09_consent.py` and
-`test_analytics_domain.py` to match. That weakens the Day 18 floors; putting
-them back changes the API the frontend reads, so it is the team's call.
+**Left for others**
 
----
+- The mobile app starts a session without buying one, so it now gets
+  `409 interview_purchase_required`. It needs the checkout step back:
+  `GET …/offer` → device check → `POST …/checkout` (with
+  `acknowledge_no_score_increase` when asked) → payment → `POST …/sessions`.
+- `frontend/package-lock.json` is out of sync with `package.json`
+  (`npm ci` refuses), and `features/college/students/student-roster.tsx` has
+  four ESLint errors. Neither is backend's, and no CI job here checks the
+  frontend.
 
 ## 2026-09-29 — the portal dashboards: admin, college, employer and student
 
