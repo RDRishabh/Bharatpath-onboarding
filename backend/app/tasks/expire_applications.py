@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -31,9 +32,7 @@ logger = get_logger(__name__)
 def expire_applications(self: Any) -> dict[str, int]:
     """Entry point. The clock is read once, so every tenant in one sweep is
     judged against the same instant."""
-    import asyncio
-
-    return asyncio.run(sweep(now=datetime.now(UTC)))
+    return run_async(sweep(now=datetime.now(UTC)))
 
 
 async def sweep(*, now: datetime) -> dict[str, int]:

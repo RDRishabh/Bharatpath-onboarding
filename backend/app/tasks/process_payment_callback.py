@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -21,9 +22,7 @@ logger = get_logger(__name__)
 
 @celery_app.task(name="billing.process_callback", bind=True, max_retries=5)
 def process_payment_callback(self: Any, callback_id: str) -> dict[str, str]:
-    import asyncio
-
-    return asyncio.run(_process(callback_id))
+    return run_async(_process(callback_id))
 
 
 async def _process(callback_id: str) -> dict[str, str]:

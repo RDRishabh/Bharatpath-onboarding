@@ -5,9 +5,39 @@ import { StatusBar } from 'expo-status-bar';
 import Svg, { Circle as SvgCircle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { ShareNetwork, ArrowRight, TrendUp } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
+import { bandIndex, bandLabel, nextBandLabel, pointsToNextBand } from '@/services/api/scoring';
+
+/**
+ * NOT YET FUNCTIONAL END TO END. `score` and `band` come from
+ * `GET /candidate/score/me`, and that endpoint answers PENDING until a score
+ * row exists. When it is PENDING this screen shows a dash — never a stand-in
+ * number, because a plausible wrong score is unfixable once a candidate has
+ * seen it (`docs/scoring-approach.md` §11).
+ *
+ * To make a real number appear, three things are needed and none of them are
+ * in this app:
+ *
+ *   1. The outbox must be drained. Confirming a resume only writes a
+ *      `resume.version_confirmed` row; nothing publishes it locally.
+ *   2. A Celery worker must be running to execute `scoring.score_resume`.
+ *      Both of the above: `backend/scripts/dev_workers.sh`.
+ *   3. Layer 1 must be switched on in `backend/.env`, because there is
+ *      deliberately no fallback extractor:
+ *        SCORING_EXTRACTION_ENABLED=true
+ *        SCORING_EXTRACTION_PROVIDER=openai
+ *        SCORING_MODEL_ID=gpt-5.4-mini-2026-03-17
+ *        OPENAI_API_KEY=<key>
+ *
+ * The `recalculated` mode and the breakdown sheet below are still design
+ * mock-ups. They cannot be wired: the client removed score explanation
+ * (2026-08-27, re-confirmed 2026-09-11), so the backend serves the number and
+ * the band and has no breakdown endpoint at all — `test_score_never_explained`
+ * fails the build on a field that would add one.
+ */
 
 interface ScoreRevealScreenProps {
   score?: number;
+  band?: string | null;
   mode?: 'initial' | 'recalculated';
   onSave?: () => void;
   onRaiseScore?: () => void;
@@ -17,6 +47,7 @@ interface ScoreRevealScreenProps {
 
 export function ScoreRevealScreen({
   score,
+  band,
   mode = 'initial',
   onSave,
   onRaiseScore,
@@ -24,13 +55,21 @@ export function ScoreRevealScreen({
   onNextFix,
 }: ScoreRevealScreenProps) {
   const isRecalculated = mode === 'recalculated';
-  const targetScore = score ?? (isRecalculated ? 706 : 680);
-  const initialScore = isRecalculated ? 680 : 540;
+  const isLive = score != null && !isRecalculated;
+  // No score yet means no number. See the note at the top of this file.
+  const isPending = score == null && !isRecalculated;
+  const targetScore = score ?? (isRecalculated ? 706 : 0);
+  const initialScore = isLive ? Math.max(700, targetScore - 40) : isRecalculated ? 680 : 0;
+  const shownBand = bandLabel(band) || (isRecalculated ? 'Developing' : '—');
+  const shownBandIndex = band ? bandIndex(band) : 0;
+  const remaining = pointsToNextBand(targetScore, band || null);
+  const followingBand = nextBandLabel(band || null);
   
   const [scoreNow, setScoreNow] = useState(initialScore);
 
-  // Count-up animation
+  // Count-up animation. Skipped while pending: there is nothing to count to.
   useEffect(() => {
+    if (isPending) return;
     let current = initialScore;
     const interval = setInterval(() => {
       current += Math.max(1, Math.round((targetScore - current) / 5));
@@ -42,7 +81,7 @@ export function ScoreRevealScreen({
     }, 32);
 
     return () => clearInterval(interval);
-  }, [targetScore, initialScore]);
+  }, [targetScore, initialScore, isPending]);
 
   return (
     <View style={[styles.root, isRecalculated && styles.rootRecalculated]}>
@@ -116,14 +155,14 @@ export function ScoreRevealScreen({
               </Svg>
 
               <View style={styles.gaugeCenterContent}>
-                <Text style={styles.scoreNumberText}>{scoreNow}</Text>
+                <Text style={styles.scoreNumberText}>{isPending ? '—' : scoreNow}</Text>
                 {isRecalculated ? (
                   <View style={styles.pointsBadge}>
                     <TrendUp size={12} color="#F4D685" weight="bold" />
                     <Text style={styles.pointsBadgeText}>+26 POINTS</Text>
                   </View>
                 ) : (
-                  <Text style={styles.outOfText}>OUT OF 999</Text>
+                  <Text style={styles.outOfText}>{isPending ? 'NOT SCORED YET' : 'OUT OF 990'}</Text>
                 )}
               </View>
             </View>
@@ -131,24 +170,30 @@ export function ScoreRevealScreen({
             {/* Band Status Section */}
             <View style={styles.bandStatusSection}>
               <View style={styles.bandTitleRow}>
-                <Text style={styles.bandTitle}>Emerging</Text>
+                <Text style={styles.bandTitle}>{shownBand}</Text>
                 <View style={styles.bandBadge}>
-                  <Text style={styles.bandBadgeText}>BAND 1 OF 4</Text>
+                  <Text style={styles.bandBadgeText}>BAND {shownBandIndex} OF 4</Text>
                 </View>
               </View>
 
-              {/* 4-segment progress bar */}
               <View style={styles.bandSegmentsRow}>
-                <View style={[styles.bandSegment, styles.segmentActiveGold]} />
-                <View style={[styles.bandSegment, styles.segmentInactiveDark]} />
-                <View style={[styles.bandSegment, styles.segmentInactiveDark]} />
-                <View style={[styles.bandSegment, styles.segmentInactiveDark]} />
+                {[1, 2, 3, 4].map((n) => (
+                  <View
+                    key={n}
+                    style={[
+                      styles.bandSegment,
+                      n <= shownBandIndex ? styles.segmentActiveGold : styles.segmentInactiveDark,
+                    ]}
+                  />
+                ))}
               </View>
 
               <View style={styles.bandMetaRow}>
                 <Text style={styles.bandMetaLeft}>Employers filter by band</Text>
                 <Text style={styles.bandMetaRight}>
-                  {isRecalculated ? '28 to Building' : '54 to Building'}
+                  {remaining != null && followingBand
+                    ? `${remaining} to ${followingBand}`
+                    : 'Top band'}
                 </Text>
               </View>
             </View>
@@ -158,11 +203,19 @@ export function ScoreRevealScreen({
           <View style={styles.whiteSheet}>
             <View style={styles.sheetHeaderRow}>
               <Text style={styles.sheetEyebrow}>
-                {isRecalculated ? 'WHAT THIS FIX CHANGED' : 'WHERE YOUR POINTS COME FROM'}
+                {isRecalculated
+                  ? 'WHAT THIS FIX CHANGED'
+                  : isPending
+                    ? 'SCORE PENDING'
+                    : isLive
+                      ? 'YOUR SCORE'
+                      : 'WHERE YOUR POINTS COME FROM'}
               </Text>
-              <Text style={styles.sheetCountText}>
-                {isRecalculated ? 'FIX 1 OF 3' : '3 OF 5'}
-              </Text>
+              {!isLive && !isPending && (
+                <Text style={styles.sheetCountText}>
+                  {isRecalculated ? 'FIX 1 OF 3' : '3 OF 5'}
+                </Text>
+              )}
             </View>
 
             {isRecalculated ? (
@@ -202,6 +255,20 @@ export function ScoreRevealScreen({
                   <Text style={styles.recalcBottomText}>Two fixes left, worth +32</Text>
                   <ArrowRight size={15} color="#5F6B80" weight="bold" />
                 </Pressable>
+              </View>
+            ) : isLive ? (
+              <View style={styles.liveNoteCard}>
+                <Text style={styles.liveNoteText}>
+                  This is the number employers see, with your band. There is no
+                  category breakdown — the score is shown as a single value.
+                </Text>
+              </View>
+            ) : isPending ? (
+              <View style={styles.liveNoteCard}>
+                <Text style={styles.liveNoteText}>
+                  Your resume is confirmed, but no score has been computed yet.
+                  Nothing is shown here until there is a real one.
+                </Text>
               </View>
             ) : (
               <View style={styles.breakdownCard}>
@@ -540,6 +607,19 @@ const styles = StyleSheet.create({
     borderColor: '#E7E0D4',
     borderRadius: 20,
     paddingHorizontal: 16,
+  },
+  liveNoteCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
+    borderRadius: 20,
+    padding: 16,
+  },
+  liveNoteText: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#3A4761',
   },
   breakdownItem: {
     paddingVertical: 12,

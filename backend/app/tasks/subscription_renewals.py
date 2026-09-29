@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -33,9 +34,7 @@ logger = get_logger(__name__)
 
 @celery_app.task(name="subscriptions.renewals", bind=True, max_retries=3)
 def run_subscription_renewals(self: Any) -> dict[str, int]:
-    import asyncio
-
-    return asyncio.run(sweep(now=datetime.now(UTC)))
+    return run_async(sweep(now=datetime.now(UTC)))
 
 
 async def sweep(*, now: datetime) -> dict[str, int]:

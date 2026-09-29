@@ -39,6 +39,12 @@ OPEN_HIRE_DISPUTE_TASK: Final = "admin.open_hire_dispute"
 #: Day 20. An export is built when it is asked for. Erasure is a sweep, not a
 #: subscription: it must wait out its grace period (`privacy/events.py`).
 BUILD_EXPORT_TASK: Final = "privacy.build_export"
+#: An uploaded CV is parsed out of band. The endpoint returns 202 and emits
+#: `resume.file_uploaded`; this task reads the object, extracts the text and
+#: creates the unconfirmed version the candidate then reviews. Without this
+#: subscription the upload completes, the outbox row is marked published, and
+#: nothing ever parses -- the client polls a `parse_status` that stays QUEUED.
+PARSE_RESUME_TASK: Final = "resume.parse"
 
 #: `event_type -> the tasks it triggers`.
 #:
@@ -49,6 +55,12 @@ _SUBSCRIPTIONS: Final[dict[str, tuple[str, ...]]] = {
     # The confirm gate. See the module docstring for why this is the confirmed
     # event and not the created one.
     "resume.version_confirmed": (SCORE_RESUME_TASK,),
+    # An uploaded CV is parsed out of band. The endpoint returns 202 and emits
+    # this event; the parse task reads the object and creates the unconfirmed
+    # version. `resume.version_created` is NOT the trigger -- that fires on
+    # every parse and every correction, and the parse task would re-parse an
+    # already-parsed file.
+    "resume.file_uploaded": (PARSE_RESUME_TASK,),
     # Add-ons move the score (R1, 2026-08-24), so a completion re-scores.
     # Not `SCORE_RESUME_TASK`: that task is idempotent by resume version and
     # would find the version already scored and stop. The re-score runs
@@ -111,6 +123,7 @@ TASK_ARGUMENTS: Final[dict[str, Callable[[Event], dict[str, str]]]] = {
     },
     RESCORE_FOR_ADDONS_TASK: lambda e: {"user_id": str(e["payload"]["user_id"])},
     DETECT_INTEGRITY_TASK: lambda e: {"score_id": str(e["aggregate_id"])},
+    PARSE_RESUME_TASK: lambda e: {"resume_file_id": str(e["aggregate_id"])},
     PROCESS_PAYMENT_CALLBACK_TASK: lambda e: {"callback_id": str(e["aggregate_id"])},
     EVALUATE_INTERVIEW_TASK: lambda e: {"session_id": str(e["payload"]["session_id"])},
     NOTIFY_TASK: lambda e: {"event_id": str(e["id"])},

@@ -176,10 +176,7 @@ async def list_codes(
         created_at, code_id = after
         query = query.where(
             (ReferralCode.created_at < created_at)
-            | (
-                (ReferralCode.created_at == created_at)
-                & (ReferralCode.id < code_id)
-            )
+            | ((ReferralCode.created_at == created_at) & (ReferralCode.id < code_id))
         )
     result = await session.execute(
         query.order_by(ReferralCode.created_at.desc(), ReferralCode.id.desc()).limit(limit)
@@ -438,10 +435,7 @@ async def list_imports(
         created_at, import_id = after
         query = query.where(
             (RosterImport.created_at < created_at)
-            | (
-                (RosterImport.created_at == created_at)
-                & (RosterImport.id < import_id)
-            )
+            | ((RosterImport.created_at == created_at) & (RosterImport.id < import_id))
         )
     result = await session.execute(
         query.order_by(RosterImport.created_at.desc(), RosterImport.id.desc()).limit(limit)
@@ -457,8 +451,7 @@ async def invitation_counts_for_tenant(
 ) -> dict[str, int]:
     displayed_state = case(
         (
-            (RosterEntry.invite_state == INVITE_SENT)
-            & (RosterEntry.sent_at <= expired_before),
+            (RosterEntry.invite_state == INVITE_SENT) & (RosterEntry.sent_at <= expired_before),
             INVITE_EXPIRED,
         ),
         else_=RosterEntry.invite_state,

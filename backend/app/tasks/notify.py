@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -21,9 +22,7 @@ logger = get_logger(__name__)
 
 @celery_app.task(name="notifications.dispatch", bind=True, max_retries=5)
 def dispatch(self: Any, event_id: str) -> dict[str, int]:
-    import asyncio
-
-    return asyncio.run(run(event_id))
+    return run_async(run(event_id))
 
 
 async def run(event_id: str) -> dict[str, int]:
@@ -71,9 +70,7 @@ def send_orphaned(self: Any) -> dict[str, int]:
     would sit PENDING for ever, which is a person not hearing from us and no
     error anywhere saying so.
     """
-    import asyncio
-
-    return asyncio.run(run_orphaned())
+    return run_async(run_orphaned())
 
 
 async def run_orphaned() -> dict[str, int]:

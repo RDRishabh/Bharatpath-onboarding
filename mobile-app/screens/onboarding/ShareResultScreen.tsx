@@ -14,6 +14,15 @@ import { StatusBar } from 'expo-status-bar';
 import { ArrowLeft, DownloadSimple, ShareNetwork } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
 
+/**
+ * `score` and `bandName` come from `GET /candidate/score/me` via the caller.
+ * Until a score exists the card shows a dash rather than a stand-in number —
+ * see the note in `ScoreRevealScreen.tsx` for what has to run to produce one.
+ *
+ * `candidateField` and `candidateCity` are still placeholders. A city can be
+ * read from `GET /candidate/profile`; the field of study has no endpoint and
+ * would have to come from the confirmed resume version's education.
+ */
 export interface ShareResultScreenProps {
   score?: number;
   maxScore?: number;
@@ -28,9 +37,9 @@ export interface ShareResultScreenProps {
 }
 
 export function ShareResultScreen({
-  score = 706,
-  maxScore = 999,
-  bandName = 'Emerging',
+  score,
+  maxScore = 990,
+  bandName,
   candidateName = 'Priya D.',
   candidateField = 'B.Sc Microbiology',
   candidateCity = 'Pune',
@@ -82,13 +91,13 @@ export function ShareResultScreen({
               {showExact ? (
                 <View style={styles.exactScoreContainer}>
                   <View style={styles.scoreRow}>
-                    <Text style={styles.bigScoreText}>{score}</Text>
+                    <Text style={styles.bigScoreText}>{score ?? '—'}</Text>
                     <Text style={styles.maxScoreText}>/ {maxScore}</Text>
                   </View>
-                  <Text style={styles.revealedBandText}>{bandName}</Text>
+                  <Text style={styles.revealedBandText}>{bandName || 'Not scored yet'}</Text>
                 </View>
               ) : (
-                <Text style={styles.hugeBandText}>{bandName}</Text>
+                <Text style={styles.hugeBandText}>{bandName || 'Not scored yet'}</Text>
               )}
 
               {/* Candidate Info Footer */}
