@@ -19,17 +19,16 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.drop_constraint(
-        "uq_roster_import_source",
-        "roster_imports",
-        type_="unique",
-    )
+    # Idempotent: a database built from the current baseline already has the
+    # model's partial index and never had the old constraint.
+    op.execute("ALTER TABLE roster_imports DROP CONSTRAINT IF EXISTS uq_roster_import_source")
     op.create_index(
         "uq_roster_import_source_retained",
         "roster_imports",
         ["tenant_id", "source_sha256"],
         unique=True,
         postgresql_where=sa.text("state <> 'DISCARDED'"),
+        if_not_exists=True,
     )
 
 

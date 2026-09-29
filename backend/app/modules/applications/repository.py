@@ -32,7 +32,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import ConfigValue
 from app.modules.applications.domain import INTERVIEW_STAGE, STAGES, TERMINAL_STAGES
-from app.modules.applications.models import Application, ApplicationEvent
+from app.modules.applications.models import (
+    Application,
+    ApplicationEvent,
+    ApplicationMessage,
+)
 
 
 async def insert_if_absent(
@@ -429,3 +433,62 @@ async def recent_events(
         query.order_by(ApplicationEvent.occurred_at.desc(), ApplicationEvent.id.desc()).limit(limit)
     )
     return list(result.all())
+
+
+# --- messages (2026-09-29) --------------------------------------------------------
+# Read only by application id, after the application was loaded under the
+# caller's policy -- the same rule as `application_events`.
+async def insert_message(
+    session: AsyncSession,
+    *,
+    application_id: uuid.UUID,
+    sender_id: uuid.UUID,
+    kind: str,
+    body: str,
+    scheduled_at: datetime | None,
+    link: str | None,
+) -> ApplicationMessage:
+    row = ApplicationMessage(
+        application_id=application_id,
+        sender_id=sender_id,
+        kind=kind,
+        body=body,
+        scheduled_at=scheduled_at,
+        link=link,
+    )
+    session.add(row)
+    await session.flush()
+    await session.refresh(row)
+    return row
+
+
+async def messages_for(
+    session: AsyncSession, *, application_id: uuid.UUID
+) -> list[ApplicationMessage]:
+    result = await session.execute(
+        select(ApplicationMessage)
+        .where(ApplicationMessage.application_id == application_id)
+        .order_by(ApplicationMessage.created_at, ApplicationMessage.id)
+    )
+    return list(result.scalars())
+
+
+async def count_messages_since(
+    session: AsyncSession, *, application_id: uuid.UUID, since: datetime
+) -> int:
+    result = await session.execute(
+        select(func.count(ApplicationMessage.id)).where(
+            ApplicationMessage.application_id == application_id,
+            ApplicationMessage.created_at >= since,
+        )
+    )
+    return int(result.scalar_one())
+
+
+async def message_by_id(
+    session: AsyncSession, *, message_id: uuid.UUID
+) -> ApplicationMessage | None:
+    """**For notification dispatch only**, which binds no tenant -- so it
+    must not touch `applications`, whose policy would hide the row. The
+    event payload already names the tenant."""
+    return await session.get(ApplicationMessage, message_id)

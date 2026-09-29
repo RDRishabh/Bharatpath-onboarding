@@ -279,3 +279,40 @@ class ActivityItem(_Base):
     #: the system's.
     actor_id: uuid.UUID | None
     occurred_at: datetime
+
+
+# --- messages to an applicant (2026-09-29) ------------------------------------------
+class SendMessageRequest(_Base):
+    """INTERVIEW needs `scheduled_at` (and may carry a meeting `link`);
+    ASSESSMENT needs the assessment's `link` (and may carry a deadline in
+    `scheduled_at`); GENERAL needs neither."""
+
+    kind: Literal["INTERVIEW", "ASSESSMENT", "GENERAL"]
+    body: str = Field(min_length=1, max_length=2000)
+    scheduled_at: AwareDatetime | None = Field(
+        default=None, description="The interview time, or the assessment's deadline."
+    )
+    link: str | None = Field(default=None, max_length=1024, description="An https link.")
+
+
+class EmployerMessageResponse(_Base):
+    id: uuid.UUID
+    kind: Literal["INTERVIEW", "ASSESSMENT", "GENERAL"]
+    body: str
+    scheduled_at: datetime | None
+    link: str | None
+    sender_id: uuid.UUID | None = Field(description="The member of the team who sent it.")
+    created_at: datetime
+
+
+class CandidateMessageResponse(_Base):
+    """A message as the candidate reads it. **Which recruiter wrote it is the
+    employer's** and is not here, as with a stage change's actor."""
+
+    id: uuid.UUID
+    kind: Literal["INTERVIEW", "ASSESSMENT", "GENERAL"]
+    body: str
+    scheduled_at: datetime | None
+    link: str | None
+    employer_name: str | None
+    created_at: datetime

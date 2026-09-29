@@ -101,6 +101,11 @@ STATIC_POLICIES: Final[Mapping[str, Policy]] = {
     # debounce -- and kept off `discovery:search`, so filling in the panel
     # never spends the organisation's search pages.
     "discovery.filters": Policy("discovery:filters", Scope.USER, 120, 60),
+    # An employer writing to applicants (2026-09-29). Per organisation, and a
+    # spam control rather than a leak control: each message is an email in a
+    # candidate's inbox. One candidate is protected separately, by a daily
+    # cap per application (`applications.domain`).
+    "applications.message": Policy("applications:message", Scope.TENANT, 300, 3600),
 }
 
 

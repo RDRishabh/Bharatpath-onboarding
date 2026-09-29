@@ -177,11 +177,12 @@ export interface Payment {
    Analytics
 ========================================================= */
 
+/** A band is `null` when it is withheld: too few students to show safely. */
 export interface ScoreDistribution {
-  entry: number;
-  developing: number;
-  solid: number;
-  strong: number;
+  entry: number | null;
+  developing: number | null;
+  solid: number | null;
+  strong: number | null;
 }
 
 export interface CohortOverview {
@@ -189,13 +190,14 @@ export interface CohortOverview {
   individuallyVisible: number;
   minCohortSize: number;
   belowFloor: boolean;
-  scoredStudents: number;
-  scoreDistribution: ScoreDistribution;
-  medianScore: number;
-  applicants: number;
-  applications: number;
-  interviews: number;
-  platformHires: number;
+  /* Every figure below is `null` under the cohort privacy floor. */
+  scoredStudents: number | null;
+  scoreDistribution: ScoreDistribution | null;
+  medianScore: number | null;
+  applicants: number | null;
+  applications: number | null;
+  interviews: number | null;
+  platformHires: number | null;
 }
 
 export interface MonthHires {

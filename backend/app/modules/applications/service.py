@@ -40,12 +40,14 @@ never shows a state its history does not explain.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import AuditAction, audit_event
 from app.core.db import set_transaction_tenant
 from app.core.errors import (
     AppError,
@@ -57,6 +59,7 @@ from app.core.errors import (
 from app.core.logging import get_logger
 from app.core.outbox import emit
 from app.core.pagination import Page, clamp_limit, decode_cursor, encode_cursor
+from app.core.ratelimit import enforce
 from app.core.tenant import TenantContext
 from app.modules.applications import repository
 from app.modules.applications.domain import (
@@ -65,6 +68,8 @@ from app.modules.applications.domain import (
     DEFAULT_TOP_JOBS,
     INTERVIEW_STAGE,
     IST_ZONE_NAME,
+    MAX_MESSAGES_PER_APPLICATION_PER_DAY,
+    MESSAGEABLE_STAGES,
     UPCOMING_INTERVIEWS,
     ExpiryRules,
     ExpiryRulesError,
@@ -79,6 +84,7 @@ from app.modules.applications.domain import (
     expiry_rules_from_config,
     hire_state,
     refuse_meeting,
+    refuse_message,
     trend_start,
     withdrawal,
 )
@@ -91,7 +97,9 @@ from app.modules.applications.events import (
     HIRE_DISPUTED,
     HIRE_PROPOSED,
     INTERVIEW_SCHEDULED,
+    MESSAGE_SENT,
 )
+from app.modules.applications.models import ApplicationMessage
 from app.modules.applications.schemas import (
     ActivityItem,
     ApplicationCounts,
@@ -1013,3 +1021,134 @@ async def activity(
         ],
         next_cursor=next_cursor,
     )
+
+
+# ---------------------------------------------------------------------------
+# Messages to an applicant (2026-09-29)
+# ---------------------------------------------------------------------------
+class MessageInvalidError(ValidationError):
+    """`code` is the domain's refusal, e.g. `message_time_required`."""
+
+    code = "message_invalid"
+    title = "The message cannot be sent"
+
+
+class MessageNotAllowedError(ConflictError):
+    """The application is finished: hired, rejected, withdrawn or expired."""
+
+    code = "message_not_allowed_at_stage"
+    title = "This application is closed"
+
+
+class MessageLimitError(AppError):
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    code = "message_limit_reached"
+    title = "Too many messages to this candidate today"
+
+
+async def send_message(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    application_id: uuid.UUID,
+    kind: str,
+    body: str,
+    scheduled_at: datetime | None,
+    link: str | None,
+    now: datetime | None = None,
+    request_id: str | None = None,
+) -> ApplicationMessage:
+    """Write to an applicant. **The platform sends it**, by email and in the
+    app, so the employer never learns the candidate's address.
+
+    Checked before the application is looked up, as for an interview: a bad
+    message is bad whoever it is for. Audited without its words, and counted
+    as employer activity so the application does not expire under a live
+    conversation.
+    """
+    now = now or datetime.now(UTC)
+    body = body.strip()
+    refused = refuse_message(kind=kind, body=body, scheduled_at=scheduled_at, link=link, now=now)
+    if refused is not None:
+        raise MessageInvalidError(code=refused)
+    await enforce("applications.message", subject=str(ctx.tenant_id))
+
+    row = await _theirs(session, ctx, application_id, for_update=True)
+    if row.stage not in MESSAGEABLE_STAGES:
+        raise MessageNotAllowedError(params={"stage": row.stage})
+    sent_today = await repository.count_messages_since(
+        session, application_id=row.id, since=now - timedelta(days=1)
+    )
+    if sent_today >= MAX_MESSAGES_PER_APPLICATION_PER_DAY:
+        raise MessageLimitError()
+
+    message = await repository.insert_message(
+        session,
+        application_id=row.id,
+        sender_id=ctx.user_id,
+        kind=kind,
+        body=body,
+        scheduled_at=scheduled_at,
+        link=link,
+    )
+    await repository.save(session, application=row, employer_active_at=now)
+    await audit_event(
+        session,
+        action=AuditAction.APPLICATION_MESSAGE_SENT,
+        actor_id=ctx.user_id,
+        actor_role=ctx.role,
+        target_type="application",
+        target_id=row.id,
+        tenant_id=row.tenant_id,
+        request_id=request_id,
+        metadata={"message_id": str(message.id), "kind": kind},
+    )
+    await emit(
+        session,
+        event_type=MESSAGE_SENT,
+        aggregate_type="application_message",
+        aggregate_id=message.id,
+        payload={
+            **_payload(row, message_id=str(message.id), kind=kind),
+            "has_time": scheduled_at is not None,
+        },
+    )
+    logger.info("application_message_sent", application_id=str(row.id), kind=kind)
+    return message
+
+
+async def messages_for_employer(
+    session: AsyncSession, *, ctx: TenantContext, application_id: uuid.UUID
+) -> list[ApplicationMessage]:
+    row = await _theirs(session, ctx, application_id, for_update=False)
+    return await repository.messages_for(session, application_id=row.id)
+
+
+async def messages_for_candidate(
+    session: AsyncSession, *, ctx: TenantContext, application_id: uuid.UUID
+) -> tuple[str | None, list[ApplicationMessage]]:
+    """The candidate's own messages, with the employer's name. Not paywalled,
+    like reading their applications: a lapsed subscriber keeps what was
+    sent to them."""
+    row = await _mine(session, ctx, application_id, for_update=False)
+    summary = (await _respond(session, ctx, [row]))[0]
+    return summary.employer_name, await repository.messages_for(session, application_id=row.id)
+
+
+@dataclass(frozen=True, slots=True)
+class MessageForDelivery:
+    kind: str
+    body: str
+    scheduled_at: datetime | None
+    link: str | None
+
+
+async def message_for_delivery(
+    session: AsyncSession, *, message_id: uuid.UUID
+) -> MessageForDelivery | None:
+    """**Notifications only**, resolving a `message_sent` event's words at
+    dispatch -- the outbox payload carries ids, never content."""
+    message = await repository.message_by_id(session, message_id=message_id)
+    if message is None:
+        return None
+    return MessageForDelivery(message.kind, message.body, message.scheduled_at, message.link)

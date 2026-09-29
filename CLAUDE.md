@@ -251,19 +251,20 @@ a different score. Changing parser is a **re-score**, not an upgrade. See
 Produced 2026-09-12 under Round 7.10. **Every one of these carries a flag that a
 test asserts**, so a placeholder cannot quietly become the product:
 
-| Where                                        | Flag                                                                                                                                                                   |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `subscriptions/catalogue.py`                 | `PLACEHOLDER_PRICING`                                                                                                                                                  |
-| `courses/catalogue.py`                       | `HAS_MEDIA`, every `asset_key is None`                                                                                                                                 |
-| `notifications/templates.py`                 | every `dlt_template_id is None` — **an SMS cannot be sent without one**, and an unregistered body is dropped silently by the operator. `delivery_decision` enforces it |
-| `questionnaire/bank.py`, `interview/bank.py` | `BANK_VERSION`                                                                                                                                                         |
-| `kyb/forms.py`, `college/forms.py`           | `FORM_VERSION`                                                                                                                                                         |
-| `app/core/i18n/locales/*.json`               | non-English bundles still need a native-speaker pass                                                                                                                   |
-| `college/domain.py`                          | `CONSENT_VERSION` starts `placeholder-` — the words a student agrees to when linking to a college are ours, not counsel's                                              |
-| `college/domain.py`                          | `INDIVIDUAL_CONSENT_VERSION` starts `placeholder-` — the words for letting a college see a student by name, and the field list they name (blockers E27)                |
-| `analytics/domain.py`                        | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3                                                 |
-| `billing/domain.py`                          | `DISCOUNT_POLICY_VERSION` starts `placeholder-` — no 100% code, first checkout only, one use per payer (blockers E36)                                                  |
-| `resume/vocabulary.py`                       | `VOCABULARY_VERSION` starts `placeholder-` — the spellings the review screen flags near misses of                                                                      |
+| Where | Flag |
+|---|---|
+| `subscriptions/catalogue.py` | `PLACEHOLDER_PRICING` |
+| `courses/catalogue.py` | `HAS_MEDIA`, every `asset_key is None` |
+| `notifications/templates.py` | every `dlt_template_id is None` — **an SMS cannot be sent without one**, and an unregistered body is dropped silently by the operator. `delivery_decision` enforces it |
+| `questionnaire/bank.py`, `interview/bank.py` | `BANK_VERSION` |
+| `kyb/forms.py`, `college/forms.py` | `FORM_VERSION` |
+| `app/core/i18n/locales/*.json` | non-English bundles still need a native-speaker pass |
+| `college/domain.py` | `CONSENT_VERSION` starts `placeholder-` — the words a student agrees to when linking to a college are ours, not counsel's |
+| `college/domain.py` | `INDIVIDUAL_CONSENT_VERSION` starts `placeholder-` — the words for letting a college see a student by name, and the field list they name (blockers E27). Version 2 (2026-09-29) names contact, CV, interviews, courses and application stages |
+| `analytics/domain.py` | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3 |
+| `billing/domain.py` | `DISCOUNT_POLICY_VERSION` starts `placeholder-` — no 100% code, first checkout only, one use per payer (blockers E36) |
+| `resume/vocabulary.py` | `VOCABULARY_VERSION` starts `placeholder-` — the spellings the review screen flags near misses of |
+| `discovery/catalogue.py` | `FILTER_CATALOGUE_VERSION` starts `placeholder-` — the starter skills and cities in the employer filter panel |
 
 Flipping one of these is a client decision, not a tidy-up.
 
@@ -564,12 +565,18 @@ SUPPORT_AGENT).
   the allowed names). It has no badge on purpose (blockers E21).
 - **Interview sessions are bought like the course**, not through `entitlements`:
   `interview_purchases` (guarded like `course_purchases`) and a session per
-  purchase. Payment purpose `INTERVIEW_SESSION`; the payment CHECKs are
-  generated from `billing.domain.PURPOSES` / `ONE_OFF_PURPOSES`.
+  purchase (`purchase_id` NOT NULL). Payment purpose `INTERVIEW_SESSION`; the
+  payment CHECKs are generated from `billing.domain.PURPOSES` / `ONE_OFF_PURPOSES`.
 - **Checkout is refused before any payment exists** without a device check
   passed in the last hour, or, once three sessions are held, without
   `acknowledge_no_score_increase`. What the candidate was told is an
   insert-only `interview_checkout_notices` row. Do not relax either.
+- **Sessions are not included in the subscription.** The mobile branch made
+  them so (`0002_interviews_in_subscription`, 2026-09-22) without a client
+  decision: any subscriber got unlimited sessions and the whole +60 unpaid.
+  `0006_interviews_are_bought` put the rule back, and **refuses to migrate a
+  database holding a session with no purchase** -- what such a row is (test
+  data, or a candidate owed something) is a decision, not a backfill.
 - **Each completed session records +20, a fourth included; the +60 cap is
   scoring's alone** (`addons_for` lists every session, `total_score` clamps).
   Completion goes through `interview.session_completed` → `rescore_for_addons`.
@@ -679,8 +686,12 @@ SUPPORT_AGENT).
   (`DATABASE_ADMIN_URL`, `SET TRANSACTION READ ONLY`). Writes stay in the owning
   module's service (`kyb.review`, `integrity.resolve_signal`,
   `college.allocate_seats`, `identity.suspend_tenant`).
-- **A drill-down never shows the stored score, a whole contact or a CV**:
-  display value and band, `phone_masked`, counts.
+- **A drill-down never shows the stored score**: display value and band.
+  Since 2026-09-29 the client's full candidate page shows the whole contact
+  (`/onboarding`, capability `candidate_contact`), the CV (`/resume`,
+  `candidate_resume`) and interview recordings (`candidate_recordings`) --
+  each its own endpoint, capability and audit row, never folded into the
+  drill-down, which still masks and counts.
 - **Suspension is a row and `tenants.status` follows it**, both ways, by trigger
   (`guard_tenant_suspension_write`, `guard_tenant_status`). Never set a tenant
   SUSPENDED by hand -- the guard refuses. It bites on the member's **next
@@ -851,6 +862,52 @@ for app teams is `docs/signup-and-accounts.md`.
   checkout holds a use for `CHECKOUT_HOLD_MINUTES`. Status is computed, never
   stored. Only a checkout reads a code, so a mandate debit is never discounted.
 
+## Portal dashboards — 2026-09-29
+
+Client requests for all four portals (answers-log Round 11); migration
+`0005_portal_dashboards`.
+
+- **Every interview question is written by the model -- no fixed questions**
+  (client: "only ai"). `INTERVIEW_QUESTION_PROVIDER` is `openai` (the
+  default) or `stub` (tests, CI, and keyless local work; refused in
+  staging/prod), so **the API refuses to boot without `OPENAI_API_KEY`**.
+  `interview/questions.py`. The first at session start,
+  each next one at `POST …/next-question` after the previous answer is stored
+  and **transcribed in-session** (best effort -- a failed transcription just
+  means no follow-up). Every question is a row in `interview_session_questions`
+  and **everything reads questions from there** (evaluation, report,
+  playback), never from `set_for_session`, except sessions from before the
+  table, which fall back to their bank set. `bank.py` is otherwise only the
+  rubric now.
+- **No repeats across sessions** is enforced twice: the model is shown every
+  earlier prompt, and `parse_drafted_question` refuses a normalised repeat;
+  a refused draft goes back to the model with the reason, up to
+  `MAX_DRAFT_ATTEMPTS` (3), then **503** -- nothing written, and a failed
+  start spends no purchase. `scripts/smoke_interview_live.py` exercises the
+  real OpenAI + Sarvam loop (costs a few cents).
+  The CV goes to the model through the confirm gate with contacts stripped
+  (`redact_contacts`); the accessibility answer never goes.
+- **Courses are built in the console** (`course_modules`, `course_lessons`:
+  YouTube id or an S3 upload checked by magic bytes), keyed on course
+  **code**, not the version row. A course is on sale only when staff publish it
+  with a playable lesson; `sync_catalogue` no longer decides `active`.
+  **Completion = every published lesson watched** (90% reached *and* half its
+  length elapsed since first opened), recorded by `record_progress` as SYSTEM.
+  Unlisted YouTube is not paywalled; uploads are.
+- **Employer messages** (`application_messages`, not under RLS -- read only by
+  application id after the application loaded under the caller's policy, like
+  `application_events`). Pipeline stages only; 10 per application per day.
+  The payload carries the message id; words, time and link are read at
+  dispatch. A new template variable needs `notifications.domain.Variable`.
+- **A college's widened view needs consent version 2**
+  (`INDIVIDUAL_DETAILS_VERSIONS`, frozen in SQL as `DETAILS_CONSENT_VERSIONS`
+  in 0005, and a test holds them equal). Re-granting under new words revokes
+  and replaces the old INDIVIDUAL row. New `college_*` read functions live in
+  migrations with their own `COLLEGE_STUDENT_READS`, which invariant 9 now
+  gathers from every revision.
+- `erase_candidate` was replaced whole in 0005 to erase the three new personal
+  tables. The next table that holds a person's data replaces it again.
+
 ## Streak points are not the score
 
 `app/modules/engagement` (added 2026-09-13, `docs/streaks.md`) keeps daily
@@ -890,5 +947,14 @@ design — docker locally, service containers in CI.
 - Money is integer minor units, never a float, and columns are named `*_minor`.
 - A tenant-scoped miss is **404, not 403** — a 403 confirms the row exists.
 - The baseline migration is not reversible; rebuild with `reset_local_db.sh`.
+- **Shared databases (Neon, EC2) move by incremental migrations** since
+  2026-09-26 (`0002`…). The baseline builds tables from the *current* models,
+  so a later revision that adds an index or column a model already declares
+  must be idempotent (`if_not_exists`, `DROP … IF EXISTS`) or a fresh
+  database fails -- `0002_college_student_search` and `0003` did until
+  2026-09-29. **A brand-new table goes in both**: the baseline's
+  `_create_from_metadata` lists (`test_schema_guards.py` requires every model
+  there) and a migration that creates it only when missing
+  (`0002_search_filter_options`, `0005_portal_dashboards`).
 - Seeding uses the **migrator** role (write + BYPASSRLS); the app role is
   genuinely subject to RLS, which is what makes the RLS tests meaningful.

@@ -324,3 +324,74 @@ class CollegeStudentResponse(_Base):
     applications: int
     interviews: int = Field(description="Applications that reached an interview.")
     hires: list[StudentHireResponse]
+
+
+# --- a student's details (2026-09-29): consent version 2 only -----------------------
+class StudentAnswer(_Base):
+    code: str
+    question: str
+    answer: str
+
+
+class StudentCourseResponse(_Base):
+    code: str
+    title: str
+    purchased_at: datetime
+    lessons_total: int
+    lessons_completed: int
+    percent_complete: int = Field(ge=0, le=100)
+    completed_at: datetime | None
+
+
+class StudentApplicationResponse(_Base):
+    job_title: str
+    employer_name: str
+    job_location: str | None
+    stage: str
+    applied_at: datetime
+    updated_at: datetime
+
+
+class StudentApplicationAnalytics(_Base):
+    total: int
+    open: int
+    by_stage: dict[str, int]
+    reached: dict[str, int] = Field(
+        description="Applications that were ever at SHORTLISTED, INTERVIEW, DECISION or "
+        "HIRED, wherever they are now."
+    )
+
+
+class CollegeStudentDetailsResponse(_Base):
+    """What the current INDIVIDUAL consent words name beyond the core view:
+    served only to a college whose student agreed to them. Every open is
+    audited. The CV is its own endpoint and its own audit row."""
+
+    candidate_id: uuid.UUID
+    consent_version: str
+    email: str | None
+    phone: str | None
+    city: str | None
+    state_code: str | None
+    locale: str
+    questionnaire: list[StudentAnswer]
+    questionnaire_submitted_at: datetime | None
+    resume_confirmed_at: datetime | None = Field(
+        description="When the CV the score was built from was confirmed. None: no CV yet."
+    )
+    has_resume_file: bool
+    interviews_completed: int = Field(description="Practice interviews completed on BharatPath.")
+    courses: list[StudentCourseResponse]
+    applications: list[StudentApplicationResponse]
+    analytics: StudentApplicationAnalytics
+
+
+class CollegeStudentResumeResponse(_Base):
+    confirmed_at: datetime | None
+    source: str
+    text: str | None = Field(description="The CV as read, or as the student edited it.")
+    fields: dict[str, Any] = Field(
+        default_factory=dict, description="A form-built CV's fields, when it has no text."
+    )
+    file_url: str | None = Field(description="Presigned GET of the uploaded file; expires.")
+    file_mime: str | None = None

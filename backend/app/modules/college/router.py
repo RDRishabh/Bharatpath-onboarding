@@ -50,6 +50,7 @@ from app.core.deps import (
     require_active_subscription,
     require_role,
 )
+from app.modules.applications.domain import stage_summary
 from app.modules.college import service
 from app.modules.college.domain import (
     StudentStageFilter,
@@ -64,7 +65,9 @@ from app.modules.college.schemas import (
     ChangeRoleRequest,
     CollegeLinkResponse,
     CollegeResponse,
+    CollegeStudentDetailsResponse,
     CollegeStudentResponse,
+    CollegeStudentResumeResponse,
     ConsentTermsResponse,
     CreateCollegeRequest,
     FormOption,
@@ -85,12 +88,17 @@ from app.modules.college.schemas import (
     RosterUploadRequest,
     SaveOnboardingRequest,
     SeatsResponse,
+    StudentAnswer,
+    StudentApplicationAnalytics,
+    StudentApplicationResponse,
+    StudentCourseResponse,
     StudentHireResponse,
     TeamMemberResponse,
     UpdateCollegeRequest,
     VisibleStudentResponse,
     VisibleStudentsPage,
 )
+from app.modules.questionnaire.domain import answers_in_words
 
 router = APIRouter()
 candidate_router = APIRouter()
@@ -758,6 +766,97 @@ async def list_students(
             for s in page.items
         ],
         next_cursor=page.next_cursor,
+    )
+
+
+@router.get(
+    "/students/{candidate_id}/details",
+    response_model=CollegeStudentDetailsResponse,
+    dependencies=[AnyCollegeRole, Paid],
+    summary="A student's sign-up details, interviews, courses and applications",
+)
+async def get_student_details(
+    candidate_id: uuid.UUID, request: Request, user: CurrentUser, session: DbSession
+) -> CollegeStudentDetailsResponse:
+    """Only for a student whose visibility consent is to the current words
+    (2026-09-29), which name all of this. 409
+    `college_student_details_not_shared` for a student who agreed to earlier
+    words -- only they can agree to these -- and 404 unless their consent is
+    live. Every open is audited."""
+    view = await service.open_student_details(
+        session, ctx=user, candidate_id=candidate_id, request_id=get_request_id(request)
+    )
+    summary = stage_summary(current=[a.stage for a in view.applications], reached=view.reached)
+    return CollegeStudentDetailsResponse(
+        candidate_id=view.candidate_id,
+        consent_version=view.consent_version,
+        email=view.email,
+        phone=view.phone,
+        city=view.city,
+        state_code=view.state_code,
+        locale=view.locale,
+        questionnaire=[
+            StudentAnswer(code=a.code, question=a.question, answer=a.answer)
+            for a in answers_in_words(view.questionnaire, include_free_text=False)
+        ],
+        questionnaire_submitted_at=view.questionnaire_submitted_at,
+        resume_confirmed_at=view.resume_confirmed_at,
+        has_resume_file=view.has_resume_file,
+        interviews_completed=view.interviews_completed,
+        courses=[
+            StudentCourseResponse(
+                code=c.code,
+                title=c.title,
+                purchased_at=c.purchased_at,
+                lessons_total=c.lessons_total,
+                lessons_completed=c.lessons_completed,
+                percent_complete=c.percent_complete,
+                completed_at=c.completed_at,
+            )
+            for c in view.courses
+        ],
+        applications=[
+            StudentApplicationResponse(
+                job_title=a.job_title,
+                employer_name=a.employer_name,
+                job_location=a.job_location,
+                stage=a.stage,
+                applied_at=a.applied_at,
+                updated_at=a.updated_at,
+            )
+            for a in view.applications
+        ],
+        analytics=StudentApplicationAnalytics(
+            total=summary.total,
+            open=summary.open,
+            by_stage=summary.by_stage,
+            reached=summary.reached,
+        ),
+    )
+
+
+@router.get(
+    "/students/{candidate_id}/resume",
+    response_model=CollegeStudentResumeResponse,
+    dependencies=[AnyCollegeRole, Paid],
+    summary="The student's CV (audited)",
+)
+async def get_student_resume(
+    candidate_id: uuid.UUID, request: Request, user: CurrentUser, session: DbSession
+) -> CollegeStudentResumeResponse:
+    """The confirmed CV the score was built from. Same consent rule as
+    `/details`; 404 `college_student_resume_not_found` before the student has
+    one. `file_url` is a presigned GET that expires."""
+    resume = await service.open_student_resume(
+        session, ctx=user, candidate_id=candidate_id, request_id=get_request_id(request)
+    )
+    return CollegeStudentResumeResponse(
+        confirmed_at=resume.confirmed_at,
+        source=resume.source,
+        text=resume.text,
+        fields=resume.fields,
+        file_url=resume.file_url,
+        file_mime=resume.file_mime,
     )
 
 

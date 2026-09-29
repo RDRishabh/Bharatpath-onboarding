@@ -115,7 +115,8 @@ export function AnalyticsDashboard() {
             <BarChart
               items={data.placementsByMonth.map((entry) => ({
                 label: entry.month,
-                value: entry.hires,
+                value: entry.hires ?? 0,
+                display: entry.hires === null ? "—" : undefined,
               }))}
             />
           )}
