@@ -9,6 +9,28 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-29 — the score scale is served, not hardcoded
+
+The candidate home card was drawing the score as "832 / 999": the app had
+guessed the ceiling. `GET /candidate/score/scale` returns `lowest` (700),
+`highest` (990) and the four bands with inclusive ranges, read from
+`scoring.domain` (`BASE_SCORE`, `MAX_SCORE`, `BANDS`), so a change there
+reaches every client. Candidate role only; **not paywalled**, because it is
+the same for everyone and says nothing about this candidate's number.
+
+- The schemas live in `scoring/schemas.py`, so the never-explained scan
+  covers them. Field names are `lowest`/`highest`, kept well away from a
+  job's `min_score`, which must never reach a candidate.
+- `tests/integration/test_score_scale.py` compares the response with the
+  domain constants rather than literals, and checks that every value from 700
+  to 990 falls in exactly one band, the one `band_for` gives.
+- **What the frontend was told not to build from it:** "33 more to next
+  band" (screen-flows §2 already forbids it, R11) and the "+26" change badge,
+  which is the score history the client declined to show (see
+  `CandidateScoreResponse`). Neither is in any response.
+
+---
+
 ## 2026-09-29 — `main` made correct again after PRs 21, 22 and 23
 
 PR 21 (college APIs) was merged with red CI; the mobile branch (PR 22) and

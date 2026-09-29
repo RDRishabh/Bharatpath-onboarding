@@ -113,11 +113,12 @@ Upload → parse → review → **confirm gate**. Every route is CANDIDATE-only.
 
 ## scoring — `/candidate/score`
 
-One route, deliberately.
+The number, and the scale it sits on. Nothing that explains it.
 
 | Method | Path | Auth | Response | Notes |
 |---|---|---|---|---|
 | GET | `/candidate/score/me` | CANDIDATE + active subscription | `{status: PENDING\|READY, value?, band?, computed_at?}` | 200 `PENDING` while unscored, not 404. Never a breakdown — the score is never explained, by dedicated test. Lapsed subscriber gets 402 |
+| GET | `/candidate/score/scale` | CANDIDATE (not paywalled) | `{lowest, highest, bands: [{band, lowest, highest}]}` | The engine's own constants: 700, 990, and the four bands in order (inclusive, contiguous). Draw the scale from this — never hardcode it. **Do not show "N points to next band"** or a delta between scores: both explain the score (R11) |
 
 Scoring itself has no other HTTP surface: it fires on the
 `resume.version_confirmed` event, never `version_created`, and
