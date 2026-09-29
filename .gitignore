@@ -29,3 +29,8 @@ coverage/
 
 # claude code local session artefacts (hook logs, transcripts)
 .claude/
+
+# archives and uv
+*.zip
+uv.lock
+

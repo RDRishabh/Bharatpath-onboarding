@@ -19,12 +19,12 @@ already gone succeeds.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -47,7 +47,7 @@ def _bucket(kind: str) -> str:
 
 @celery_app.task(name="privacy.build_export", bind=True, max_retries=5, default_retry_delay=60)
 def build_export(self: Any, request_id: str, user_id: str) -> dict[str, Any]:
-    return asyncio.run(
+    return run_async(
         run_export(dsr_id=uuid.UUID(request_id), user_id=uuid.UUID(user_id), now=datetime.now(UTC))
     )
 
@@ -78,7 +78,7 @@ async def run_export(*, dsr_id: uuid.UUID, user_id: uuid.UUID, now: datetime) ->
 
 @celery_app.task(name="privacy.erase_due", bind=True, max_retries=3)
 def erase_due(self: Any) -> dict[str, int]:
-    return asyncio.run(run_erasures(now=datetime.now(UTC)))
+    return run_async(run_erasures(now=datetime.now(UTC)))
 
 
 async def run_erasures(*, now: datetime, limit: int = SWEEP_BATCH) -> dict[str, int]:
@@ -157,7 +157,7 @@ async def erase_one(*, dsr_id: uuid.UUID, user_id: uuid.UUID, now: datetime) -> 
 
 @celery_app.task(name="privacy.expire_exports", bind=True, max_retries=3)
 def expire_exports(self: Any) -> dict[str, int]:
-    return asyncio.run(run_export_expiry(now=datetime.now(UTC)))
+    return run_async(run_export_expiry(now=datetime.now(UTC)))
 
 
 async def run_export_expiry(*, now: datetime, limit: int = SWEEP_BATCH) -> dict[str, int]:

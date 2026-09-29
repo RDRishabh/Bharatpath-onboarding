@@ -17,9 +17,6 @@ export default function MockInterviewRoute() {
           router.replace('/home');
         }
       }}
-      onCheckPhone={() => {
-        router.push('/device-check' as any);
-      }}
     />
   );
 }

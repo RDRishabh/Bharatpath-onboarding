@@ -1,22 +1,42 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as DocumentPicker from 'expo-document-picker';
 import { UploadSimple, ArrowRight, ClipboardText, NotePencil, LockSimple } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
+import { PasteTextModal } from './PasteTextModal';
+import { ManualResumeModal, ManualResumeData } from './ManualResumeModal';
 
 export interface UploadedFileMeta {
   fileName: string;
   fileSize: string;
+  fileSizeBytes?: number;
+  fileUri?: string;
+  mimeType?: string;
+}
+
+export interface ResumeIntakePayload {
+  source: 'upload' | 'paste' | 'form';
+  fileMeta?: UploadedFileMeta;
+  pastedText?: string;
+  manualData?: ManualResumeData;
 }
 
 interface ResumeIntakeScreenProps {
-  onSelectOption?: (option: 'upload' | 'paste' | 'form', fileMeta?: UploadedFileMeta) => void;
+  onSelectOption?: (
+    option: 'upload' | 'paste' | 'form',
+    fileMeta?: UploadedFileMeta,
+    payload?: ResumeIntakePayload
+  ) => void;
   onBack?: () => void;
+  userName?: string;
 }
 
-export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScreenProps) {
+export function ResumeIntakeScreen({ onSelectOption, onBack, userName }: ResumeIntakeScreenProps) {
+  const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+
   const handleUploadPress = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -31,16 +51,58 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        const fileName = asset.name || 'Priya_Deshmukh_Resume.pdf';
+        const fileName = asset.name || 'Candidate_Resume.pdf';
         const fileSize = asset.size ? `${(asset.size / 1024).toFixed(0)} KB` : '412 KB';
-        onSelectOption && onSelectOption('upload', { fileName, fileSize });
-      } else {
-        // Fallback for preview/testing if cancelled
-        onSelectOption && onSelectOption('upload', { fileName: 'Priya_Deshmukh_Resume.pdf', fileSize: '412 KB' });
+        const fileSizeBytes = asset.size;
+        const fileUri = asset.uri;
+        const mimeType = asset.mimeType || 'application/pdf';
+
+        if (fileName.toLowerCase().endsWith('.doc') || mimeType === 'application/msword') {
+          Alert.alert('Unsupported Format', 'Old Word files are not supported. Save it as DOCX or PDF, or paste the text.');
+          return;
+        }
+
+        onSelectOption &&
+          onSelectOption(
+            'upload',
+            { fileName, fileSize, fileSizeBytes, fileUri, mimeType },
+            {
+              source: 'upload',
+              fileMeta: { fileName, fileSize, fileSizeBytes, fileUri, mimeType },
+            }
+          );
       }
-    } catch {
-      onSelectOption && onSelectOption('upload', { fileName: 'Priya_Deshmukh_Resume.pdf', fileSize: '412 KB' });
+    } catch (e) {
+      console.warn('Document picker error:', e);
     }
+  };
+
+  const handlePasteSubmit = (text: string) => {
+    setIsPasteModalOpen(false);
+    const meta: UploadedFileMeta = {
+      fileName: 'Pasted_Resume.txt',
+      fileSize: `${text.length} chars`,
+    };
+    onSelectOption &&
+      onSelectOption('paste', meta, {
+        source: 'paste',
+        fileMeta: meta,
+        pastedText: text,
+      });
+  };
+
+  const handleManualSubmit = (data: ManualResumeData) => {
+    setIsManualModalOpen(false);
+    const meta: UploadedFileMeta = {
+      fileName: `${data.full_name.replace(/\s+/g, '_')}_Profile`,
+      fileSize: `${data.skills.length} skills · ${data.experience.length} roles`,
+    };
+    onSelectOption &&
+      onSelectOption('form', meta, {
+        source: 'form',
+        fileMeta: meta,
+        manualData: data,
+      });
   };
 
   return (
@@ -53,8 +115,9 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
         >
           {/* Step Progress Header */}
           <View style={styles.headerProgressSection}>
-            <Text style={styles.stepEyebrow}>STEP 3 OF 3</Text>
+            <Text style={styles.stepEyebrow}>STEP 4 OF 4</Text>
             <View style={styles.progressSegmentsRow}>
+              <View style={[styles.progressSegment, styles.segmentActive]} />
               <View style={[styles.progressSegment, styles.segmentActive]} />
               <View style={[styles.progressSegment, styles.segmentActive]} />
               <View style={[styles.progressSegment, styles.segmentActive]} />
@@ -109,7 +172,7 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
                   styles.secondaryCard,
                   pressed && styles.cardPressed,
                 ]}
-                onPress={() => onSelectOption && onSelectOption('paste')}
+                onPress={() => setIsPasteModalOpen(true)}
                 accessibilityRole="button"
                 accessibilityLabel="Paste text"
               >
@@ -128,7 +191,7 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
                   styles.secondaryCard,
                   pressed && styles.cardPressed,
                 ]}
-                onPress={() => onSelectOption && onSelectOption('form')}
+                onPress={() => setIsManualModalOpen(true)}
                 accessibilityRole="button"
                 accessibilityLabel="Fill a form"
               >
@@ -143,6 +206,21 @@ export function ResumeIntakeScreen({ onSelectOption, onBack }: ResumeIntakeScree
             </View>
           </View>
         </ScrollView>
+
+        {/* Paste Text Modal */}
+        <PasteTextModal
+          visible={isPasteModalOpen}
+          onClose={() => setIsPasteModalOpen(false)}
+          onSubmit={handlePasteSubmit}
+        />
+
+        {/* Manual Resume Modal */}
+        <ManualResumeModal
+          visible={isManualModalOpen}
+          initialFullName={userName}
+          onClose={() => setIsManualModalOpen(false)}
+          onSubmit={handleManualSubmit}
+        />
 
         {/* Bottom Actions Section */}
         <View style={styles.bottomSection}>

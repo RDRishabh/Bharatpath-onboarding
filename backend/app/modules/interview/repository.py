@@ -203,7 +203,7 @@ async def insert_session(
     session: AsyncSession,
     *,
     user_id: uuid.UUID,
-    purchase_id: uuid.UUID,
+    purchase_id: uuid.UUID | None,
     device_check_id: uuid.UUID,
     session_number: int,
     question_set_code: str,

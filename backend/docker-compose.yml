@@ -45,9 +45,15 @@ services:
       DEBUG: "0"
     ports: ["4566:4566"]
     volumes:
+      # Must stay executable on the host: LocalStack execs the hook, and a
+      # non-executable file is skipped with a permission error the container
+      # still reports as started.
       - ./scripts/init_localstack.sh:/etc/localstack/init/ready.d/init.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "awslocal s3 ls || exit 1"]
+      # Name a bucket rather than listing: `s3 ls` succeeds against an empty
+      # LocalStack, so a container whose init hook never ran looks healthy and
+      # the first upload fails with NoSuchBucket instead.
+      test: ["CMD-SHELL", "awslocal s3api head-bucket --bucket bharatpath-interview-audio || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10

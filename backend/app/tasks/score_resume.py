@@ -23,6 +23,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -37,9 +38,7 @@ def score_resume(self: Any, user_id: str, resume_version_id: str) -> dict[str, A
     unavailable will succeed on the next attempt, and the candidate is waiting
     on a number rather than on a document.
     """
-    import asyncio
-
-    return asyncio.run(_score(user_id, resume_version_id))
+    return run_async(_score(user_id, resume_version_id))
 
 
 async def _score(user_id: str, resume_version_id: str) -> dict[str, Any]:

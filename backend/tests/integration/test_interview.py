@@ -129,7 +129,7 @@ async def _full_session(client: Any, fake: FakeS3, me: dict[str, Any], **buy: An
 
 
 # ===========================================================================
-# Pay-first, and the device check before payment
+# Subscription-first, and the device check before recording
 # ===========================================================================
 async def test_the_interview_is_a_paid_tool(client: Any, mint_token: Any) -> None:
     me = await _candidate(mint_token)
@@ -140,14 +140,10 @@ async def test_the_interview_is_a_paid_tool(client: Any, mint_token: Any) -> Non
         assert response.status_code == 402, (path, response.text)
 
 
-async def test_a_session_cannot_be_bought_before_a_passed_device_check(
+async def test_a_session_cannot_start_before_a_passed_device_check(
     client: Any, mint_token: Any
 ) -> None:
     me = await _paying(client, mint_token)
-    refused = await client.post(f"{BASE}/checkout", json={}, headers=me["headers"])
-    assert refused.status_code == 409
-    assert refused.json()["code"] == "interview_device_check_required"
-
     failed = await client.post(
         f"{BASE}/device-checks",
         json={**PASSING, "network_kbps": 2, "quiet_env_ok": False},
@@ -156,14 +152,18 @@ async def test_a_session_cannot_be_bought_before_a_passed_device_check(
     assert failed.status_code == 201
     assert failed.json()["passed"] is False and failed.json()["valid_until"] is None
     assert failed.json()["failures"] == ["network_too_slow", "environment_too_noisy"]
-    still = await client.post(f"{BASE}/checkout", json={}, headers=me["headers"])
+    still = await client.post(f"{BASE}/sessions", headers=me["headers"])
+    assert still.status_code == 409
     assert still.json()["code"] == "interview_device_check_required"
     assert await _scalar("SELECT count(*) FROM payments WHERE user_id = :u", u=me["id"]) == 0
 
     await _checked(client, me)
     offer = (await client.get(f"{BASE}/offer", headers=me["headers"])).json()
     assert offer["on_sale"] and offer["device_check_passed"] and offer["will_increase_score"]
-    assert offer["requires_acknowledgement"] is False and offer["sessions_available"] == 0
+    assert offer["requires_acknowledgement"] is False and offer["sessions_available"] == 1
+    started = await client.post(f"{BASE}/sessions", headers=me["headers"])
+    assert started.status_code == 201
+    assert await _scalar("SELECT count(*) FROM payments WHERE user_id = :u", u=me["id"]) == 0
 
 
 async def test_a_stale_device_check_does_not_start_a_session(client: Any, mint_token: Any) -> None:
@@ -186,9 +186,11 @@ async def test_a_stale_device_check_does_not_start_a_session(client: Any, mint_t
 
 
 # ===========================================================================
-# Buying: nothing without a verified callback
+# Historical one-off checkout remains a receipt, never the session gate
 # ===========================================================================
-async def test_a_session_is_bought_only_by_a_verified_payment(client: Any, mint_token: Any) -> None:
+async def test_a_subscription_session_does_not_wait_for_a_legacy_payment(
+    client: Any, mint_token: Any
+) -> None:
     me = await _paying(client, mint_token)
     await _checked(client, me)
     checkout = await client.post(f"{BASE}/checkout", json={}, headers=me["headers"])
@@ -197,9 +199,9 @@ async def test_a_session_is_bought_only_by_a_verified_payment(client: Any, mint_
     payment = await client.get(f"{API}/billing/payments/{payment_id}", headers=me["headers"])
     assert payment.json()["purpose"] == "INTERVIEW_SESSION"
 
-    no_purchase = await client.post(f"{BASE}/sessions", headers=me["headers"])
-    assert no_purchase.status_code == 409
-    assert no_purchase.json()["code"] == "interview_purchase_required"
+    included = await client.post(f"{BASE}/sessions", headers=me["headers"])
+    assert included.status_code == 201
+    assert included.json()["state"] == "CREATED"
 
     # The database refuses a purchase against the unsettled payment.
     product_id = await _scalar("SELECT item_id FROM payments WHERE id = :p", p=payment_id)
@@ -228,7 +230,8 @@ async def test_a_session_is_bought_only_by_a_verified_payment(client: Any, mint_
     )
     assert notices == 1
     offer = (await client.get(f"{BASE}/offer", headers=me["headers"])).json()
-    assert offer["sessions_available"] == 1
+    assert offer["sessions_available"] == 0
+    assert offer["open_session_id"] == included.json()["id"]
 
 
 # ===========================================================================

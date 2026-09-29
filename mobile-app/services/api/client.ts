@@ -1,0 +1,149 @@
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+
+export interface ProblemDetails {
+  type: string;
+  title: string;
+  status: number;
+  code: string;
+  instance?: string;
+  request_id?: string;
+  params?: Record<string, any>;
+}
+
+export class ApiError extends Error {
+  problem: ProblemDetails;
+  status: number;
+  code: string;
+
+  constructor(problem: ProblemDetails) {
+    super(problem.title || problem.code || 'API Error');
+    this.name = 'ApiError';
+    this.problem = problem;
+    this.status = problem.status;
+    this.code = problem.code;
+  }
+}
+
+// Stored token holder
+let currentAccessToken: string | null = null;
+
+export function setAccessToken(token: string | null) {
+  currentAccessToken = token;
+}
+
+export function getAccessToken(): string | null {
+  return currentAccessToken;
+}
+
+// Generate a random UUID string for request correlation (X-Request-ID)
+function generateRequestId(): string {
+  return 'req_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+}
+
+// Get the base API URL based on platform and environment
+export function getBaseUrl(): string {
+  // 1. On Web: always talk to localhost directly (browser is on the host Mac)
+  if (Platform.OS === 'web') {
+    return 'http://localhost:8099/api/v1';
+  }
+
+  // 2. If running via Expo Go on a physical phone, Metro hostUri gives the Mac's IP (e.g. 192.168.1.34:8081)
+  const hostUri = Constants.expoConfig?.hostUri || (Constants as any).manifest2?.extra?.expoClient?.hostUri;
+  if (hostUri) {
+    const hostIp = hostUri.split(':')[0];
+    if (hostIp && hostIp !== 'localhost' && hostIp !== '127.0.0.1') {
+      return `http://${hostIp}:8099/api/v1`;
+    }
+  }
+
+  // 3. Android emulator uses 10.0.2.2 to reach host machine
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:8099/api/v1';
+  }
+
+  // 4. If EXPO_PUBLIC_API_BASE_URL is set in .env
+  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+  if (envUrl && envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+
+  // 5. Default fallback (iOS simulator or local host)
+  return 'http://localhost:8099/api/v1';
+}
+
+export async function apiRequest<T>(
+  endpoint: string,
+  options: {
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    body?: any;
+    headers?: Record<string, string>;
+    token?: string;
+  } = {}
+): Promise<T> {
+  const baseUrl = getBaseUrl();
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${baseUrl}${cleanEndpoint}`;
+
+  const token = options.token || currentAccessToken;
+  const requestId = generateRequestId();
+
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+    'X-Request-ID': requestId,
+    ...options.headers,
+  };
+
+  if (options.body && !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const fetchOptions: RequestInit = {
+    method: options.method || 'GET',
+    headers,
+  };
+
+  if (options.body) {
+    fetchOptions.body =
+      options.body instanceof FormData ? options.body : JSON.stringify(options.body);
+  }
+
+  let response: Response;
+  try {
+    console.log(`[API Request] ${options.method || 'GET'} ${url}`);
+    response = await fetch(url, fetchOptions);
+  } catch (netErr: any) {
+    console.error(`[API Network Error] ${options.method || 'GET'} ${url}:`, netErr);
+    throw new ApiError({
+      type: 'https://bharatpath.example/problems/network_error',
+      title: `Cannot reach backend at ${url}. Please verify the backend API is running.`,
+      status: 0,
+      code: 'network_error',
+      params: { url, originalError: netErr?.message || String(netErr) },
+    });
+  }
+
+  // Check if response is JSON
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json') || contentType.includes('application/problem+json');
+  const data = isJson ? await response.json() : await response.text();
+
+  if (!response.ok) {
+    if (isJson && data && typeof data === 'object' && (data.code || data.title)) {
+      throw new ApiError(data as ProblemDetails);
+    }
+
+    throw new ApiError({
+      type: 'https://bharatpath.example/problems/http_error',
+      title: `Server returned status ${response.status}`,
+      status: response.status,
+      code: `http_${response.status}`,
+    });
+  }
+
+  return data as T;
+}

@@ -19,3 +19,9 @@ def test_deployed_search_filter_revision_remains_resolvable() -> None:
     revision = _scripts().get_revision("0002_search_filter_options")
     assert revision is not None
     assert revision.down_revision == "0001_baseline"
+
+
+def test_the_mobile_interview_revision_remains_resolvable() -> None:
+    revision = _scripts().get_revision("0002_interviews_in_subscription")
+    assert revision is not None
+    assert revision.down_revision == "0001_baseline"

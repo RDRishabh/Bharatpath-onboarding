@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -26,9 +27,7 @@ logger = get_logger(__name__)
 
 @celery_app.task(name="interview.evaluate_session", bind=True, max_retries=5)
 def evaluate_session(self: Any, session_id: str) -> dict[str, Any]:
-    import asyncio
-
-    return asyncio.run(_evaluate(session_id))
+    return run_async(_evaluate(session_id))
 
 
 async def _evaluate(session_id: str) -> dict[str, Any]:

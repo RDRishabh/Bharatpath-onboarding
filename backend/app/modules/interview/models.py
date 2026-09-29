@@ -187,12 +187,13 @@ class InterviewPurchase(Base, UUIDPrimaryKey):
 
 
 class InterviewSession(Base, UUIDPrimaryKey):
-    """One rehearsal: a purchase consumed, a question set, six answers.
+    """One subscription-included rehearsal, a question set, six answers.
 
     **A score-moving row once completed** (invariant 3's blast radius). The
     app role cannot delete it, and `guard_interview_session_write` holds the
     state machine, the completion latch, and "completed means every answer is
-    stored" for every writer.
+    stored" for every writer. `purchase_id` remains nullable for historical
+    sessions created under the former one-off checkout model.
     """
 
     __tablename__ = "interview_sessions"
@@ -202,10 +203,10 @@ class InterviewSession(Base, UUIDPrimaryKey):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    purchase_id: Mapped[uuid.UUID] = mapped_column(
+    purchase_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("interview_purchases.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     device_check_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -245,7 +246,8 @@ class InterviewSession(Base, UUIDPrimaryKey):
             name="ck_interview_sessions_completion",
         ),
         CheckConstraint("session_number >= 1", name="ck_interview_sessions_number"),
-        # One purchase, one session.
+        # Historical paid sessions consume one purchase. PostgreSQL permits
+        # multiple NULLs for subscription-included sessions.
         UniqueConstraint("purchase_id", name="uq_interview_session_purchase"),
         UniqueConstraint("user_id", "session_number", name="uq_interview_session_number"),
         # One session being recorded at a time. Asking to start another returns

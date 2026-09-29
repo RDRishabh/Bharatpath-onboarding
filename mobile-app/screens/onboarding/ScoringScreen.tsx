@@ -1,48 +1,132 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Image, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { CheckCircle, LockSimple } from 'phosphor-react-native';
+import { LockSimple, WarningCircle } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
+import {
+  CandidateScoreResponse,
+  getMyScore,
+  scoringErrorMessage,
+} from '@/services/api/scoring';
 
+/**
+ * Waits for a real score. Confirming a resume does not compute one — it emits
+ * `resume.version_confirmed`, and a worker turns that into a score row. This
+ * screen polls `GET /candidate/score/me` until it answers READY, and shows an
+ * honest "still pending" state if it never does. It must never invent a number.
+ *
+ * Locally, nothing scores until all three of these are true:
+ *   1. the outbox is being drained and a Celery worker is up —
+ *      `PYTHON=.venv/bin/python bash backend/scripts/dev_workers.sh`
+ *   2. Layer 1 extraction is enabled in `backend/.env`:
+ *        SCORING_EXTRACTION_ENABLED=true
+ *        SCORING_EXTRACTION_PROVIDER=openai
+ *        SCORING_MODEL_ID=gpt-5.4-mini-2026-03-17
+ *   3. `OPENAI_API_KEY` is set. There is no fallback extractor by design, so
+ *      without a key the score stays PENDING rather than being guessed.
+ *
+ * Also note `confirmed_at` is a one-way latch: a confirmation whose event was
+ * published with no worker running cannot be replayed. Confirm a new version.
+ */
 const STATUS_MESSAGES = [
-  'Reading your projects',
-  'Measuring real impact',
-  'Matching skills to roles',
-  'Checking how it reads',
-  'Comparing with peers',
+  'Reading your resume',
+  'Turning it into facts',
+  'Computing your score',
 ];
 
+const POLL_INTERVAL_MS = 2000;
+// A real model call was measured at 8-16 seconds locally and may be slower
+// under provider load. Keep polling for one minute, while the visible
+// "Continue without score" action lets the candidate leave immediately.
+const MAX_POLLS = 30;
+
 interface ScoringScreenProps {
-  onShowScore?: () => void;
+  onReady: (score: CandidateScoreResponse) => void;
+  /** Move on with no score. The next screens show a dash, not a number. */
+  onContinueWithoutScore?: () => void;
 }
 
-export function ScoringScreen({ onShowScore }: ScoringScreenProps) {
-  const [statusIdx, setStatusIdx] = useState(1); // Default to 'Measuring real impact'
+export function ScoringScreen({ onReady, onContinueWithoutScore }: ScoringScreenProps) {
+  const [statusIdx, setStatusIdx] = useState(0);
+  const [pollCount, setPollCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [isPolling, setIsPolling] = useState(true);
+  const settledRef = useRef(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setStatusIdx((prev) => (prev + 1) % STATUS_MESSAGES.length);
     }, 2200);
-
     return () => clearInterval(interval);
   }, []);
+
+  const checkOnce = useCallback(async (): Promise<boolean> => {
+    if (settledRef.current) return true;
+    const score = await getMyScore();
+    if (score.status === 'READY' && score.value != null) {
+      settledRef.current = true;
+      setIsPolling(false);
+      onReady(score);
+      return true;
+    }
+    return false;
+  }, [onReady]);
+
+  useEffect(() => {
+    if (!isPolling || settledRef.current || error || pollCount >= MAX_POLLS) return;
+    const timer = setTimeout(async () => {
+      try {
+        await checkOnce();
+      } catch (err) {
+        settledRef.current = true;
+        setIsPolling(false);
+        setError(scoringErrorMessage(err, 'Could not read your score.'));
+        return;
+      }
+      setPollCount((count) => count + 1);
+    }, pollCount === 0 ? 400 : POLL_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [checkOnce, error, isPolling, pollCount]);
+
+  useEffect(() => {
+    if (pollCount >= MAX_POLLS && !settledRef.current) {
+      setIsPolling(false);
+      setError(
+        'Your resume is saved and confirmed, but no score has been computed for it yet.'
+      );
+    }
+  }, [pollCount]);
+
+  const handleRetry = () => {
+    settledRef.current = false;
+    setError(null);
+    setPollCount(0);
+    setIsPolling(true);
+  };
+
+  const handleContinue = () => {
+    settledRef.current = true;
+    setIsPolling(false);
+    onContinueWithoutScore?.();
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" animated />
       <View style={styles.container}>
         <ScrollView
+          style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Header Title & Subtitle */}
           <View style={styles.titleSection}>
             <Text style={styles.title}>Scoring your resume</Text>
-            <Text style={styles.subtitle}>Same five categories for everyone.</Text>
+            <Text style={styles.subtitle}>
+              The number is computed after you confirm. This screen waits for it.
+            </Text>
           </View>
 
-          {/* Pillars Illustration & Working Status Card */}
           <View style={styles.heroSection}>
             <View style={styles.pillarsWrapper}>
               <Image
@@ -53,70 +137,80 @@ export function ScoringScreen({ onShowScore }: ScoringScreenProps) {
             </View>
 
             <View style={styles.workingCard}>
-              <Text style={styles.workingEyebrow}>WORKING</Text>
+              <Text style={styles.workingEyebrow}>{error ? 'NOT READY' : 'WORKING'}</Text>
               <View style={styles.statusTextWrapper}>
-                <Text style={styles.statusText} numberOfLines={1}>
-                  {STATUS_MESSAGES[statusIdx]}
+                <Text style={styles.statusText} numberOfLines={3}>
+                  {error ? 'Score still pending' : STATUS_MESSAGES[statusIdx]}
                 </Text>
               </View>
 
-              <View style={styles.progressSection}>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: '64%' }]} />
+              {!error && (
+                <View style={styles.progressSection}>
+                  <View style={styles.progressTrack}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${Math.min(92, 20 + pollCount * 12)}%` },
+                      ]}
+                    />
+                  </View>
                 </View>
-                <Text style={styles.categoryCountText}>3 OF 5 CATEGORIES</Text>
-              </View>
+              )}
             </View>
           </View>
 
-          {/* Categories Progress List */}
-          <View style={styles.categoriesCard}>
-            {/* Category 1: Education */}
-            <View style={styles.categoryRow}>
-              <CheckCircle size={20} color="#1F6B45" weight="fill" />
-              <Text style={styles.categoryTitle}>Education</Text>
-              <Text style={styles.categoryMeta}>scored</Text>
+          {error ? (
+            <View style={styles.errorCard}>
+              <WarningCircle size={22} color="#993A22" weight="fill" />
+              <Text style={styles.errorText}>{error}</Text>
             </View>
-
-            {/* Category 2: Skills */}
-            <View style={[styles.categoryRow, styles.rowBorderTop]}>
-              <CheckCircle size={20} color="#1F6B45" weight="fill" />
-              <Text style={styles.categoryTitle}>Skills</Text>
-              <Text style={styles.categoryMeta}>scored</Text>
+          ) : (
+            <View style={styles.noteCard}>
+              <Text style={styles.noteText}>
+                Your resume is confirmed. This only waits for the number, and
+                nothing you entered is lost if it takes longer.
+              </Text>
             </View>
-
-            {/* Category 3: Experience */}
-            <View style={[styles.categoryRow, styles.rowBorderTop]}>
-              <CheckCircle size={20} color="#1F6B45" weight="fill" />
-              <Text style={styles.categoryTitle}>Experience</Text>
-              <Text style={styles.categoryMeta}>scored</Text>
-            </View>
-
-            {/* Category 4: Projects (Active State) */}
-            <View style={[styles.categoryRow, styles.activeRow]}>
-              <ActivityIndicator size="small" color="#5E4DB2" style={styles.spinner} />
-              <Text style={styles.categoryTitle}>Projects</Text>
-            </View>
-
-            {/* Category 5: Presentation (Dimmed / Pending) */}
-            <View style={[styles.categoryRow, styles.rowBorderTop, styles.dimmedRow]}>
-              <View style={styles.emptyCircleIcon} />
-              <Text style={styles.categoryTitle}>Presentation</Text>
-            </View>
-          </View>
+          )}
         </ScrollView>
 
-        {/* Bottom CTA Action Area */}
         <View style={styles.bottomSection}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.showScoreButton,
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={onShowScore}
-          >
-            <Text style={styles.showScoreButtonText}>Show my score</Text>
-          </Pressable>
+          {error ? (
+            <>
+              <Pressable
+                style={({ pressed }) => [styles.showScoreButton, pressed && styles.buttonPressed]}
+                onPress={handleRetry}
+                accessibilityRole="button"
+              >
+                <Text style={styles.showScoreButtonText}>Check again</Text>
+              </Pressable>
+              {onContinueWithoutScore && (
+                <Pressable
+                  style={({ pressed }) => [styles.ghostButton, pressed && styles.buttonPressed]}
+                  onPress={handleContinue}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.ghostButtonText}>Continue without score</Text>
+                </Pressable>
+              )}
+            </>
+          ) : (
+            <>
+              <View style={styles.waitingButton}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Text style={styles.showScoreButtonText}>Computing your score</Text>
+              </View>
+              {onContinueWithoutScore && (
+                <Pressable
+                  style={({ pressed }) => [styles.ghostButton, pressed && styles.buttonPressed]}
+                  onPress={handleContinue}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.ghostButtonText}>Continue without score</Text>
+                </Pressable>
+              )}
+            </>
+          )}
 
           <View style={styles.privacyNoteRow}>
             <LockSimple size={16} color="#5F6B80" weight="bold" />
@@ -131,17 +225,20 @@ export function ScoringScreen({ onShowScore }: ScoringScreenProps) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.offWhite, // #FFFCF7
+    backgroundColor: Colors.offWhite,
   },
   container: {
     flex: 1,
-    paddingHorizontal: Spacing.lg, // 20px
+    paddingHorizontal: Spacing.lg,
     justifyContent: 'space-between',
   },
+  scroll: {
+    flex: 1,
+  },
   scrollContent: {
-    paddingTop: Spacing.xl, // 24px
-    paddingBottom: Spacing.xl, // 24px
-    gap: Spacing.lg, // 20px
+    paddingTop: Spacing.xl,
+    paddingBottom: Spacing.xl,
+    gap: Spacing.lg,
   },
   titleSection: {
     gap: 4,
@@ -151,13 +248,13 @@ const styles = StyleSheet.create({
     fontSize: 28,
     lineHeight: 32,
     letterSpacing: -0.7,
-    color: Colors.navy, // #0A1931
+    color: Colors.navy,
   },
   subtitle: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.text.primary, // #3A4761
+    color: Colors.text.primary,
   },
   heroSection: {
     gap: Spacing.sm,
@@ -174,10 +271,10 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   workingCard: {
-    backgroundColor: Colors.indigo, // #5E4DB2
-    borderRadius: Radii.cardLg, // 24px
-    padding: Spacing.xl, // 22px
-    gap: Spacing.base, // 18px
+    backgroundColor: Colors.indigo,
+    borderRadius: Radii.cardLg,
+    padding: Spacing.xl,
+    gap: Spacing.base,
   },
   workingEyebrow: {
     fontFamily: 'SpaceMono-Bold',
@@ -187,7 +284,7 @@ const styles = StyleSheet.create({
     color: '#E0DBF4',
   },
   statusTextWrapper: {
-    height: 28,
+    minHeight: 28,
     justifyContent: 'center',
   },
   statusText: {
@@ -198,7 +295,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   progressSection: {
-    gap: Spacing.sm, // 8px
+    gap: Spacing.sm,
   },
   progressTrack: {
     height: 6,
@@ -211,61 +308,33 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     backgroundColor: '#FFFCF7',
   },
-  categoryCountText: {
-    fontFamily: 'GeneralSans-Bold',
-    fontSize: 12,
-    lineHeight: 16,
-    letterSpacing: 0.72,
-    color: '#DED9F3',
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: '#F8E6E0',
+    borderRadius: 20,
+    padding: 16,
   },
-  categoriesCard: {
+  errorText: {
+    flex: 1,
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#993A22',
+  },
+  noteCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E7E0D4',
     borderRadius: 20,
-    overflow: 'hidden',
+    padding: 16,
   },
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  rowBorderTop: {
-    borderTopWidth: 1,
-    borderTopColor: '#F7EFD6',
-  },
-  activeRow: {
-    borderTopWidth: 1,
-    borderTopColor: '#E7E0D4',
-    backgroundColor: '#F7EFD6',
-  },
-  dimmedRow: {
-    opacity: 0.55,
-  },
-  spinner: {
-    marginRight: 2,
-  },
-  emptyCircleIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#C6BFAF',
-  },
-  categoryTitle: {
-    flex: 1,
-    fontFamily: 'GeneralSans-Medium',
-    fontSize: 15,
-    lineHeight: 20,
-    color: '#0A1931',
-  },
-  categoryMeta: {
+  noteText: {
     fontFamily: 'GeneralSans-Regular',
-    fontSize: 12,
-    lineHeight: 16,
-    color: '#5F6B80',
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#3A4761',
   },
   bottomSection: {
     gap: 12,
@@ -275,11 +344,38 @@ const styles = StyleSheet.create({
   },
   showScoreButton: {
     width: '100%',
-    backgroundColor: '#5F4DB2', // #5F4DB2 matching BharatPath R_26Aug2026.dc.html
+    backgroundColor: '#5F4DB2',
     paddingVertical: 18,
-    borderRadius: Radii.pill, // 999
+    borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  ghostButton: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#DDD6C7',
+    paddingVertical: 16,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ghostButtonText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 15,
+    lineHeight: 20,
+    color: '#0A1931',
+  },
+  waitingButton: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 10,
+    backgroundColor: '#5F4DB2',
+    paddingVertical: 18,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.85,
   },
   buttonPressed: {
     opacity: 0.9,
@@ -295,7 +391,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.sm, // 8px
+    gap: Spacing.sm,
   },
   privacyNoteText: {
     fontFamily: 'GeneralSans-Regular',

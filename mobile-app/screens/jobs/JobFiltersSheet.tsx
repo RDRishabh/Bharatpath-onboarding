@@ -1,16 +1,20 @@
 /**
  * BharatPath — JobFiltersSheet
- * Matches Screen 34 from BharatPath Handoff and Screenshot 3.
- * Features:
- * - Slide-up bottom sheet overlay with backdrop blur/darkening
- * - Header with "Filters" and "Reset"
- * - SHOW ME: Only where I qualify vs Everything
- * - DISTANCE FROM ME: Interactive distance slider (default 15 km)
- * - MONTHLY SALARY, AT LEAST: ₹10k, ₹15k, ₹20k, ₹25k+
- * - WORK TYPE: Full-time, Part-time, Internship, Apprentice
- * - CTA: "Show 28 jobs"
+ *
+ * Implements S17a (Filters) from `docs/screen-flows.md`, wired to the backend
+ * `JobFilters` type. The board has no total count, so the CTA reads "Show jobs"
+ * (no count).
+ *
+ * Sections (per S17a):
+ *  - Show me: All jobs / Only jobs I can apply to  (eligible_only)
+ *  - Location: free text                          (location)
+ *  - Work mode: Onsite / Hybrid / Remote           (work_mode)
+ *  - Minimum monthly salary: ₹10k / ₹15k / ₹20k / ₹25k+  (min_salary_minor, paise)
+ *  - Skill: free text                             (skill)
+ *
+ * No distance slider — the API has no geo search.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,61 +22,70 @@ import {
   Pressable,
   Modal,
   Platform,
-  Dimensions,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import {
   Funnel,
   MapPin,
   CurrencyInr,
-  Clock,
+  Briefcase,
+  Sparkle,
   Check,
+  X,
 } from 'phosphor-react-native';
-import { Colors, Spacing } from '@/theme/tokens';
-
-export interface FilterState {
-  showMode: 'qualify' | 'everything';
-  distanceKm: number;
-  minSalary: string;
-  workType: string;
-}
+import { Colors } from '@/theme/tokens';
+import { JobFilters, DEFAULT_JOB_FILTERS, WorkMode } from '@/types/job';
 
 export interface JobFiltersSheetProps {
   visible: boolean;
   onClose: () => void;
-  onApply?: (filters: FilterState) => void;
-  matchCount?: number;
+  onApply: (filters: JobFilters) => void;
+  onReset: () => void;
+  /** Current filters from the parent, to seed the sheet state. */
+  currentFilters: JobFilters;
 }
+
+// Salary options in paise (integer minor units). "₹25k+" is represented as
+// 25000 paise; the backend treats min_salary_minor as a floor.
+const SALARY_OPTIONS: { label: string; minor: number }[] = [
+  { label: '₹10k', minor: 10000 },
+  { label: '₹15k', minor: 15000 },
+  { label: '₹20k', minor: 20000 },
+  { label: '₹25k+', minor: 25000 },
+];
+
+const WORK_MODE_OPTIONS: { label: string; value: WorkMode }[] = [
+  { label: 'Onsite', value: 'ONSITE' },
+  { label: 'Hybrid', value: 'HYBRID' },
+  { label: 'Remote', value: 'REMOTE' },
+];
 
 export function JobFiltersSheet({
   visible,
   onClose,
   onApply,
-  matchCount = 28,
+  onReset,
+  currentFilters,
 }: JobFiltersSheetProps) {
-  const [showMode, setShowMode] = useState<'qualify' | 'everything'>('qualify');
-  const [distanceKm, setDistanceKm] = useState<number>(15);
-  const [minSalary, setMinSalary] = useState<string>('₹15k');
-  const [workType, setWorkType] = useState<string>('Full-time');
+  const [draft, setDraft] = useState<JobFilters>(currentFilters);
+
+  // Re-seed the draft whenever the sheet opens or the parent filters change.
+  useEffect(() => {
+    if (visible) setDraft(currentFilters);
+  }, [visible, currentFilters]);
+
+  const update = (patch: Partial<JobFilters>) =>
+    setDraft((prev) => ({ ...prev, ...patch }));
 
   const handleReset = () => {
-    setShowMode('qualify');
-    setDistanceKm(15);
-    setMinSalary('₹15k');
-    setWorkType('Full-time');
+    setDraft(DEFAULT_JOB_FILTERS);
   };
 
   const handleApply = () => {
-    onApply?.({
-      showMode,
-      distanceKm,
-      minSalary,
-      workType,
-    });
+    onApply(draft);
     onClose();
   };
-
-  const salaryOptions = ['₹10k', '₹15k', '₹20k', '₹25k+'];
-  const workTypeOptions = ['Full-time', 'Part-time', 'Internship', 'Apprentice'];
 
   return (
     <Modal
@@ -81,7 +94,10 @@ export function JobFiltersSheet({
       transparent
       onRequestClose={onClose}
     >
-      <View style={styles.backdrop}>
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <Pressable style={styles.dismissOverlay} onPress={onClose} />
 
         <View style={styles.sheetContainer}>
@@ -106,102 +122,122 @@ export function JobFiltersSheet({
               <Pressable
                 style={[
                   styles.toggleButton,
-                  showMode === 'qualify' && styles.toggleButtonActive,
+                  !draft.eligible_only && styles.toggleButtonActive,
                 ]}
-                onPress={() => setShowMode('qualify')}
+                onPress={() => update({ eligible_only: false })}
               >
                 <Text
                   style={[
                     styles.toggleText,
-                    showMode === 'qualify' && styles.toggleTextActive,
+                    !draft.eligible_only && styles.toggleTextActive,
                   ]}
                 >
-                  Only where I qualify
+                  All jobs
                 </Text>
               </Pressable>
               <Pressable
                 style={[
                   styles.toggleButton,
-                  showMode === 'everything' && styles.toggleButtonActive,
+                  draft.eligible_only && styles.toggleButtonActive,
                 ]}
-                onPress={() => setShowMode('everything')}
+                onPress={() => update({ eligible_only: true })}
               >
                 <Text
                   style={[
                     styles.toggleText,
-                    showMode === 'everything' && styles.toggleTextActive,
+                    draft.eligible_only && styles.toggleTextActive,
                   ]}
                 >
-                  Everything
+                  Only jobs I can apply to
                 </Text>
               </Pressable>
             </View>
           </View>
 
-          {/* Section 2: DISTANCE FROM ME */}
+          {/* Section 2: LOCATION */}
           <View style={styles.filterSection}>
-            <View style={styles.sectionEyebrowBetween}>
-              <View style={styles.eyebrowLeft}>
-                <MapPin size={12} color="#A87C17" weight="bold" />
-                <Text style={styles.eyebrowText}>DISTANCE FROM ME</Text>
-              </View>
-              <Text style={styles.distanceValueText}>{distanceKm} km</Text>
+            <View style={styles.sectionEyebrow}>
+              <MapPin size={12} color="#A87C17" weight="bold" />
+              <Text style={styles.eyebrowText}>LOCATION</Text>
             </View>
-            <View style={styles.sliderContainer}>
-              <View style={styles.sliderTrack} />
-              <View
-                style={[
-                  styles.sliderFill,
-                  { width: `${(distanceKm / 30) * 100}%` },
-                ]}
+            <View style={styles.textInputWrap}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="City or area"
+                placeholderTextColor="#566073"
+                value={draft.location}
+                onChangeText={(v) => update({ location: v })}
+                autoCorrect={false}
+                autoCapitalize="words"
+                returnKeyType="done"
               />
-              <Pressable
-                style={[
-                  styles.sliderThumb,
-                  { left: `${(distanceKm / 30) * 100}%` },
-                ]}
-              />
-            </View>
-            <View style={styles.distanceChipsRow}>
-              {[5, 10, 15, 25].map((km) => (
+              {draft.location.length > 0 && (
                 <Pressable
-                  key={km}
-                  style={[
-                    styles.kmPill,
-                    distanceKm === km && styles.kmPillActive,
-                  ]}
-                  onPress={() => setDistanceKm(km)}
+                  hitSlop={8}
+                  onPress={() => update({ location: '' })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear location"
                 >
-                  <Text
-                    style={[
-                      styles.kmPillText,
-                      distanceKm === km && styles.kmPillTextActive,
-                    ]}
-                  >
-                    {km} km
-                  </Text>
+                  <X size={15} color="#5F6B80" weight="bold" />
                 </Pressable>
-              ))}
+              )}
             </View>
           </View>
 
-          {/* Section 3: MONTHLY SALARY, AT LEAST */}
+          {/* Section 3: WORK MODE */}
+          <View style={styles.filterSection}>
+            <View style={styles.sectionEyebrow}>
+              <Briefcase size={12} color="#A87C17" weight="bold" />
+              <Text style={styles.eyebrowText}>WORK MODE</Text>
+            </View>
+            <View style={styles.pillsRow}>
+              {WORK_MODE_OPTIONS.map((opt) => {
+                const isSelected = draft.work_mode === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    style={[styles.modePill, isSelected && styles.pillActive]}
+                    onPress={() =>
+                      update({
+                        work_mode: isSelected ? undefined : opt.value,
+                      })
+                    }
+                  >
+                    {isSelected && (
+                      <Check size={12} color="#4A3E8F" weight="bold" />
+                    )}
+                    <Text
+                      style={[
+                        styles.modePillText,
+                        isSelected && styles.pillTextActive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Section 4: MINIMUM MONTHLY SALARY */}
           <View style={styles.filterSection}>
             <View style={styles.sectionEyebrow}>
               <CurrencyInr size={12} color="#A87C17" weight="bold" />
-              <Text style={styles.eyebrowText}>MONTHLY SALARY, AT LEAST</Text>
+              <Text style={styles.eyebrowText}>MINIMUM MONTHLY SALARY</Text>
             </View>
             <View style={styles.pillsRow}>
-              {salaryOptions.map((sal) => {
-                const isSelected = minSalary === sal;
+              {SALARY_OPTIONS.map((opt) => {
+                const isSelected = draft.min_salary_minor === opt.minor;
                 return (
                   <Pressable
-                    key={sal}
-                    style={[
-                      styles.salaryPill,
-                      isSelected && styles.pillActive,
-                    ]}
-                    onPress={() => setMinSalary(sal)}
+                    key={opt.label}
+                    style={[styles.salaryPill, isSelected && styles.pillActive]}
+                    onPress={() =>
+                      update({
+                        min_salary_minor: isSelected ? undefined : opt.minor,
+                      })
+                    }
                   >
                     <Text
                       style={[
@@ -209,7 +245,7 @@ export function JobFiltersSheet({
                         isSelected && styles.pillTextActive,
                       ]}
                     >
-                      {sal}
+                      {opt.label}
                     </Text>
                   </Pressable>
                 );
@@ -217,42 +253,37 @@ export function JobFiltersSheet({
             </View>
           </View>
 
-          {/* Section 4: WORK TYPE */}
+          {/* Section 5: SKILL */}
           <View style={styles.filterSection}>
             <View style={styles.sectionEyebrow}>
-              <Clock size={12} color="#A87C17" weight="bold" />
-              <Text style={styles.eyebrowText}>WORK TYPE</Text>
+              <Sparkle size={12} color="#A87C17" weight="bold" />
+              <Text style={styles.eyebrowText}>SKILL</Text>
             </View>
-            <View style={styles.pillsRow}>
-              {workTypeOptions.map((type) => {
-                const isSelected = workType === type;
-                return (
-                  <Pressable
-                    key={type}
-                    style={[
-                      styles.workTypePill,
-                      isSelected && styles.pillActive,
-                    ]}
-                    onPress={() => setWorkType(type)}
-                  >
-                    {isSelected && (
-                      <Check size={12} color="#4A3E8F" weight="bold" />
-                    )}
-                    <Text
-                      style={[
-                        styles.workTypePillText,
-                        isSelected && styles.pillTextActive,
-                      ]}
-                    >
-                      {type}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.textInputWrap}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. React, Nursing, Tally"
+                placeholderTextColor="#566073"
+                value={draft.skill}
+                onChangeText={(v) => update({ skill: v })}
+                autoCorrect={false}
+                autoCapitalize="none"
+                returnKeyType="done"
+              />
+              {draft.skill.length > 0 && (
+                <Pressable
+                  hitSlop={8}
+                  onPress={() => update({ skill: '' })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear skill"
+                >
+                  <X size={15} color="#5F6B80" weight="bold" />
+                </Pressable>
+              )}
             </View>
           </View>
 
-          {/* Bottom Action */}
+          {/* Bottom Action — no count (board has no total) */}
           <Pressable
             style={({ pressed }) => [
               styles.applyButton,
@@ -261,10 +292,10 @@ export function JobFiltersSheet({
             onPress={handleApply}
             accessibilityRole="button"
           >
-            <Text style={styles.applyButtonText}>Show {matchCount} jobs</Text>
+            <Text style={styles.applyButtonText}>Show jobs</Text>
           </Pressable>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -326,29 +357,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
   },
-  sectionEyebrowBetween: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  eyebrowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
   eyebrowText: {
-    fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
+    fontFamily: Platform.select({
+      ios: 'SpaceMono-Bold',
+      android: 'SpaceMono-Bold',
+      default: 'monospace',
+    }),
     fontSize: 11,
     lineHeight: 12,
     letterSpacing: 1.2,
     color: '#5F6B80',
-    fontWeight: '700',
-  },
-  distanceValueText: {
-    fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
-    fontSize: 13,
-    lineHeight: 16,
-    color: Colors.navy,
     fontWeight: '700',
   },
   toggleRow: {
@@ -377,62 +395,24 @@ const styles = StyleSheet.create({
   toggleTextActive: {
     color: '#4A3E8F',
   },
-  sliderContainer: {
-    position: 'relative',
-    height: 24,
-    justifyContent: 'center',
-  },
-  sliderTrack: {
-    height: 4,
-    width: '100%',
-    borderRadius: 999,
-    backgroundColor: '#F7EFD6',
-  },
-  sliderFill: {
-    position: 'absolute',
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: '#5E4DB2',
-  },
-  sliderThumb: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#5E4DB2',
-    marginLeft: -12,
-    shadowColor: '#0A1931',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  distanceChipsRow: {
+  textInputWrap: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginTop: 4,
-  },
-  kmPill: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: '#F7EFD6',
-  },
-  kmPillActive: {
-    backgroundColor: '#F1EAF7',
+    backgroundColor: '#F7F4EC',
     borderWidth: 1,
-    borderColor: '#C9BEEB',
+    borderColor: Colors.surface.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  kmPillText: {
-    fontFamily: 'GeneralSans-Medium',
-    fontSize: 11,
-    lineHeight: 14,
-    color: '#5F6B80',
-  },
-  kmPillTextActive: {
-    color: '#4A3E8F',
+  textInput: {
+    flex: 1,
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 15,
+    lineHeight: 20,
+    color: Colors.navy,
+    padding: 0,
   },
   pillsRow: {
     flexDirection: 'row',
@@ -446,12 +426,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7EFD6',
   },
   salaryPillText: {
-    fontFamily: Platform.select({ ios: 'SpaceMono-Regular', android: 'SpaceMono-Regular', default: 'monospace' }),
+    fontFamily: Platform.select({
+      ios: 'SpaceMono-Regular',
+      android: 'SpaceMono-Regular',
+      default: 'monospace',
+    }),
     fontSize: 13,
     lineHeight: 16,
     color: '#3A4761',
   },
-  workTypePill: {
+  modePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -460,7 +444,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#F7EFD6',
   },
-  workTypePillText: {
+  modePillText: {
     fontFamily: 'GeneralSans-Semibold',
     fontSize: 13,
     lineHeight: 16,

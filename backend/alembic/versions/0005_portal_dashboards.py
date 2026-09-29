@@ -14,6 +14,10 @@
 * `erase_candidate` -- replaced whole, to erase the three new tables that
   hold a candidate's data.
 
+It also merges the two heads `main` had: `0004_merge_migration_heads` and
+`0002_interviews_in_subscription` (the mobile branch's, which revises the
+baseline directly). Nothing here depends on the order they ran in.
+
 The baseline builds the five tables from the current models too, as it does
 every table (`test_schema_guards.py`), so on a database built from it they
 already exist: tables and indexes are created only when missing, as
@@ -21,7 +25,7 @@ already exist: tables and indexes are created only when missing, as
 written either way.
 
 Revision ID: 0005_portal_dashboards
-Revises: 0004_merge_migration_heads
+Revises: 0004_merge_migration_heads, 0002_interviews_in_subscription
 Create Date: 2026-09-29
 """
 
@@ -34,7 +38,10 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0005_portal_dashboards"
-down_revision: str | None = "0004_merge_migration_heads"
+down_revision: str | Sequence[str] | None = (
+    "0004_merge_migration_heads",
+    "0002_interviews_in_subscription",
+)
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -20,6 +20,9 @@ export default function AttributeCheckRoute() {
       onStartQuiz={() => {
         router.push('/attribute-quiz');
       }}
+      onViewReport={() => {
+        router.push('/attribute-report');
+      }}
     />
   );
 }
