@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Check,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { Skeleton } from "@/components/common/loading";
+import { AppSelect } from "@/components/ui/app-select";
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import {
   useGetStudentStreakPointsQuery,
@@ -30,8 +32,10 @@ import { StudentPage, StudentTopBar } from "@/features/student/shell";
 
 import {
   activeDateKeys,
+  addDays,
   daysToNextMilestone,
   milestoneProgress,
+  parseDateKey,
   statusClasses,
   statusLabel,
   statusMessage,
@@ -187,6 +191,7 @@ function StatTile({
 }
 
 function WeeklyActivity({ streak }: { streak: StudentStreak }) {
+  const [view, setView] = useState<"week" | "month" | "year">("week");
   // `today` is the server's IST date. Never use the browser's calendar here.
   const week = weekFor(streak.today);
   const active = activeDateKeys(streak);
@@ -194,11 +199,13 @@ function WeeklyActivity({ streak }: { streak: StudentStreak }) {
   return (
     <section className="flex flex-col gap-3 xl:col-span-7">
       <SectionEyebrow icon={<Flame size={13} />}>
-        This week&apos;s activity
+        {view === "week" ? "This week's activity" : view === "month" ? "This month's activity" : "This year's activity"}
       </SectionEyebrow>
-      <div className="rounded-[24px] border border-[#E7E0D4] bg-white p-4 shadow-[0_4px_14px_rgba(10,25,49,0.05)] sm:p-5">
-        <div className="grid grid-cols-7 gap-1 sm:gap-3">
-          {week.map((date, index) => {
+      <div className="flex h-[222px] min-w-0 flex-col rounded-[24px] border border-[#E7E0D4] bg-white p-4 shadow-[0_4px_14px_rgba(10,25,49,0.05)] sm:p-5">
+        <div className="min-h-0 flex-1">
+        {view === "week" ? (
+          <div className="grid grid-cols-7 gap-1 sm:gap-3">
+            {week.map((date, index) => {
             const key = toDateKey(date);
             const isToday = key === streak.today;
             const isActive = active.has(key);
@@ -225,7 +232,7 @@ function WeeklyActivity({ streak }: { streak: StudentStreak }) {
                       ? "border-[#F3D6B4] bg-[#F97316] text-white shadow-[0_4px_10px_rgba(249,115,22,0.22)]"
                       : "border-[#E7E0D4] bg-[#FFFCF7] text-[#D8D3C8]",
                   ].join(" ")}
-                  aria-label={isActive ? `${key} completed` : `${key} not completed`}
+                  aria-label={isActive ? `${key} completed` : `${key} not in current streak`}
                 >
                   {isActive ? (
                     <Flame
@@ -248,9 +255,16 @@ function WeeklyActivity({ streak }: { streak: StudentStreak }) {
                 </span>
               </div>
             );
-          })}
+            })}
+          </div>
+        ) : view === "month" ? (
+          <MonthActivity today={streak.today} active={active} />
+        ) : (
+          <ActivityHeatmap today={streak.today} active={active} />
+        )}
         </div>
-        <div className="mt-4 flex items-start gap-2 border-t border-[#F0EBDF] pt-4 text-[12px] leading-5 text-[#5F6B80] sm:text-[13px]">
+        <div className="flex items-center justify-between gap-3 border-[#F0EBDF] pt-1 text-[12px] leading-5 text-[#5F6B80] sm:text-[13px]">
+          <div className="flex min-w-0 items-start gap-2">
           {streak.status === "ACTIVE_TODAY" ? (
             <Check
               size={16}
@@ -264,10 +278,169 @@ function WeeklyActivity({ streak }: { streak: StudentStreak }) {
               aria-hidden="true"
             />
           )}
-          <span>{weeklyStatusMessage(streak)}</span>
+          <span className="line-clamp-2">{view === "week" ? weeklyStatusMessage(streak) : "Colored days show your current streak."}</span>
+          </div>
+          <AppSelect
+            value={view}
+            onChange={(value) => setView(value as "week" | "month" | "year")}
+            options={[
+              { value: "week", label: "Week" },
+              { value: "month", label: "Month" },
+              { value: "year", label: "Year" },
+            ]}
+            ariaLabel="View activity by"
+            menuPlacement="top"
+            className="w-[100px] shrink-0"
+          />
         </div>
       </div>
     </section>
+  );
+}
+
+function MonthActivity({ today, active }: { today: string; active: Set<string> }) {
+  const date = parseDateKey(today);
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const firstDay = new Date(Date.UTC(year, month, 1));
+  const lastDay = new Date(Date.UTC(year, month + 1, 0));
+  const weekday = firstDay.getUTCDay();
+  const monday = addDays(firstDay, -(weekday === 0 ? 6 : weekday - 1));
+  const dayCount = Math.round((lastDay.getTime() - monday.getTime()) / 86400000) + 1;
+  const days = Array.from(
+    { length: Math.ceil(dayCount / 7) * 7 },
+    (_, index) => addDays(monday, index),
+  );
+  const completedCount = days.filter((day) => active.has(toDateKey(day)) && day.getUTCMonth() === month).length;
+
+  return (
+    <div className="flex h-full w-full flex-col justify-center">
+      <div className="mb-1 flex items-center justify-between text-[11px]">
+        <span className="font-semibold text-[#0A1931]">
+          {new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric", timeZone: "UTC" }).format(date)}
+        </span>
+        <span className="text-[#5F6B80]">{completedCount} in current streak</span>
+      </div>
+      <div className="mb-0.5 grid grid-cols-7 gap-1 text-center text-[9px] font-semibold text-[#5F6B80]">
+        {WEEKDAY_LABELS.map((label) => <span key={label}>{label}</span>)}
+      </div>
+      <div className="grid grid-cols-7 gap-x-1 gap-y-0.5">
+        {days.map((day) => {
+          const key = toDateKey(day);
+          const inMonth = day.getUTCMonth() === month;
+          const completed = inMonth && active.has(key);
+          const isToday = key === today;
+          return (
+            <span
+              key={key}
+              title={inMonth ? `${key}${completed ? " · current streak" : ""}` : undefined}
+              aria-label={inMonth ? `${key}${completed ? " completed" : key > today ? " upcoming" : " activity unavailable"}` : undefined}
+              className={[
+                "grid place-items-center rounded-md border text-[10px] font-semibold tabular-nums",
+                days.length > 35 ? "h-[15px]" : "h-[18px]",
+                !inMonth
+                  ? "border-transparent text-transparent"
+                  : completed
+                    ? "border-[#F97316] bg-[#F97316] text-white"
+                    : isToday
+                      ? "border-[#F3D6B4] bg-[#FFF8EC] text-[#D9650B]"
+                      : key > today
+                        ? "border-[#F0EBDF] bg-white text-[#B8B1A4]"
+                        : "border-[#E7E0D4] bg-[#F7F4EC] text-[#5F6B80]",
+              ].join(" ")}
+            >
+              {inMonth ? day.getUTCDate() : null}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ActivityHeatmap({
+  today,
+  active,
+}: {
+  today: string;
+  active: Set<string>;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const date = parseDateKey(today);
+  const year = date.getUTCFullYear();
+  const start = new Date(Date.UTC(year, 0, 1));
+  const end = new Date(Date.UTC(year, 11, 31));
+  const weekday = start.getUTCDay();
+  const firstMonday = addDays(start, -(weekday === 0 ? 6 : weekday - 1));
+  const dayCount = Math.round((end.getTime() - firstMonday.getTime()) / 86400000) + 1;
+  const days = Array.from(
+    { length: Math.ceil(dayCount / 7) * 7 },
+    (_, index) => addDays(firstMonday, index),
+  );
+  const weeks = Array.from({ length: days.length / 7 }, (_, index) =>
+    days.slice(index * 7, index * 7 + 7),
+  );
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    }
+  }, [today]);
+
+  return (
+    <div className="flex h-full min-w-0 flex-col justify-center overflow-hidden">
+      <p className="text-[11px] font-semibold text-[#5F6B80]">
+        {year}
+      </p>
+      <div
+        ref={scrollRef}
+        className="bp-scrollbar h-[116px] shrink-0 overflow-x-auto overflow-y-hidden pb-1"
+      >
+        <div className="flex w-max gap-[3px]">
+          {weeks.map((week, index) => {
+            const monthStart = week.find(
+              (day) => day.getUTCDate() === 1 && day.getUTCFullYear() === year,
+            );
+            return (
+              <div
+                key={index}
+                className="relative flex flex-col gap-y-px pt-3"
+              >
+                {monthStart ? (
+                  <span className="absolute left-0 top-0 text-[9px] font-semibold text-[#5F6B80]">
+                    {new Intl.DateTimeFormat("en-IN", { month: "short", timeZone: "UTC" }).format(monthStart)}
+                  </span>
+                ) : null}
+                {week.map((day) => {
+                  const key = toDateKey(day);
+                  const inRange = day >= start && day <= end;
+                  const isFuture = key > today;
+                  const completed = inRange && !isFuture && active.has(key);
+                  return (
+                    <span
+                      key={key}
+                      title={`${key}${completed ? " · current streak" : ""}`}
+                      aria-label={`${key}${completed ? " completed" : isFuture ? " upcoming" : " activity unavailable"}`}
+                      className={[
+                        "block rounded-[3px] border",
+                        "h-[12px] w-[12px]",
+                        completed
+                          ? "border-[#F97316] bg-[#F97316]"
+                          : inRange && isFuture
+                            ? "border-[#E7E0D4] bg-white"
+                            : inRange
+                              ? "border-[#E7E0D4] bg-[#F7F4EC]"
+                              : "border-transparent bg-transparent",
+                      ].join(" ")}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 

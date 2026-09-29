@@ -72,7 +72,7 @@ export function StudentHome() {
           )}
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
+        <div className="grid gap-4 xl:grid-cols-3">
           {score.isLoading ? (
             <ScoreCardSkeleton />
           ) : (
@@ -133,10 +133,10 @@ export function StudentHome() {
               )}
             </button>
           )}
-
+          <StudentStreakCard />
           <div className="flex flex-col gap-3">
             <SectionEyebrow icon={<Rocket size={12} />}>Go further</SectionEyebrow>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
               {questionnaire.isLoading ? (
                 <AddOnCardSkeleton label="Loading attribute check" />
               ) : (
@@ -170,8 +170,6 @@ export function StudentHome() {
             </div>
           </div>
         </div>
-
-        <StudentStreakCard />
 
         <div className="flex flex-col gap-3">
           <SectionEyebrow

@@ -1,23 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ChevronRight,
-  Flame,
-  RefreshCw,
-  Trophy,
-} from "lucide-react";
+import { Flame, RefreshCw } from "lucide-react";
 
 import { Skeleton } from "@/components/common/loading";
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import { useGetStudentStreakSessionQuery } from "@/store/student";
 
-import {
-  daysToNextMilestone,
-  milestoneProgress,
-  statusClasses,
-  statusLabel,
-} from "./streak-utils";
+import { statusClasses, statusLabel } from "./streak-utils";
 
 export function StudentStreakCard() {
   const streak = useGetStudentStreakSessionQuery();
@@ -60,17 +50,14 @@ export function StudentStreakCard() {
 
   const data = streak.data;
   const dayLabel = data.currentStreak === 1 ? "day" : "days";
-  const progress = milestoneProgress(data);
-  const daysToGo = daysToNextMilestone(data);
-  const hasMilestones = data.milestones.length > 0;
 
   return (
     <Link
       href="/student/streak"
       aria-label="Open daily streak details"
-      className="group grid overflow-hidden rounded-[24px] border border-[#E7E0D4] bg-white shadow-[0_5px_18px_rgba(10,25,49,0.06)] transition-all duration-150 hover:-translate-y-0.5 hover:border-[#D8C7B0] hover:shadow-[0_12px_30px_rgba(10,25,49,0.10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]"
+      className="group block overflow-hidden rounded-[24px] border border-[#E7E0D4] bg-white shadow-[0_5px_18px_rgba(10,25,49,0.06)] transition-all duration-150 hover:-translate-y-0.5 hover:border-[#D8C7B0] hover:shadow-[0_12px_30px_rgba(10,25,49,0.10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30"
     >
-      <span className="flex flex-col gap-5 p-5 sm:p-6">
+      <span className="flex h-full flex-col gap-10 p-5 sm:p-6">
         <span className="flex flex-wrap items-center justify-between gap-3">
           <span className="flex items-center gap-2 text-[#5F6B80]">
             <Flame size={16} className="text-[#F97316]" aria-hidden="true" />
@@ -89,7 +76,7 @@ export function StudentStreakCard() {
           </span>
         </span>
 
-        <span className="grid grid-cols-[auto_1fr] items-center gap-4 sm:grid-cols-[auto_1fr_auto]">
+        <span className="grid grid-cols-[auto_1fr] items-center gap-4 xl:grid-cols-[auto_1fr_auto]">
           <span className="grid h-16 w-16 place-items-center rounded-full border border-[#F3D6B4] bg-[#FFF5E8] text-[#F97316] sm:h-[72px] sm:w-[72px]">
             <Flame
               size={36}
@@ -101,7 +88,7 @@ export function StudentStreakCard() {
           <span className="min-w-0">
             <span className="block text-[34px] font-extrabold leading-none tracking-[-0.04em] text-[#0A1931] sm:text-[42px]">
               {data.currentStreak}
-              <span className="ml-2 text-[17px] font-semibold tracking-normal text-[#3A4761] sm:text-[19px]">
+              <span className="ml-2 whitespace-nowrap text-[17px] font-semibold tracking-normal text-[#3A4761] sm:text-[19px] xl:text-[16px]">
                 {dayLabel} streak
               </span>
             </span>
@@ -110,7 +97,7 @@ export function StudentStreakCard() {
               {data.longestStreak === 1 ? "day" : "days"}
             </span>
           </span>
-          <span className="col-span-2 flex items-end justify-between border-t border-[#F0EBDF] pt-4 sm:col-span-1 sm:block sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0 sm:text-right">
+          <span className="col-span-2 flex items-end justify-between border-t border-[#F0EBDF] pt-4 xl:col-span-1 xl:block xl:w-[112px] xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0 xl:text-right">
             <span className="block text-[26px] font-bold leading-none text-[#0A1931]">
               {data.pointsBalance}
               <span className="ml-1 text-[14px] font-semibold text-[#3A4761]">
@@ -123,38 +110,6 @@ export function StudentStreakCard() {
           </span>
         </span>
       </span>
-
-      <span className="flex flex-col justify-center gap-3 border-t border-[#F0EBDF] bg-[#FFFCF7] p-5 sm:p-6 lg:border-l lg:border-t-0">
-        <span className="flex items-center justify-between gap-3">
-          <span className="flex items-center gap-2 text-[13px] font-semibold text-[#0A1931]">
-            <Trophy size={15} className="text-[#B9891A]" aria-hidden="true" />
-            {data.nextMilestone
-              ? `Next: ${data.nextMilestone.days}d (+${data.nextMilestone.points} pts)`
-              : hasMilestones
-                ? "All milestones reached"
-                : "No milestones configured"}
-          </span>
-          <span className="text-[#5F6B80] transition-transform group-hover:translate-x-0.5">
-            <ChevronRight size={17} aria-hidden="true" />
-          </span>
-        </span>
-        <span className="block h-2 overflow-hidden rounded-full bg-[#EEE9DD]">
-          <span
-            className="block h-full rounded-full bg-[#B9891A] transition-[width] duration-700"
-            style={{ width: `${progress}%` }}
-          />
-        </span>
-        <span className="flex justify-between text-[11px] text-[#5F6B80]">
-          <span>
-            {data.nextMilestone
-              ? `${daysToGo} ${daysToGo === 1 ? "day" : "days"} to go`
-              : hasMilestones
-                ? "Milestone ladder complete"
-                : "Your daily streak still continues"}
-          </span>
-          <span>{progress}%</span>
-        </span>
-      </span>
     </Link>
   );
 }
@@ -164,7 +119,7 @@ function StudentStreakCardSkeleton() {
     <div
       role="status"
       aria-busy="true"
-      className="grid min-h-48 overflow-hidden rounded-[24px] border border-[#E7E0D4] bg-white lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]"
+      className="min-h-48 overflow-hidden rounded-[24px] border border-[#E7E0D4] bg-white"
     >
       <span className="sr-only">Loading daily streak</span>
       <div className="flex flex-col gap-6 p-5 sm:p-6">
@@ -179,11 +134,6 @@ function StudentStreakCardSkeleton() {
             <Skeleton className="mt-2" width={118} height={11} radius={5} />
           </div>
         </div>
-      </div>
-      <div className="flex flex-col justify-center gap-4 border-t border-[#F0EBDF] bg-[#FFFCF7] p-5 sm:p-6 lg:border-l lg:border-t-0">
-        <Skeleton width="72%" height={15} radius={6} />
-        <Skeleton width="100%" height={8} radius={999} />
-        <Skeleton width="48%" height={11} radius={5} />
       </div>
     </div>
   );

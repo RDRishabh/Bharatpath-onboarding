@@ -1,5 +1,9 @@
 """Add college student search and roster pagination indexes.
 
+The indexes are created `IF NOT EXISTS`: the baseline builds `roster_imports`,
+`referral_codes` and `roster_entries` from the current models, which declare
+them, so a fresh database already has them when this revision runs.
+
 Revision ID: 0002_college_student_search
 Revises: 0001_baseline
 Create Date: 2026-09-26
@@ -60,23 +64,27 @@ def upgrade() -> None:
         "ix_roster_imports_tenant_created",
         "roster_imports",
         ["tenant_id", "created_at", "id"],
+        if_not_exists=True,
     )
     op.create_index(
         "ix_referral_codes_tenant_created",
         "referral_codes",
         ["tenant_id", "created_at", "id"],
+        if_not_exists=True,
     )
     op.create_index(
         "ix_roster_entries_tenant_sent_stage",
         "roster_entries",
         ["tenant_id", "sent_at", "id"],
         postgresql_where=sa.text("invite_state = 'SENT'"),
+        if_not_exists=True,
     )
     op.create_index(
         "ix_roster_entries_tenant_accepted_stage",
         "roster_entries",
         ["tenant_id", "responded_at", "id"],
         postgresql_where=sa.text("invite_state = 'ACCEPTED'"),
+        if_not_exists=True,
     )
 
     _drop_visible_students_functions()

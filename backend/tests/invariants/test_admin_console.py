@@ -163,6 +163,25 @@ ROUTE_CAPABILITY: dict[str, Any] = {
     "import_search_filter_options": "search_filters",
     "get_search_filter_option": "search_filters",
     "update_search_filter_option": "search_filters",
+    # 2026-09-29: the full candidate page. The CV and the recordings are
+    # larger reveals than the drill-down, each with its own capability; the
+    # onboarding page is the one with a whole contact.
+    "candidate_onboarding": "candidate_contact",
+    "candidate_resume": "candidate_resume",
+    "candidate_score_timeline": "candidate_drilldown",
+    "candidate_interviews": "candidate_drilldown",
+    "candidate_interview_recordings": "candidate_recordings",
+    "candidate_courses": "candidate_drilldown",
+    "candidate_applications": "candidate_drilldown",
+    # 2026-09-29: building the course, the admin's alone.
+    "list_courses": "courses",
+    "create_course_module": "courses",
+    "update_course_module": "courses",
+    "create_course_lesson": "courses",
+    "update_course_lesson": "courses",
+    "issue_lesson_upload": "courses",
+    "confirm_lesson_upload": "courses",
+    "publish_course": "courses",
 }
 
 

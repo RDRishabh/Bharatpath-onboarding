@@ -26,7 +26,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from app.core.deps import (
     CANDIDATE,
@@ -35,6 +35,7 @@ from app.core.deps import (
     EMPLOYER_VIEWER,
     CurrentUser,
     DbSession,
+    get_request_id,
     require_active_subscription,
     require_role,
 )
@@ -48,11 +49,14 @@ from app.modules.applications.schemas import (
     ApplicationResponse,
     ApplicationStage,
     ApplyRequest,
+    CandidateMessageResponse,
     EmployerApplicationDetail,
     EmployerApplicationListItem,
     EmployerDashboard,
+    EmployerMessageResponse,
     MoveStageRequest,
     ScheduleInterviewRequest,
+    SendMessageRequest,
 )
 
 router = APIRouter()
@@ -248,6 +252,51 @@ async def schedule_interview(
 
 
 @employer_router.post(
+    "/{application_id}/messages",
+    response_model=EmployerMessageResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Movers, PayingEmployer],
+    summary="Message the applicant: an interview or assessment invitation, or a note",
+)
+async def send_message(
+    application_id: uuid.UUID,
+    payload: SendMessageRequest,
+    request: Request,
+    user: CurrentUser,
+    session: DbSession,
+) -> EmployerMessageResponse:
+    """Sent to the candidate by email and in the app; the employer never sees
+    their address. 422 `message_invalid` with the reason as `code` (a time in
+    the past, a link that is not https, a missing time or link); 409
+    `message_not_allowed_at_stage` for a closed application; 429
+    `message_limit_reached` after ten to one application in a day."""
+    row = await service.send_message(
+        session,
+        ctx=user,
+        application_id=application_id,
+        kind=payload.kind,
+        body=payload.body,
+        scheduled_at=payload.scheduled_at,
+        link=payload.link,
+        request_id=get_request_id(request),
+    )
+    return EmployerMessageResponse.model_validate(row)
+
+
+@employer_router.get(
+    "/{application_id}/messages",
+    response_model=list[EmployerMessageResponse],
+    dependencies=[Readers, PayingEmployer],
+    summary="Messages sent to this applicant, oldest first",
+)
+async def list_messages(
+    application_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> list[EmployerMessageResponse]:
+    rows = await service.messages_for_employer(session, ctx=user, application_id=application_id)
+    return [EmployerMessageResponse.model_validate(r) for r in rows]
+
+
+@employer_router.post(
     "/{application_id}/hire",
     response_model=EmployerApplicationDetail,
     dependencies=[Movers, PayingEmployer],
@@ -299,3 +348,30 @@ async def recent_activity(
     limit: Annotated[int | None, Query(ge=1, le=MAX_PAGE_SIZE)] = None,
 ) -> Page[ActivityItem]:
     return await service.activity(session, ctx=user, actor=actor, cursor=cursor, limit=limit)
+
+
+@router.get(
+    "/{application_id}/messages",
+    response_model=list[CandidateMessageResponse],
+    dependencies=[CandidateOnly],
+    summary="Messages the employer sent about this application, oldest first",
+)
+async def my_messages(
+    application_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> list[CandidateMessageResponse]:
+    """Not paywalled, like the application itself."""
+    employer, rows = await service.messages_for_candidate(
+        session, ctx=user, application_id=application_id
+    )
+    return [
+        CandidateMessageResponse(
+            id=r.id,
+            kind=r.kind,
+            body=r.body,
+            scheduled_at=r.scheduled_at,
+            link=r.link,
+            employer_name=employer,
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]

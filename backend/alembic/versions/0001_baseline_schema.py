@@ -274,6 +274,8 @@ def _create_employer_tables() -> None:
         "jobs",
         "applications",
         "application_events",
+        # 2026-09-29, also created by 0005 on a database built before it.
+        "application_messages",
         "candidate_view_events",
     )
 
@@ -293,10 +295,15 @@ def _create_billing_tables() -> None:
         "courses",
         "course_purchases",
         "course_completions",
+        # 2026-09-29, also created by 0005 on a database built before it.
+        "course_modules",
+        "course_lessons",
+        "course_lesson_progress",
         "interview_products",
         "interview_checkout_notices",
         "interview_purchases",
         "interview_sessions",
+        "interview_session_questions",
         "interview_answers",
         "interview_transcripts",
         "interview_evaluations",
@@ -1176,13 +1183,13 @@ def _create_payment_guards() -> None:
 def _create_discount_guards() -> None:
     """A discount is spent only by the payment that carried it (2026-09-18).
 
-      * **`guard_discount_redemption`** -- a redemption needs this code's
-        SUCCEEDED, verified payment, by the same payer, for the same
-        subscriber and the same amounts. The shape of `guard_course_purchase`:
-        a row that says a code was used is written only by money that moved.
-      * **`guard_discount_code_write`** -- a code's terms never change after
-        it exists, and switching it off is a latch. The column grants already
-        stop the app role; this stops every writer, the migrator included.
+    * **`guard_discount_redemption`** -- a redemption needs this code's
+      SUCCEEDED, verified payment, by the same payer, for the same
+      subscriber and the same amounts. The shape of `guard_course_purchase`:
+      a row that says a code was used is written only by money that moved.
+    * **`guard_discount_code_write`** -- a code's terms never change after
+      it exists, and switching it off is a latch. The column grants already
+      stop the app role; this stops every writer, the migrator included.
     """
     op.execute(
         """

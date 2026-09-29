@@ -121,19 +121,26 @@ def refuse_meeting(*, meeting_url: str, interview_at: datetime, now: datetime) -
     credentials, no whitespace. A `javascript:` or `http:` link, or one that
     hides a host behind `user@`, is refused rather than passed on.
     """
-    if interview_at.tzinfo is None or now.tzinfo is None:
-        raise ValueError("interview_at and now must be timezone-aware")
-    if interview_at <= now:
-        return "interview_time_in_past"
-    if interview_at > now + MAX_SCHEDULE_AHEAD:
-        return "interview_time_too_far"
+    return _refuse_time(interview_at, now=now) or _refuse_link(meeting_url)
 
-    if len(meeting_url) > MAX_MEETING_URL_LENGTH or any(
-        ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in meeting_url
+
+def _refuse_time(moment: datetime, *, now: datetime) -> str | None:
+    if moment.tzinfo is None or now.tzinfo is None:
+        raise ValueError("interview_at and now must be timezone-aware")
+    if moment <= now:
+        return "interview_time_in_past"
+    if moment > now + MAX_SCHEDULE_AHEAD:
+        return "interview_time_too_far"
+    return None
+
+
+def _refuse_link(url: str) -> str | None:
+    if len(url) > MAX_MEETING_URL_LENGTH or any(
+        ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in url
     ):
         return "meeting_url_invalid"
     try:
-        parts = urlsplit(meeting_url)
+        parts = urlsplit(url)
         host = parts.hostname
     except ValueError:
         return "meeting_url_invalid"
@@ -354,3 +361,92 @@ def expiry_horizon(*, now: datetime, rules: ExpiryRules, within: timedelta) -> d
     already past the period counts too; the sweep has not reached it yet.
     """
     return now + within - rules.period
+
+
+# ---------------------------------------------------------------------------
+# One candidate's applications, summarised (2026-09-29)
+# ---------------------------------------------------------------------------
+#: The stages worth saying "reached" of: each means an employer took a step
+#: toward this candidate. VIEWED is not one -- opening an application is not
+#: a decision about it.
+MILESTONES: Final = ("SHORTLISTED", "INTERVIEW", "DECISION", "HIRED")
+
+
+@dataclass(frozen=True, slots=True)
+class StageSummary:
+    total: int
+    #: Where each application is now. Every stage, zeros included.
+    by_stage: dict[str, int]
+    #: How many applications were ever at each milestone, wherever they are
+    #: now: an application rejected after an interview still reached one.
+    reached: dict[str, int]
+    #: Not yet finished (`PIPELINE`).
+    open: int
+
+
+def stage_summary(*, current: list[str], reached: dict[str, int]) -> StageSummary:
+    """The analytics the console and a college (with consent) show beside a
+    candidate's application list. `current` is each application's stage;
+    `reached` counts applications with an event into each milestone."""
+    by_stage = dict.fromkeys(STAGES, 0)
+    for stage in current:
+        by_stage[stage] = by_stage.get(stage, 0) + 1
+    return StageSummary(
+        total=len(current),
+        by_stage=by_stage,
+        reached={m: max(reached.get(m, 0), by_stage.get(m, 0)) for m in MILESTONES},
+        open=sum(by_stage[s] for s in PIPELINE),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Messages from an employer to an applicant (2026-09-29)
+# ---------------------------------------------------------------------------
+# The client asked for a message box per candidate in the employer portal, to
+# invite them to an interview or an online assessment (OA), sent to the
+# candidate by email and in the app. Only to someone who applied: a message
+# rides on an application, which is a hiring process the candidate started,
+# and never on a search result.
+#
+# The employer never learns the candidate's email: the platform sends it.
+
+MESSAGE_KINDS: Final = ("INTERVIEW", "ASSESSMENT", "GENERAL")
+MessageKind = Literal["INTERVIEW", "ASSESSMENT", "GENERAL"]
+MAX_MESSAGE_CHARS: Final = 2000
+#: One application's candidate hears from one employer at most this often.
+#: Per application rather than per organisation, which has its own rate
+#: limit (`applications.message`): the harm here is one person flooded.
+MAX_MESSAGES_PER_APPLICATION_PER_DAY: Final = 10
+#: Messages go to applications still in the pipeline. A finished one --
+#: hired, rejected, withdrawn, expired -- has nothing left to arrange.
+MESSAGEABLE_STAGES: Final = PIPELINE
+
+
+def refuse_message(
+    *,
+    kind: str,
+    body: str,
+    scheduled_at: datetime | None,
+    link: str | None,
+    now: datetime,
+) -> str | None:
+    """The error code for a message that cannot be sent, or None.
+
+    An interview needs a time (the link is optional: it may be in person, with
+    the address in the message). An assessment needs its link (the time, a
+    deadline, is optional). A general message needs neither. A link is held
+    to what a meeting link is held to (`refuse_meeting`).
+    """
+    if kind not in MESSAGE_KINDS:
+        return "message_kind_invalid"
+    if not body.strip() or len(body) > MAX_MESSAGE_CHARS:
+        return "message_body_invalid"
+    if kind == "INTERVIEW" and scheduled_at is None:
+        return "message_time_required"
+    if kind == "ASSESSMENT" and link is None:
+        return "message_link_required"
+    if scheduled_at is not None and (refused := _refuse_time(scheduled_at, now=now)):
+        return refused.replace("interview_", "message_")
+    if link is not None and _refuse_link(link):
+        return "message_link_invalid"
+    return None

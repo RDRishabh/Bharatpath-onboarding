@@ -1,10 +1,10 @@
 """Day 18 through HTTP: cohort analytics and platform-sourced placements.
 
 A college sees counts over the students linked to it **right now**, floored
-at the cohort level. Once that floor is met, monthly hires are exact and empty
-months are zero. Hires are counted only when both sides confirmed them on the
-platform, and are labelled so. Whether a revoked consent leaves the figures at
-once is invariant 9's, in `tests/invariants/test_invariant_09_consent.py`.
+and suppressed so that no figure describes one of them. Hires are counted
+only when both sides confirmed them on the platform, and are labelled so.
+Whether a revoked consent leaves the figures at once is invariant 9's, in
+`tests/invariants/test_invariant_09_consent.py`.
 """
 
 from __future__ import annotations
@@ -80,9 +80,7 @@ async def _cohort(client: Any, mint_token: Any) -> dict[str, Any]:
     return {**college, "students": students}
 
 
-async def test_below_the_floor_overview_uses_zero_instead_of_null(
-    client: Any, mint_token: Any
-) -> None:
+async def test_below_the_floor_a_college_sees_counts_only(client: Any, mint_token: Any) -> None:
     college = await _college(client, mint_token)
     code = await _code(client, college)
     for score in (720, 900, 830):
@@ -95,18 +93,13 @@ async def test_below_the_floor_overview_uses_zero_instead_of_null(
         "individually_visible": 0,
         "min_cohort_size": 10,
         "below_floor": True,
-        "scored_students": 0,
-        "score_distribution": {
-            "ENTRY": 0,
-            "DEVELOPING": 0,
-            "SOLID": 0,
-            "STRONG": 0,
-        },
-        "median_score": 0,
-        "applicants": 0,
-        "applications": 0,
-        "interviews": 0,
-        "platform_hires": 0,
+        "scored_students": None,
+        "score_distribution": None,
+        "median_score": None,
+        "applicants": None,
+        "applications": None,
+        "interviews": None,
+        "platform_hires": None,
     }
     placements = (await client.get(PLACEMENTS, headers=college["headers"])).json()
     assert placements["source"] == "PLATFORM" and placements["below_floor"] is True
@@ -127,8 +120,8 @@ async def test_over_the_floor_the_cohort_is_described_without_describing_anyone(
     assert overview["score_distribution"] == {
         "ENTRY": 6,
         "DEVELOPING": 0,
-        "SOLID": 0,
-        "STRONG": 0,
+        "SOLID": None,
+        "STRONG": None,
     }
     assert overview["median_score"] == 780
     assert (overview["applicants"], overview["applications"]) == (4, 4)
@@ -137,10 +130,8 @@ async def test_over_the_floor_the_cohort_is_described_without_describing_anyone(
 
     placements = (await client.get(PLACEMENTS, headers=college["headers"])).json()
     assert placements["source"] == "PLATFORM" and placements["total_hires"] == 1
-    monthly_hires = [month["hires"] for month in placements["by_month"]]
-    assert monthly_hires.count(1) == 1
-    assert monthly_hires.count(0) == 11
-    assert None not in monthly_hires
+    # One hire this month is too few to show, and hides beside a zero month.
+    assert [m["hires"] for m in placements["by_month"]].count(None) == 2
     assert placements["by_location"] == [{"location": "OTHER", "hires": 1}]
 
 

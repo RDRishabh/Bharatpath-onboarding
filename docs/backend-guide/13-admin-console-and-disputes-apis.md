@@ -386,6 +386,55 @@ number the candidate's own `GET /candidate/score/me` returns, never the
 internal value — and `resume` counts files and versions but includes no
 content. A CV is never read from this screen, only counted.
 
+### The full candidate page — `GET /admin/candidates/{user_id}/…` (2026-09-29)
+
+The client asked for one page per student with everything on it. It is
+**seven endpoints, not one**, so that each larger reveal is its own
+permission and its own audit row — a member of staff checking where an
+application stands has not thereby read a CV or listened to anyone.
+
+| Endpoint | Capability (roles) | What it returns |
+|---|---|---|
+| `…/onboarding` | `candidate_contact` (admin, support) | Everything given at sign-up and on the profile, **phone and email unmasked**, questionnaire answers in words, college links |
+| `…/resume` | `candidate_resume` (+ integrity reviewer) | The newest CV version and the newest confirmed one (what the score was built from): text or form fields, and the uploaded file by presigned GET |
+| `…/score-timeline` | `candidate_drilldown` | Every score, oldest first |
+| `…/interviews` | `candidate_drilldown` | Every mock-interview session |
+| `…/interviews/{session_id}/recordings` | `candidate_recordings` (admin, support) | One presigned GET per answer, with the question and transcript |
+| `…/courses` | `candidate_drilldown` | Purchase, lessons watched, percent, completion |
+| `…/applications` | `candidate_drilldown` | Every application with job, employer and stage, plus analytics |
+
+The score timeline shows **what the candidate saw**, never the stored number:
+```json
+{ "points": [
+  { "computed_at": "...", "display_value": 760, "band": "DEVELOPING", "change": null, "cause": "FIRST_SCORE" },
+  { "computed_at": "...", "display_value": 780, "band": "DEVELOPING", "change": 20, "cause": "RESUME_CHANGED" },
+  { "computed_at": "...", "display_value": 800, "band": "SOLID", "change": 20, "cause": "ADD_ON" }
+] }
+```
+`cause` is `FIRST_SCORE`, `RESUME_CHANGED` (a new confirmed CV), `ADD_ON` (an
+interview or the course) or `RECOMPUTED`. The candidate is not shown this
+history (the client declined it); staff are, so "why did my score drop?" has
+an answer.
+
+The applications part carries the same analytics a college sees per student:
+```json
+{ "items": [ { "id": "...", "job_title": "Warehouse Supervisor", "employer_name": "Acme Pvt Ltd",
+               "stage": "INTERVIEW", "applied_at": "...", "interview_at": "..." } ],
+  "analytics": { "total": 3, "open": 1,
+                 "by_stage": { "SUBMITTED": 0, "INTERVIEW": 1, "REJECTED": 2, "...": 0 },
+                 "reached": { "SHORTLISTED": 3, "INTERVIEW": 2, "DECISION": 0, "HIRED": 0 } } }
+```
+`reached` counts applications that were ever at each milestone, wherever
+they are now.
+
+### Building the course — `/admin/courses`, `/admin/course-modules/*`, `/admin/course-lessons/*`
+
+Capability `courses`, PLATFORM_ADMIN only: a lesson counts toward a score
+once watched, so what the course contains, and when it goes on sale, is the
+admin's alone. The walk-through (modules → YouTube or uploaded lessons →
+publish) is in [08](08-billing-subscriptions-courses-apis.md) §7. Every change
+writes a `course_content_changed` audit row.
+
 ### `GET /admin/employers/{tenant_id}` — `employer_drilldown` capability
 
 **Response** — `200 OK` (`EmployerDrilldown`): organisation identity, KYB
@@ -734,7 +783,8 @@ into the thousands the way the console's own queue might.
 |---|---|
 | Can a Support Agent suspend a tenant or allocate seats? | No — both are `PLATFORM_ADMIN`-only capabilities. |
 | Does resolving a dispute automatically undo the thing it's about? | Never — it records an answer for the raiser; any actual fix happens through that module's own service, separately. |
-| Can staff read a candidate's raw stored score or their CV from a drill-down? | No — `display_value`/`band` only, and resume content is counted, never read. |
+| Can staff read a candidate's raw stored score? | Never — `display_value`/`band` only, the timeline included. |
+| Can staff read a CV or hear an interview? | Yes since 2026-09-29, through their own endpoints and capabilities (`candidate_resume`, `candidate_recordings`), each audited. The drill-down itself still only counts. |
 | Why does `GET /admin/tenants?type=CANDIDATE` fail? | A candidate isn't a tenant. Use `GET /admin/candidates` (search by `q` name or exact `email`), then open one with `GET /admin/candidates/{user_id}`. |
 | Is any of this paywalled? | No — the console is internal, and disputing a payment must never itself require one. |
 | Where did HIRE disputes go before this doc existed? | Into the exact same table this doc covers — `POST .../hire/dispute` has always fed this queue; it was simply unread until Day 19. |
