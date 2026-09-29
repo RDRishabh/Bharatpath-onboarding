@@ -8,6 +8,7 @@ import { APPLICATION_STAGES } from "../drawer-data";
 import { StageProgress, StageMoveControls } from "./drawer-stage-controls";
 import { InterviewField } from "./drawer-interview-field";
 import { HirePanel } from "./drawer-hire-panel";
+import { ApplicationMessages } from "./application-messages";
 
 interface ApplicationDrawerProps {
   application: EmployerApplication | null;
@@ -123,6 +124,7 @@ export function ApplicationDrawer({
                 onConfirmHire={onConfirmHire}
               />
             )}
+            {!application.outcome && <ApplicationMessages applicationId={application.id} />}
           </div>
         </div>
       </aside>

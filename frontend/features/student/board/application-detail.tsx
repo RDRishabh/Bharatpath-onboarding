@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { useGetApplicationMessagesQuery } from "@/store/student/learning.api";
 import { Check, ExternalLink, Undo2 } from "lucide-react";
 
 import {
@@ -31,6 +32,7 @@ import { StudentPage, StudentTopBar } from "@/features/student/shell";
 export function ApplicationDetail() {
   const params = useParams<{ id: string }>();
   const application = useGetStudentApplicationQuery(params.id);
+  const messages = useGetApplicationMessagesQuery(params.id);
   const [withdraw, withdrawState] = useWithdrawStudentApplicationMutation();
   const [confirmHire, confirmState] = useConfirmStudentHireMutation();
   const [disputeHire, disputeState] = useDisputeStudentHireMutation();
@@ -141,6 +143,7 @@ export function ApplicationDetail() {
         </div>
 
         <div className="flex flex-col gap-3">
+          {messages.data && messages.data.length > 0 ? <StudentCard><span className="text-[15px] font-semibold text-[#0A1931]">Employer messages</span><div className="mt-3 space-y-3">{messages.data.map((message) => <div key={message.id} className="border-t pt-3 text-sm"><p className="font-semibold">{message.kind} · {formatDateTime(message.created_at)}</p><p>{message.body}</p>{message.scheduled_at && <p>Scheduled: {formatDateTime(message.scheduled_at)}</p>}{message.link && <a href={message.link} target="_blank" rel="noreferrer" className="text-[#5F4DB2] underline">Open invitation link</a>}</div>)}</div></StudentCard> : null}
           {item.interview ? (
             <StudentCard>
               <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#4A3E8F]">

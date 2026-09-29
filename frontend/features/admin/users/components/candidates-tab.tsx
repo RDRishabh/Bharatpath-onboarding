@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { DataTable } from "@/components/ui/table";
 import type { ColumnDef } from "@/components/ui/table";
 
@@ -79,13 +81,12 @@ export function CandidatesTab({
       headerClassName: "min-w-[100px]",
       cellClassName: "min-w-[100px]",
       cell: (user) => (
-        <button
-          type="button"
-          onClick={() => onOpen(user.id)}
+        <Link
+          href={`/admin/users/${user.id}`}
           className="cursor-pointer rounded-lg border border-[#e2e5eb] bg-white px-3 py-2 text-[11px] font-semibold text-[#172033] transition-colors hover:bg-[#f8f9fb]"
         >
           View
-        </button>
+        </Link>
       ),
     },
   ];

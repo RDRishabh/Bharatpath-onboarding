@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
+import Link from "next/link";
 import {
   X,
   Briefcase,
@@ -186,6 +187,7 @@ export function StudentDetailDrawer({
               </div>
 
               {/* HIRES */}
+              <Link href={`/college/students/${candidateId}`} className="inline-block rounded-lg bg-[#315c9f] px-4 py-2 text-sm font-semibold text-white">Open full student page</Link>
               <div>
                 <p className="text-[13px] font-bold text-[#151b2b] mb-2">
                   Hires on BharatPath
