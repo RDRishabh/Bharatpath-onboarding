@@ -9,6 +9,30 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-29 — student home and detail views expose the daily streak
+
+The student home now includes the supplied-design-inspired daily streak card,
+showing the live current streak, personal best, engagement-points balance and
+next milestone. The card opens `/student/streak` in a new tab. That responsive
+detail page adds the server-date-based week view, milestone progress and
+ladder, and the append-only points activity returned by the backend. Empty,
+loading, error and rules-with-no-milestones states are explicit; engagement
+points remain visually and semantically separate from the resume score.
+Update (same day): the card now navigates in the same tab, and the detail
+page re-fetches the summary and points history from the backend every time it
+opens rather than reusing a cached copy.
+
+The frontend API layer now maps all three existing candidate streak endpoints.
+The shell's idempotent check-in invalidates the summary and points caches, so
+the card and detail page refresh from backend truth without adding a second
+check-in path.
+
+Targeted ESLint, TypeScript and the Next.js production build pass. Browser
+validation with mocked API-contract responses confirmed the home card and
+detail page at 1440x900 and 390x844 and no horizontal overflow.
+
+---
+
 ## 2026-09-28 — product logo replaces panel monograms
 
 The supplied BharatPath logo now replaces the square `B` / `BP` monograms in

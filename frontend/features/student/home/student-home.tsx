@@ -21,6 +21,7 @@ import {
 } from "@/features/student/components";
 import { StudentJobGridSkeleton } from "@/features/student/loading";
 import { StudentPage } from "@/features/student/shell";
+import { StudentStreakCard } from "@/features/student/streak";
 
 export function StudentHome() {
   const router = useRouter();
@@ -135,6 +136,8 @@ export function StudentHome() {
             </div>
           </div>
         </div>
+
+        <StudentStreakCard />
 
         <div className="flex flex-col gap-3">
           <SectionEyebrow

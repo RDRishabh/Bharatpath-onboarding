@@ -45,7 +45,7 @@ export interface StreakPointsChange {
   streakLength: number;
   milestoneDays: number | null;
   activityOn: string;
-  createdAt: string;
+  createdAt: string | null;
 }
 
 export interface StudentStreakCheckIn {
