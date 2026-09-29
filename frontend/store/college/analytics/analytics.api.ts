@@ -13,10 +13,10 @@ import type {
 ========================================================= */
 
 interface ScoreDistributionResponse {
-  ENTRY: number;
-  DEVELOPING: number;
-  SOLID: number;
-  STRONG: number;
+  ENTRY: number | null;
+  DEVELOPING: number | null;
+  SOLID: number | null;
+  STRONG: number | null;
 }
 
 interface CohortOverviewResponse {
@@ -24,13 +24,13 @@ interface CohortOverviewResponse {
   individually_visible: number;
   min_cohort_size: number;
   below_floor: boolean;
-  scored_students: number;
-  score_distribution: ScoreDistributionResponse;
-  median_score: number;
-  applicants: number;
-  applications: number;
-  interviews: number;
-  platform_hires: number;
+  scored_students: number | null;
+  score_distribution: ScoreDistributionResponse | null;
+  median_score: number | null;
+  applicants: number | null;
+  applications: number | null;
+  interviews: number | null;
+  platform_hires: number | null;
 }
 
 function mapScoreDistribution(
@@ -53,9 +53,9 @@ function mapCohortOverview(
     minCohortSize: overview.min_cohort_size,
     belowFloor: overview.below_floor,
     scoredStudents: overview.scored_students,
-    scoreDistribution: mapScoreDistribution(
-      overview.score_distribution,
-    ),
+    scoreDistribution: overview.score_distribution
+      ? mapScoreDistribution(overview.score_distribution)
+      : null,
     medianScore: overview.median_score,
     applicants: overview.applicants,
     applications: overview.applications,

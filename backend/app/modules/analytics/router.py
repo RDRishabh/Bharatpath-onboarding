@@ -52,7 +52,7 @@ CollegeReaders = [
 async def get_overview(user: CurrentUser, session: DbSession) -> CohortOverviewResponse:
     """Aggregates only, over students who are linked right now. No student is
     named or singled out: under `min_cohort_size` only counts are shown, and a
-    withheld or unavailable value is represented as zero."""
+    band too small to show safely is `null`."""
     view = await service.overview(session, ctx=user)
     return CohortOverviewResponse(
         connected_students=view.connected_students,
@@ -60,7 +60,11 @@ async def get_overview(user: CurrentUser, session: DbSession) -> CohortOverviewR
         min_cohort_size=view.min_cohort_size,
         below_floor=view.below_floor,
         scored_students=view.scored_students,
-        score_distribution=ScoreDistribution(**view.score_distribution),
+        score_distribution=(
+            ScoreDistribution(**view.score_distribution)
+            if view.score_distribution is not None
+            else None
+        ),
         median_score=view.median_score,
         applicants=view.applicants,
         applications=view.applications,

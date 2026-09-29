@@ -15,7 +15,8 @@ export interface AnalyticsMetric {
 
 export interface MonthPlacement {
   month: string;
-  hires: number;
+  /** `null` when the month is withheld: too few hires to show safely. */
+  hires: number | null;
 }
 
 export interface LocationPlacement {

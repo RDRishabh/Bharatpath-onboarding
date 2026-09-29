@@ -14,12 +14,10 @@ Three rules do that, in order:
 
   1. **A cohort floor.** Below `min_cohort_size` connected students, nothing
      is shown but the count. A median of three people is one of them.
-  2. **Small score-band cells are suppressed, with a complement.** A band
+  2. **Small cells are suppressed, with a complement.** A band or a month
      holding fewer than `min_cell_size` students is withheld; and if exactly
      one cell was withheld, the next smallest is withheld too, because a total
      minus every other cell is the withheld one. Zero is shown: it names nobody.
-     Once the cohort floor is met, the monthly placement trend is exact,
-     including zero for an empty month.
   3. **Coarse values.** The median is rounded to `median_step`; a job location
      is named only when enough hires share it, and the rest are pooled.
 
@@ -162,18 +160,15 @@ class CohortOverview:
     min_cohort_size: int
     #: True when the cohort is under the floor and only the counts above show.
     below_floor: bool
-    scored_students: int
-    #: Band -> students, in band order. A withheld or unavailable value is 0.
-    score_distribution: dict[str, int]
-    median_score: int
-    applicants: int
-    applications: int
-    interviews: int
-    platform_hires: int
-
-
-def _zero_score_distribution() -> dict[str, int]:
-    return dict.fromkeys((label for label, _, _ in BANDS), 0)
+    scored_students: int | None
+    #: Band -> students, in band order. A withheld band is None. The whole
+    #: distribution is None when fewer than `min_cohort_size` are scored.
+    score_distribution: dict[str, int | None] | None
+    median_score: int | None
+    applicants: int | None
+    applications: int | None
+    interviews: int | None
+    platform_hires: int | None
 
 
 def build_overview(
@@ -188,22 +183,21 @@ def build_overview(
             individually_visible=visible,
             min_cohort_size=floors.min_cohort_size,
             below_floor=True,
-            scored_students=0,
-            score_distribution=_zero_score_distribution(),
-            median_score=0,
-            applicants=0,
-            applications=0,
-            interviews=0,
-            platform_hires=0,
+            scored_students=None,
+            score_distribution=None,
+            median_score=None,
+            applicants=None,
+            applications=None,
+            interviews=None,
+            platform_hires=None,
         )
-    distribution = _zero_score_distribution()
-    median = 0
+    distribution: dict[str, int | None] | None = None
+    median: int | None = None
     if len(scores) >= floors.min_cohort_size:
         by_band = dict.fromkeys((label for label, _, _ in BANDS), 0)
         for value in scores:
             by_band[band_for(value)] += 1
-        suppressed = suppress_cells(by_band, min_cell_size=floors.min_cell_size)
-        distribution = {label: 0 if count is None else count for label, count in suppressed.items()}
+        distribution = suppress_cells(by_band, min_cell_size=floors.min_cell_size)
         median = rounded_median(scores, step=floors.median_step)
     return CohortOverview(
         connected_students=connected,
@@ -245,8 +239,7 @@ class PlacementReport:
     below_floor: bool
     total_hires: int | None
     #: `(YYYY-MM, hires)`, oldest first, the last `TREND_MONTHS` in IST with
-    #: the current month last. Months are exact once the cohort floor is met;
-    #: every empty month is zero. All months are None below the cohort floor.
+    #: the current month last. A withheld month is None.
     by_month: list[tuple[str, int | None]]
     #: `(location, hires)`, largest first, then `OTHER` if anything was pooled.
     by_location: list[tuple[str, int]]
@@ -311,12 +304,13 @@ def build_placements(
     )
     pooled = len(hires) - sum(n for _, n in named)
     by_location = [*named, (OTHER_LOCATIONS, pooled)] if pooled else named
+    trend = suppress_cells(per_month, min_cell_size=floors.min_cell_size)
     return PlacementReport(
         source=PLATFORM_SOURCED,
         min_cohort_size=floors.min_cohort_size,
         below_floor=False,
         total_hires=len(hires),
-        by_month=list(per_month.items()),
+        by_month=list(trend.items()),
         by_location=by_location,
     )
 
