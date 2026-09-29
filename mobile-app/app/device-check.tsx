@@ -1,6 +1,6 @@
 /**
  * BharatPath — Device Check Route
- * Hardware pre-flight diagnostics (camera, mic, network, lighting, storage).
+ * Audio pre-flight diagnostics before a subscription-included interview.
  */
 import { useRouter } from 'expo-router';
 import { DeviceCheckScreen } from '@/screens/interview/DeviceCheckScreen';
@@ -16,9 +16,6 @@ export default function DeviceCheckRoute() {
         } else {
           router.replace('/mock-interview' as any);
         }
-      }}
-      onPaymentComplete={() => {
-        router.push('/payment-confirmation' as any);
       }}
     />
   );

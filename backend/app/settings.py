@@ -83,6 +83,19 @@ class Settings(BaseSettings):
     aws_region: str = "ap-south-1"
     aws_endpoint_url: str | None = None  # LocalStack in dev; None in real AWS
 
+    # The endpoint a *client* (phone, emulator, browser on another machine)
+    # must use to reach the same object store. Presigned URLs are signed for
+    # the host in `aws_endpoint_url`, which in local dev is `localhost:4566`
+    # — a host that resolves to the device itself on a phone or emulator, not
+    # the Mac running LocalStack. S3v4 signatures bind the `Host` header, so a
+    # client-side host rewrite breaks the signature and LocalStack rejects it.
+    #
+    # When set, `presign_put`/`presign_get` sign against this host instead,
+    # while every server-side S3 call (head/get/put/delete) keeps using
+    # `aws_endpoint_url` (localhost). Leave unset in prod, where the real
+    # regional endpoint is reachable from every client.
+    aws_endpoint_url_external: str | None = None
+
     s3_bucket_resumes: str = "bharatpath-resumes"
     s3_bucket_kyb_documents: str = "bharatpath-kyb-documents"
     s3_bucket_interview_audio: str = "bharatpath-interview-audio"

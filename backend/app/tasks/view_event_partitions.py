@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -23,9 +24,7 @@ logger = get_logger(__name__)
 
 @celery_app.task(name="discovery.ensure_view_partitions", bind=True, max_retries=3)
 def ensure_view_partitions(self: Any) -> dict[str, int]:
-    import asyncio
-
-    return asyncio.run(run(now=datetime.now(UTC)))
+    return run_async(run(now=datetime.now(UTC)))
 
 
 async def run(*, now: datetime) -> dict[str, int]:

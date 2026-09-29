@@ -1,21 +1,17 @@
 /**
- * BharatPath — Short of the Bar Job Detail Route
- * Matches Screen 36 in Handoff & Screenshot 4.
+ * BharatPath — Job Short Route (redirect)
+ *
+ * The old "short of the bar" screen is merged into `JobDetailScreen` (S18).
+ * This route redirects to `/job-detail?id=<id>` for any stale links.
  */
 import React from 'react';
-import { useRouter } from 'expo-router';
-import { JobDetailShortScreen } from '@/screens/jobs/JobDetailShortScreen';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 
 export default function JobShortRoute() {
-  const router = useRouter();
-
+  const params = useLocalSearchParams<{ id?: string }>();
   return (
-    <JobDetailShortScreen
-      onBack={() => router.back()}
-      onWorkOnScore={() => router.push('/attribute-check' as any)}
-      onNotifyMe={() => {
-        // Keeps user on page with alert feedback
-      }}
+    <Redirect
+      href={{ pathname: '/job-detail', params: { id: params.id ?? '' } }}
     />
   );
 }

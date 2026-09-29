@@ -1,14 +1,19 @@
 /**
  * BharatPath — Jobs Hub Route
- * Fully implemented Jobs Feed matching Screen 33 in Handoff & Screenshot 1.
+ *
+ * The Jobs feed. Wires `JobsFeedScreen` to the router and passes the candidate's
+ * declared city (from the auth profile) into the header. Tapping a card pushes
+ * `/job-detail?id=<jobId>`.
  */
 import React, { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { JobsFeedScreen } from '@/screens/jobs/JobsFeedScreen';
 import { TabName } from '@/components/navigation/BottomTabBar';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function JobsRoute() {
   const router = useRouter();
+  const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<TabName>('jobs');
 
   const handleTabPress = (tab: TabName, href: string) => {
@@ -19,13 +24,8 @@ export default function JobsRoute() {
   };
 
   const handleJobPress = (jobId: string) => {
-    if (jobId === 'nivara-foods') {
-      // Short of the bar flow
-      router.push('/job-short' as any);
-    } else {
-      // Clear the bar / qualified flow
-      router.push('/job-detail' as any);
-    }
+    // One detail screen now handles all eligibility states (S18).
+    router.push({ pathname: '/job-detail', params: { id: jobId } } as any);
   };
 
   return (
@@ -33,7 +33,7 @@ export default function JobsRoute() {
       activeTab={activeTab}
       onTabPress={handleTabPress}
       onJobPress={handleJobPress}
-      onScoreBannerPress={() => router.push('/' as any)}
+      candidateCity={profile?.city ?? null}
     />
   );
 }

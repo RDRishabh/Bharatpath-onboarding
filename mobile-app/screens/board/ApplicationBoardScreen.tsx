@@ -1,16 +1,25 @@
 /**
- * BharatPath — ApplicationBoardScreen ("Board" Screen)
- * Exactly matches Screen 38 from BharatPath Handoff and Screenshot 2.
- * Features:
- * - Title "Your applications"
- * - Filter tabs: Active · 4 & Closed · 2
- * - Application Cards:
- *   1. Aurum Labs (Quality Trainee, Stage 4/5, Interview scheduled, Tomorrow video call with Join button)
- *   2. Sterling Diagnostics (Lab Analyst Trainee, Stage 1/5, Waiting on employer, profile opened timeline)
- *   3. Kanhaiya Logistics (Data Entry Executive, Stage 2/5, Viewed then quiet, 38-day expiry warning)
- * - Sticky bottom tab bar with "Board" tab active
+ * BharatPath — ApplicationBoardScreen ("Board" tab)
+ *
+ * The candidate's own applications, wired to `GET /candidate/applications`.
+ * Reading the board is NOT paywalled (R13 — a lapsed subscriber loses access,
+ * not their data).
+ *
+ * The API has no stage filter and `total` is always `null`, so this screen
+ * loads ALL applications via `useApplications()` and partitions them into
+ * Active / Closed client-side using the stage sets. Filter-pill counts come
+ * from the loaded items, not a server total.
+ *
+ * Card priority (active tab):
+ *   1. PENDING hire → highlighted "Confirm hire?" banner card → detail
+ *   2. INTERVIEW stage with interview present → interview card + Join
+ *   3. Normal stage card with "Stage N of 5" bar
+ * Closed tab: final chip + reason line, no bar, no special cards.
+ *
+ * No location or salary is shown — the job fetch is paywalled and 404s for
+ * closed jobs, so it is not safely fetchable from the board.
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -18,32 +27,95 @@ import {
   ScrollView,
   Pressable,
   Platform,
+  RefreshControl,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
   VideoCamera,
   Eye,
-  HourglassLow,
   Archive,
+  CheckCircle,
+  Sparkle,
+  Tray,
 } from 'phosphor-react-native';
 import { Colors, Spacing } from '@/theme/tokens';
 import { BottomTabBar, TabName } from '@/components/navigation/BottomTabBar';
+import { useApplications } from '@/hooks/useApplications';
+import {
+  ApplicationResponse,
+  isActiveStage,
+  isClosedStage,
+  pipelineStep,
+  PIPELINE_LENGTH,
+  stageLabel,
+  stageStatusText,
+  stageChipStyle,
+} from '@/types/application';
+import { getInitials, pickFromString, formatPostedAgo } from '@/utils/helpers';
+
+// Monogram background palette (deterministic per employer name).
+const MONOGRAM_BG = ['#F1EAF7', '#F7EFD6', '#E6F1EA', '#F4EFE4'] as const;
+const MONOGRAM_FG = ['#4A3E8F', '#7A5C0E', '#1F6B45', '#5F6B80'] as const;
 
 export interface ApplicationBoardScreenProps {
   activeTab?: TabName;
   onTabPress?: (tab: TabName, href: string) => void;
   onApplicationPress?: (appId: string) => void;
-  onJoinCallPress?: (appId: string) => void;
 }
+
+// Strings extracted to consts to satisfy `react/no-unescaped-entities`.
+const TITLE = 'Your applications';
+const ACTIVE_LABEL = 'Active';
+const CLOSED_LABEL = 'Closed';
+const LOADING = 'Loading your applications…';
+const LOAD_FAILED = 'Could not load your applications. Pull to retry.';
+const EMPTY_ACTIVE_TITLE = 'No active applications';
+const EMPTY_ACTIVE_BODY =
+  'Applications you send will appear here with their stage.';
+const EMPTY_CLOSED_TITLE = 'No closed applications';
+const EMPTY_CLOSED_BODY =
+  'Applications that are hired, not selected, withdrawn or closed will appear here.';
+const FIND_JOBS = 'Find jobs';
+const CONFIRM_HIRE_PROMPT = 'Confirm hire?';
+const CONFIRM_HIRE_BODY =
+  'This employer proposed you for the role. Open to review and confirm.';
+const REVIEW_ACTION = 'Review';
+const JOIN_LABEL = 'Join';
+const STAGE_OF = 'STAGE';
+const OF = 'OF';
+const APPLIED_PREFIX = 'applied ';
 
 export function ApplicationBoardScreen({
   activeTab = 'board',
   onTabPress,
   onApplicationPress,
-  onJoinCallPress,
 }: ApplicationBoardScreenProps) {
   const [filter, setFilter] = useState<'active' | 'closed'>('active');
+  const {
+    applications,
+    loading,
+    loadingMore,
+    hasReachedEnd,
+    error,
+    loadMore,
+    reload,
+  } = useApplications();
+
+  // Partition client-side — the API has no stage filter.
+  const { active, closed } = useMemo(() => {
+    const activeList: ApplicationResponse[] = [];
+    const closedList: ApplicationResponse[] = [];
+    for (const app of applications) {
+      if (isActiveStage(app.stage)) activeList.push(app);
+      else if (isClosedStage(app.stage)) closedList.push(app);
+    }
+    return { active: activeList, closed: closedList };
+  }, [applications]);
+
+  const list = filter === 'active' ? active : closed;
 
   return (
     <View style={styles.root}>
@@ -52,12 +124,29 @@ export function ApplicationBoardScreen({
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading && applications.length > 0}
+              onRefresh={reload}
+              tintColor="#5F4DB2"
+            />
+          }
+          onScroll={({ nativeEvent }) => {
+            const { layoutMeasurement, contentOffset, contentSize } =
+              nativeEvent;
+            const nearEnd =
+              layoutMeasurement.height + contentOffset.y >=
+              contentSize.height - 200;
+            if (nearEnd && !hasReachedEnd && !loadingMore && !loading) {
+              loadMore();
+            }
+          }}
+          scrollEventThrottle={16}
         >
           {/* Header Title and Filter Pills */}
           <View style={styles.headerSection}>
-            <Text style={styles.mainTitle}>Your applications</Text>
+            <Text style={styles.mainTitle}>{TITLE}</Text>
             <View style={styles.filterRow}>
-              {/* Active Pill */}
               <Pressable
                 style={[
                   styles.filterPill,
@@ -76,11 +165,10 @@ export function ApplicationBoardScreen({
                       : styles.filterPillTextInactive,
                   ]}
                 >
-                  Active · 4
+                  {ACTIVE_LABEL} · {active.length}
                 </Text>
               </Pressable>
 
-              {/* Closed Pill */}
               <Pressable
                 style={[
                   styles.filterPill,
@@ -99,223 +187,47 @@ export function ApplicationBoardScreen({
                       : styles.filterPillTextInactive,
                   ]}
                 >
-                  Closed · 2
+                  {CLOSED_LABEL} · {closed.length}
                 </Text>
               </Pressable>
             </View>
           </View>
 
-          {/* List of Applications */}
-          {filter === 'active' ? (
-            <View style={styles.listContainer}>
-              {/* Card 1: Aurum Labs (Quality Trainee) */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.appCard,
-                  pressed && styles.cardPressed,
-                ]}
-                onPress={() => onApplicationPress?.('aurum-labs')}
-                accessibilityRole="button"
-              >
-                {/* Header info */}
-                <View style={styles.cardHeader}>
-                  <View style={styles.badgePurple}>
-                    <Text style={styles.badgePurpleText}>AT</Text>
-                  </View>
-                  <View style={styles.roleInfo}>
-                    <Text style={styles.roleTitle}>Quality Trainee</Text>
-                    <Text style={styles.roleSub}>
-                      Aurum Labs · applied 12 Jul
-                    </Text>
-                  </View>
-                  <View style={styles.tagInterview}>
-                    <Text style={styles.tagInterviewText}>INTERVIEW</Text>
-                  </View>
-                </View>
-
-                {/* Progress Bar (5 segments, 4 active) */}
-                <View style={styles.progressSection}>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressSegment, styles.segmentFilled]} />
-                    <View style={[styles.progressSegment, styles.segmentFilled]} />
-                    <View style={[styles.progressSegment, styles.segmentFilled]} />
-                    <View style={[styles.progressSegment, styles.segmentFilled]} />
-                    <View style={[styles.progressSegment, styles.segmentEmpty]} />
-                  </View>
-                  <View style={styles.stageLabelRow}>
-                    <Text style={styles.stageNumberText}>STAGE 4 OF 5</Text>
-                    <Text style={styles.stageStatusText}>
-                      Interview scheduled
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Action Banner inside card */}
-                <View style={styles.interviewActionBanner}>
-                  <VideoCamera size={17} color="#4A3E8F" weight="duotone" />
-                  <Text style={styles.interviewActionText}>
-                    Tomorrow, 11:00 am · video call
-                  </Text>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.joinButton,
-                      pressed && styles.buttonPressed,
-                    ]}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      onJoinCallPress?.('aurum-labs');
-                    }}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.joinButtonText}>Join</Text>
-                  </Pressable>
-                </View>
-              </Pressable>
-
-              {/* Card 2: Sterling Diagnostics (Lab Analyst Trainee) */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.appCard,
-                  pressed && styles.cardPressed,
-                ]}
-                onPress={() => onApplicationPress?.('sterling-diagnostics')}
-                accessibilityRole="button"
-              >
-                {/* Header info */}
-                <View style={styles.cardHeader}>
-                  <View style={styles.badgePurple}>
-                    <Text style={styles.badgePurpleText}>SD</Text>
-                  </View>
-                  <View style={styles.roleInfo}>
-                    <Text style={styles.roleTitle}>Lab Analyst Trainee</Text>
-                    <Text style={styles.roleSub}>
-                      Sterling Diagnostics · applied today
-                    </Text>
-                  </View>
-                  <View style={styles.tagSent}>
-                    <Text style={styles.tagSentText}>SENT</Text>
-                  </View>
-                </View>
-
-                {/* Progress Bar (5 segments, 1 active) */}
-                <View style={styles.progressSection}>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressSegment, styles.segmentFilled]} />
-                    <View style={[styles.progressSegment, styles.segmentEmpty]} />
-                    <View style={[styles.progressSegment, styles.segmentEmpty]} />
-                    <View style={[styles.progressSegment, styles.segmentEmpty]} />
-                    <View style={[styles.progressSegment, styles.segmentEmpty]} />
-                  </View>
-                  <View style={styles.stageLabelRow}>
-                    <Text style={styles.stageNumberText}>STAGE 1 OF 5</Text>
-                    <Text style={styles.stageStatusText}>
-                      Waiting on employer
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Footer status text */}
-                <View style={styles.cardFooterNotice}>
-                  <Eye size={14} color="#5F6B80" weight="bold" />
-                  <Text style={styles.cardFooterNoticeText}>
-                    Employers usually open profiles within 4 days
-                  </Text>
-                </View>
-              </Pressable>
-
-              {/* Card 3: Kanhaiya Logistics (Data Entry Executive) */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.appCard,
-                  pressed && styles.cardPressed,
-                ]}
-                onPress={() => onApplicationPress?.('kanhaiya-logistics')}
-                accessibilityRole="button"
-              >
-                {/* Header info */}
-                <View style={styles.cardHeader}>
-                  <View style={styles.badgeYellow}>
-                    <Text style={styles.badgeYellowText}>KL</Text>
-                  </View>
-                  <View style={styles.roleInfo}>
-                    <Text style={styles.roleTitle}>Data Entry Executive</Text>
-                    <Text style={styles.roleSub}>
-                      Kanhaiya Logistics · applied 2 Jun
-                    </Text>
-                  </View>
-                  <View style={styles.tagExpiring}>
-                    <Text style={styles.tagExpiringText}>EXPIRING</Text>
-                  </View>
-                </View>
-
-                {/* Progress Bar (5 segments, 2 active) */}
-                <View style={styles.progressSection}>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressSegment, styles.segmentFilled]} />
-                    <View style={[styles.progressSegment, styles.segmentFilled]} />
-                    <View style={[styles.progressSegment, styles.segmentEmpty]} />
-                    <View style={[styles.progressSegment, styles.segmentEmpty]} />
-                    <View style={[styles.progressSegment, styles.segmentEmpty]} />
-                  </View>
-                  <View style={styles.stageLabelRow}>
-                    <Text style={styles.stageNumberText}>STAGE 2 OF 5</Text>
-                    <Text style={styles.stageStatusText}>Viewed, then quiet</Text>
-                  </View>
-                </View>
-
-                {/* Footer status text */}
-                <View style={styles.cardFooterNotice}>
-                  <HourglassLow size={14} color="#B9891A" weight="bold" />
-                  <Text style={styles.cardFooterNoticeExpiringText}>
-                    Nothing for 38 days · closes automatically in 2 days
-                  </Text>
-                </View>
+          {/* Body */}
+          {loading && applications.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#5F4DB2" />
+              <Text style={styles.loadingText}>{LOADING}</Text>
+            </View>
+          ) : error && applications.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.errorText}>{LOAD_FAILED}</Text>
+              <Pressable style={styles.retryButton} onPress={reload}>
+                <Text style={styles.retryButtonText}>Retry</Text>
               </Pressable>
             </View>
+          ) : list.length === 0 ? (
+            <EmptyState filter={filter} onTabPress={onTabPress} />
           ) : (
-            /* Closed Applications Empty/List State */
-            <View style={styles.closedContainer}>
-              <View style={styles.closedCard}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.badgeGray}>
-                    <Archive size={20} color="#5F6B80" weight="duotone" />
-                  </View>
-                  <View style={styles.roleInfo}>
-                    <Text style={styles.roleTitle}>Inventory Associate</Text>
-                    <Text style={styles.roleSub}>QuickMart · Applied May 14</Text>
-                  </View>
-                  <View style={styles.tagClosed}>
-                    <Text style={styles.tagClosedText}>CLOSED</Text>
-                  </View>
+            <View style={styles.listContainer}>
+              {list.map((app) => (
+                <ApplicationCard
+                  key={app.id}
+                  application={app}
+                  closed={filter === 'closed'}
+                  onPress={() => onApplicationPress?.(app.id)}
+                />
+              ))}
+              {loadingMore && (
+                <View style={styles.loadingMoreRow}>
+                  <ActivityIndicator size="small" color="#5F4DB2" />
                 </View>
-                <Text style={styles.closedReasonText}>
-                  Position filled internally. Profile archived cleanly.
-                </Text>
-              </View>
-
-              <View style={styles.closedCard}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.badgeGray}>
-                    <Archive size={20} color="#5F6B80" weight="duotone" />
-                  </View>
-                  <View style={styles.roleInfo}>
-                    <Text style={styles.roleTitle}>Junior QC Specialist</Text>
-                    <Text style={styles.roleSub}>Apex Pharma · Applied Apr 22</Text>
-                  </View>
-                  <View style={styles.tagClosed}>
-                    <Text style={styles.tagClosedText}>WITHDRAWN</Text>
-                  </View>
-                </View>
-                <Text style={styles.closedReasonText}>
-                  Withdrawn by candidate on 28 Apr.
-                </Text>
-              </View>
+              )}
             </View>
           )}
         </ScrollView>
       </SafeAreaView>
 
-      {/* Floating Bottom Tab Bar */}
       {onTabPress && (
         <BottomTabBar activeTab={activeTab} onTabPress={onTabPress} />
       )}
@@ -323,17 +235,469 @@ export function ApplicationBoardScreen({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Empty state
+// ---------------------------------------------------------------------------
+
+function EmptyState({
+  filter,
+  onTabPress,
+}: {
+  filter: 'active' | 'closed';
+  onTabPress?: (tab: TabName, href: string) => void;
+}) {
+  const title = filter === 'active' ? EMPTY_ACTIVE_TITLE : EMPTY_CLOSED_TITLE;
+  const body = filter === 'active' ? EMPTY_ACTIVE_BODY : EMPTY_CLOSED_BODY;
+  return (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconWell}>
+        <Tray size={28} color="#5F6B80" weight="duotone" />
+      </View>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptyBody}>{body}</Text>
+      {filter === 'active' && (
+        <Pressable
+          style={({ pressed }) => [
+            styles.findJobsButton,
+            pressed && styles.buttonPressed,
+          ]}
+          onPress={() => onTabPress?.('jobs', '/jobs')}
+          accessibilityRole="button"
+        >
+          <Text style={styles.findJobsButtonText}>{FIND_JOBS}</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Application card — picks the right variant by stage + hire + interview
+// ---------------------------------------------------------------------------
+
+interface ApplicationCardProps {
+  application: ApplicationResponse;
+  closed: boolean;
+  onPress: () => void;
+}
+
+function ApplicationCard({
+  application,
+  closed,
+  onPress,
+}: ApplicationCardProps) {
+  // Closed cards: final chip + reason line, no bar, no special cards.
+  if (closed) {
+    return <ClosedCard application={application} onPress={onPress} />;
+  }
+
+  // Active — priority 1: PENDING hire → highlighted "Confirm hire?" banner.
+  if (application.hire_confirmation === 'PENDING') {
+    return <PendingHireCard application={application} onPress={onPress} />;
+  }
+
+  // Active — priority 2: INTERVIEW stage with interview present → interview card.
+  if (
+    application.stage === 'INTERVIEW' &&
+    application.interview &&
+    application.interview.meeting_url
+  ) {
+    return <InterviewCard application={application} onPress={onPress} />;
+  }
+
+  // Active — priority 3: normal stage card with "Stage N of 5" bar.
+  return <StageCard application={application} onPress={onPress} />;
+}
+
+// ---------------------------------------------------------------------------
+// Monogram + employer header (shared)
+// ---------------------------------------------------------------------------
+
+function EmployerHeader({
+  application,
+  tag,
+  tagStyle,
+}: {
+  application: ApplicationResponse;
+  tag: string;
+  tagStyle: 'accent' | 'success' | 'neutral';
+}) {
+  const name = application.employer_name || 'Unknown employer';
+  const initials = getInitials(name);
+  const bg = pickFromString(name, [...MONOGRAM_BG]);
+  const fg = pickFromString(name, [...MONOGRAM_FG]);
+  const tagColors =
+    tagStyle === 'success'
+      ? { bg: '#E6F1EA', fg: '#1F6B45' }
+      : tagStyle === 'accent'
+        ? { bg: '#F1EAF7', fg: '#4A3E8F' }
+        : { bg: '#F0EBDF', fg: '#5F6B80' };
+
+  return (
+    <View style={styles.cardHeader}>
+      <View style={[styles.badgeMonogram, { backgroundColor: bg }]}>
+        <Text style={[styles.badgeMonogramText, { color: fg }]}>
+          {initials}
+        </Text>
+      </View>
+      <View style={styles.roleInfo}>
+        <Text style={styles.roleTitle} numberOfLines={1}>
+          {application.job_title || 'Untitled role'}
+        </Text>
+        <Text style={styles.roleSub} numberOfLines={1}>
+          {name} · {APPLIED_PREFIX}
+          {formatPostedAgo(application.created_at)
+            .replace('Posted ', '')
+            .toLowerCase()}
+        </Text>
+      </View>
+      <View style={[styles.tag, { backgroundColor: tagColors.bg }]}>
+        <Text style={[styles.tagText, { color: tagColors.fg }]}>{tag}</Text>
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stage card (normal active)
+// ---------------------------------------------------------------------------
+
+function StageCard({
+  application,
+  onPress,
+}: {
+  application: ApplicationResponse;
+  onPress: () => void;
+}) {
+  const step = pipelineStep(application.stage);
+  const chip = stageChipStyle(application.stage);
+  const tag =
+    application.stage === 'SUBMITTED'
+      ? 'SENT'
+      : stageLabel(application.stage).toUpperCase();
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.appCard, pressed && styles.cardPressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      <EmployerHeader application={application} tag={tag} tagStyle={chip} />
+
+      <View style={styles.progressSection}>
+        <View style={styles.progressBar}>
+          {Array.from({ length: PIPELINE_LENGTH }).map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.progressSegment,
+                i < step ? styles.segmentFilled : styles.segmentEmpty,
+              ]}
+            />
+          ))}
+        </View>
+        <View style={styles.stageLabelRow}>
+          <Text style={styles.stageNumberText}>
+            {STAGE_OF} {step} {OF} {PIPELINE_LENGTH}
+          </Text>
+          <Text style={styles.stageStatusText}>
+            {stageStatusText(application.stage)}
+          </Text>
+        </View>
+      </View>
+
+      {application.stage === 'SUBMITTED' && (
+        <View style={styles.cardFooterNotice}>
+          <Eye size={14} color="#5F6B80" weight="bold" />
+          <Text style={styles.cardFooterNoticeText}>
+            Employers usually open profiles within a few days
+          </Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Interview card (INTERVIEW stage + interview present)
+// ---------------------------------------------------------------------------
+
+function InterviewCard({
+  application,
+  onPress,
+}: {
+  application: ApplicationResponse;
+  onPress: () => void;
+}) {
+  const interview = application.interview!;
+  const when = formatInterviewShort(interview.interview_at);
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.appCard, pressed && styles.cardPressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      <EmployerHeader
+        application={application}
+        tag="INTERVIEW"
+        tagStyle="accent"
+      />
+
+      <View style={styles.progressSection}>
+        <View style={styles.progressBar}>
+          {Array.from({ length: PIPELINE_LENGTH }).map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.progressSegment,
+                i < 4 ? styles.segmentFilled : styles.segmentEmpty,
+              ]}
+            />
+          ))}
+        </View>
+        <View style={styles.stageLabelRow}>
+          <Text style={styles.stageNumberText}>
+            {STAGE_OF} 4 {OF} {PIPELINE_LENGTH}
+          </Text>
+          <Text style={styles.stageStatusText}>Interview scheduled</Text>
+        </View>
+      </View>
+
+      <View style={styles.interviewActionBanner}>
+        <VideoCamera size={17} color="#4A3E8F" weight="duotone" />
+        <Text style={styles.interviewActionText}>{when} · video call</Text>
+        <Pressable
+          style={({ pressed }) => [
+            styles.joinButton,
+            pressed && styles.buttonPressed,
+          ]}
+          onPress={(e) => {
+            e.stopPropagation();
+            void Linking.openURL(interview.meeting_url);
+          }}
+          accessibilityRole="button"
+        >
+          <Text style={styles.joinButtonText}>{JOIN_LABEL}</Text>
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pending hire card (highlighted "Confirm hire?" banner)
+// ---------------------------------------------------------------------------
+
+function PendingHireCard({
+  application,
+  onPress,
+}: {
+  application: ApplicationResponse;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.appCard,
+        styles.pendingHireCard,
+        pressed && styles.cardPressed,
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      <View style={styles.pendingBanner}>
+        <View style={styles.pendingBannerIcon}>
+          <Sparkle size={16} color="#5F4DB2" weight="bold" />
+        </View>
+        <View style={styles.pendingBannerText}>
+          <Text style={styles.pendingBannerTitle}>{CONFIRM_HIRE_PROMPT}</Text>
+          <Text style={styles.pendingBannerBody}>{CONFIRM_HIRE_BODY}</Text>
+        </View>
+      </View>
+
+      <EmployerHeader
+        application={application}
+        tag="DECISION"
+        tagStyle="accent"
+      />
+
+      <View style={styles.progressSection}>
+        <View style={styles.progressBar}>
+          {Array.from({ length: PIPELINE_LENGTH }).map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.progressSegment,
+                i < 5 ? styles.segmentFilled : styles.segmentEmpty,
+              ]}
+            />
+          ))}
+        </View>
+        <View style={styles.stageLabelRow}>
+          <Text style={styles.stageNumberText}>
+            {STAGE_OF} 5 {OF} {PIPELINE_LENGTH}
+          </Text>
+          <Text style={styles.stageStatusText}>Decision pending</Text>
+        </View>
+      </View>
+
+      <Pressable
+        style={({ pressed }) => [
+          styles.reviewButton,
+          pressed && styles.buttonPressed,
+        ]}
+        onPress={onPress}
+        accessibilityRole="button"
+      >
+        <Text style={styles.reviewButtonText}>{REVIEW_ACTION}</Text>
+      </Pressable>
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Closed card (final chip + reason line, no bar)
+// ---------------------------------------------------------------------------
+
+function ClosedCard({
+  application,
+  onPress,
+}: {
+  application: ApplicationResponse;
+  onPress: () => void;
+}) {
+  const tag = stageLabel(application.stage).toUpperCase();
+  const chip = stageChipStyle(application.stage);
+  const reason = closedReason(application);
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.closedCard,
+        pressed && styles.cardPressed,
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      <View style={styles.cardHeader}>
+        <View style={styles.badgeGray}>
+          {application.stage === 'HIRED' ? (
+            <CheckCircle size={20} color="#1F6B45" weight="duotone" />
+          ) : (
+            <Archive size={20} color="#5F6B80" weight="duotone" />
+          )}
+        </View>
+        <View style={styles.roleInfo}>
+          <Text style={styles.roleTitle} numberOfLines={1}>
+            {application.job_title || 'Untitled role'}
+          </Text>
+          <Text style={styles.roleSub} numberOfLines={1}>
+            {application.employer_name || 'Unknown employer'} · {APPLIED_PREFIX}
+            {formatPostedAgo(application.created_at)
+              .replace('Posted ', '')
+              .toLowerCase()}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.tag,
+            chip === 'success'
+              ? { backgroundColor: '#E6F1EA' }
+              : { backgroundColor: '#F0EBDF' },
+          ]}
+        >
+          <Text
+            style={[
+              styles.tagText,
+              chip === 'success' ? { color: '#1F6B45' } : { color: '#5F6B80' },
+            ]}
+          >
+            {tag}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.closedReasonText}>{reason}</Text>
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Short interview time label, e.g. "Tomorrow, 11:00 am" or "Mon 15 Jul, 4:30 pm". */
+function formatInterviewShort(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'Scheduled';
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const startOfThat = new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+  ).getTime();
+  const dayDiff = Math.round((startOfThat - startOfToday) / 86_400_000);
+  const time = d
+    .toLocaleTimeString('en-IN', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata',
+    })
+    .toLowerCase();
+  if (dayDiff === 0) return `Today, ${time}`;
+  if (dayDiff === 1) return `Tomorrow, ${time}`;
+  if (dayDiff > 1 && dayDiff < 7) {
+    const weekday = d.toLocaleDateString('en-IN', {
+      weekday: 'short',
+      timeZone: 'Asia/Kolkata',
+    });
+    return `${weekday}, ${time}`;
+  }
+  const date = d.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'Asia/Kolkata',
+  });
+  return `${date}, ${time}`;
+}
+
+/** The one-line reason shown under a closed card. */
+function closedReason(app: ApplicationResponse): string {
+  switch (app.stage) {
+    case 'HIRED':
+      return 'You accepted this offer.';
+    case 'REJECTED':
+      return 'The employer did not select you for this role.';
+    case 'WITHDRAWN':
+      return 'You withdrew this application.';
+    case 'EXPIRED':
+      return 'Closed with no response from the employer.';
+    default:
+      return stageLabel(app.stage);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FFFCF7', // Matches brand offWhite canvas
+    backgroundColor: '#FFFCF7',
   },
   safeArea: {
     flex: 1,
   },
   scrollContent: {
     paddingTop: Spacing.xl,
-    paddingBottom: 110, // Space for floating bottom tab bar
+    paddingBottom: 110,
     gap: 16,
   },
   headerSection: {
@@ -379,6 +743,78 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 12,
   },
+  loadingContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 40,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 13,
+    color: '#5F6B80',
+  },
+  errorText: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 13,
+    color: '#993A22',
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: '#5F4DB2',
+  },
+  retryButtonText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  loadingMoreRow: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  emptyContainer: {
+    paddingHorizontal: 32,
+    paddingVertical: 48,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyIconWell: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: '#F4EFE4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 16,
+    color: Colors.navy,
+    textAlign: 'center',
+  },
+  emptyBody: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#5F6B80',
+    textAlign: 'center',
+  },
+  findJobsButton: {
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    backgroundColor: '#5F4DB2',
+  },
+  findJobsButtonText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
   appCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -387,52 +823,69 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  pendingHireCard: {
+    borderColor: '#5F4DB2',
+    borderWidth: 1.5,
+  },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#F1EAF7',
+    borderRadius: 12,
+    padding: 12,
+  },
+  pendingBannerIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pendingBannerText: {
+    flex: 1,
+    gap: 2,
+  },
+  pendingBannerTitle: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 14,
+    color: '#4A3E8F',
+  },
+  pendingBannerBody: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#3A4761',
+  },
+  reviewButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: '#5F4DB2',
+    alignItems: 'center',
+  },
+  reviewButtonText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
   },
-  badgeNavy: {
+  badgeMonogram: {
     width: 40,
     height: 40,
     borderRadius: 13,
-    backgroundColor: Colors.navy,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  badgeNavyText: {
+  badgeMonogramText: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 13,
     lineHeight: 16,
-    color: '#F4D685', // Brand gold accent
-  },
-  badgePurple: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: '#F1EAF7',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  badgePurpleText: {
-    fontFamily: 'GeneralSans-Bold',
-    fontSize: 13,
-    lineHeight: 16,
-    color: '#4A3E8F',
-  },
-  badgeYellow: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: '#F7EFD6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  badgeYellowText: {
-    fontFamily: 'GeneralSans-Bold',
-    fontSize: 13,
-    lineHeight: 16,
-    color: '#7A5C0E',
   },
   badgeGray: {
     width: 40,
@@ -460,60 +913,20 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: '#5F6B80',
   },
-  tagInterview: {
+  tag: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: '#E6F1EA',
   },
-  tagInterviewText: {
-    fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
+  tagText: {
+    fontFamily: Platform.select({
+      ios: 'SpaceMono-Bold',
+      android: 'SpaceMono-Bold',
+      default: 'monospace',
+    }),
     fontSize: 10,
     lineHeight: 12,
     letterSpacing: 0.8,
-    color: '#1F6B45',
-    fontWeight: '700',
-  },
-  tagSent: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#F7EFD6',
-  },
-  tagSentText: {
-    fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
-    fontSize: 10,
-    lineHeight: 12,
-    letterSpacing: 0.8,
-    color: '#7A5C0E',
-    fontWeight: '700',
-  },
-  tagExpiring: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#F7EFD6',
-  },
-  tagExpiringText: {
-    fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
-    fontSize: 10,
-    lineHeight: 12,
-    letterSpacing: 0.8,
-    color: '#7A5C0E',
-    fontWeight: '700',
-  },
-  tagClosed: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#F0EBDF',
-  },
-  tagClosedText: {
-    fontFamily: Platform.select({ ios: 'SpaceMono-Bold', android: 'SpaceMono-Bold', default: 'monospace' }),
-    fontSize: 10,
-    lineHeight: 12,
-    letterSpacing: 0.8,
-    color: '#5F6B80',
     fontWeight: '700',
   },
   progressSection: {
@@ -532,10 +945,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   segmentFilled: {
-    backgroundColor: '#5E4DB2', // Purple brand stage bar
+    backgroundColor: '#5E4DB2',
   },
   segmentEmpty: {
-    backgroundColor: '#F0EBDF', // Light beige unfilled bar
+    backgroundColor: '#F0EBDF',
   },
   stageLabelRow: {
     flexDirection: 'row',
@@ -544,7 +957,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   stageNumberText: {
-    fontFamily: Platform.select({ ios: 'SpaceMono-Regular', android: 'SpaceMono-Regular', default: 'monospace' }),
+    fontFamily: Platform.select({
+      ios: 'SpaceMono-Regular',
+      android: 'SpaceMono-Regular',
+      default: 'monospace',
+    }),
     fontSize: 11,
     lineHeight: 14,
     letterSpacing: 0.6,
@@ -598,17 +1015,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#5F6B80',
-  },
-  cardFooterNoticeExpiringText: {
-    flex: 1,
-    fontFamily: 'GeneralSans-Medium',
-    fontSize: 12,
-    lineHeight: 16,
-    color: '#7A5C0E',
-  },
-  closedContainer: {
-    paddingHorizontal: 20,
-    gap: 12,
   },
   closedCard: {
     backgroundColor: '#FFFFFF',

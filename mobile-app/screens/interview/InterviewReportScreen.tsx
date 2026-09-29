@@ -1,491 +1,255 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
+  ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
-  MicrophoneStage,
-  ChatCircleText,
-  TreeStructure,
-  Flask,
-  HandHeart,
-  Target,
-  CaretRight,
-  DownloadSimple,
+  CheckCircle,
+  Clock,
+  Lightbulb,
+  WarningCircle,
 } from 'phosphor-react-native';
-import {
-  DEFAULT_INTERVIEW_REPORT,
-  InterviewReportData,
-} from '@/data/interviewQuestions';
 import { Radii } from '@/theme/tokens';
+import {
+  FeedbackLevel,
+  InterviewReport,
+  getInterviewReport,
+  interviewErrorMessage,
+} from '@/services/api/interview';
 
-export interface InterviewReportScreenProps {
-  data?: InterviewReportData;
-  onGoHome?: () => void;
-  onFindJobs?: () => void;
+interface Props {
+  sessionId: string;
 }
 
-export function InterviewReportScreen({
-  data = DEFAULT_INTERVIEW_REPORT,
-  onGoHome,
-  onFindJobs,
-}: InterviewReportScreenProps) {
+export function InterviewReportScreen({ sessionId }: Props) {
   const router = useRouter();
+  const [report, setReport] = useState<InterviewReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleHome = () => {
-    if (onGoHome) {
-      onGoHome();
-    } else {
-      router.replace('/home');
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setReport(await getInterviewReport(sessionId));
+    } catch (caught) {
+      setError(interviewErrorMessage(caught, 'Could not load the interview report.'));
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [sessionId]);
 
-  const handleJobs = () => {
-    if (onFindJobs) {
-      onFindJobs();
-    } else {
-      router.push('/jobs' as any);
-    }
-  };
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    if (report?.status !== 'PENDING') return;
+    const timer = setTimeout(load, 5000);
+    return () => clearTimeout(timer);
+  }, [load, report?.status]);
+
+  const home = () => router.replace('/home');
 
   return (
-    <View style={styles.root}>
-      <StatusBar style="light" />
-
-      {/* Hero Dark Header Section */}
-      <View style={styles.heroSection}>
-        <SafeAreaView edges={['top']} style={styles.heroSafe}>
-          <View style={styles.heroHeaderRow}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.backButton,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={handleHome}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <ArrowLeft size={16} color="#FFFFFF" weight="bold" />
-            </Pressable>
-
-            <Text style={styles.heroTitle}>Interview report</Text>
-            <Text style={styles.heroDate}>{data.date}</Text>
-          </View>
-
-          <View style={styles.scoreSummary}>
-            <View style={styles.eyebrowRow}>
-              <MicrophoneStage size={14} color="#FFFCF7" weight="bold" />
-              <Text style={styles.eyebrowText}>OVERALL, OUT OF 10</Text>
-            </View>
-
-            <View style={styles.scoreRow}>
-              <Text style={styles.scoreLarge}>{data.overallScore}</Text>
-              <Text style={styles.verdictBadge}>{data.overallVerdict}</Text>
-            </View>
-
-            <Text style={styles.scoreDesc}>{data.summary}</Text>
-          </View>
-        </SafeAreaView>
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.header}>
+        <Pressable style={styles.back} onPress={home}>
+          <ArrowLeft size={18} color="#0A1931" weight="bold" />
+        </Pressable>
+        <Text style={styles.headerTitle}>Interview feedback</Text>
       </View>
 
-      {/* Light Content Sheet */}
-      <View style={styles.contentSheet}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {/* Section: Marked on four things */}
-          <Text style={styles.sectionLabel}>MARKED ON FOUR THINGS</Text>
-          <View style={styles.rubricCard}>
-            {/* Communication */}
-            <View style={[styles.rubricRow, styles.rubricRowBorder]}>
-              <View style={styles.rubricHeader}>
-                <ChatCircleText size={17} color="#5E4DB2" weight="duotone" />
-                <Text style={styles.rubricName}>Communication</Text>
-                <Text style={styles.rubricScore}>
-                  {data.dimensions.communication.score}
-                  <Text style={styles.rubricScoreMax}>/10</Text>
-                </Text>
-              </View>
-              <View style={styles.meterTrack}>
-                <View
-                  style={[
-                    styles.meterFill,
-                    { width: `${data.dimensions.communication.percentage}%` as any },
-                  ]}
-                />
-              </View>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+      >
+        {loading && !report ? (
+          <State icon={<ActivityIndicator size="large" color="#5F4DB2" />} title="Loading your report" body="Reading the latest session status…" />
+        ) : error ? (
+          <State icon={<WarningCircle size={42} color="#993A22" weight="fill" />} title="Report unavailable" body={error} action={load} actionLabel="Try again" />
+        ) : report?.status === 'PENDING' ? (
+          <State
+            icon={<Clock size={44} color="#5F4DB2" weight="duotone" />}
+            title="Your answers are stored"
+            body="Feedback has not finished yet. You can leave this screen; we will keep checking when you return."
+            action={home}
+            actionLabel="Go home"
+          />
+        ) : report?.status === 'FAILED' ? (
+          <State
+            icon={<WarningCircle size={44} color="#7A5C0E" weight="fill" />}
+            title="Feedback could not be prepared"
+            body={failureCopy(report.failure_reason)}
+            action={home}
+            actionLabel="Go home"
+          />
+        ) : report?.status === 'READY' ? (
+          <>
+            <View style={styles.hero}>
+              <CheckCircle size={34} color="#FFFFFF" weight="fill" />
+              <Text style={styles.heroTitle}>Your practice feedback</Text>
+              <Text style={styles.heroBody}>
+                Levels describe this recording only. They do not change your score.
+              </Text>
             </View>
 
-            {/* Structure */}
-            <View style={[styles.rubricRow, styles.rubricRowBorder]}>
-              <View style={styles.rubricHeader}>
-                <TreeStructure size={17} color="#5E4DB2" weight="duotone" />
-                <Text style={styles.rubricName}>Structure</Text>
-                <Text style={styles.rubricScore}>
-                  {data.dimensions.structure.score}
-                  <Text style={styles.rubricScoreMax}>/10</Text>
-                </Text>
-              </View>
-              <View style={styles.meterTrack}>
+            <Text style={styles.sectionLabel}>FEEDBACK AREAS</Text>
+            <View style={styles.card}>
+              {report.dimensions.map((dimension, index) => (
                 <View
-                  style={[
-                    styles.meterFillMedium,
-                    { width: `${data.dimensions.structure.percentage}%` as any },
-                  ]}
-                />
-              </View>
-            </View>
-
-            {/* Role Knowledge */}
-            <View style={[styles.rubricRow, styles.rubricRowBorder]}>
-              <View style={styles.rubricHeader}>
-                <Flask size={17} color="#5E4DB2" weight="duotone" />
-                <Text style={styles.rubricName}>Role knowledge</Text>
-                <Text style={styles.rubricScore}>
-                  {data.dimensions.roleKnowledge.score}
-                  <Text style={styles.rubricScoreMax}>/10</Text>
-                </Text>
-              </View>
-              <View style={styles.meterTrack}>
-                <View
-                  style={[
-                    styles.meterFillMedium,
-                    { width: `${data.dimensions.roleKnowledge.percentage}%` as any },
-                  ]}
-                />
-              </View>
-            </View>
-
-            {/* Confidence */}
-            <View style={styles.rubricRow}>
-              <View style={styles.rubricHeader}>
-                <HandHeart size={17} color="#5E4DB2" weight="duotone" />
-                <Text style={styles.rubricName}>Confidence</Text>
-                <Text style={styles.rubricScore}>
-                  {data.dimensions.confidence.score}
-                  <Text style={styles.rubricScoreMax}>/10</Text>
-                </Text>
-              </View>
-              <View style={styles.meterTrack}>
-                <View
-                  style={[
-                    styles.meterFill,
-                    { width: `${data.dimensions.confidence.percentage}%` as any },
-                  ]}
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* One thing to change Card */}
-          <View style={styles.adviceCard}>
-            <View style={styles.adviceHeader}>
-              <Target size={15} color="#5F4DB2" weight="fill" />
-              <Text style={styles.adviceEyebrow}>ONE THING TO CHANGE</Text>
-            </View>
-            <Text style={styles.adviceText}>{data.oneThingToChange}</Text>
-          </View>
-
-          {/* Answer by answer breakdown */}
-          <Text style={styles.sectionLabel}>ANSWER BY ANSWER</Text>
-          <View style={styles.answersCard}>
-            {data.questionScores.map((q, idx) => {
-              const isLast = idx === data.questionScores.length - 1;
-              return (
-                <View
-                  key={q.id}
-                  style={[styles.answerRow, !isLast && styles.rubricRowBorder]}
+                  key={dimension.code}
+                  style={[styles.dimension, index < report.dimensions.length - 1 && styles.divider]}
                 >
-                  <Text style={styles.answerQTag}>Q{q.id}</Text>
-                  <Text style={styles.answerTitle}>{q.shortTitle}</Text>
-                  <Text style={styles.answerScore}>{q.score}</Text>
-                  <CaretRight size={14} color="#5F6B80" />
+                  <View style={styles.dimensionHeader}>
+                    <Text style={styles.dimensionLabel}>{dimension.label}</Text>
+                    <LevelBadge level={dimension.level} />
+                  </View>
+                  <Text style={styles.goodLooks}>{dimension.what_good_looks_like}</Text>
                 </View>
-              );
-            })}
-          </View>
+              ))}
+            </View>
 
-          {/* Sticky Bottom Actions */}
-          <View style={styles.actionRow}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.pdfButton,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={handleHome}
-            >
-              <DownloadSimple size={16} color="#0A1931" weight="bold" />
-              <Text style={styles.pdfButtonText}>PDF</Text>
-            </Pressable>
+            {report.focus_areas.length > 0 && (
+              <View style={styles.focus}>
+                <Lightbulb size={20} color="#5F4DB2" weight="fill" />
+                <View style={styles.focusCopy}>
+                  <Text style={styles.focusTitle}>Focus next time</Text>
+                  <Text style={styles.focusText}>
+                    {report.dimensions
+                      .filter((dimension) => report.focus_areas.includes(dimension.code))
+                      .map((dimension) => dimension.label)
+                      .join(' · ')}
+                  </Text>
+                </View>
+              </View>
+            )}
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.findJobsButton,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={handleJobs}
-            >
-              <Text style={styles.findJobsButtonText}>Find jobs</Text>
+            <Text style={styles.sectionLabel}>ANSWER BY ANSWER</Text>
+            <View style={styles.answers}>
+              {report.questions.map((question) => (
+                <View key={question.code} style={styles.answer}>
+                  <Text style={styles.answerNumber}>Q{question.index + 1}</Text>
+                  <View style={styles.answerCopy}>
+                    <Text style={styles.answerPrompt}>{question.prompt}</Text>
+                    <Text style={styles.answerMeta}>
+                      {question.spoken ? 'Speech detected' : 'No speech detected'}
+                    </Text>
+                    {question.comment && <Text style={styles.answerComment}>{question.comment}</Text>}
+                    <Text style={styles.lookingFor}>A strong answer includes: {question.looking_for}</Text>
+                    {question.transcript ? (
+                      <Text style={styles.transcript}>“{question.transcript}”</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <Pressable style={styles.primary} onPress={() => router.push('/jobs')}>
+              <Text style={styles.primaryText}>Find jobs</Text>
             </Pressable>
-          </View>
-        </ScrollView>
-      </View>
+            <Pressable style={styles.outline} onPress={home}>
+              <Text style={styles.outlineText}>Go home</Text>
+            </Pressable>
+          </>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function State({
+  icon,
+  title,
+  body,
+  action,
+  actionLabel,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  action?: () => void;
+  actionLabel?: string;
+}) {
+  return (
+    <View style={styles.state}>
+      {icon}
+      <Text style={styles.stateTitle}>{title}</Text>
+      <Text style={styles.stateBody}>{body}</Text>
+      {action && actionLabel && (
+        <Pressable style={styles.primary} onPress={action}>
+          <Text style={styles.primaryText}>{actionLabel}</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
+function LevelBadge({ level }: { level: FeedbackLevel }) {
+  const label = {
+    STRONG: 'Strong',
+    DEVELOPING: 'Developing',
+    FOCUS_AREA: 'Focus area',
+  }[level];
+  return (
+    <View style={[styles.badge, level === 'STRONG' ? styles.strong : level === 'DEVELOPING' ? styles.developing : styles.focusBadge]}>
+      <Text style={styles.badgeText}>{label}</Text>
+    </View>
+  );
+}
+
+function failureCopy(reason: string | null): string {
+  if (reason === 'no_speech') return 'The recordings did not contain enough speech to prepare feedback.';
+  if (reason === 'evaluation_invalid') return 'The feedback provider returned an invalid report, so BharatPath did not show it.';
+  return 'The feedback provider could not prepare a valid report. Your completed session remains recorded.';
+}
+
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#5F4DB2',
-  },
-  heroSection: {
-    backgroundColor: '#5F4DB2',
-    paddingBottom: 24,
-  },
-  heroSafe: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-  },
-  heroHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 252, 247, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 252, 247, 0.26)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.98 }],
-  },
-  heroTitle: {
-    flex: 1,
-    fontFamily: 'GeneralSans-Semibold',
-    fontSize: 16,
-    color: '#FFFFFF',
-    marginLeft: 12,
-  },
-  heroDate: {
-    fontFamily: 'SpaceMono-Regular',
-    fontSize: 11,
-    letterSpacing: 0.8,
-    color: '#9DA9BE',
-  },
-  scoreSummary: {
-    gap: 8,
-  },
-  eyebrowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  eyebrowText: {
-    fontFamily: 'SpaceMono-Bold',
-    fontSize: 11,
-    letterSpacing: 1.4,
-    color: '#9DA9BE',
-  },
-  scoreRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 10,
-  },
-  scoreLarge: {
-    fontFamily: 'GeneralSans-Bold',
-    fontSize: 54,
-    lineHeight: 52,
-    letterSpacing: -0.5,
-    color: '#FFFFFF',
-  },
-  verdictBadge: {
-    fontFamily: 'GeneralSans-Bold',
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#FFFCF7',
-    marginBottom: 6,
-  },
-  scoreDesc: {
-    fontFamily: 'GeneralSans-Regular',
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#9DA9BE',
-  },
-  contentSheet: {
-    flex: 1,
-    backgroundColor: '#FFFCF7',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 28,
-    paddingBottom: 40,
-    gap: 14,
-  },
-  sectionLabel: {
-    fontFamily: 'SpaceMono-Bold',
-    fontSize: 11,
-    letterSpacing: 1.2,
-    color: '#5F6B80',
-    marginTop: 4,
-  },
-  rubricCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E7E0D4',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-  },
-  rubricRow: {
-    paddingVertical: 14,
-    gap: 8,
-  },
-  rubricRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0EBDF',
-  },
-  rubricHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rubricName: {
-    flex: 1,
-    fontFamily: 'GeneralSans-Medium',
-    fontSize: 14,
-    color: '#0A1931',
-  },
-  rubricScore: {
-    fontFamily: 'SpaceMono-Bold',
-    fontSize: 13,
-    color: '#0A1931',
-  },
-  rubricScoreMax: {
-    fontFamily: 'SpaceMono-Regular',
-    fontSize: 12,
-    color: '#5F6B80',
-  },
-  meterTrack: {
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: '#F0EBDF',
-    overflow: 'hidden',
-  },
-  meterFill: {
-    height: '100%',
-    backgroundColor: '#5E4DB2',
-    borderRadius: 999,
-  },
-  meterFillMedium: {
-    height: '100%',
-    backgroundColor: '#7E6FBF',
-    borderRadius: 999,
-  },
-  adviceCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E7E0D4',
-    borderRadius: 20,
-    padding: 16,
-    gap: 10,
-  },
-  adviceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  adviceEyebrow: {
-    fontFamily: 'SpaceMono-Bold',
-    fontSize: 11,
-    letterSpacing: 1.2,
-    color: '#5F6B80',
-  },
-  adviceText: {
-    fontFamily: 'GeneralSans-Regular',
-    fontSize: 14,
-    lineHeight: 21,
-    color: '#3A4761',
-  },
-  answersCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E7E0D4',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-  },
-  answerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-  },
-  answerQTag: {
-    fontFamily: 'SpaceMono-Bold',
-    fontSize: 12,
-    color: '#5F6B80',
-    width: 26,
-  },
-  answerTitle: {
-    flex: 1,
-    fontFamily: 'GeneralSans-Medium',
-    fontSize: 14,
-    color: '#0A1931',
-  },
-  answerScore: {
-    fontFamily: 'SpaceMono-Bold',
-    fontSize: 13,
-    color: '#0A1931',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
-  },
-  pdfButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#DDD6C7',
-    borderRadius: Radii.pill,
-    paddingVertical: 18,
-  },
-  pdfButtonText: {
-    fontFamily: 'GeneralSans-Semibold',
-    fontSize: 16,
-    color: '#0A1931',
-  },
-  findJobsButton: {
-    flex: 1.5,
-    backgroundColor: '#5F4DB2',
-    borderRadius: Radii.pill,
-    paddingVertical: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  findJobsButtonText: {
-    fontFamily: 'GeneralSans-Semibold',
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
+  safe: { flex: 1, backgroundColor: '#FFFCF7' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 10 },
+  back: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: '#E7E0D4', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontFamily: 'GeneralSans-Semibold', fontSize: 16, color: '#0A1931' },
+  content: { flexGrow: 1, padding: 20, paddingTop: 12, paddingBottom: 40, gap: 14 },
+  state: { flex: 1, minHeight: 500, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 10 },
+  stateTitle: { fontFamily: 'GeneralSans-Bold', fontSize: 25, color: '#0A1931', textAlign: 'center' },
+  stateBody: { fontFamily: 'GeneralSans-Regular', fontSize: 14, lineHeight: 21, color: '#3A4761', textAlign: 'center' },
+  hero: { gap: 10, padding: 21, borderRadius: 22, backgroundColor: '#5F4DB2' },
+  heroTitle: { fontFamily: 'GeneralSans-Bold', fontSize: 25, color: '#FFFFFF' },
+  heroBody: { fontFamily: 'GeneralSans-Regular', fontSize: 14, lineHeight: 20, color: '#E8E3FA' },
+  sectionLabel: { marginTop: 8, fontFamily: 'SpaceMono-Bold', fontSize: 11, letterSpacing: 1.1, color: '#5F6B80' },
+  card: { borderWidth: 1, borderColor: '#E7E0D4', borderRadius: 20, paddingHorizontal: 16, backgroundColor: '#FFFFFF' },
+  dimension: { paddingVertical: 15, gap: 8 },
+  divider: { borderBottomWidth: 1, borderBottomColor: '#F0EBDF' },
+  dimensionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dimensionLabel: { flex: 1, fontFamily: 'GeneralSans-Semibold', fontSize: 15, color: '#0A1931' },
+  goodLooks: { fontFamily: 'GeneralSans-Regular', fontSize: 13, lineHeight: 19, color: '#3A4761' },
+  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radii.pill },
+  strong: { backgroundColor: '#DFF2E6' },
+  developing: { backgroundColor: '#F4EFD8' },
+  focusBadge: { backgroundColor: '#F8E2DC' },
+  badgeText: { fontFamily: 'GeneralSans-Semibold', fontSize: 11, color: '#26344D' },
+  focus: { flexDirection: 'row', gap: 12, padding: 16, borderRadius: 18, backgroundColor: '#F2EFFB' },
+  focusCopy: { flex: 1, gap: 4 },
+  focusTitle: { fontFamily: 'GeneralSans-Semibold', fontSize: 14, color: '#0A1931' },
+  focusText: { fontFamily: 'GeneralSans-Regular', fontSize: 13, color: '#3A4761' },
+  answers: { gap: 10 },
+  answer: { flexDirection: 'row', gap: 12, padding: 16, borderWidth: 1, borderColor: '#E7E0D4', borderRadius: 18, backgroundColor: '#FFFFFF' },
+  answerNumber: { fontFamily: 'SpaceMono-Bold', fontSize: 12, color: '#5F4DB2' },
+  answerCopy: { flex: 1, gap: 7 },
+  answerPrompt: { fontFamily: 'GeneralSans-Semibold', fontSize: 14, lineHeight: 20, color: '#0A1931' },
+  answerMeta: { fontFamily: 'GeneralSans-Regular', fontSize: 12, color: '#5F6B80' },
+  answerComment: { fontFamily: 'GeneralSans-Regular', fontSize: 13, lineHeight: 19, color: '#3A4761' },
+  lookingFor: { fontFamily: 'GeneralSans-Regular', fontSize: 13, lineHeight: 19, color: '#5F4DB2' },
+  transcript: { fontFamily: 'GeneralSans-Regular', fontSize: 13, lineHeight: 19, color: '#5F6B80', fontStyle: 'italic' },
+  primary: { alignItems: 'center', paddingVertical: 17, paddingHorizontal: 24, borderRadius: Radii.pill, backgroundColor: '#5F4DB2', alignSelf: 'stretch' },
+  primaryText: { fontFamily: 'GeneralSans-Semibold', fontSize: 15, color: '#FFFFFF' },
+  outline: { alignItems: 'center', paddingVertical: 15, borderRadius: Radii.pill, borderWidth: 1, borderColor: '#DDD6C7' },
+  outlineText: { fontFamily: 'GeneralSans-Semibold', fontSize: 14, color: '#0A1931' },
 });

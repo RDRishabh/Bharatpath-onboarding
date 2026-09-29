@@ -1,10 +1,11 @@
 /**
  * BharatPath — Application Board Route
- * Fully implemented Application Board matching Screen 38 in Handoff & Screenshot 2.
+ *
+ * The Board tab. Lists the candidate's own applications and routes to the
+ * detail screen with the application id.
  */
 import React, { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Alert } from 'react-native';
 import { ApplicationBoardScreen } from '@/screens/board/ApplicationBoardScreen';
 import { TabName } from '@/components/navigation/BottomTabBar';
 
@@ -19,16 +20,11 @@ export default function BoardRoute() {
     }
   };
 
-  const handleApplicationPress = (_appId: string) => {
-    router.push('/application-detail' as any);
-  };
-
-  const handleJoinCall = (_appId: string) => {
-    Alert.alert(
-      'Interview Video Call',
-      'Joining interview with Meera Kulkarni (Aurum Labs) scheduled for Tomorrow, 11:00 am.',
-      [{ text: 'OK' }]
-    );
+  const handleApplicationPress = (appId: string) => {
+    router.push({
+      pathname: '/application-detail',
+      params: { id: appId },
+    } as any);
   };
 
   return (
@@ -36,7 +32,6 @@ export default function BoardRoute() {
       activeTab={activeTab}
       onTabPress={handleTabPress}
       onApplicationPress={handleApplicationPress}
-      onJoinCallPress={handleJoinCall}
     />
   );
 }

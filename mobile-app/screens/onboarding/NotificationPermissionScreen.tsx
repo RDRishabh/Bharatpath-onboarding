@@ -1,9 +1,21 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Image } from 'react-native';
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  Linking,
+  Platform,
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  Image,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Eye, ChatCircleText, Target } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
+import { updatePushPreference } from '@/services/api/notifications';
+import { isExpoGo, requestDeviceNotificationPermission } from '@/services/notifications/device';
 
 export interface NotificationPermissionScreenProps {
   onAllow?: () => void;
@@ -14,6 +26,63 @@ export function NotificationPermissionScreen({
   onAllow,
   onNotNow,
 }: NotificationPermissionScreenProps) {
+  const [isRequesting, setIsRequesting] = useState(false);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const handleAllow = async () => {
+    setIsRequesting(true);
+    setPermissionError(null);
+    setShowSettings(false);
+
+    try {
+      const result = await requestDeviceNotificationPermission();
+
+      if (result.status === 'unsupported') {
+        // Not a failure the candidate can act on, so the preference is still
+        // saved and onboarding continues.
+        await updatePushPreference(true).catch(() => undefined);
+        onAllow?.();
+        return;
+      }
+
+      if (result.status === 'denied') {
+        await updatePushPreference(false).catch(() => undefined);
+        setShowSettings(!result.canAskAgain);
+        setPermissionError(
+          result.canAskAgain
+            ? 'Notifications were not allowed. You can try again or choose Not now.'
+            : 'Notifications are blocked in your device settings. Open settings to allow them.'
+        );
+        return;
+      }
+
+      // OS permission and the server preference are separate. Both must agree.
+      await updatePushPreference(true);
+      onAllow?.();
+    } catch (error) {
+      console.warn('[Notification permission]', error);
+      setPermissionError(
+        'Permission was requested, but BharatPath could not save your preference. Please try again.'
+      );
+    } finally {
+      setIsRequesting(false);
+    }
+  };
+
+  const handleNotNow = async () => {
+    setIsRequesting(true);
+    try {
+      await updatePushPreference(false);
+    } catch (error) {
+      // Do not trap onboarding because a preference update could not be saved.
+      console.warn('[Notification preference]', error);
+    } finally {
+      setIsRequesting(false);
+      onNotNow?.();
+    }
+  };
+
   return (
     <View style={styles.root}>
       <StatusBar style="dark" animated />
@@ -68,23 +137,50 @@ export function NotificationPermissionScreen({
 
           {/* Bottom Actions */}
           <View style={styles.bottomActions}>
+            {isExpoGo && (
+              <View style={styles.devNoteBox}>
+                <Text style={styles.devNoteText}>
+                  Running in Expo Go: permission can be granted, but a
+                  server-sent notification only reaches the tray in a
+                  development build.
+                </Text>
+              </View>
+            )}
+
             <Pressable
               style={({ pressed }) => [
                 styles.allowButton,
                 pressed && styles.buttonPressed,
               ]}
-              onPress={onAllow}
+              onPress={handleAllow}
+              disabled={isRequesting}
               accessibilityRole="button"
             >
-              <Text style={styles.allowButtonText}>Allow notifications</Text>
+              {isRequesting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.allowButtonText}>Allow notifications</Text>
+              )}
             </Pressable>
+
+            {permissionError && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{permissionError}</Text>
+                {showSettings && Platform.OS !== 'web' && (
+                  <Pressable onPress={() => Linking.openSettings()} accessibilityRole="button">
+                    <Text style={styles.settingsText}>Open device settings</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
 
             <Pressable
               style={({ pressed }) => [
                 styles.notNowButton,
                 pressed && styles.buttonPressed,
               ]}
-              onPress={onNotNow}
+              onPress={handleNotNow}
+              disabled={isRequesting}
               accessibilityRole="button"
             >
               <Text style={styles.notNowButtonText}>Not now</Text>
@@ -195,5 +291,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.text.primary, // #3A4761
+  },
+  devNoteBox: {
+    backgroundColor: Colors.amber.bg,
+    borderRadius: Radii.input,
+    padding: Spacing.md,
+  },
+  devNoteText: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.amber.fg,
+    textAlign: 'center',
+  },
+  errorBox: {
+    backgroundColor: Colors.red.bg,
+    borderRadius: Radii.input,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  errorText: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.red.fg,
+    textAlign: 'center',
+  },
+  settingsText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.navy,
+    textAlign: 'center',
+    textDecorationLine: 'underline',
   },
 });

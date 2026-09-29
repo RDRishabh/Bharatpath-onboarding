@@ -22,6 +22,7 @@ from typing import Any
 from sqlalchemy import text
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -44,9 +45,7 @@ def relay_outbox(self: Any) -> dict[str, int]:
     granted entitlement, a sent notification or a re-score, so an interval
     here is a latency the user feels.
     """
-    import asyncio
-
-    return asyncio.run(_relay_batch())
+    return run_async(_relay_batch())
 
 
 async def _relay_batch() -> dict[str, int]:

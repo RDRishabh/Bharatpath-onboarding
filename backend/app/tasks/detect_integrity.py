@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
+from app.tasks.async_runner import run_async
 from app.worker import celery_app
 
 logger = get_logger(__name__)
@@ -29,9 +30,7 @@ logger = get_logger(__name__)
 def detect_integrity(self: Any, score_id: str) -> dict[str, Any]:
     """Entry point. Retries on infrastructure failure only -- the rules are
     pure, so a CV that produced a result once produces the same one again."""
-    import asyncio
-
-    return asyncio.run(_detect(score_id))
+    return run_async(_detect(score_id))
 
 
 async def _detect(score_id: str) -> dict[str, Any]:

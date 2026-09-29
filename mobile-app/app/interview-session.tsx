@@ -2,18 +2,12 @@
  * BharatPath — Active Mock Interview Session Route
  * Manages question preparation, live recording, keep/retake, and offline queue.
  */
-import { useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import { InterviewSessionScreen } from '@/screens/interview/InterviewSessionScreen';
 
 export default function InterviewSessionRoute() {
-  const router = useRouter();
+  const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
 
-  return (
-    <InterviewSessionScreen
-      initialQuestionIndex={1} // Question 2 to match user's screenshot, fully interactive
-      onFinishSession={() => {
-        router.replace('/interview-report' as any);
-      }}
-    />
-  );
+  if (!sessionId) return <Redirect href="/mock-interview" />;
+  return <InterviewSessionScreen sessionId={sessionId} />;
 }

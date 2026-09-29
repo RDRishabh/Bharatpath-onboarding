@@ -1697,6 +1697,219 @@ in the graph: `lint-imports` keeps all ten contracts.
 
 ---
 
+---
+
+## 2026-09-22 — Mock interviews follow the candidate subscription
+
+Removed the second, one-off interview payment from the mobile flow. The
+backend already treats interviews as subscription-included
+(`0002_interviews_in_subscription`): an active candidate subscription plus a
+fresh passed device check starts a session with `purchase_id = NULL`; the
+legacy `/candidate/interview/checkout` route remains deprecated for old
+clients and historical payment records only.
+
+The mobile flow is now:
+
+1. Interview intro (no price) → **Test before interview**.
+2. Device check passes → `POST /candidate/interview/sessions` immediately.
+3. The returned session opens directly; an existing open session is resumed.
+
+The obsolete interview payment sheet and briefing route were removed. The
+intro says the tool is included in the active subscription and never opens a
+second payment. The live local database was upgraded from `0001_baseline` to
+`0002_interviews_in_subscription`; without that migration the new
+`purchase_id = NULL` insert hits the old guard.
+
+The network check had been requesting `/openapi.json`, but this API mounts its
+schema at `/api/v1/openapi.json`; the 404 body was small enough to be
+misclassified as a slow transfer. It now requests the correct URL and rejects
+non-2xx responses before calculating throughput. Verified over the LAN:
+`200`, 268,443 bytes, well above the server's 16 kbps floor.
+
+Backend interview and evaluation integration tests: **18 passed**. Mobile
+TypeScript passes; lint has no errors (12 pre-existing unrelated warnings).
+The live verification call created subscription-included session
+`d72ac98a-e075-4c36-a02e-4dff6e39293b` (session 2, `CREATED`) for the local
+candidate; the app should resume it rather than create another.
+
+---
+
+## 2026-09-22 — Interview audio upload failed: LocalStack had no buckets
+
+A recorded answer uploaded from the phone was refused `404`. The presign call
+succeeded — S3 signing happens without touching the bucket — so the failure
+only appeared at the `PUT`. LocalStack held **no buckets at all**: its state
+had been lost while the container stayed up, so `init_localstack.sh`
+(mounted at `/etc/localstack/init/ready.d/init.sh`, run at container start)
+never ran again.
+
+Recovery, and the thing to try first when any presigned upload answers 404:
+
+```bash
+cd backend && docker compose exec -T localstack bash /etc/localstack/init/ready.d/init.sh
+docker compose exec -T localstack awslocal s3 ls   # expect six buckets
+```
+
+The script is idempotent. Verified afterwards that a presigned PUT succeeds
+both as signed (`localhost:4566`) and through the LAN host the phone uses —
+LocalStack does not reject the rewritten `Host`, so
+`reachableStorageUrl` remains correct.
+
+The mobile client now reads the storage refusal body and names the code, so
+`NoSuchBucket` says so instead of showing a bare HTTP 404.
+
+**The native audio player has no nullable source.** `AudioPlayer.replace(null)`
+is rejected on Android ("Cannot assign null to not nullable type"), and the
+rejection surfaced inside the send path, where it read as a failed upload.
+Clearing a finished answer is now a pause and a rewind; only a new recording
+replaces the source. Every player call is wrapped: reviewing an answer is a
+convenience, and it must never fail the recording or the upload around it.
+The three answer rules the server enforces on the stored object
+(`answer_too_small`, `answer_too_large`, `answer_not_audio`,
+`answer_duration_out_of_range`) now have candidate-facing messages, and the
+app refuses to send a recording under a second rather than have the server
+delete it.
+
+---
+
+## 2026-09-22 — Interview API probed (mobile UI not changed)
+
+Live-tested `/candidate/interview` on the subscribed candidate
+(`onlyritik10@gmail.com`). Offer, failed and passed device checks, checkout
+without a check (`409 interview_device_check_required`), start without a
+purchase (`409 interview_purchase_required`), stub payment settle, session
+start, upload ticket, complete-without-bytes (`409 interview_answer_not_uploaded`),
+finish-early (`409 interview_answers_missing`), and report-on-open
+(`409 interview_session_not_completed`) all matched the documented contract.
+
+Residue on that local account: one SUCCEEDED `INTERVIEW_SESSION` payment
+(₹349) and an **open** session `e1e167bd-b0c6-47f0-a12d-d269537827fc`
+(`SET_1_FOUNDATIONS`, `IN_PROGRESS`, all six answers still `PENDING`). There
+is no abandon route; the next interview integration must resume it via
+`open_session_id`. Mobile mock interview screens were not wired.
+
+---
+
+## 2026-09-22 — Mobile questionnaire integrated
+
+Replaced the mobile "Attribute check" personality mock-up with the backend
+questionnaire at `/candidate/questionnaire`. The app now loads the versioned
+bank and saved answers, renders the four sections and all five API question
+types, merge-saves with `PUT .../answers`, submits with `POST .../submit`, and
+reads the section report from `GET .../report`.
+
+The UI is driven by the response rather than a local question bank:
+
+- SINGLE and MULTI use the option codes returned by the API.
+- BOOLEAN stores a real boolean; NUMBER follows the backend's 0–100,000
+  bounds; TEXT follows its 1,000-character bound.
+- `PREFERRED_LOCATIONS` has no API options, so the UI accepts up to five
+  comma-separated place names using the same no-digit/no-`@` validation.
+- Every question remains optional; clearing sends `null`, which is the
+  backend's documented delete operation.
+- The report is only a read-back of shared answers. The invented personality
+  type, dimension meters, role recommendations, 24 Likert questions and local
+  scoring engine were deleted. The questionnaire remains worth zero points.
+
+The Home card no longer says `FREE` or "24 questions"; it says "About 12
+questions", then "View your answers" after submission. The bank still reports
+`placeholder-1-2026-09-11`, so its wording remains client-placeholder content.
+
+Live API validation covered load, merge-save, report label rendering (`true`
+became "Yes"), and clearing with `null`. The temporary empty submission was
+removed afterwards, restoring the candidate's original not-started state.
+Mobile TypeScript and IDE diagnostics pass; the web route renders the new
+intro and correctly shows `Authentication required` when opened without a
+session.
+
+## 2026-09-22 — Home greeting uses the candidate's name
+
+Home no longer greets "Priya" with initials "PD". The greeting first name and
+avatar initials come from `GET /candidate/profile` (`full_name` asked at
+sign-up). Sign-up and login write that name into `AuthContext` so the header
+is not empty while the request is in flight. The header date is today's IST
+date.
+
+**`candidate_profiles` was empty for every account**, which is why the header
+still read "Hi" with the name wired up: the sign-up `PUT
+/candidate/profile/name` was best-effort inside a `catch` that only logged,
+so a single failure left the account with no name anywhere and nothing
+retried it. That call now retries once and, if it still fails, hands the name
+to `services/profile/pendingName.ts`.
+
+`services/profile/name.ts` resolves and repairs: stored profile name, else
+this session's sign-up name, else the structured resume form's name — then
+writes it back, so an account created before this fix gets a name on the next
+Home visit. The form fallback is the one the backend already uses for an
+employer reveal (`resume.service.declared_name`), and it is safe for the same
+reason: only the structured form carries a name, so nothing guesses one from
+an uploaded or pasted CV. With nothing to resolve, the header reads "Hi" and
+the avatar `?`, never a stand-in person.
+
+The jobs list, score-gain chip and add-on prices on Home are still design
+placeholders.
+
+Validation: mobile TypeScript.
+
+## 2026-09-22 — Local ATS scoring enabled end to end
+
+The gitignored `backend/.env` now enables OpenAI Layer 1 extraction with the
+chosen pinned snapshot `gpt-5.4-mini-2026-03-17`. The supplied OpenAI and
+Sarvam credentials are local-only; Sarvam's provider remains disabled because
+it transcribes mock-interview audio and is not part of resume scoring. A live
+OpenAI request returned schema-valid resume facts without exposing the key.
+
+`backend/scripts/dev_workers.sh` now runs the local Celery worker and enqueues
+the outbox relay every two seconds (production uses EventBridge Scheduler). It
+uses Celery's solo pool on macOS to avoid prefork initialization failures.
+
+The first real worker run exposed a backend lifecycle defect: every synchronous
+task wrapper used `asyncio.run`, creating a new event loop while retaining
+SQLAlchemy's async pool from the previous delivery. The next task failed with
+`Future attached to a different loop`. All task wrappers now use
+`app/tasks/async_runner.py`, which keeps one event loop per worker process,
+matching the lifetime of its database pool. A regression test holds that loop
+reuse.
+
+The API and worker were restarted, an existing pending confirmation was
+retried successfully, and the next resume confirmed through the app completed
+normally with current score **795**. Both runs relayed
+`scoring.score_computed` and completed integrity; each value came from stored
+OpenAI extraction plus deterministic scoring code, not a frontend constant.
+The mobile poll now allows one minute because observed model calls took
+8–16 seconds, while retaining an immediate "Continue without score" action.
+
+Validation: live OpenAI extraction; API health; 121 focused task, relay and
+scoring tests; Ruff and mypy over all task modules; mobile TypeScript.
+
+## 2026-09-22 — Mobile notification permission
+
+The onboarding notification screen now requests the real iOS/Android system
+permission through `expo-notifications`, creates Android's high-importance
+default channel, opts foreground notifications into the banner and notification
+list, and synchronises the result with `PATCH /notifications/preferences`
+(`push_enabled`). A permanent denial links to device settings; web explains
+that notification-bar permission must be tested in the native app.
+
+**`expo-notifications` is required lazily, inside a try/catch, never imported
+at module scope.** Expo Go dropped push support in SDK 53 and the module throws
+at import time there — and because presentation is configured from
+`app/_layout.tsx`, that import took down the whole app before any screen
+rendered. `services/notifications/device.ts` now loads it on first use,
+exports `isExpoGo` / `supportsRemotePush`, and the screen shows a note in Expo
+Go saying permission works but a server-sent notification needs a development
+build.
+
+This is permission and presentation, not remote push delivery. The backend
+currently has no device-token registration endpoint, PUSH templates, or
+Expo/APNs/FCM provider (`notifications.service._provider_configured` permits
+only EMAIL and IN_APP). Those three backend pieces plus EAS project credentials
+are required before a server event can enter a phone's notification bar.
+
+Validation: mobile TypeScript and focused IDE diagnostics pass.
+
+---
+
 ## 2026-09-22 (later still) — E32, E35, E30, and a fuzzer that earned its keep
 
 Four items asked for: schemathesis, E32, E30, E31/E35.
@@ -2105,6 +2318,36 @@ Validation: focused ESLint passes for all changed dashboard files. Browser check
 against live 500 responses confirm that employer, college and admin each retain
 their full dashboard UI with empty values and no blocking error panel.
 
+---
+
+## 2026-09-21 — Mobile score poll after confirm
+
+The candidate scoring screen now polls `GET /candidate/score/me` after resume
+confirm and the reveal shows that `value` and `band`, not a canned 680. PENDING
+is treated as waiting, with a retry if it never flips. Locally the number still
+needs `backend/scripts/dev_workers.sh` (outbox relay + Celery worker) and Layer
+1 switched on (`SCORING_EXTRACTION_ENABLED=true` plus `OPENAI_API_KEY`); there
+is no heuristic extractor.
+
+**No stand-in number is drawn anywhere.** With no score, the reveal, the home
+card and the share card show a dash and "not scored yet" rather than 706 or
+680, and the defaults were removed from `HomeScreen` and `ShareResultScreen`
+so a caller cannot get one by omission. Each of those files carries a comment
+naming exactly what has to run to produce a real score.
+
+Recorded in the same comments: the breakdown, suggestions and "recalculated"
+screens are design mock-ups that **cannot** be integrated. Score explanation
+was removed by the client (2026-08-27, re-confirmed 2026-09-11), so no
+endpoint returns a category, a delta or an improvement list, and
+`test_score_never_explained.py` fails the build on a schema that adds one.
+They should be dropped from the flow rather than wired.
+
+Measured state of the local stack while diagnosing this: 7 confirmed resume
+versions, 7 unpublished `resume.version_confirmed` outbox rows, 0 rows in
+`scores`, no worker process, and no `SCORING_*` or `OPENAI_API_KEY` in
+`backend/.env`. Note `confirmed_at` is a latch — publishing those events with
+no worker running consumes them for nothing, so start the worker first.
+
 ## 2026-09-21 — Frontend table page sizes
 
 Added a shared rows-per-page selector to every frontend data table with 10 as
@@ -2155,14 +2398,14 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 
 ## State at a glance
 
-| | |
-|---|---|
-| **Branch** | `feat/day6-resume-intake` |
-| **`main`** | green on all five CI jobs |
-| **Tests** | 2419 on 2026-09-18 (sign-up, accounts, discount codes), not yet pushed. 2324 on 2026-09-17 (Day 20). 2247 (Day 19). 2079 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
-| **Coverage** | 84% |
-| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 complete · 3, 4, 6, 8, 9 partial |
-| **Next** | **The twenty days are done.** 2026-09-22 closed the scheduler gap (E4), seeded configuration as rows, added the six-language set and wrote the single-host AWS deployment. **Nothing is applied to AWS**: the access key in `~/.aws` is dead, so the immediate next step is a new admin key and `terraform plan`. Then: SES production access (E38), a payment gateway (D3), a native-speaker pass on eight bundles (E39, C5), AWS service activation for Textract and GuardDuty (E2), and the decisions in `blockers.md`. The frontend and mobile app are another team's — the mobile app is wired to Supabase and calls none of this backend. |
+|               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Branch**    | `feat/mobile-app`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **`main`**    | green on all five CI jobs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Tests**     | 2419 on 2026-09-18 (sign-up, accounts, discount codes), not yet pushed. 2324 on 2026-09-17 (Day 20). 2247 (Day 19). 2079 (Day 18), **all five CI jobs green on PR #11** (`e1f3a97`), first push. 2018 (Day 17), **all five CI jobs green on PR #11** (`f65fa3d`) — the first push failed one test that relied on the catalogue seed, which CI never runs. Day 16: 1898. Day 15: 1820. Day 14: 1714. Day 13: 1663 — first push failed CI on a flaky test of ours, fixed (see Day 13). Day 12 (`65ba18e`): 1591, **all five CI jobs green on PR #8**. |
+| **Coverage**  | 84%                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Days done** | 1, 2, 5, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 complete · 3, 4, 6, 8, 9 partial                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Next**      | **The twenty days are done.** 2026-09-22 closed the scheduler gap (E4), seeded configuration as rows, added the six-language set and wrote the single-host AWS deployment. **Nothing is applied to AWS**: the access key in `~/.aws` is dead, so the immediate next step is a new admin key and `terraform plan`. Then: SES production access (E38), a payment gateway (D3), a native-speaker pass on eight bundles (E39, C5), AWS service activation for Textract and GuardDuty (E2), and the decisions in `blockers.md`. The mobile app is actively integrated against the backend APIs (auth, onboarding, scoring, questionnaire, interviews, applications). |
 
 > **Run the suite as CI does**, and `source .test-env.sh` first. Without it the
 > four RLS tests fail for an environmental reason that looks exactly like a
@@ -2173,7 +2416,7 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 ### Deferred by decision — revisit before launch
 
 | Item | Decided | Why deferred | What it takes to land |
-|---|---|---|---|
+| ---- | ------- | ------------ | --------------------- |
 
 > ⚠️ **Switching parser is not a drop-in.** Invariant 1 requires a score to be
 > reproducible from the stored extraction chain. A different parser yields
@@ -2185,14 +2428,14 @@ Validation: `npx tsc --noEmit` and focused ESLint both pass.
 
 ### Blocked, and not on us
 
-| Blocker | Blocks | Lead time |
-|---|---|---|
-| **Textract account activation** | OCR fallback for scanned CVs | `SubscriptionRequiredException` on a brand-new AWS account, with `AdministratorAccess` — so it is account activation, not IAM. Usually clears within hours. **Code is written and wired; run `backend/scripts/verify_ocr_fallback.py` once it clears.** |
-| ~~TRAI DLT registration~~ | Every SMS | ✅ **Started 2026-09-11.** Still 2–4 weeks to clear; SMS to Indian numbers fails silently until it does. **The bodies to register are now drafted** — `notifications/templates.py`, `sms_templates()`. |
-| **Twilio account** | Phone OTP, the 3 Cognito custom-auth Lambdas | Days |
-| **Google OAuth client** | Google federation on the candidate pool | Hours |
-| **N7 — who makes the course?** | **Launch, not the build** | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1. |
-| ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~ | ✅ **Closed 2026-09-11** (Round 7.2, *"can be"*) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes. |
+| Blocker                               | Blocks                                       | Lead time                                                                                                                                                                                                                                               |
+| ------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Textract account activation**       | OCR fallback for scanned CVs                 | `SubscriptionRequiredException` on a brand-new AWS account, with `AdministratorAccess` — so it is account activation, not IAM. Usually clears within hours. **Code is written and wired; run `backend/scripts/verify_ocr_fallback.py` once it clears.** |
+| ~~TRAI DLT registration~~             | Every SMS                                    | ✅ **Started 2026-09-11.** Still 2–4 weeks to clear; SMS to Indian numbers fails silently until it does. **The bodies to register are now drafted** — `notifications/templates.py`, `sms_templates()`.                                                  |
+| **Twilio account**                    | Phone OTP, the 3 Cognito custom-auth Lambdas | Days                                                                                                                                                                                                                                                    |
+| **Google OAuth client**               | Google federation on the candidate pool      | Hours                                                                                                                                                                                                                                                   |
+| **N7 — who makes the course?**        | **Launch, not the build**                    | Build unblocked 2026-09-11 with a placeholder course and a provisional, versioned completion rule. The product question is untouched: a completion still moves a real score by up to 30 points on criteria nobody has agreed. See `blockers.md` C1.     |
+| ~~**N2 — can CV text leave India?**~~ | ~~Day 8~~                                    | ✅ **Closed 2026-09-11** (Round 7.2, _"can be"_) — this table was stale. Processing stays in `ap-south-1` anyway: it costs nothing and is the answer that stays right if the position changes.                                                          |
 
 ---
 
@@ -2208,7 +2451,7 @@ Reference for app teams: **`docs/signup-and-accounts.md`**.
 ### Built
 
 - **Self-registration for businesses** (closes E7): `allow_admin_create_user_only
-  = false` in Terraform. No API change was needed — a business account with no
+= false` in Terraform. No API change was needed — a business account with no
   organisation already got 403 `no_active_membership` and could create one.
 - **Phone OTP off**: `/auth/otp/start` registered only behind
   `AUTH_PHONE_OTP_ENABLED` (default off); the throttle is kept and tested at
@@ -2285,7 +2528,7 @@ Decision: **no Bedrock for AI**. `bedrock.py` stays selectable
   comments.
 - Settings: `OPENAI_API_KEY`, `SARVAM_API_KEY`, `INTERVIEW_TRANSCRIPTION_PROVIDER`,
   `INTERVIEW_EVALUATION_MODEL_ID`; boot refuses a selected provider without its
-  key/model. `tests/conftest.py` now *forces* every provider off, so a
+  key/model. `tests/conftest.py` now _forces_ every provider off, so a
   developer's `.env` can never make the suite call a model.
 - `scripts/verify_ai_providers.py` — live check (costs a few rupees).
 - 23 unit tests on a mock transport (`test_openai_sarvam_providers.py`).
@@ -2299,7 +2542,7 @@ run the verify script with `--compare gpt-5.4` on real CVs before switching.
 ### Live-tested (same day, real keys)
 
 - **The live run caught a bug the mocked tests could not**: stripping the
-  `title` *keyword* from the schema also deleted the role's `title` *field*,
+  `title` _keyword_ from the schema also deleted the role's `title` _field_,
   so the model was never asked for a job title and every real CV came back
   `schema_validation`. Fixed; regression test holds every model field in the
   strict schema.
@@ -2330,16 +2573,16 @@ indexes.
 
 ### What landed
 
-| | |
-|---|---|
+|                                       |                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **The deletion policy, written down** | `privacy.domain.ERASURE_PLAN` classifies **every table in the schema**: ERASE, RETAIN under the carve-out, NOT_PERSONAL, or SELF_EXPIRING, each with the sentence justifying it. `tests/invariants/test_erasure_plan.py` reads the **live database**, so a table added next month without a decision fails the build rather than quietly surviving erasures. |
-| **The cascade** | `erase_candidate(uuid, text)` — one SECURITY DEFINER function, one transaction, returning a manifest of rows destroyed per table, recorded on the request and in the audit row. |
-| **Export** | `POST /privacy/requests/export` → outbox → `privacy.build_export` → a zip of JSON per section in S3 (server-side encrypted), behind a 10-minute presigned link minted and **audited per call**. Expires after 48h, and an erasure destroys it at once whatever the sweep is doing. |
-| **Deletion** | `POST /privacy/requests/deletion`, a 24h cooling-off period, withdrawable, then `privacy.erase_due`. Objects first, rows second. |
-| **Rate limits** | One table (`app/core/ratelimit.py`), three scopes, two tiers: global per IP / user / tenant (fail open), specific per route (fail closed). 429 now carries `Retry-After`. Includes the analytics limit Day 18 left owed. |
-| **Index review** | `tests/integration/test_index_review.py` — 39 hot query shapes planned with `enable_seqscan = off`, plus every foreign key on a growing table indexed or exempted in writing. |
-| **Invariant suite** | `test_all_ten_invariants_are_covered.py` names the file proving each of the ten and fails if one is renamed away or emptied. |
-| **Handover** | `openapi.json` (141 paths), a generated Postman collection (157 requests, 10 folders), [`integration-notes.md`](integration-notes.md), and a README that matches how the stack actually starts. |
+| **The cascade**                       | `erase_candidate(uuid, text)` — one SECURITY DEFINER function, one transaction, returning a manifest of rows destroyed per table, recorded on the request and in the audit row.                                                                                                                                                                              |
+| **Export**                            | `POST /privacy/requests/export` → outbox → `privacy.build_export` → a zip of JSON per section in S3 (server-side encrypted), behind a 10-minute presigned link minted and **audited per call**. Expires after 48h, and an erasure destroys it at once whatever the sweep is doing.                                                                           |
+| **Deletion**                          | `POST /privacy/requests/deletion`, a 24h cooling-off period, withdrawable, then `privacy.erase_due`. Objects first, rows second.                                                                                                                                                                                                                             |
+| **Rate limits**                       | One table (`app/core/ratelimit.py`), three scopes, two tiers: global per IP / user / tenant (fail open), specific per route (fail closed). 429 now carries `Retry-After`. Includes the analytics limit Day 18 left owed.                                                                                                                                     |
+| **Index review**                      | `tests/integration/test_index_review.py` — 39 hot query shapes planned with `enable_seqscan = off`, plus every foreign key on a growing table indexed or exempted in writing.                                                                                                                                                                                |
+| **Invariant suite**                   | `test_all_ten_invariants_are_covered.py` names the file proving each of the ten and fails if one is renamed away or emptied.                                                                                                                                                                                                                                 |
+| **Handover**                          | `openapi.json` (141 paths), a generated Postman collection (157 requests, 10 folders), [`integration-notes.md`](integration-notes.md), and a README that matches how the stack actually starts.                                                                                                                                                              |
 
 ### Decisions worth knowing
 
@@ -2417,7 +2660,7 @@ may not touch one — which the invariant test enforces.
 - **Four unindexed foreign keys the erasure would have scanned**:
   `integrity_signals.candidate_id`, `integrity_checks.candidate_id`,
   `college_seat_assignments.candidate_id` and `entitlements.user_id`. Each had
-  only a *partial* index — HIGH-and-open signals, the live seat, unconsumed
+  only a _partial_ index — HIGH-and-open signals, the live seat, unconsumed
   entitlements — which an erasure's predicate cannot use. Four more were added
   where the erasure now deletes a parent (`resume_files`, `scores`,
   `device_checks`, `student_consents`, `roster_entries`).
@@ -2431,14 +2674,14 @@ may not touch one — which the invariant test enforces.
 
 ### Owed
 
-| | |
-|---|---|
-| **The retention period** | B3. Counsel's, never arrived. `RETENTION_POLICY_VERSION` starts `placeholder-`, a test asserts the prefix, and retained rows are kept indefinitely rather than on a guess. |
-| **Both sweeps are unscheduled** | E4. `privacy.erase_due` and `privacy.expire_exports` exist and nothing runs them. A deletion is accepted, tracked and shown with its due date, and **nothing is destroyed** — safe, but a promise not being kept. Hourly is enough. |
-| **Cognito user deletion** | E32. |
-| **Business accounts cannot erase themselves** | E33 — refused in the route *and* in the function; what happens to an organisation whose last owner leaves is nobody's decision yet. |
-| **No S3 lifecycle rule on exports** | E34, same family as E22. |
-| **Week 4 gate: schemathesis fuzzing** | Still ☐, carried from the Week 3 gate. |
+|                                               |                                                                                                                                                                                                                                     |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The retention period**                      | B3. Counsel's, never arrived. `RETENTION_POLICY_VERSION` starts `placeholder-`, a test asserts the prefix, and retained rows are kept indefinitely rather than on a guess.                                                          |
+| **Both sweeps are unscheduled**               | E4. `privacy.erase_due` and `privacy.expire_exports` exist and nothing runs them. A deletion is accepted, tracked and shown with its due date, and **nothing is destroyed** — safe, but a promise not being kept. Hourly is enough. |
+| **Cognito user deletion**                     | E32.                                                                                                                                                                                                                                |
+| **Business accounts cannot erase themselves** | E33 — refused in the route _and_ in the function; what happens to an organisation whose last owner leaves is nobody's decision yet.                                                                                                 |
+| **No S3 lifecycle rule on exports**           | E34, same family as E22.                                                                                                                                                                                                            |
+| **Week 4 gate: schemathesis fuzzing**         | Still ☐, carried from the Week 3 gate.                                                                                                                                                                                              |
 
 ---
 
@@ -2452,16 +2695,16 @@ job-board policy and `job_accepts_applications`.
 
 ### What landed
 
-| | |
-|---|---|
-| **Staff tenancy (E10 closed)** | One PLATFORM tenant (`uq_tenants_one_platform`). `guard_membership_tenant_type`, generated from `identity.domain.ROLE_TENANT_TYPE`, keeps staff roles in it and customer roles out of it, for every writer. `scripts/create_platform_staff.py`; no route. |
-| **Console** (`/admin`) | KYB submissions (a record while approval is automatic; open with answers, decide), integrity queue (open with evidence, clear or confirm), organisations, suspend / reinstate / history, college seats (E23 closed), candidate / employer / college drill-downs, notification suppression, dispute queue (open, assign, resolve), audit search by actor, action, target, tenant and time. Permission table `admin.domain.CONSOLE_ROLES`. |
-| **Every look recorded** | `admin.service._reveal`: the audit row is written on the request's transaction, then the **read-only** bypass session is opened. A failed audit write opens nothing (tested). Drill-downs show the display score and band, masked contacts, and counts — never a CV. |
-| **Suspension** | A `tenant_suspensions` row, one open per tenant, lifted by latch, never deleted. `guard_tenant_suspension_write` mirrors it onto `tenants.status`; `guard_tenant_status` refuses the reverse. **Bites on the next request** despite the 60s membership cache (`membership.mark_tenant_changed`), answered 403 `tenant_suspended`. Jobs leave the board and refuse applications; a college's seats stop (E29). PLATFORM cannot be suspended. |
-| **Disputes** | `POST/GET /disputes` for candidates, employers and colleges (HIRE needs a visible application; colleges cannot dispute a hire; 5/day). Staff work them in `/admin/disputes`, cross-linked to the application's two sides and the candidate's live integrity signals. `guard_dispute_write`: what was raised never changes, and only a PLATFORM-bound transaction moves state. A candidate's hire dispute is filed automatically (E12 now has a queue, still no remedy). |
-| **Relay (E15, in code)** | `_publish` enqueues every subscribed task with `routing.TASK_ARGUMENTS`, raising on a broker failure. |
-| **Notifications** | `plan_for` (15 events), `delivery_decision` (account, opt-out, suppression, contact, DLT, provider — in that order), one row per message **including every skipped one**, deduplicated, decide-then-send in separate transactions. Inbox, read, preferences (language and channels). SMS via Twilio Messaging, email via SES, both `none` by default with a stub for tests. 17 new templates (13 in-app). |
-| **Nudges (R9)** | `notifications.nudge_incomplete_profiles`: candidates older than 24h with no upload, paste or form; every 72h, three at most, 09:00–21:00 IST; `nudges_enabled` stops them; config `notifications.nudges` (strict, cannot go daily or past six). The nudge number is the cap and the concurrency guard. |
+|                                |                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Staff tenancy (E10 closed)** | One PLATFORM tenant (`uq_tenants_one_platform`). `guard_membership_tenant_type`, generated from `identity.domain.ROLE_TENANT_TYPE`, keeps staff roles in it and customer roles out of it, for every writer. `scripts/create_platform_staff.py`; no route.                                                                                                                                                                                                               |
+| **Console** (`/admin`)         | KYB submissions (a record while approval is automatic; open with answers, decide), integrity queue (open with evidence, clear or confirm), organisations, suspend / reinstate / history, college seats (E23 closed), candidate / employer / college drill-downs, notification suppression, dispute queue (open, assign, resolve), audit search by actor, action, target, tenant and time. Permission table `admin.domain.CONSOLE_ROLES`.                                |
+| **Every look recorded**        | `admin.service._reveal`: the audit row is written on the request's transaction, then the **read-only** bypass session is opened. A failed audit write opens nothing (tested). Drill-downs show the display score and band, masked contacts, and counts — never a CV.                                                                                                                                                                                                    |
+| **Suspension**                 | A `tenant_suspensions` row, one open per tenant, lifted by latch, never deleted. `guard_tenant_suspension_write` mirrors it onto `tenants.status`; `guard_tenant_status` refuses the reverse. **Bites on the next request** despite the 60s membership cache (`membership.mark_tenant_changed`), answered 403 `tenant_suspended`. Jobs leave the board and refuse applications; a college's seats stop (E29). PLATFORM cannot be suspended.                             |
+| **Disputes**                   | `POST/GET /disputes` for candidates, employers and colleges (HIRE needs a visible application; colleges cannot dispute a hire; 5/day). Staff work them in `/admin/disputes`, cross-linked to the application's two sides and the candidate's live integrity signals. `guard_dispute_write`: what was raised never changes, and only a PLATFORM-bound transaction moves state. A candidate's hire dispute is filed automatically (E12 now has a queue, still no remedy). |
+| **Relay (E15, in code)**       | `_publish` enqueues every subscribed task with `routing.TASK_ARGUMENTS`, raising on a broker failure.                                                                                                                                                                                                                                                                                                                                                                   |
+| **Notifications**              | `plan_for` (15 events), `delivery_decision` (account, opt-out, suppression, contact, DLT, provider — in that order), one row per message **including every skipped one**, deduplicated, decide-then-send in separate transactions. Inbox, read, preferences (language and channels). SMS via Twilio Messaging, email via SES, both `none` by default with a stub for tests. 17 new templates (13 in-app).                                                               |
+| **Nudges (R9)**                | `notifications.nudge_incomplete_profiles`: candidates older than 24h with no upload, paste or form; every 72h, three at most, 09:00–21:00 IST; `nudges_enabled` stops them; config `notifications.nudges` (strict, cannot go daily or past six). The nudge number is the cap and the concurrency guard.                                                                                                                                                                 |
 
 ### One failure seen once and not reproduced
 
@@ -2528,16 +2771,16 @@ Pushed to PR #11 as `e1f3a97`: **all five CI jobs green on the first push**.
 
 ### What landed
 
-| | |
-|---|---|
-| **INDIVIDUAL consent** | `POST /candidate/colleges/{college_id}/individual-visibility` with the INDIVIDUAL terms' version (`GET .../consent-terms?scope=INDIVIDUAL`, versioned apart from the roster words). Needs a live link (404 `college_link_not_found`); idempotent; audited; `college.individual_visibility_granted`. `granted_via = DIRECT`. |
-| **Revocation** | `POST /candidate/colleges/{college_id}/revoke {scope}`. INDIVIDUAL keeps the link and the seat. **ROSTER disconnects**: the seat is released and INDIVIDUAL revoked by trigger, in the same UPDATE, at the same instant. Never paywalled; idempotent; 404 for a college never linked. One audit row per scope ended and one `college.consent_revoked` event (consent id, tenant, scopes — no student id). |
-| **The database's copy** | `ck_student_consents_scope_via` (INDIVIDUAL ⇔ DIRECT); `guard_student_consent_insert` (INDIVIDUAL needs a live ROSTER link, locked FOR SHARE against a racing disconnect; a consent starts live); `revoke_individual_with_roster`; a candidate UPDATE policy for revoking their own live rows; and **two RESTRICTIVE policies** so only the student a consent names can insert or revoke it. |
-| **Analytics** | `GET /college/analytics/overview`: connected and individually visible counts, score distribution by band, median, applicants, applications, interviews, platform hires. `GET /college/analytics/placements`: confirmed platform hires by IST month (12) and by job location, `source: PLATFORM`. Both for admin and staff, behind payment, never cached. |
-| **Floors** | `analytics.domain`, config `analytics.privacy` (strict; bad row = 500 `analytics_floors_invalid`). Under 10 connected students only the counts show. A band under 5 is `null`, with a complementary cell withheld beside it. Median rounded to 10. Locations under 5 hires pooled as `OTHER`. Monthly placement suppression was superseded on 2026-09-26: after the cohort floor, months are exact and empty months are `0`. A row may raise a floor, never set one below 5 / 3. |
-| **Reads** | Six SECURITY DEFINER functions (`COLLEGE_STUDENT_READS`) over two consent CTEs, keyed on `bound_college_tenant()` — the tenant bound from the membership, which must be an ACTIVE COLLEGE. No tenant parameter. The three aggregate functions return no identifier. |
-| **Individual view** | `GET /college/students` (keyset page) and `GET /college/students/{candidate_id}`: name (sign-up, else structured form), display score and band, application and interview counts, confirmed platform hires with job title and employer. **404 unless the INDIVIDUAL consent is live now.** Every page and every open writes an audit row in the transaction (`college_students_listed` with the ids shown; `college_student_viewed` with the consent id). |
-| **Invariant 9** | `tests/invariants/test_invariant_09_consent.py` — see *Guarantees* below. Plus a cross-tenant case for `/college/students/{candidate_id}`. |
+|                         |                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **INDIVIDUAL consent**  | `POST /candidate/colleges/{college_id}/individual-visibility` with the INDIVIDUAL terms' version (`GET .../consent-terms?scope=INDIVIDUAL`, versioned apart from the roster words). Needs a live link (404 `college_link_not_found`); idempotent; audited; `college.individual_visibility_granted`. `granted_via = DIRECT`.                                                                                                                               |
+| **Revocation**          | `POST /candidate/colleges/{college_id}/revoke {scope}`. INDIVIDUAL keeps the link and the seat. **ROSTER disconnects**: the seat is released and INDIVIDUAL revoked by trigger, in the same UPDATE, at the same instant. Never paywalled; idempotent; 404 for a college never linked. One audit row per scope ended and one `college.consent_revoked` event (consent id, tenant, scopes — no student id).                                                 |
+| **The database's copy** | `ck_student_consents_scope_via` (INDIVIDUAL ⇔ DIRECT); `guard_student_consent_insert` (INDIVIDUAL needs a live ROSTER link, locked FOR SHARE against a racing disconnect; a consent starts live); `revoke_individual_with_roster`; a candidate UPDATE policy for revoking their own live rows; and **two RESTRICTIVE policies** so only the student a consent names can insert or revoke it.                                                              |
+| **Analytics**           | `GET /college/analytics/overview`: connected and individually visible counts, score distribution by band, median, applicants, applications, interviews, platform hires. `GET /college/analytics/placements`: confirmed platform hires by IST month (12) and by job location, `source: PLATFORM`. Both for admin and staff, behind payment, never cached.                                                                                                  |
+| **Floors**              | `analytics.domain`, config `analytics.privacy` (strict; bad row = 500 `analytics_floors_invalid`). Under 10 connected students only the counts show. A band or month under 5 is `null`, with a complementary cell withheld beside it. Median rounded to 10. Locations under 5 hires pooled as `OTHER`. A row may raise a floor, never set one below 5 / 3.                                                                                                |
+| **Reads**               | Six SECURITY DEFINER functions (`COLLEGE_STUDENT_READS`) over two consent CTEs, keyed on `bound_college_tenant()` — the tenant bound from the membership, which must be an ACTIVE COLLEGE. No tenant parameter. The three aggregate functions return no identifier.                                                                                                                                                                                       |
+| **Individual view**     | `GET /college/students` (keyset page) and `GET /college/students/{candidate_id}`: name (sign-up, else structured form), display score and band, application and interview counts, confirmed platform hires with job title and employer. **404 unless the INDIVIDUAL consent is live now.** Every page and every open writes an audit row in the transaction (`college_students_listed` with the ids shown; `college_student_viewed` with the consent id). |
+| **Invariant 9**         | `tests/invariants/test_invariant_09_consent.py` — see _Guarantees_ below. Plus a cross-tenant case for `/college/students/{candidate_id}`.                                                                                                                                                                                                                                                                                                                |
 
 ### Guarantees and where they live
 
@@ -2618,24 +2861,24 @@ test that reads catalogue plans must call `sync_plans` itself. **Rebuild with `r
 candidate policies, nine functions and four triggers.
 
 Both decisions this day needed were already in hand: the seat model (Round 7.7,
-*"yes"*) and the typed referral code as consent (Round 7.9, *"do it"*). The
+_"yes"_) and the typed referral code as consent (Round 7.9, _"do it"_). The
 plan's §14 still listed Q10 and N6 as open; it no longer does.
 
 ### What landed
 
-| | |
-|---|---|
-| **Evaluation interfaces** | `interview/evaluation.py`: `TranscriptionProvider` and `EvaluationProvider`, each with an **unconfigured default that raises** and a stub (`INTERVIEW_EVALUATION_PROVIDER=stub`, refused in staging/prod). The module docstring is the contract a real implementation must meet. |
-| **Evaluation** | `interview.evaluate_session` task on `interview.session_completed`, beside the re-score. Transcribes each stored answer once (`interview_transcripts`, idempotent by answer, own transaction because it is paid per minute), then rates spoken answers against the rubric (`interview_evaluations`: ratings, raw response, provider, model, prompt and rubric versions). Session → EVALUATED, or FAILED with `no_speech` / `evaluation_invalid`. Both tables insert-only. |
-| **Report** | `GET /candidate/interview/sessions/{id}/report`: PENDING / READY / FAILED. Per dimension a **level in words** (STRONG, DEVELOPING, FOCUS_AREA) and what good looks like; per question the transcript, `looking_for` and the evaluator's comment. Assembled from stored rows on every read. |
-| **College tenant** | `POST /college/organisation` (business identity), `GET/PATCH` it, team under `/college/team` with COLLEGE_ADMIN / COLLEGE_STAFF (identity's team functions now take the role set). Onboarding against the versioned form: `GET /college/onboarding`, `PUT .../answers`, `POST .../submit`. |
-| **College subscription** | `/college/subscription` (plans, current, checkout, cancel, mandate) — the same five routes as employers; the admin buys, staff read. |
-| **Seats** | `college_seat_assignments`, one live seat per student platform-wide. `guard_college_seat_assignment` holds the cap and **moves `seats_used` itself** (the app role cannot write it). `allocate_seats` (PLATFORM_ADMIN / SYSTEM, audited, **no route** — E10): never below seats in use, never above the live plan's allowance, and growing it seats waiting students, longest-linked first. `GET /college/seats` shows counts only. |
-| **The seat limb** | `require_active_subscription` for a candidate is now **personal subscription OR `candidate_has_college_seat`**: a live seat, live ROSTER consent, ACTIVE college, college subscription in period — read live. |
-| **Referral codes** | `POST/GET /college/referral-codes`, `POST .../{id}/revoke`. 12 characters of Crockford base32 (60 bits, CSPRNG), always expiring (default 90 days, max 365), optional use cap, printed `ABCD-EFGH-JKMN`. The code never enters the audit log. |
-| **Linking** | `/candidate/colleges`: `GET /consent-terms`, `POST /link`, `GET` (links), invitations. **Entering the code is the consent, ROSTER scope only** (`student_consents`, `granted_via = REFERRAL_CODE`, the code named). Every bad code is one `referral_code_invalid`; 10 attempts an hour per student and 30 per address; a stale `consent_version` is refused. A free seat is taken at once. |
-| **Roster import** | `POST /college/roster-imports` (CSV in the body, ≤1 MB / 5,000 rows) previews every row with its issues — malformed phone or email, no contact, duplicate in the file, already on the roster — and invites nobody. Same file again returns the same import. `GET .../{id}`, `.../rows` (keyset), `.../commit` (duplicates re-checked under a roster lock; rows that will never be invited are deleted), `.../discard` (rows deleted). |
-| **Invitations** | `POST .../invitations/send` marks pending rows SENT and emits one `college.invitation_sent` per row, ids only. A student sees invitations **matched on their own verified phone or email** and accepts (INVITE consent, ROSTER only, seat taken) or declines; 30 days, expiry read from the clock. Tracking counts per import. |
+|                           |                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Evaluation interfaces** | `interview/evaluation.py`: `TranscriptionProvider` and `EvaluationProvider`, each with an **unconfigured default that raises** and a stub (`INTERVIEW_EVALUATION_PROVIDER=stub`, refused in staging/prod). The module docstring is the contract a real implementation must meet.                                                                                                                                                                                          |
+| **Evaluation**            | `interview.evaluate_session` task on `interview.session_completed`, beside the re-score. Transcribes each stored answer once (`interview_transcripts`, idempotent by answer, own transaction because it is paid per minute), then rates spoken answers against the rubric (`interview_evaluations`: ratings, raw response, provider, model, prompt and rubric versions). Session → EVALUATED, or FAILED with `no_speech` / `evaluation_invalid`. Both tables insert-only. |
+| **Report**                | `GET /candidate/interview/sessions/{id}/report`: PENDING / READY / FAILED. Per dimension a **level in words** (STRONG, DEVELOPING, FOCUS_AREA) and what good looks like; per question the transcript, `looking_for` and the evaluator's comment. Assembled from stored rows on every read.                                                                                                                                                                                |
+| **College tenant**        | `POST /college/organisation` (business identity), `GET/PATCH` it, team under `/college/team` with COLLEGE_ADMIN / COLLEGE_STAFF (identity's team functions now take the role set). Onboarding against the versioned form: `GET /college/onboarding`, `PUT .../answers`, `POST .../submit`.                                                                                                                                                                                |
+| **College subscription**  | `/college/subscription` (plans, current, checkout, cancel, mandate) — the same five routes as employers; the admin buys, staff read.                                                                                                                                                                                                                                                                                                                                      |
+| **Seats**                 | `college_seat_assignments`, one live seat per student platform-wide. `guard_college_seat_assignment` holds the cap and **moves `seats_used` itself** (the app role cannot write it). `allocate_seats` (PLATFORM_ADMIN / SYSTEM, audited, **no route** — E10): never below seats in use, never above the live plan's allowance, and growing it seats waiting students, longest-linked first. `GET /college/seats` shows counts only.                                       |
+| **The seat limb**         | `require_active_subscription` for a candidate is now **personal subscription OR `candidate_has_college_seat`**: a live seat, live ROSTER consent, ACTIVE college, college subscription in period — read live.                                                                                                                                                                                                                                                             |
+| **Referral codes**        | `POST/GET /college/referral-codes`, `POST .../{id}/revoke`. 12 characters of Crockford base32 (60 bits, CSPRNG), always expiring (default 90 days, max 365), optional use cap, printed `ABCD-EFGH-JKMN`. The code never enters the audit log.                                                                                                                                                                                                                             |
+| **Linking**               | `/candidate/colleges`: `GET /consent-terms`, `POST /link`, `GET` (links), invitations. **Entering the code is the consent, ROSTER scope only** (`student_consents`, `granted_via = REFERRAL_CODE`, the code named). Every bad code is one `referral_code_invalid`; 10 attempts an hour per student and 30 per address; a stale `consent_version` is refused. A free seat is taken at once.                                                                                |
+| **Roster import**         | `POST /college/roster-imports` (CSV in the body, ≤1 MB / 5,000 rows) previews every row with its issues — malformed phone or email, no contact, duplicate in the file, already on the roster — and invites nobody. Same file again returns the same import. `GET .../{id}`, `.../rows` (keyset), `.../commit` (duplicates re-checked under a roster lock; rows that will never be invited are deleted), `.../discard` (rows deleted).                                     |
+| **Invitations**           | `POST .../invitations/send` marks pending rows SENT and emits one `college.invitation_sent` per row, ids only. A student sees invitations **matched on their own verified phone or email** and accepts (INVITE consent, ROSTER only, seat taken) or declines; 30 days, expiry read from the clock. Tracking counts per import.                                                                                                                                            |
 
 ### Decisions worth knowing
 
@@ -2714,16 +2957,16 @@ interview price in the seeded catalogue.
 
 ### What landed
 
-| | |
-|---|---|
-| **Questionnaire** | `GET /candidate/questionnaire` (bank + saved answers), `PUT .../answers` (merge; `null` clears; one bad answer refuses the whole request with every issue listed), `POST .../submit`, `GET .../report` (by section, labels read back, 404 until submitted). `questionnaire_responses`, one row per candidate. Paywalled. |
-| **Device check** | `POST /candidate/interview/device-checks`: the app reports readings, `interview.domain.evaluate_device_check` decides, every failure listed, `rule_version` stored. Valid for 60 minutes. No camera, no lighting. |
+|                        |                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Questionnaire**      | `GET /candidate/questionnaire` (bank + saved answers), `PUT .../answers` (merge; `null` clears; one bad answer refuses the whole request with every issue listed), `POST .../submit`, `GET .../report` (by section, labels read back, 404 until submitted). `questionnaire_responses`, one row per candidate. Paywalled.        |
+| **Device check**       | `POST /candidate/interview/device-checks`: the app reports readings, `interview.domain.evaluate_device_check` decides, every failure listed, `rule_version` stored. Valid for 60 minutes. No camera, no lighting.                                                                                                               |
 | **Offer and checkout** | `GET .../offer` (price, `will_increase_score`, `requires_acknowledgement`, check status, unstarted purchases, open session). `POST .../checkout` → billing, purpose `INTERVIEW_SESSION`, refused **before a payment exists** without a fresh passed check or, from the fourth session, without `acknowledge_no_score_increase`. |
-| **Purchase** | Granted by `billing._grant` after a verified callback into `interview_purchases`; `guard_interview_purchase` refuses anything else. Versioned `interview_products` seeded from `INTERVIEW_SESSION_PRODUCT` (placeholder ₹349). |
-| **Sessions** | `POST .../sessions` consumes the oldest purchase behind a fresh check, or returns the open session (recovery). Set 1, 2, 3 by session number. `GET .../sessions`, `GET .../sessions/{id}` — the answer manifest, one slot per question, `looking_for` only once that answer is stored. |
-| **Answers** | `POST .../answers/{i}/upload` (presigned PUT, key derived server-side; the first starts the session), `POST .../answers/{i}/complete` (size from S3, format sniffed — Ogg/WebM Opus, ADTS/MP4 AAC — duration bounded; rejected objects deleted; idempotent). |
-| **Completion** | `POST .../sessions/{id}/complete`: all six stored → COMPLETED, +20 and `contribution_version` frozen, audit `interview_completion_recorded`, outbox `interview.session_completed` → `rescore_for_addons`. Idempotent. |
-| **Scoring** | `addons_for` lists every completed session as an `interview` event; the +60 cap stays in `scoring/domain.py`. The `MOCK_INTERVIEW_COMPLETED` badge now appears. |
+| **Purchase**           | Granted by `billing._grant` after a verified callback into `interview_purchases`; `guard_interview_purchase` refuses anything else. Versioned `interview_products` seeded from `INTERVIEW_SESSION_PRODUCT` (placeholder ₹349).                                                                                                  |
+| **Sessions**           | `POST .../sessions` consumes the oldest purchase behind a fresh check, or returns the open session (recovery). Set 1, 2, 3 by session number. `GET .../sessions`, `GET .../sessions/{id}` — the answer manifest, one slot per question, `looking_for` only once that answer is stored.                                          |
+| **Answers**            | `POST .../answers/{i}/upload` (presigned PUT, key derived server-side; the first starts the session), `POST .../answers/{i}/complete` (size from S3, format sniffed — Ogg/WebM Opus, ADTS/MP4 AAC — duration bounded; rejected objects deleted; idempotent).                                                                    |
+| **Completion**         | `POST .../sessions/{id}/complete`: all six stored → COMPLETED, +20 and `contribution_version` frozen, audit `interview_completion_recorded`, outbox `interview.session_completed` → `rescore_for_addons`. Idempotent.                                                                                                           |
+| **Scoring**            | `addons_for` lists every completed session as an `interview` event; the +60 cap stays in `scoring/domain.py`. The `MOCK_INTERVIEW_COMPLETED` badge now appears.                                                                                                                                                                 |
 
 ### Decisions worth knowing
 
@@ -2771,17 +3014,17 @@ now seeds the price list and the course too.
 
 ### What landed
 
-| | |
-|---|---|
-| **Gateway interface** | `billing/provider.py`: `PaymentProvider` for both renewal paths (order, mandate registration, pre-debit notice, debit, revocation). **Default `none` sells nothing** (checkout 503). `stub` signs callbacks with a real HMAC; `Settings` refuses it in staging and prod. |
-| **Checkout** | `POST /candidate/subscription/checkout`, `POST /employer/subscription/checkout` (owner only), `POST /candidate/courses/{id}/checkout`. PENDING payment + gateway order; a second checkout for the same item within 30 min returns the first. `GET /billing/payments/{id}` to poll (someone else's is 404). |
-| **Signed callbacks** | `POST /billing/callbacks/{provider}`, public. Signature over the raw body checked **before** parsing or writing — a forgery is a 401 and leaves no row. Verified payload stored verbatim in `payment_callbacks`, replay refused by `(provider, event_id)`, 200 at once, outbox `billing.callback_received` → task `billing.process_callback`. |
-| **Subscriptions** | Purchase, early renewal (extends from the end), cancel at period end, GRACE (mandate only), LAPSED, CANCELLED; every change in `subscription_events` + outbox. `GET .../subscription`, `/plans`, `/cancel`. Sweep task `subscriptions.renewals`. |
-| **UPI AutoPay** | `POST .../subscription/mandate` → PENDING until the gateway's `mandate.activated`. Sweep: notice → wait ≥24h → debit of the notified amount → callback renews from the paid end. Retries each get a fresh notice; exhausted, over-ceiling or `MANDATE_REVOKED`-style failures fall back to manual with `subscriptions.fell_back_to_manual`. `mandate_debit_notices` table. |
-| **Courses** | Catalogue and checkout behind the subscription; purchase recorded on a verified payment; `courses.service.record_completion` (SYSTEM / PLATFORM_ADMIN only, audited, outbox). **No completion route.** |
-| **Add-ons re-score** | `scoring.service.addons_for` reads completions; `rescore_for_addons` runs Layers 2–3 over the stored extraction (no model call) and appends a score that replays exactly. Routed from `courses.completion_recorded`. |
-| **Pay-first** | `/candidate/score/me` now needs an active subscription (the Day 8 TODO). |
-| **Catalogue** | `scripts/seed_catalogue.py` replaces `seed_placeholder_course.py`: 11 plans and the course, versioned — a changed price is a new row, never an edit. The course is written inactive while lessons have no media, so nothing is on sale. |
+|                       |                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Gateway interface** | `billing/provider.py`: `PaymentProvider` for both renewal paths (order, mandate registration, pre-debit notice, debit, revocation). **Default `none` sells nothing** (checkout 503). `stub` signs callbacks with a real HMAC; `Settings` refuses it in staging and prod.                                                                                                   |
+| **Checkout**          | `POST /candidate/subscription/checkout`, `POST /employer/subscription/checkout` (owner only), `POST /candidate/courses/{id}/checkout`. PENDING payment + gateway order; a second checkout for the same item within 30 min returns the first. `GET /billing/payments/{id}` to poll (someone else's is 404).                                                                 |
+| **Signed callbacks**  | `POST /billing/callbacks/{provider}`, public. Signature over the raw body checked **before** parsing or writing — a forgery is a 401 and leaves no row. Verified payload stored verbatim in `payment_callbacks`, replay refused by `(provider, event_id)`, 200 at once, outbox `billing.callback_received` → task `billing.process_callback`.                              |
+| **Subscriptions**     | Purchase, early renewal (extends from the end), cancel at period end, GRACE (mandate only), LAPSED, CANCELLED; every change in `subscription_events` + outbox. `GET .../subscription`, `/plans`, `/cancel`. Sweep task `subscriptions.renewals`.                                                                                                                           |
+| **UPI AutoPay**       | `POST .../subscription/mandate` → PENDING until the gateway's `mandate.activated`. Sweep: notice → wait ≥24h → debit of the notified amount → callback renews from the paid end. Retries each get a fresh notice; exhausted, over-ceiling or `MANDATE_REVOKED`-style failures fall back to manual with `subscriptions.fell_back_to_manual`. `mandate_debit_notices` table. |
+| **Courses**           | Catalogue and checkout behind the subscription; purchase recorded on a verified payment; `courses.service.record_completion` (SYSTEM / PLATFORM_ADMIN only, audited, outbox). **No completion route.**                                                                                                                                                                     |
+| **Add-ons re-score**  | `scoring.service.addons_for` reads completions; `rescore_for_addons` runs Layers 2–3 over the stored extraction (no model call) and appends a score that replays exactly. Routed from `courses.completion_recorded`.                                                                                                                                                       |
+| **Pay-first**         | `/candidate/score/me` now needs an active subscription (the Day 8 TODO).                                                                                                                                                                                                                                                                                                   |
+| **Catalogue**         | `scripts/seed_catalogue.py` replaces `seed_placeholder_course.py`: 11 plans and the course, versioned — a changed price is a new row, never an edit. The course is written inactive while lessons have no media, so nothing is on sale.                                                                                                                                    |
 
 ### Decisions worth knowing
 
@@ -2851,9 +3094,9 @@ Recorded in `answers-log.md` Round 10.
 
 - **E3 — legacy `.doc` is no longer accepted.** Removed from
   `resume_allowed_mime_types`; an OLE2 upload is refused as
-  `upload_legacy_doc_unsupported`. Removed from *Deferred by decision* above.
+  `upload_legacy_doc_unsupported`. Removed from _Deferred by decision_ above.
 - **E13 — the candidate's name is asked at sign-up.** `PUT
-  /candidate/profile/name` → `candidate_profiles.full_name`; the reveal prefers
+/candidate/profile/name` → `candidate_profiles.full_name`; the reveal prefers
   it over the structured form's name. Never selected by masked search.
   **Rebuild with `reset_local_db.sh`.** The app's sign-up screen must ask for
   it; the API does not block anything without one.
@@ -2873,14 +3116,14 @@ and 7′ are green.** Not yet pushed, so not yet CI-verified.
 
 ### What landed
 
-| | |
-|---|---|
-| **The reveal** | `GET /employer/discovery/candidates/{candidate_id}` → `RevealedCandidate`: phone, email, the display score, band, experience, skills, badges, location, and `full_name` only from the structured form. Owners and recruiters; mounted by `candidate` (it needs `display_value`), decided by `discovery.service.open_candidate`. |
-| **Access window** | `require_active_access_window` is real: the tenant's subscription, read live, `402 access_window_expired`. |
-| **Audit (7′)** | One `audit_events` row (`candidate_profile_viewed`, ids only) and one `candidate_view_events` row per open, same transaction, re-opens included. |
-| **Abuse controls** | Per-organisation caps on distinct candidates per rolling hour and day (`429 view_cap_reached`), a per-person burst limit, search pages per hour, and two alerts (`ACTOR_VELOCITY`, `DAILY_CAP_REACHED`) as audit rows plus `discovery.view_anomaly_flagged`. All in `config_values` `discovery.limits`. |
-| **R15** | `require_active_subscription` on every employer jobs, pipeline and search route. Organisation, team and KYB stay open. |
-| **Schema** | `candidate_view_events` partitioned by month (key `(id, viewed_at)`), 15 partitions + DEFAULT, `ensure_candidate_view_partitions()`; task `discovery.ensure_view_partitions`. **Rebuild with `reset_local_db.sh`.** |
+|                    |                                                                                                                                                                                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The reveal**     | `GET /employer/discovery/candidates/{candidate_id}` → `RevealedCandidate`: phone, email, the display score, band, experience, skills, badges, location, and `full_name` only from the structured form. Owners and recruiters; mounted by `candidate` (it needs `display_value`), decided by `discovery.service.open_candidate`. |
+| **Access window**  | `require_active_access_window` is real: the tenant's subscription, read live, `402 access_window_expired`.                                                                                                                                                                                                                      |
+| **Audit (7′)**     | One `audit_events` row (`candidate_profile_viewed`, ids only) and one `candidate_view_events` row per open, same transaction, re-opens included.                                                                                                                                                                                |
+| **Abuse controls** | Per-organisation caps on distinct candidates per rolling hour and day (`429 view_cap_reached`), a per-person burst limit, search pages per hour, and two alerts (`ACTOR_VELOCITY`, `DAILY_CAP_REACHED`) as audit rows plus `discovery.view_anomaly_flagged`. All in `config_values` `discovery.limits`.                         |
+| **R15**            | `require_active_subscription` on every employer jobs, pipeline and search route. Organisation, team and KYB stay open.                                                                                                                                                                                                          |
+| **Schema**         | `candidate_view_events` partitioned by month (key `(id, viewed_at)`), 15 partitions + DEFAULT, `ensure_candidate_view_partitions()`; task `discovery.ensure_view_partitions`. **Rebuild with `reset_local_db.sh`.**                                                                                                             |
 
 ### Decisions worth knowing
 
@@ -2956,12 +3199,12 @@ not indexed.
 
 ### What landed
 
-| | |
-|---|---|
-| **Employer search** | `GET /employer/discovery/candidates`: filters `band` (repeatable), `skill` (up to 5, all must match, case-insensitive), `badge`, `min_experience_years`, `state`, `city` (contains), `q` (words in a skill); keyset `cursor`, `limit`. Owners and recruiters of a **KYB-approved** employer; 300 pages/hour per organisation. |
-| **The card** | `MaskedCandidate`: `candidate_id`, `band`, `experience_years`, `skills` (≤20), `badges`, `city`, `state_code`. Nothing else, and an invariant test holds the list. |
-| **Candidate location** | `GET /candidate/profile`, `PUT /candidate/profile/location`. Not paywalled. |
-| **Schema** | `candidate_search_documents` (trigger-written), `candidate_profiles`, trigger `project_candidate_search_document` on `scores`, index `ix_scores_user_latest`. **Rebuild with `reset_local_db.sh`.** |
+|                        |                                                                                                                                                                                                                                                                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Employer search**    | `GET /employer/discovery/candidates`: filters `band` (repeatable), `skill` (up to 5, all must match, case-insensitive), `badge`, `min_experience_years`, `state`, `city` (contains), `q` (words in a skill); keyset `cursor`, `limit`. Owners and recruiters of a **KYB-approved** employer; 300 pages/hour per organisation. |
+| **The card**           | `MaskedCandidate`: `candidate_id`, `band`, `experience_years`, `skills` (≤20), `badges`, `city`, `state_code`. Nothing else, and an invariant test holds the list.                                                                                                                                                            |
+| **Candidate location** | `GET /candidate/profile`, `PUT /candidate/profile/location`. Not paywalled.                                                                                                                                                                                                                                                   |
+| **Schema**             | `candidate_search_documents` (trigger-written), `candidate_profiles`, trigger `project_candidate_search_document` on `scores`, index `ix_scores_user_latest`. **Rebuild with `reset_local_db.sh`.**                                                                                                                           |
 
 ### Decisions worth knowing
 
@@ -3024,12 +3267,12 @@ mypy, 9 import contracts, modules, pytest at 85%).
 
 ### What landed
 
-| | |
-|---|---|
-| **Employer pipeline** | `/employer/applications`: list a job's applications (oldest first, by stage, keyset), open one, `POST /{id}/stage`, `PUT /{id}/interview`, `POST /{id}/hire`. Owners and recruiters act; viewers read. |
-| **Candidate side** | `GET /candidate/applications/{id}` now carries the history; `POST /{id}/hire/confirm` and `/hire/dispute`. Not paywalled. |
-| **Expiry** | `applications.service.expire_for_tenant` and the `applications.expire` task (`app/tasks/expire_applications.py`). |
-| **Schema** | `applications.expires_at` replaced by `employer_active_at`; `hire_disputed_at`; five CHECKs; `application_events.kind` and `actor_type`; trigger `guard_application_write`. **Rebuild with `reset_local_db.sh`.** |
+|                       |                                                                                                                                                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Employer pipeline** | `/employer/applications`: list a job's applications (oldest first, by stage, keyset), open one, `POST /{id}/stage`, `PUT /{id}/interview`, `POST /{id}/hire`. Owners and recruiters act; viewers read.            |
+| **Candidate side**    | `GET /candidate/applications/{id}` now carries the history; `POST /{id}/hire/confirm` and `/hire/dispute`. Not paywalled.                                                                                         |
+| **Expiry**            | `applications.service.expire_for_tenant` and the `applications.expire` task (`app/tasks/expire_applications.py`).                                                                                                 |
+| **Schema**            | `applications.expires_at` replaced by `employer_active_at`; `hire_disputed_at`; five CHECKs; `application_events.kind` and `actor_type`; trigger `guard_application_write`. **Rebuild with `reset_local_db.sh`.** |
 
 ### Decisions worth knowing
 
@@ -3095,10 +3338,10 @@ activation, E10).
 
 ### What landed
 
-| | |
-|---|---|
-| **Job board** | `GET /candidate/jobs` (search: words, location, work mode, skill, salary, eligible-only; keyset cursor) and `GET /candidate/jobs/{id}`. Every employer's published jobs with the employer's name. |
-| **Applications** | `POST /candidate/applications`, `GET` list and one, `POST /{id}/withdraw`. |
+|                     |                                                                                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Job board**       | `GET /candidate/jobs` (search: words, location, work mode, skill, salary, eligible-only; keyset cursor) and `GET /candidate/jobs/{id}`. Every employer's published jobs with the employer's name.                   |
+| **Applications**    | `POST /candidate/applications`, `GET` list and one, `POST /{id}/withdraw`.                                                                                                                                          |
 | **Pay-first (R13)** | `require_active_subscription` stops being an unconditional 402. It reads `subscriptions` on every request, never cached, and the clock decides: a period that ended a second ago grants nothing, sweep or no sweep. |
 
 ### Decisions worth knowing
@@ -3254,21 +3497,21 @@ combined suite passes, and **both are uncommitted**.
 
 ### What landed
 
-| | |
-|---|---|
-| **Integrity runs on real CVs** | `scoring.score_computed` routes to `integrity.detect`, which reads the stored Layer 1 extraction and the CV text, runs the eight rules, and persists signals. Idempotent by resume version. |
-| **Suppression lives inside discovery** | One CTE, `VISIBLE_CANDIDATES_CTE`, that every discovery query is built on. `test_discovery_suppression.py` fails the build if a query skips it. |
-| **Employer tenancy** | Create an organisation, the three employer roles, and add, re-role and remove members by email. Eight endpoints; every team change audited without the address. |
+|                                        |                                                                                                                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Integrity runs on real CVs**         | `scoring.score_computed` routes to `integrity.detect`, which reads the stored Layer 1 extraction and the CV text, runs the eight rules, and persists signals. Idempotent by resume version. |
+| **Suppression lives inside discovery** | One CTE, `VISIBLE_CANDIDATES_CTE`, that every discovery query is built on. `test_discovery_suppression.py` fails the build if a query skips it.                                             |
+| **Employer tenancy**                   | Create an organisation, the three employer roles, and add, re-role and remove members by email. Eight endpoints; every team change audited without the address.                             |
 
 ### Four decisions worth knowing
 
 - **Visibility fails closed.** Integrity runs asynchronously after scoring, so
   a candidate briefly has a score and no signals. Without a record that the
-  check ran, *no signals* cannot tell *clean* from *not yet looked at*, and a CV
+  check ran, _no signals_ cannot tell _clean_ from _not yet looked at_, and a CV
   carrying injected instructions would be searchable for exactly that window.
   A new `integrity_checks` row closes it: **unchecked means invisible**.
 - **A confirmed dishonest CV stays hidden.** The existing partial index matched
-  `state = 'OPEN'` alone, so a reviewer *confirming* manipulation would have put
+  `state = 'OPEN'` alone, so a reviewer _confirming_ manipulation would have put
   the candidate straight back into search. OPEN and CONFIRMED now both suppress,
   and only CLEARED restores. The index and the CTE share one predicate, asserted
   character for character so the planner can use the index.
@@ -3304,7 +3547,7 @@ combined suite passes, and **both are uncommitted**.
 
 - **`module-privacy` had been wrong since Day 1.** Missing
   `allow_indirect_imports`, it forbade `employer.service -> identity.service ->
-  identity.repository`, the path it exists to funnel traffic into. Invisible
+identity.repository`, the path it exists to funnel traffic into. Invisible
   until a module first called `identity.service`. The third time this exact bug
   has appeared in `.importlinter`; a direct import was re-verified to break it.
 - **Manual-form resumes never score, so they never reach employers.** Day 8
@@ -3334,8 +3577,9 @@ import-linter contracts.** Outside the twenty-day schedule. Full write-up:
 
 The client asked for LeetCode-style streaks: −10 points when a streak breaks,
 and +10/+15/+20 at 30/90/365 days, all configurable. The request does not say
-*which* points. **Read as points on the candidate score, it breaks invariants
+_which_ points. **Read as points on the candidate score, it breaks invariants
 1, 2, 3 and 4′ at once:**
+
 - a −10 takes a fresh 700 below its base, and milestones take 990 past the
   ceiling, so both writes would hit the CHECK constraints;
 - "opened the app" is not an input `replay()` can reproduce;
@@ -3343,24 +3587,24 @@ and +10/+15/+20 at 30/90/365 days, all configurable. The request does not say
 
 **Built as a separate engagement-points balance**, and kept separate
 structurally rather than by convention:
+
 - an import-linter **independence** contract between `engagement` and
   `scoring`;
 - a forbidden contract stopping employer, jobs, applications, discovery,
   college and analytics from importing `engagement`;
 - `tests/invariants/test_streak_never_moves_the_score.py`, which guards both
-  contracts and the task routing table (routing holds task *names*, so an
+  contracts and the task routing table (routing holds task _names_, so an
   import contract alone would not catch a subscription).
 
-Confirming this with the client is **S1** in `streaks.md` §7, along with *what
-the points are for*: nothing spends them yet.
+Confirming this with the client is **S1** in `streaks.md` §7, along with _what
+the points are for_: nothing spends them yet.
 
 ### Decisions taken inside it (S2–S8, all cheap to reverse)
 
 - **One deduction per break**, however many days were missed. The **balance is
   floored at 0**, and the ledger stores `requested_points` beside `points` so
   clipping stays visible.
-- **Milestones once per streak run**, re-earnable after a break. Nothing past
-  365.
+- **Milestones once per streak run**, re-earnable after a break. Nothing past 365.
 - **The day is IST, decided by the server.** A check-in carries no date,
   because one that did could keep a streak alive forever. Fixed offset, not
   `ZoneInfo`: IST has no DST, and `ZoneInfo` needs `tzdata` on Windows.
@@ -3384,13 +3628,13 @@ the points are for*: nothing spends them yet.
 
 ### Guarantees and where they live
 
-| Guarantee | Mechanism | Test |
-|---|---|---|
+| Guarantee                                                  | Mechanism                                                     | Test                                                                                                |
+| ---------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Two devices checking in at once count once and deduct once | `SELECT … FOR UPDATE` after `INSERT … ON CONFLICT DO NOTHING` | `test_two_simultaneous_first_opens_count_once`, `test_simultaneous_opens_after_a_break_deduct_once` |
-| The ledger cannot be rewritten | `REVOKE UPDATE, DELETE ON streak_point_events` | `test_the_points_ledger_is_append_only` (as the app role) |
-| Balance never negative | Domain floor + CHECK on both tables | 25-seed property test; `test_the_database_refuses_a_negative_balance` |
-| A milestone once per run, a break once per day | Partial unique indexes | — (belt and braces behind the lock) |
-| Streaks never write a score | Independence contract | `test_streak_points_never_write_a_score` |
+| The ledger cannot be rewritten                             | `REVOKE UPDATE, DELETE ON streak_point_events`                | `test_the_points_ledger_is_append_only` (as the app role)                                           |
+| Balance never negative                                     | Domain floor + CHECK on both tables                           | 25-seed property test; `test_the_database_refuses_a_negative_balance`                               |
+| A milestone once per run, a break once per day             | Partial unique indexes                                        | — (belt and braces behind the lock)                                                                 |
+| Streaks never write a score                                | Independence contract                                         | `test_streak_points_never_write_a_score`                                                            |
 
 ### Found while building
 
@@ -3426,12 +3670,12 @@ floor, the candidate route and the trigger.
 
 ### Invariants 1, 2, 3 and 4′ are green
 
-| # | What makes it true |
-|---|---|
-| **1** | `replay(score_id)` re-runs Layers 2 and 3 over the **stored** model response and never calls the model. Tested with add-on contributions, not only base scores — a replay that only reproduces base scores breaks the first time someone buys a course. A mismatch **raises**: a replay that quietly disagreed would be used to answer a dispute and would answer it wrongly. |
-| **2** | CHECK constraints hold 700–990 and `raw = base + addon`. `display_value` applies the floor at the serialization boundary **and nowhere else**, so what is stored is what was computed. Asserted across all 291 values in range. |
-| **3** | `repository.insert_score` is the only write path; there is deliberately no update and no delete function, and the app role holds neither grant. |
-| **4′** | Exercised end to end through the real write path: a caller asking for 500 + 500 add-on points gets 90, and the decomposition still sums. |
+| #      | What makes it true                                                                                                                                                                                                                                                                                                                                                            |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1**  | `replay(score_id)` re-runs Layers 2 and 3 over the **stored** model response and never calls the model. Tested with add-on contributions, not only base scores — a replay that only reproduces base scores breaks the first time someone buys a course. A mismatch **raises**: a replay that quietly disagreed would be used to answer a dispute and would answer it wrongly. |
+| **2**  | CHECK constraints hold 700–990 and `raw = base + addon`. `display_value` applies the floor at the serialization boundary **and nowhere else**, so what is stored is what was computed. Asserted across all 291 values in range.                                                                                                                                               |
+| **3**  | `repository.insert_score` is the only write path; there is deliberately no update and no delete function, and the app role holds neither grant.                                                                                                                                                                                                                               |
+| **4′** | Exercised end to end through the real write path: a caller asking for 500 + 500 add-on points gets 90, and the decomposition still sums.                                                                                                                                                                                                                                      |
 
 ### The design decision that carries the most weight
 
@@ -3464,7 +3708,7 @@ after a course purchase is Layer 3 only, costing nothing and unable to drift.
   years earlier under a schema that has since moved on, and a replay that
   throws cannot answer a dispute — which is the one thing it exists to do. A
   malformed field degrades that dimension to zero.
-- **Skill evidence is the mean, rounded down**, over *distinct* skills. A CV
+- **Skill evidence is the mean, rounded down**, over _distinct_ skills. A CV
   with one well-evidenced skill and nine bare keywords is mostly a keyword
   list; rounding up would pay for the keywords.
 - **STRONG runs to 990, not 900.** 900 is the resume-only ceiling. Stopping
@@ -3494,7 +3738,7 @@ scores that never appear rather than an error anyone sees.
 ### Found while building
 
 - **My own new import-linter contract was wrong.** `resume-internals-are-
-  private` (added yesterday) forbade the *indirect* chain
+private` (added yesterday) forbade the _indirect_ chain
   `scoring.service -> resume.service -> resume.repository`, which is the exact
   path the contract exists to funnel traffic into. Same failure the `layers`
   contract hit on Day 3, with the same fix (`allow_indirect_imports`). Re-
@@ -3506,7 +3750,7 @@ scores that never appear rather than an error anyone sees.
   with rows outliving the test that wrote them. Fixed by giving each test its
   own document, not by weakening the cache.
 - **The invariant-5 checker caught my own test.** A test asserting the
-  extraction schema has no date-of-birth field had to *name* the field to do
+  extraction schema has no date-of-birth field had to _name_ the field to do
   so, which trips `check_no_age_fields.py`. The script exempts exactly one
   file — invariant 5's own test — and diluting that for convenience would
   weaken a legal-requirement guard. Rewritten to assert on the prompt text
@@ -3537,7 +3781,7 @@ than a date: **"No - Student does not pay if the college has paid for it."**
 
 C12 had never been put to the client. Both price lists were built on the
 unexamined assumption that a seat and a subscription were separate purchases —
-a college deal earning its seat fee *on top of* whatever those students paid
+a college deal earning its seat fee _on top of_ whatever those students paid
 directly. On that reading, ₹12–17 per seat per month was a placement-cell tool
 sold alongside real candidate revenue, and it looked entirely reasonable.
 
@@ -3551,7 +3795,7 @@ signed would have made the business smaller.
 the suite was structural: totals ascending with seat count, longer periods
 never costing more per month, tax flags correct per audience. All of them
 passed. A number can satisfy every structural invariant while being an order of
-magnitude wrong about *what it is selling*, and the figure that would have
+magnitude wrong about _what it is selling_, and the figure that would have
 shown it — revenue per seat — was not computed anywhere in the codebase.
 
 ### What replaced it
@@ -3561,12 +3805,12 @@ discounted for volume rather than invented independently. The discount is real
 — one invoice, upfront, students at zero acquisition cost, onboarding carried
 by the college — but it is a discount on a known number.
 
-| Plan | Old | New | Per seat, ex-tax | Yield vs direct |
-|---|---|---|---|---|
-| `COLLEGE_SEMESTER_250` | ₹24,999 | **₹69,999** | ₹279.99 | 17% → **47.3%** |
-| `COLLEGE_SEMESTER_1000` | ₹79,999 | **₹2,19,999** | ₹219.99 | 13% → **37.1%** |
-| `COLLEGE_ANNUAL_250` | ₹44,999 | **₹1,19,999** | ₹479.99 | 18% → **47.2%** |
-| `COLLEGE_ANNUAL_1000` | ₹1,39,999 | **₹3,79,999** | ₹379.99 | 14% → **37.4%** |
+| Plan                    | Old       | New           | Per seat, ex-tax | Yield vs direct |
+| ----------------------- | --------- | ------------- | ---------------- | --------------- |
+| `COLLEGE_SEMESTER_250`  | ₹24,999   | **₹69,999**   | ₹279.99          | 17% → **47.3%** |
+| `COLLEGE_SEMESTER_1000` | ₹79,999   | **₹2,19,999** | ₹219.99          | 13% → **37.1%** |
+| `COLLEGE_ANNUAL_250`    | ₹44,999   | **₹1,19,999** | ₹479.99          | 18% → **47.2%** |
+| `COLLEGE_ANNUAL_1000`   | ₹1,39,999 | **₹3,79,999** | ₹379.99          | 14% → **37.4%** |
 
 ~2.7x across the board. That is not a price rise; it is the first list being
 wrong about what it was selling.
@@ -3673,7 +3917,7 @@ were verified by breaking them deliberately and watching them fire.
   timing.
 - **`confirmed_at` is a latch, not an assignment.** `confirmed_at IS NULL` in
   the WHERE clause of a conditional UPDATE. Confirming twice is a retry that
-  returns the *original* timestamp: when a candidate took responsibility for
+  returns the _original_ timestamp: when a candidate took responsibility for
   scored content is a fact about them, not about how many times their phone
   lost signal. It is also the one permitted mutation of a version — content
   stays immutable, and there is still no update path for `parsed`.
@@ -3708,7 +3952,7 @@ were verified by breaking them deliberately and watching them fire.
 
 `resume_files` gained `parse_status` and `parse_error_code`. Before this, the
 only observable signal was whether a version existed, which **cannot tell
-*waiting* apart from *never going to work*** — a CV we cannot read left the
+_waiting_ apart from _never going to work_** — a CV we cannot read left the
 client polling an endpoint that would never change and never say why.
 
 - **There is deliberately no RUNNING state**, and a test says so rather than
@@ -3723,7 +3967,7 @@ client polling an endpoint that would never change and never say why.
   recorded on `scan_status`, which read later as "the scanner failed" — two
   different facts in one column, and the wrong one.
 - A CHECK constraint holds `parse_status = FAILED` and `parse_error_code IS
-  NOT NULL` in step, so a FAILED that says nothing and a DONE still carrying
+NOT NULL` in step, so a FAILED that says nothing and a DONE still carrying
   the last attempt's error are both impossible.
 - Completing an upload is idempotent, so it now reports the row's real parse
   state rather than a hardcoded QUEUED — a client retrying after the worker
@@ -3749,13 +3993,13 @@ client polling an endpoint that would never change and never say why.
 
 ## 2026-09-12 — Dishonest-CV rules, and the Round 7.10 content
 
-Two client instructions, both of the form *"use your best knowledge"*:
+Two client instructions, both of the form _"use your best knowledge"_:
 Round 7.6 (integrity rules) and Round 7.10 (course, prices, question banks,
 translations, SMS copy, design, form fields). **905 tests, up from 738.**
 
 ### Integrity — the rules that decide who gets hidden from search
 
-`integrity/domain.py`, 40 tests. Eight rules, and the design is the *severity*
+`integrity/domain.py`, 40 tests. Eight rules, and the design is the _severity_
 rather than the detection: HIGH suppresses a candidate from employer search
 **before a human has looked**, so it is reserved for the two things that cannot
 be an accident or a bad parse — instructions aimed at an automated reader, and
@@ -3769,7 +4013,7 @@ those would suppress the best-qualified applicants for exactly the roles this
 marketplace sells. `AI_ENGINEER_CV` in the tests is six real sentences that must
 never fire.
 
-Roughly half the tests assert a rule stays *quiet* — notice-period overlaps, a
+Roughly half the tests assert a rule stays _quiet_ — notice-period overlaps, a
 mistyped year, a forgotten early job, an employment gap. Deliberately no rule
 for gaps, for work predating a qualification (age reasoning, invariant 5), or
 for cross-candidate duplicates (dropped by the client, R6).
@@ -3779,16 +4023,16 @@ New contract in `.importlinter`: **integrity must not import scoring** (SRS
 
 ### Content — all of it placeholder, all of it flagged as such
 
-| Produced | Where | Marker |
-|---|---|---|
-| Price list — 4 candidate periods, 3 employer, 4 college seat tiers, 2 one-offs | `subscriptions/catalogue.py` | `PLACEHOLDER_PRICING = True` |
-| Course syllabus — 6 modules, 18 lessons, ~2h20 | `courses/catalogue.py` | `HAS_MEDIA = False`, every `asset_key` is `None` |
-| Questionnaire — 12 questions, 4 sections | `questionnaire/bank.py` | `BANK_VERSION` |
-| Interview — 3 sets × 6 questions, 5-dimension rubric | `interview/bank.py` | `BANK_VERSION` |
-| Messages — 21 templates, 17 of them SMS | `notifications/templates.py` | every `dlt_template_id` is `None` |
-| Translations — 8 locales × 32 keys | `app/core/i18n/` | native review still owed |
-| KYB and college forms — 27 and 20 fields | `kyb/forms.py`, `college/forms.py` | `FORM_VERSION` |
-| Design system + tokens | `docs/design-system.md`, `design-tokens.json` | no logo, C7 stays open |
+| Produced                                                                       | Where                                         | Marker                                           |
+| ------------------------------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------ |
+| Price list — 4 candidate periods, 3 employer, 4 college seat tiers, 2 one-offs | `subscriptions/catalogue.py`                  | `PLACEHOLDER_PRICING = True`                     |
+| Course syllabus — 6 modules, 18 lessons, ~2h20                                 | `courses/catalogue.py`                        | `HAS_MEDIA = False`, every `asset_key` is `None` |
+| Questionnaire — 12 questions, 4 sections                                       | `questionnaire/bank.py`                       | `BANK_VERSION`                                   |
+| Interview — 3 sets × 6 questions, 5-dimension rubric                           | `interview/bank.py`                           | `BANK_VERSION`                                   |
+| Messages — 21 templates, 17 of them SMS                                        | `notifications/templates.py`                  | every `dlt_template_id` is `None`                |
+| Translations — 8 locales × 32 keys                                             | `app/core/i18n/`                              | native review still owed                         |
+| KYB and college forms — 27 and 20 fields                                       | `kyb/forms.py`, `college/forms.py`            | `FORM_VERSION`                                   |
+| Design system + tokens                                                         | `docs/design-system.md`, `design-tokens.json` | no logo, C7 stays open                           |
 
 Each marker is asserted by a test, so "this is still ours, not the client's"
 survives a demo rather than living in a comment nobody reads.
@@ -3836,7 +4080,7 @@ survives a demo rather than living in a comment nobody reads.
   roles (SRS 1.2; note the plan's prose says nine). Calls the dependency
   callables directly with a constructed `TenantContext`, so 10x10 coverage costs
   no database round trips. Also asserts `require_role` rejects an unknown role at
-  *import* time, so a typo fails the build rather than silently admitting nobody.
+  _import_ time, so a typo fails the build rather than silently admitting nobody.
 - `tests/invariants/test_route_authorisation.py` — drives every documented route
   with no `Authorization` header and asserts 401/403 unless explicitly
   allowlisted, with the reason recorded beside each exemption.
@@ -3848,7 +4092,7 @@ survives a demo rather than living in a comment nobody reads.
 **The route guard asks the app, it does not read its dependency tree.** The
 structural version needs FastAPI internals (`_IncludedRouter`,
 `_EffectiveRouteContext`) that changed in this version and will change again —
-and it only proves a guard is *declared*. Driving the route proves the request is
+and it only proves a guard is _declared_. Driving the route proves the request is
 actually refused. Verified by adding a deliberately unguarded route and
 confirming the test names it.
 
@@ -3884,13 +4128,13 @@ The identity spine (`PR #2`, `#3`, `#4`):
 
 Account `592033927084`, `ap-south-1`. 38 resources via `infra/terraform`.
 
-| Resource | ID |
-|---|---|
-| Cognito candidate pool | `ap-south-1_afBHHXfyH` |
-| Cognito business pool | `ap-south-1_w1u6W6fTP` (MFA required, admin-create only) |
-| S3 | 6 buckets, `bharatpath-<name>-dev-592033927084`, private + AES256 + versioned |
-| SQS | `bharatpath-tasks-dev` + DLQ |
-| IAM | `bharatpath-app-dev`, least-privilege |
+| Resource               | ID                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| Cognito candidate pool | `ap-south-1_afBHHXfyH`                                                        |
+| Cognito business pool  | `ap-south-1_w1u6W6fTP` (MFA required, admin-create only)                      |
+| S3                     | 6 buckets, `bharatpath-<name>-dev-592033927084`, private + AES256 + versioned |
+| SQS                    | `bharatpath-tasks-dev` + DLQ                                                  |
+| IAM                    | `bharatpath-app-dev`, least-privilege                                         |
 
 Verified rather than assumed: the **production** `cognito.py` path fetched live
 JWKS from both pools and correctly rejected an `alg=none` forgery. App IAM
@@ -3909,7 +4153,7 @@ Worth reading before trusting a green local run:
 2. **`Routers never touch repositories`** forbade `router → service → repository`
    — the exact layering it exists to enforce. It could only pass on a module whose
    service does no persistence. Fixed with `allow_indirect_imports`, then verified
-   it *still* breaks on a direct import.
+   it _still_ breaks on a direct import.
 3. **CI died in the migrations step**: the new `Settings` validator demands an auth
    mechanism, and CI set none. Invisible locally because `backend/.env` sets it and
    CI has no `.env`.

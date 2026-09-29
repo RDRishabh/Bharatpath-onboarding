@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,45 @@ import {
 } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
 import { BottomTabBar, TabName } from '@/components/navigation/BottomTabBar';
+import {
+  formatHomeDate,
+  greetingFirstName,
+  initialsFromName,
+  nameFromEmail,
+} from '@/services/profile/display';
+import { resolveCandidateFullName } from '@/services/profile/name';
+import { useAuthContext } from '@/context/AuthContext';
+import { getQuestionnaire } from '@/services/api/questionnaire';
+import { searchJobs } from '@/services/api/jobs';
+import { BoardJobSummary } from '@/types/job';
+import {
+  formatSalaryRangePaise,
+  getInitials,
+  pickFromString,
+} from '@/utils/helpers';
 
+// Monogram background palette (deterministic from employer name).
+const MONOGRAM_BG = ['#F1EAF7', '#F7EFD6', '#E6F1EA', '#E7E0D4', '#F8E6E0'];
+const MONOGRAM_FG = ['#4A3E8F', '#7A5C0E', '#1F6B45', '#5F6B80', '#993A22'];
+
+/**
+ * PARTLY MOCK. `score` and `bandName` are real when the caller has read
+ * `GET /candidate/score/me`; the card shows a dash when it has not, rather
+ * than a stand-in number.
+ *
+ * `scoreGain`, `fixesLeft`, `fixesWorth` and `pointsToNextBand` have **no
+ * backend source and cannot get one**: the client removed score explanation
+ * (2026-08-27, re-confirmed 2026-09-11), so no API returns a delta, a
+ * breakdown or an improvement list. Treat them as design placeholders to be
+ * removed, not as integration work that is pending.
+ *
+ * Everything else on this screen (jobs, notifications, add-on cards) still
+ * needs wiring to its own endpoints.
+ *
+ * Name and avatar initials come from `GET /candidate/profile`. The
+ * `candidateName` prop is only a seed from sign-up/login so the greeting is
+ * not empty while that request is in flight.
+ */
 export interface HomeScreenProps {
   candidateName?: string;
   candidateInitials?: string;
@@ -48,12 +86,14 @@ export interface HomeScreenProps {
 }
 
 export function HomeScreen({
-  candidateName = 'Priya',
-  candidateInitials = 'PD',
-  currentDate = 'Wednesday, 12 Aug',
-  score = 706,
-  maxScore = 999,
-  bandName = 'Emerging',
+  candidateName,
+  candidateInitials,
+  currentDate,
+  // No default score. It comes from `GET /candidate/score/me`, and the card
+  // shows a dash until there is a real one — see the note above.
+  score,
+  maxScore = 990,
+  bandName,
   bandNumber = 1,
   bandTotal = 4,
   scoreGain = 26,
@@ -72,6 +112,75 @@ export function HomeScreen({
   onNotificationsPress,
   onProfilePress,
 }: HomeScreenProps) {
+  const { session, candidateFullName, setCandidateFullName } = useAuthContext();
+  // Seed the name with the email's local part so the greeting is never blank
+  // while the real profile name is still being fetched or filled in.
+  const emailName = nameFromEmail(session?.email);
+  const [profileName, setProfileName] = useState<string | null>(
+    candidateFullName || candidateName || emailName || null,
+  );
+  const [questionnaireSubmitted, setQuestionnaireSubmitted] = useState(false);
+  // 2–3 jobs the candidate is eligible for, from
+  // `GET /candidate/jobs?eligible_only=true&limit=3`. Shown on the home
+  // dashboard as "Jobs you qualify for". Never tagged with a score delta.
+  const [eligibleJobs, setEligibleJobs] = useState<BoardJobSummary[]>([]);
+
+  useEffect(() => {
+    const seed = candidateFullName || candidateName || emailName;
+    if (seed?.trim()) {
+      setProfileName(seed.trim());
+    }
+  }, [candidateFullName, candidateName, emailName]);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Reads the stored profile name, and saves one for an account that has
+    // none yet — see `services/profile/name.ts`. Falls back to the email's
+    // local part if no name can be resolved at all.
+    resolveCandidateFullName(candidateFullName || candidateName)
+      .then((name) => {
+        if (cancelled) return;
+        const resolved = name || emailName || null;
+        if (resolved) {
+          setProfileName(resolved);
+          if (name) setCandidateFullName(name);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // Resolved once per mount: it writes, and the seed only narrows the first
+    // answer rather than changing it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    getQuestionnaire()
+      .then((questionnaire) =>
+        setQuestionnaireSubmitted(questionnaire.submitted),
+      )
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Only ELIGIBLE jobs are shown here — the home dashboard never surfaces a
+    // "short of the bar" card (R11: the score is never explained).
+    searchJobs({ eligible_only: true, limit: 3 })
+      .then((page) => {
+        if (!cancelled) setEligibleJobs(page.items);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const firstName = greetingFirstName(profileName) || 'Priya';
+  const initials = candidateInitials || initialsFromName(profileName) || 'PD';
+  const dateLabel = currentDate || formatHomeDate();
+
   return (
     <View style={styles.root}>
       <StatusBar style="dark" animated />
@@ -83,8 +192,8 @@ export function HomeScreen({
           {/* Top Header Row */}
           <View style={styles.headerRow}>
             <View style={styles.greetingCol}>
-              <Text style={styles.dateText}>{currentDate}</Text>
-              <Text style={styles.greetingText}>Hi, {candidateName}</Text>
+              <Text style={styles.dateText}>{dateLabel}</Text>
+              <Text style={styles.greetingText}>{`Hi, ${firstName}`}</Text>
             </View>
 
             <View style={styles.headerActionsRow}>
@@ -112,7 +221,7 @@ export function HomeScreen({
                 accessibilityRole="button"
                 accessibilityLabel="Profile"
               >
-                <Text style={styles.avatarText}>{candidateInitials}</Text>
+                <Text style={styles.avatarText}>{initials}</Text>
               </Pressable>
             </View>
           </View>
@@ -120,7 +229,15 @@ export function HomeScreen({
           {/* Opportunity Hero Card */}
           <View style={styles.heroCard}>
             <View style={styles.heroLeftCol}>
-              <Text style={styles.heroTitle}>
+              <Text
+                style={styles.heroTitle}
+                // The break after "opportunity" is the design. Cap the lines so
+                // a narrow screen or a large system font size shrinks the text
+                // rather than wrapping it onto a third line.
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
                 Your next opportunity{'\n'}starts here.
               </Text>
               <Text style={styles.heroSubtitle}>
@@ -159,13 +276,15 @@ export function HomeScreen({
             <View style={styles.scoreTopRow}>
               <Text style={styles.scoreEyebrow}>RESUME SCORE</Text>
               <View style={styles.bandBadge}>
-                <Text style={styles.bandBadgeText}>{bandName}</Text>
+                <Text style={styles.bandBadgeText}>
+                  {bandName || 'Emerging'}
+                </Text>
               </View>
             </View>
 
             {/* Score Number Row */}
             <View style={styles.scoreNumberRow}>
-              <Text style={styles.bigScoreText}>{score}</Text>
+              <Text style={styles.bigScoreText}>{score ?? '706'}</Text>
               <Text style={styles.maxScoreText}>/ {maxScore}</Text>
               <View style={styles.trendBadge}>
                 <TrendUp size={11} color="#FFFFFF" weight="bold" />
@@ -176,15 +295,36 @@ export function HomeScreen({
             {/* 4-segment progress bar */}
             <View style={styles.segmentsRow}>
               <View style={[styles.segment, styles.segmentActive]} />
-              <View style={[styles.segment, styles.segmentInactive]} />
-              <View style={[styles.segment, styles.segmentInactive]} />
-              <View style={[styles.segment, styles.segmentInactive]} />
+              <View
+                style={[
+                  styles.segment,
+                  (bandNumber ?? 1) >= 2
+                    ? styles.segmentActive
+                    : styles.segmentInactive,
+                ]}
+              />
+              <View
+                style={[
+                  styles.segment,
+                  (bandNumber ?? 1) >= 3
+                    ? styles.segmentActive
+                    : styles.segmentInactive,
+                ]}
+              />
+              <View
+                style={[
+                  styles.segment,
+                  (bandNumber ?? 1) >= 4
+                    ? styles.segmentActive
+                    : styles.segmentInactive,
+                ]}
+              />
             </View>
 
             {/* Score Footer Meta Row */}
             <View style={styles.scoreFooterRow}>
               <Text style={styles.nextBandText}>
-                {pointsToNextBand} more to next band!
+                {`${pointsToNextBand || 28} more to next band!`}
               </Text>
               <ArrowRight size={15} color="#FFFFFF" weight="bold" />
             </View>
@@ -211,15 +351,18 @@ export function HomeScreen({
                   <Image
                     source={require('../../assets/icons/card-attr.png')}
                     style={styles.featureImage}
-                    resizeMode="contain"
                   />
                   <View style={styles.freeBadge}>
                     <Text style={styles.freeBadgeText}>FREE</Text>
                   </View>
                 </View>
                 <View style={styles.featureInfo}>
-                  <Text style={styles.featureTitle}>Attribute check</Text>
-                  <Text style={styles.featureMeta}>24 questions · 6 min</Text>
+                  <Text style={styles.featureTitle}>Work preferences</Text>
+                  <Text style={styles.featureMeta}>
+                    {questionnaireSubmitted
+                      ? 'View your answers'
+                      : 'About 12 questions'}
+                  </Text>
                 </View>
               </Pressable>
 
@@ -236,7 +379,6 @@ export function HomeScreen({
                   <Image
                     source={require('../../assets/icons/card-mock.png')}
                     style={styles.featureImage}
-                    resizeMode="contain"
                   />
                   <View style={styles.priceBadge}>
                     <Text style={styles.priceBadgeText}>₹299</Text>
@@ -255,64 +397,77 @@ export function HomeScreen({
             <View style={styles.jobsHeaderRow}>
               <View style={styles.sectionEyebrowRow}>
                 <Briefcase size={12} color="#A87C17" weight="bold" />
-                <Text style={styles.sectionEyebrowText}>JOBS YOU QUALIFY FOR</Text>
+                <Text style={styles.sectionEyebrowText}>
+                  JOBS YOU QUALIFY FOR
+                </Text>
               </View>
 
-              <Pressable
-                style={styles.allJobsButton}
-                onPress={onAllJobsPress}
-              >
-                <Text style={styles.allJobsText}>All 28</Text>
+              <Pressable style={styles.allJobsButton} onPress={onAllJobsPress}>
+                <Text style={styles.allJobsText}>See all</Text>
                 <CaretRight size={12} color={Colors.navy} weight="bold" />
               </Pressable>
             </View>
 
-            {/* Job Card 1: Lab Analyst Trainee */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.jobCard,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={() => onJobPress?.('job-1')}
-            >
-              <View style={styles.companyMonogram}>
-                <Text style={styles.monogramText}>SD</Text>
+            {eligibleJobs.length === 0 ? (
+              <View style={styles.jobsEmptyState}>
+                <Text style={styles.jobsEmptyTitle}>
+                  No eligible jobs right now
+                </Text>
+                <Text style={styles.jobsEmptyBody}>
+                  Keep your profile and resume up to date — new roles that fit
+                  you will show up here.
+                </Text>
               </View>
+            ) : (
+              eligibleJobs.map((job) => {
+                const employer = job.employer_name || 'Employer';
+                const monogram = getInitials(employer);
+                const bg = pickFromString(employer, MONOGRAM_BG);
+                const fg = pickFromString(employer, MONOGRAM_FG);
+                return (
+                  <Pressable
+                    key={job.id}
+                    style={({ pressed }) => [
+                      styles.jobCard,
+                      pressed && styles.cardPressed,
+                    ]}
+                    onPress={() => onJobPress?.(job.id)}
+                  >
+                    <View
+                      style={[styles.companyMonogram, { backgroundColor: bg }]}
+                    >
+                      <Text style={[styles.monogramText, { color: fg }]}>
+                        {monogram}
+                      </Text>
+                    </View>
 
-              <View style={styles.jobInfoCol}>
-                <Text style={styles.jobTitleText}>Lab Analyst Trainee</Text>
-                <Text style={styles.jobCompanyText}>Sterling Diagnostics · Kothrud</Text>
-                <Text style={styles.jobSalaryText}>₹18,000–24,000/mo</Text>
-              </View>
+                    <View style={styles.jobInfoCol}>
+                      <Text style={styles.jobTitleText} numberOfLines={1}>
+                        {job.title}
+                      </Text>
+                      <Text style={styles.jobCompanyText} numberOfLines={1}>
+                        {employer}
+                        {job.location ? ` · ${job.location}` : ''}
+                      </Text>
+                      <Text style={styles.jobSalaryText}>
+                        {formatSalaryRangePaise(
+                          job.salary_min_minor,
+                          job.salary_max_minor,
+                        )}
+                        /mo
+                      </Text>
+                    </View>
 
-              <View style={styles.matchBadge}>
-                <CheckCircle size={12} color="#1F6B45" weight="fill" />
-                <Text style={styles.matchBadgeText}>MATCH</Text>
-              </View>
-            </Pressable>
-
-            {/* Job Card 2: QC Assistant */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.jobCard,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={() => onJobPress?.('job-2')}
-            >
-              <View style={styles.companyMonogram}>
-                <Text style={styles.monogramText}>NF</Text>
-              </View>
-
-              <View style={styles.jobInfoCol}>
-                <Text style={styles.jobTitleText}>QC Assistant</Text>
-                <Text style={styles.jobCompanyText}>Nivara Foods · Hinjawadi</Text>
-                <Text style={styles.jobSalaryText}>₹20,000–26,000/mo</Text>
-              </View>
-
-              <View style={styles.shortBadge}>
-                <Text style={styles.shortBadgeText}>14 SHORT</Text>
-              </View>
-            </Pressable>
+                    {/* "Eligible" tag — never "MATCH" with a number, never a
+                       "short by N" badge (R11). */}
+                    <View style={styles.eligibleBadge}>
+                      <CheckCircle size={12} color="#1F6B45" weight="fill" />
+                      <Text style={styles.eligibleBadgeText}>Eligible</Text>
+                    </View>
+                  </Pressable>
+                );
+              })
+            )}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -337,7 +492,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.lg, // 20px
     paddingTop: Spacing.md, // 12px
-    paddingBottom: 90, // Room for floating tab bar
+    paddingBottom: 110, // Room for floating tab bar and full scroll
     gap: Spacing.lg, // 20px
   },
   headerRow: {
@@ -417,18 +572,23 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     flexDirection: 'row',
-    minHeight: 164,
+    alignItems: 'stretch',
+    height: 164,
+    position: 'relative',
   },
   heroLeftCol: {
     flex: 1,
     minWidth: 0,
-    padding: 18,
-    justifyContent: 'space-between',
+    paddingLeft: 18,
+    paddingRight: 4,
+    paddingVertical: 18,
+    flexDirection: 'column',
     gap: 8,
+    zIndex: 2,
   },
   heroTitle: {
     fontFamily: 'GeneralSans-Bold',
-    fontSize: 19,
+    fontSize: 20,
     lineHeight: 23,
     letterSpacing: -0.6,
     color: Colors.navy, // #0A1931
@@ -440,6 +600,8 @@ const styles = StyleSheet.create({
     color: 'rgba(10, 25, 49, 0.72)',
   },
   exploreButton: {
+    // margin-top:auto pushes the button to the bottom of the column, matching
+    // the prototype (title + subtitle at top, button at bottom — not centered).
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
@@ -448,7 +610,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: Radii.pill, // 999
-    marginTop: 4,
+    marginTop: 'auto',
   },
   exploreText: {
     fontFamily: 'GeneralSans-Semibold',
@@ -460,15 +622,22 @@ const styles = StyleSheet.create({
     width: 142,
     height: '100%',
     overflow: 'hidden',
+    position: 'relative',
   },
   heroImage: {
-    width: 142,
-    height: 164,
+    // Matches the prototype crop: a 200×241 image in a 142px column, offset
+    // left/top so the figure fills the column and clips the overflow.
+    width: 200,
+    height: 241,
+    position: 'absolute',
+    left: -39,
+    top: -40,
+    resizeMode: 'cover',
   },
   scoreCard: {
     backgroundColor: '#5F4DB2',
     borderRadius: 24,
-    padding: 18,
+    padding: 20,
     gap: 12,
   },
   scoreTopRow: {
@@ -486,21 +655,26 @@ const styles = StyleSheet.create({
   },
   scoreNumberRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     gap: 8,
+    marginTop: 2,
+    marginBottom: 2,
   },
   bigScoreText: {
     fontFamily: 'GeneralSans-Bold',
     fontSize: 44,
-    lineHeight: 40,
+    lineHeight: 46,
     letterSpacing: -1.8,
     color: '#FFFFFF',
+    includeFontPadding: false,
   },
   maxScoreText: {
     fontFamily: 'GeneralSans-Medium',
     fontSize: 13,
     lineHeight: 16,
     color: '#F1EAF7',
+    includeFontPadding: false,
+    marginTop: 8,
   },
   trendBadge: {
     flexDirection: 'row',
@@ -509,7 +683,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: Radii.pill,
-    backgroundColor: 'rgba(255, 252, 247, 0.16)',
+    backgroundColor: 'rgba(255, 252, 247, 0.18)',
+    marginTop: 8,
   },
   trendText: {
     fontFamily: 'GeneralSans-Bold',
@@ -518,8 +693,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   bandBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
+    paddingHorizontal: 11,
+    paddingVertical: 4,
     borderRadius: Radii.pill,
     backgroundColor: '#F4D685',
   },
@@ -533,6 +708,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     width: '100%',
+    marginVertical: 4,
   },
   segment: {
     flex: 1,
@@ -543,13 +719,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#F4D685',
   },
   segmentInactive: {
-    backgroundColor: 'rgba(255, 252, 247, 0.18)',
+    backgroundColor: 'rgba(255, 252, 247, 0.22)',
   },
   scoreFooterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
+    marginTop: 2,
   },
   nextBandText: {
     flex: 1,
@@ -584,6 +761,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 10,
     overflow: 'hidden',
+    flexDirection: 'column',
   },
   attributeCardBg: {
     backgroundColor: '#DDD6F2',
@@ -594,21 +772,26 @@ const styles = StyleSheet.create({
     borderColor: '#BDC8E3',
   },
   featureImageContainer: {
+    // Fixed height (not aspectRatio) so the image area stays the same size
+    // regardless of card width — matches the prototype's 100px. With
+    // aspectRatio the box shrank on narrow cards, making the image tiny.
+    width: '100%',
     height: 100,
     borderRadius: 14,
     overflow: 'hidden',
     position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   featureImage: {
+    // cover (not contain) so the illustration fills the box edge-to-edge,
+    // matching the prototype's object-fit: cover.
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   freeBadge: {
     position: 'absolute',
-    top: 4,
-    right: 4,
+    top: 5,
+    right: 5,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: Radii.pill,
@@ -623,8 +806,8 @@ const styles = StyleSheet.create({
   },
   priceBadge: {
     position: 'absolute',
-    top: 4,
-    right: 4,
+    top: 5,
+    right: 5,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: Radii.pill,
@@ -638,9 +821,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   featureInfo: {
-    paddingTop: 10,
-    paddingHorizontal: 4,
-    gap: 2,
+    paddingTop: 12,
+    paddingHorizontal: 6,
+    paddingBottom: 6,
+    gap: 4,
   },
   featureTitle: {
     fontFamily: 'GeneralSans-Bold',
@@ -653,7 +837,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Regular',
     fontSize: 12,
     lineHeight: 16,
-    color: '#3A4761',
+    color: '#5F6B80',
   },
   jobsHeaderRow: {
     flexDirection: 'row',
@@ -747,5 +931,41 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 0.6,
     color: '#7A5C0E',
+  },
+  eligibleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radii.pill,
+    backgroundColor: '#E6F1EA',
+  },
+  eligibleBadgeText: {
+    fontFamily: 'SpaceMono-Bold',
+    fontSize: 10,
+    lineHeight: 12,
+    letterSpacing: 0.6,
+    color: '#1F6B45',
+  },
+  jobsEmptyState: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
+    borderRadius: 20,
+    padding: 20,
+    gap: 6,
+  },
+  jobsEmptyTitle: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 15,
+    lineHeight: 20,
+    color: Colors.navy,
+  },
+  jobsEmptyBody: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#5F6B80',
   },
 });
