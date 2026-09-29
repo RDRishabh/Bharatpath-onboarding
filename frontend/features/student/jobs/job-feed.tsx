@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Check, Search } from "lucide-react";
 
+import { Spinner } from "@/components/common/loading";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   selectJobQualifiedOnly,
@@ -22,7 +23,6 @@ import { getApiErrorMessage } from "@/lib/api/error-message";
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 import { EmptyState, JobCard } from "@/features/student/components";
-import { StudentJobGridSkeleton } from "@/features/student/loading";
 import { StudentPage } from "@/features/student/shell";
 
 const WORK_MODES = ["ONSITE", "HYBRID", "REMOTE"] as const;
@@ -79,12 +79,11 @@ export function JobFeed() {
   }, [jobs.error, jobs.hasMore, jobs.isLoading, jobs.isLoadingMore]);
 
   return (
-    <StudentPage>
-      <div className="flex flex-col gap-5">
+    <StudentPage
+      className={jobs.isLoading ? "flex min-h-[calc(100dvh-4rem)] flex-col" : ""}
+    >
+      <div className="flex flex-1 flex-col gap-5">
         <div className="flex flex-col gap-3.5">
-          <span className="text-[24px] font-bold leading-7 tracking-[-0.025em] text-[#0A1931] sm:text-[28px]">
-            Jobs
-          </span>
           <label className="flex items-center gap-3 rounded-full border border-[#E7E0D4] bg-white px-4 py-3">
             <Search size={16} className="text-[#5F6B80]" />
             <input
@@ -117,12 +116,20 @@ export function JobFeed() {
 
         <div className="flex items-baseline justify-between">
           <span className="text-[11px] font-bold uppercase leading-4 tracking-[0.12em] text-[#5F6B80]">
-            {jobs.items.length} jobs
+            {jobs.isLoading ? "Finding jobs" : `${jobs.items.length} jobs`}
           </span>
         </div>
 
         {jobs.isLoading ? (
-          <StudentJobGridSkeleton count={6} />
+          <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-3 text-center">
+            <Spinner size={32} tone="primary" />
+            <p className="text-[15px] font-semibold text-[#0A1931]">
+              Finding jobs for you
+            </p>
+            <p className="text-[13px] text-[#5F6B80]">
+              Checking the latest roles that match your preferences.
+            </p>
+          </div>
         ) : jobs.error && !jobs.items.length ? (
           <EmptyState
             icon={<Search size={22} />}
@@ -138,9 +145,9 @@ export function JobFeed() {
             </div>
 
             {jobs.isLoadingMore ? (
-              <StudentJobGridSkeleton
-                label="Loading more jobs"
-              />
+              <div className="flex justify-center py-6">
+                <Spinner size={28} tone="primary" label="Loading more jobs" />
+              </div>
             ) : null}
 
             {jobs.error && jobs.hasMore ? (

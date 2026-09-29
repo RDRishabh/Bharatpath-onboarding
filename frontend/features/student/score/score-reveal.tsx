@@ -3,19 +3,27 @@
 import { useRouter } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 
-import { useGetStudentScoreQuery } from "@/store/student";
+import {
+  useGetStudentScoreQuery,
+  useGetStudentScoreScaleQuery,
+} from "@/store/student";
 import { getApiErrorMessage } from "@/lib/api/error-message";
+import { Skeleton } from "@/components/common/loading";
 import {
   EmptyState,
   NoteStrip,
   PillButton,
+  ScoreBandBar,
+  ScoreScaleUnavailable,
 } from "@/features/student/components";
 import { ScoreRing } from "@/features/student/components/score-ring";
+import { bandLabel } from "@/features/student/formatters";
 import { StudentPage, StudentTopBar } from "@/features/student/shell";
 
 export function ScoreReveal() {
   const router = useRouter();
   const score = useGetStudentScoreQuery();
+  const scale = useGetStudentScoreScaleQuery();
 
   return (
     <StudentPage>
@@ -31,14 +39,47 @@ export function ScoreReveal() {
         />
       ) : score.data?.status === "READY" && score.data.value != null ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="flex flex-col items-center gap-4 rounded-[24px] bg-[#5F4DB2] p-6">
-            <ScoreRing value={score.data.value} max={990} />
+          <div className="flex flex-col items-center gap-5 rounded-[24px] bg-[#5F4DB2] p-6">
+            {scale.isLoading ? (
+              <div role="status" aria-busy="true" className="flex flex-col items-center gap-4">
+                <span className="sr-only">Loading score scale</span>
+                <Skeleton className="opacity-55" width={190} height={190} circle />
+              </div>
+            ) : scale.data ? (
+              <ScoreRing
+                value={score.data.value}
+                min={scale.data.lowest}
+                max={scale.data.highest}
+              />
+            ) : (
+              <span className="py-10 text-[64px] font-extrabold leading-none tracking-[-0.045em] text-white">
+                {score.data.value}
+              </span>
+            )}
             <div className="flex items-center gap-2">
               <ShieldCheck size={15} className="text-[#F4D685]" />
               <span className="text-[13px] text-[#E0DBF4]">
-                Band {score.data.band ?? "not available"}
+                {bandLabel(score.data.band)} band
               </span>
             </div>
+            {scale.data ? (
+              <div className="w-full max-w-sm">
+                <ScoreBandBar
+                  scale={scale.data}
+                  band={score.data.band}
+                  value={score.data.value}
+                  showLabels
+                />
+              </div>
+            ) : scale.error ? (
+              <ScoreScaleUnavailable
+                onRetry={() => void scale.refetch()}
+                message={getApiErrorMessage(
+                  scale.error,
+                  "The score scale could not be loaded.",
+                )}
+              />
+            ) : null}
           </div>
           <div className="flex flex-col gap-3">
             <NoteStrip>

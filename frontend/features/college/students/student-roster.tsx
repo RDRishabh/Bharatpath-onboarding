@@ -14,7 +14,6 @@ import {
   ReferralCodesCard,
 } from "./referral-codes";
 import {
-  StudentDetailDrawer,
   StudentFilters,
   StudentTable,
   type StudentStatus,
@@ -110,11 +109,10 @@ export function StudentRoster() {
   const [hasResolvedInitialLoad, setHasResolvedInitialLoad] = useState(false);
 
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [viewingStudentId, setViewingStudentId] = useState<string | null>(
-    null,
-  );
   useEffect(() => {
     if (!initialRequestsLoading) {
+      // Preserve the roster after its first load while later queries refresh.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasResolvedInitialLoad(true);
     }
   }, [initialRequestsLoading]);
@@ -198,7 +196,9 @@ export function StudentRoster() {
         onNextPage={studentsPagination.goToNextPage}
         onPreviousPage={studentsPagination.goToPreviousPage}
         isLoading={isLoadingStudents}
-        onView={(student) => setViewingStudentId(student.candidateId)}
+        onView={(student) => {
+          if (student.candidateId) router.push(`/college/students/${student.candidateId}`);
+        }}
       />
 
       {/* 3. BOTTOM CARDS: BULK UPLOAD & LINK STATES */}
@@ -259,11 +259,6 @@ export function StudentRoster() {
         isIssuing={isIssuingCode}
       />
 
-      {/* 6. STUDENT DETAIL — audited open of a single visible student */}
-      <StudentDetailDrawer
-        candidateId={viewingStudentId}
-        onClose={() => setViewingStudentId(null)}
-      />
     </div>
   );
 }

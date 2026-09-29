@@ -38,6 +38,9 @@ function sectionFor(pathname: string): Section {
   if (pathname.startsWith("/student/score")) {
     return { title: "Your score", subtitle: "How your resume reads to employers" };
   }
+  if (pathname.startsWith("/student/streak")) {
+    return { title: "Daily streak", subtitle: "Your consistency and engagement points" };
+  }
   if (pathname.startsWith("/student/profile")) {
     return { title: "Profile", subtitle: "Your account and privacy" };
   }

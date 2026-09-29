@@ -7,6 +7,7 @@ import type {
   JobListing,
   Page,
   QuestionnaireView,
+  ScoreScale,
   StudentProfile,
   StudentScore,
   StudentStreak,
@@ -18,6 +19,12 @@ interface StudentScoreResponse {
   value: number | null;
   band: string | null;
   computed_at: string | null;
+}
+
+interface ScoreScaleResponse {
+  lowest: number;
+  highest: number;
+  bands: Array<{ band: string; lowest: number; highest: number }>;
 }
 
 interface StudentProfileResponse {
@@ -52,7 +59,7 @@ interface StreakPointsChangeResponse {
   streak_length: number;
   milestone_days: number | null;
   activity_on: string;
-  created_at: string;
+  created_at: string | null;
 }
 
 interface StreakCheckInResponse {
@@ -189,21 +196,17 @@ function mapStreak(response: StreakResponse): StudentStreak {
   };
 }
 
-function mapStreakCheckIn(
-  response: StreakCheckInResponse,
-): StudentStreakCheckIn {
+function mapStreakPointsChange(
+  change: StreakPointsChangeResponse,
+): StudentStreakCheckIn["changes"][number] {
   return {
-    counted: response.counted,
-    streak: mapStreak(response.streak),
-    changes: response.changes.map((change) => ({
-      kind: change.kind,
-      points: change.points,
-      balanceAfter: change.balance_after,
-      streakLength: change.streak_length,
-      milestoneDays: change.milestone_days,
-      activityOn: change.activity_on,
-      createdAt: change.created_at,
-    })),
+    kind: change.kind,
+    points: change.points,
+    balanceAfter: change.balance_after,
+    streakLength: change.streak_length,
+    milestoneDays: change.milestone_days,
+    activityOn: change.activity_on,
+    createdAt: change.created_at,
   };
 }
 
@@ -307,12 +310,35 @@ export const studentApi = baseApi.injectEndpoints({
       transformResponse: mapScore,
       providesTags: [{ type: "Student", id: "SCORE" }],
     }),
-    checkInStudentStreak: builder.mutation<StudentStreakCheckIn, void>({
+    getStudentScoreScale: builder.query<ScoreScale, void>({
+      query: () => "/candidate/score/scale",
+      transformResponse: (response: ScoreScaleResponse): ScoreScale => ({
+        lowest: response.lowest,
+        highest: response.highest,
+        bands: [...response.bands].sort((a, b) => a.lowest - b.lowest),
+      }),
+      providesTags: [{ type: "Student", id: "SCORE_SCALE" }],
+    }),
+    getStudentStreakSession: builder.query<StudentStreak, void>({
       query: () => ({
         url: "/candidate/streak/me/check-in",
         method: "POST",
       }),
-      transformResponse: mapStreakCheckIn,
+      transformResponse: (response: StreakCheckInResponse) =>
+        mapStreak(response.streak),
+      providesTags: [{ type: "Student", id: "STREAK_SESSION" }],
+    }),
+    getStudentStreakPoints: builder.query<
+      StudentStreakCheckIn["changes"],
+      number | void
+    >({
+      query: (limit) => ({
+        url: "/candidate/streak/me/points",
+        params: { limit: limit ?? 200 },
+      }),
+      transformResponse: (response: StreakPointsChangeResponse[]) =>
+        response.map(mapStreakPointsChange),
+      providesTags: [{ type: "Student", id: "STREAK_POINTS" }],
     }),
     getStudentJobs: builder.query<
       Page<JobListing>,
@@ -495,7 +521,9 @@ export const {
   useUpdateStudentNameMutation,
   useUpdateStudentLocationMutation,
   useGetStudentScoreQuery,
-  useCheckInStudentStreakMutation,
+  useGetStudentScoreScaleQuery,
+  useGetStudentStreakSessionQuery,
+  useGetStudentStreakPointsQuery,
   useGetStudentJobsQuery,
   useLazyGetStudentJobsQuery,
   useGetStudentJobQuery,

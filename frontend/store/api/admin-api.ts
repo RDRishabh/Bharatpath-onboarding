@@ -114,6 +114,21 @@ export type CandidateDrilldown = {
   disputes_by_state: Record<string, number>;
 };
 
+export type CandidateOnboarding = {
+  id: string; full_name: string | null; email: string | null; phone: string | null;
+  city: string | null; state_code: string | null; locale: string;
+  questionnaire_submitted_at: string | null;
+  questionnaire: Array<{ code: string; question: string; answer: string }>;
+  college_links: Array<{ tenant_id: string; college: string; scope: string; granted_at: string }>;
+};
+export type CandidateResume = { latest: ResumeVersion | null; confirmed: ResumeVersion | null };
+export type ResumeVersion = { id: string; source: string; created_at: string; text: string | null; fields: Record<string, unknown>; file_url: string | null; confirmed_at: string | null };
+export type ScoreTimeline = { points: Array<{ computed_at: string; display_value: number; band: string; change: number | null; cause: string }> };
+export type InterviewRow = { id: string; session_number: number; state: string; question_set_title: string; created_at: string; completed_at: string | null; questions_asked: number; answers_stored: number; report_status: string };
+export type RecordingRow = { question_index: number; question_code: string; prompt: string; url: string; expires_in_seconds: number; mime: string | null; duration_ms: number | null; uploaded_at: string | null; transcript: string | null };
+export type CourseStatus = { code: string; title: string; purchased: boolean; lessons_total: number; lessons_completed: number; percent_complete: number; completed_at: string | null };
+export type CandidateApplications = { items: Array<{ id: string; job_title: string; employer_name: string | null; stage: string; applied_at: string }>; analytics: { total: number; open: number; by_stage: Record<string, number>; reached: Record<string, number> } };
+
 export type EmployerDrilldown = {
   tenant_id: string;
   name: string;
@@ -483,6 +498,13 @@ export const adminApi = baseApi.injectEndpoints({
       query: (userId) => `/admin/candidates/${userId}`,
       providesTags: ["Admin"],
     }),
+    getAdminCandidateOnboarding: builder.query<CandidateOnboarding, string>({ query: (id) => `/admin/candidates/${id}/onboarding` }),
+    getAdminCandidateResume: builder.query<CandidateResume, string>({ query: (id) => `/admin/candidates/${id}/resume` }),
+    getAdminCandidateScoreTimeline: builder.query<ScoreTimeline, string>({ query: (id) => `/admin/candidates/${id}/score-timeline` }),
+    getAdminCandidateInterviews: builder.query<InterviewRow[], string>({ query: (id) => `/admin/candidates/${id}/interviews` }),
+    getAdminCandidateRecordings: builder.query<RecordingRow[], { id: string; sessionId: string }>({ query: ({ id, sessionId }) => `/admin/candidates/${id}/interviews/${sessionId}/recordings` }),
+    getAdminCandidateCourses: builder.query<CourseStatus[], string>({ query: (id) => `/admin/candidates/${id}/courses` }),
+    getAdminCandidateApplications: builder.query<CandidateApplications, string>({ query: (id) => `/admin/candidates/${id}/applications` }),
     getAdminEmployer: builder.query<EmployerDrilldown, string>({
       query: (tenantId) => `/admin/employers/${tenantId}`,
       providesTags: ["Admin"],
@@ -540,6 +562,13 @@ export const {
   useGetAdminTenantSuspensionsQuery,
   useAllocateAdminCollegeSeatsMutation,
   useGetAdminCandidateQuery,
+  useGetAdminCandidateOnboardingQuery,
+  useGetAdminCandidateResumeQuery,
+  useGetAdminCandidateScoreTimelineQuery,
+  useGetAdminCandidateInterviewsQuery,
+  useGetAdminCandidateRecordingsQuery,
+  useGetAdminCandidateCoursesQuery,
+  useGetAdminCandidateApplicationsQuery,
   useGetAdminEmployerQuery,
   useGetAdminCollegeQuery,
   useSuppressAdminNotificationsMutation,

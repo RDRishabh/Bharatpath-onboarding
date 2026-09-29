@@ -77,6 +77,16 @@ function mapCollegeStudentDetail(
 
 export const collegeStudentsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
+    getCollegeStudentDetails: builder.query<{
+      email: string | null; phone: string | null; city: string | null; state_code: string | null; locale: string;
+      questionnaire: Array<{ code: string; question: string; answer: string }>;
+      questionnaire_submitted_at: string | null; resume_confirmed_at: string | null;
+      interviews_completed: number; has_resume_file: boolean;
+      courses: Array<{ code: string; title: string; purchased_at: string; percent_complete: number; lessons_completed: number; lessons_total: number; completed_at: string | null }>;
+      applications: Array<{ job_title: string; employer_name: string; job_location: string | null; stage: string; applied_at: string; updated_at: string }>;
+      analytics: { total: number; open: number; by_stage: Record<string, number>; reached: Record<string, number> };
+    }, string>({ query: (id) => `/college/students/${id}/details` }),
+    getCollegeStudentResume: builder.query<{ confirmed_at: string | null; text: string | null; fields: Record<string, unknown>; file_url: string | null; file_mime: string | null; source: string }, string>({ query: (id) => `/college/students/${id}/resume` }),
     getCollegeStudents: builder.query<
       VisibleStudentsPage,
       {
@@ -123,6 +133,8 @@ export const collegeStudentsApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetCollegeStudentDetailsQuery,
+  useGetCollegeStudentResumeQuery,
   useGetCollegeStudentsQuery,
   useGetCollegeStudentQuery,
 } = collegeStudentsApi;

@@ -14,43 +14,44 @@ import { useEffect, useRef, useState } from "react";
 
 const RADIUS = 52;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-const FRACTION_FLOOR = 600;
+/** How far below the final number the count-up animation starts. */
+const COUNT_UP_SPAN = 120;
 
+/** `min` and `max` come from `GET /candidate/score/scale`, never from here. */
 export function ScoreRing({
   value,
+  min,
   max,
   size = 190,
   onNavy = true,
   animate = true,
 }: {
   value: number;
+  min: number;
   max: number;
   size?: number;
   onNavy?: boolean;
   animate?: boolean;
 }) {
-  const fraction = Math.min(
-    1,
-    Math.max(0, (value - FRACTION_FLOOR) / (max - FRACTION_FLOOR)),
-  );
+  const fraction =
+    max > min ? Math.min(1, Math.max(0, (value - min) / (max - min))) : 1;
   const targetOffset = CIRCUMFERENCE * (1 - fraction);
+  const countFrom = Math.max(min, value - COUNT_UP_SPAN);
 
-  const [display, setDisplay] = useState(animate ? Math.max(FRACTION_FLOOR, value - 120) : value);
-  const [offset, setOffset] = useState(animate ? CIRCUMFERENCE : targetOffset);
+  const [display, setDisplay] = useState(countFrom);
+  const [offset, setOffset] = useState(CIRCUMFERENCE);
   const rafRef = useRef<number | null>(null);
+  const shownDisplay = animate ? display : value;
+  const shownOffset = animate ? offset : targetOffset;
 
   useEffect(() => {
-    if (!animate) {
-      setDisplay(value);
-      setOffset(targetOffset);
-      return;
-    }
+    if (!animate) return;
 
     // Draw the arc after a short beat.
     const drawTimer = window.setTimeout(() => setOffset(targetOffset), 120);
 
     // Count the number up (~40 steps, ease-out).
-    let current = Math.max(FRACTION_FLOOR, value - 120);
+    let current = countFrom;
     const tick = () => {
       current += Math.max(2, Math.round((value - current) / 6));
       if (current >= value) {
@@ -68,7 +69,7 @@ export function ScoreRing({
       window.clearTimeout(startTimer);
       if (rafRef.current) window.clearTimeout(rafRef.current);
     };
-  }, [animate, targetOffset, value]);
+  }, [animate, countFrom, targetOffset, value]);
 
   return (
     <div
@@ -104,7 +105,7 @@ export function ScoreRing({
           strokeWidth="10"
           strokeLinecap="round"
           strokeDasharray={CIRCUMFERENCE}
-          strokeDashoffset={offset}
+          strokeDashoffset={shownOffset}
           style={{
             transition: "stroke-dashoffset 1.3s cubic-bezier(.22,.85,.2,1)",
           }}
@@ -117,7 +118,7 @@ export function ScoreRing({
             onNavy ? "text-white" : "text-[#0A1931]",
           ].join(" ")}
         >
-          {display}
+          {shownDisplay}
         </span>
         <span
           className={[
@@ -129,37 +130,5 @@ export function ScoreRing({
         </span>
       </span>
     </div>
-  );
-}
-
-/* -------------------------------------------------------------------------
- * Band strip — 4 segments, gold marks your position.
- * ---------------------------------------------------------------------- */
-export function BandStrip({
-  band,
-  count = 4,
-  onNavy = true,
-}: {
-  band: number;
-  count?: number;
-  onNavy?: boolean;
-}) {
-  return (
-    <span className="grid gap-1" style={{ gridTemplateColumns: `repeat(${count}, 1fr)` }}>
-      {Array.from({ length: count }).map((_, index) => (
-        <span
-          key={index}
-          className="h-[5px] rounded-full"
-          style={{
-            background:
-              index < band
-                ? "#F4D685"
-                : onNavy
-                  ? "rgba(255,252,247,0.16)"
-                  : "#F0EBDF",
-          }}
-        />
-      ))}
-    </span>
   );
 }

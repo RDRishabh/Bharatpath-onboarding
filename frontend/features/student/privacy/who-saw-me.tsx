@@ -4,6 +4,7 @@ import { EyeOff, Info } from "lucide-react";
 
 import { EmptyState, NoteStrip } from "@/features/student/components";
 import { StudentPage, StudentTopBar } from "@/features/student/shell";
+import { DataRights } from "./data-rights";
 
 export function WhoSawMe() {
   return (
@@ -18,6 +19,7 @@ export function WhoSawMe() {
         <NoteStrip icon={<Info size={16} />}>
           Your resume file is never returned through employer discovery.
         </NoteStrip>
+        <DataRights />
       </div>
     </StudentPage>
   );

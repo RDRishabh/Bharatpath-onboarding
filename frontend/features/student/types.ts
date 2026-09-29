@@ -7,6 +7,20 @@ export interface StudentScore {
   computedAt: string | null;
 }
 
+/** One band of the score scale, exactly as `GET /candidate/score/scale` returns it. */
+export interface ScoreBandRange {
+  band: string;
+  lowest: number;
+  highest: number;
+}
+
+/** The score scale. The frontend holds no score numbers of its own. */
+export interface ScoreScale {
+  lowest: number;
+  highest: number;
+  bands: ScoreBandRange[];
+}
+
 export interface StudentProfile {
   fullName: string | null;
   city: string | null;
@@ -45,7 +59,7 @@ export interface StreakPointsChange {
   streakLength: number;
   milestoneDays: number | null;
   activityOn: string;
-  createdAt: string;
+  createdAt: string | null;
 }
 
 export interface StudentStreakCheckIn {

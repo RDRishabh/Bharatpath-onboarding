@@ -123,6 +123,11 @@ export function mapEmployerApplication(
 
 export const employerApplicationsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
+    getEmployerMessages: builder.query<Array<{ id: string; kind: string; body: string; scheduled_at: string | null; link: string | null; created_at: string }>, string>({ query: (id) => `/employer/applications/${id}/messages`, providesTags: (_r, _e, id) => [{ type: "Application", id: `MESSAGES_${id}` }] }),
+    sendEmployerMessage: builder.mutation<unknown, { applicationId: string; kind: "INTERVIEW" | "ASSESSMENT" | "GENERAL"; body: string; scheduled_at?: string; link?: string }>({
+      query: ({ applicationId, ...body }) => ({ url: `/employer/applications/${applicationId}/messages`, method: "POST", body }),
+      invalidatesTags: (_r, _e, { applicationId }) => [{ type: "Application", id: `MESSAGES_${applicationId}` }],
+    }),
     getEmployerApplications: builder.query<
       { items: EmployerApplicationApiModel[]; nextCursor: string | null },
       {
@@ -216,6 +221,8 @@ export const employerApplicationsApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetEmployerMessagesQuery,
+  useSendEmployerMessageMutation,
   useGetEmployerApplicationsQuery,
   useLazyGetEmployerApplicationsQuery,
   useGetEmployerApplicationQuery,
