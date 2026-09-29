@@ -359,6 +359,61 @@ only becomes `HIRED` once the candidate calls `hire/confirm` from §5. A
 write `HIRED` directly, skipping the candidate's half, would be rejected at
 the database level.
 
+### `POST /employer/applications/{application_id}/messages` — write to the applicant
+
+**Auth required:** Owner/Recruiter + active subscription. Added 2026-09-29:
+the "message box per candidate" to invite someone to an interview or an
+online assessment (OA).
+
+**Request body** (`SendMessageRequest`) — one of three kinds:
+```json
+{ "kind": "INTERVIEW", "body": "Please bring your certificates.",
+  "scheduled_at": "2026-10-03T05:00:00Z", "link": "https://meet.google.com/abc-defg-hij" }
+```
+```json
+{ "kind": "ASSESSMENT", "body": "Forty minutes, any time before Friday.",
+  "link": "https://www.hackerrank.com/test/xyz", "scheduled_at": "2026-10-04T12:30:00Z" }
+```
+```json
+{ "kind": "GENERAL", "body": "Thank you for applying — we will be in touch this week." }
+```
+`INTERVIEW` needs `scheduled_at` (the link is optional: it may be in person).
+`ASSESSMENT` needs `link` (the time is an optional deadline). Links must be
+`https`. Times must be in the future and within a year.
+
+**Response** — `201 Created` (`EmployerMessageResponse`):
+```json
+{ "id": "...", "kind": "INTERVIEW", "body": "…", "scheduled_at": "...", "link": "…",
+  "sender_id": "the recruiter who wrote it", "created_at": "..." }
+```
+
+**What happens next** (in the background, through the outbox): the
+candidate gets an **email** and an **in-app notification** in their
+language — "Acme Pvt Ltd would like to interview you on 03 Oct 2026, 10:30 AM
+IST", the link, and the employer's own words. **The employer never sees the
+candidate's email address**: the platform sends it. The event carries only
+the message id; the words are read when the email is built.
+
+**Errors:**
+| Code | When |
+|---|---|
+| `422 message_time_required` / `message_link_required` | Missing for that kind |
+| `422 message_time_in_past` / `message_time_too_far` / `message_link_invalid` | Bad time or link |
+| `409 message_not_allowed_at_stage` | The application is hired, rejected, withdrawn or expired |
+| `429 message_limit_reached` | 10 messages to one application in a day (also 300/hour per organisation) |
+| `404 application_not_found` | Not your organisation's application |
+
+Only applicants: a message rides on an application, never on a search
+result. Every message is audited (ids and kind, never the words) and counts
+as employer activity, so the application does not expire mid-conversation.
+
+### `GET /employer/applications/{application_id}/messages` and `GET /candidate/applications/{application_id}/messages`
+
+Both oldest first. The employer's list includes `sender_id`; **the
+candidate's never does** — it has `employer_name` instead, the same way a
+stage change shows the candidate *that* the employer acted, never which
+recruiter. The candidate's list is not paywalled, like the application itself.
+
 ---
 
 ## 7. Expiry — the one transition nobody calls

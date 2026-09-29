@@ -99,6 +99,7 @@ jobs:
       # No payment gateway exists. The stub signs callbacks with a real HMAC,
       # so verification is exercised; Settings refuses it outside local/dev.
       PAYMENTS_PROVIDER: stub
+      INTERVIEW_QUESTION_PROVIDER: stub
       # One runner IP makes more requests a minute than any person; the global
       # tier is switched on by tests/integration/test_rate_limits.py.
       RATE_LIMIT_GLOBAL_ENABLED: "false"

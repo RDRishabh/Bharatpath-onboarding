@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError, ProgrammingError
 
 from app.modules.interview import service as interview_service
-from app.modules.interview.bank import QUESTIONS_PER_SESSION, SET_ONE, SET_TWO
+from app.modules.interview.bank import QUESTIONS_PER_SESSION
 from app.modules.scoring import service as scoring_service
 from tests.conftest import _seed_url, sessions
 from tests.integration.test_payments import _candidate, _scalar, _settle
@@ -95,6 +95,13 @@ async def _answer(
     blob: bytes = OGG,
     duration_ms: int = 30_000,
 ) -> Any:
+    if index:
+        # Every question is written by the model, one after each answer
+        # (2026-09-29). Idempotent: it returns the question already waiting.
+        written = await client.post(
+            f"{BASE}/sessions/{session_id}/next-question", headers=me["headers"]
+        )
+        assert written.status_code == 200, written.text
     ticket = await client.post(
         f"{BASE}/sessions/{session_id}/answers/{index}/upload", headers=me["headers"]
     )
@@ -236,8 +243,9 @@ async def test_answers_upload_one_at_a_time_and_an_interrupted_session_resumes(
     started = await client.post(f"{BASE}/sessions", headers=me["headers"])
     body = started.json()
     session_id = body["id"]
-    assert body["state"] == "CREATED" and body["question_set_code"] == SET_ONE.code
-    assert len(body["questions"]) == QUESTIONS_PER_SESSION
+    assert body["state"] == "CREATED" and body["question_set_code"] == "ADAPTIVE"
+    assert len(body["questions"]) == 1, "the rest are written after each answer"
+    assert body["questions_total"] == QUESTIONS_PER_SESSION
     assert all(q["looking_for"] is None for q in body["questions"]), (
         "feedback shown before answering"
     )
@@ -248,6 +256,7 @@ async def test_answers_upload_one_at_a_time_and_an_interrupted_session_resumes(
     assert first.json()["upload_state"] == "STORED" and first.json()["looking_for"]
 
     # A ticket issued and never used: the app crashed mid-upload.
+    await client.post(f"{BASE}/sessions/{session_id}/next-question", headers=me["headers"])
     await client.post(f"{BASE}/sessions/{session_id}/answers/1/upload", headers=me["headers"])
     not_there = await client.post(
         f"{BASE}/sessions/{session_id}/answers/1/complete",
@@ -417,7 +426,7 @@ async def test_four_sessions_move_the_score_by_sixty_and_replay_exactly(
         assert result.base_value == before.base_value
 
     second = await client.get(f"{BASE}/sessions/{session_ids[1]}", headers=me["headers"])
-    assert second.json()["question_set_code"] == SET_TWO.code
+    assert second.json()["question_set_code"] == "ADAPTIVE"
 
     # The fourth: warned, refused unacknowledged, and the acknowledgement kept.
     await _checked(client, me)

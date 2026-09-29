@@ -9,6 +9,105 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-29 — the portal dashboards: admin, college, employer and student
+
+The client's requests for all four portals (answers-log Round 11), backend
+only; the frontend is its own work. One migration, `0005_portal_dashboards`,
+on top of `0004`.
+
+**Fixed on the way in: `main` could not build a fresh database.** The
+baseline creates tables from the current models, which already declare the
+indexes `0002_college_student_search` then created again, and the constraint
+`0003_roster_reupload` dropped never existed on a fresh build.
+`reset_local_db.sh` and CI failed at `alembic upgrade`. Both revisions are now
+idempotent; a shared database that already ran them is unaffected. Also on
+`main` and fixed here: `test_the_list_filters_every_link_stage` expected 201
+from accepting an invitation, which has always answered 200
+(`test_roster_import.py`); and two files failed `ruff format --check`.
+
+**Verified:** 2829 tests pass on a fresh build; a database built by `main`
+(at `0004`) upgrades to `0005` with the five tables, the three college reads,
+the new cascade and the intended grants (insert-only tables have no UPDATE,
+none has DELETE).
+
+**Admin — the full candidate page** (`/admin/candidates/{id}/…`): onboarding
+(contact unmasked), CV (text + presigned file), score timeline (display value,
+band, change, cause -- never the stored number), interviews, recordings,
+courses, applications with stage analytics. Three new capabilities --
+`candidate_contact` and `candidate_recordings` (admin, support) and
+`candidate_resume` (+ integrity reviewer) -- and every part writes its own
+audit row. The drill-down itself is unchanged.
+
+**College — the widened student view** (`/college/students/{id}/details`,
+`/resume`): contact, questionnaire (not the accessibility answer), CV,
+practice interviews completed, course %, every application with its stage,
+and analytics. **Only under INDIVIDUAL consent version 2**, whose placeholder
+words name all of it; three consent-joined SECURITY DEFINER reads in 0005.
+Version-1 students get 409 `college_student_details_not_shared` and keep the
+old view; re-granting replaces their row.
+
+**Employer — messages to applicants** (`/employer/applications/{id}/messages`):
+INTERVIEW (time required), ASSESSMENT (https link required) or GENERAL, sent
+by email and in-app through the ordinary notification relay, seven new
+templates in all six priority bundles (still `needs_native_speaker_pass`).
+Applicants only, open stages only, 10 per application per day and 300/hour
+per organisation. The candidate reads them at
+`/candidate/applications/{id}/messages`, without the sender.
+
+**Student — courses and interviews.**
+
+- The course is built by staff (`/admin/courses`, modules and lessons, a
+  YouTube link or an upload to `bharatpath-course-media`) and published
+  explicitly. Candidates see it locked until bought, then embed URLs or
+  four-hour presigned links, and report progress. **C1 closed**: completion
+  is every published lesson watched, recorded as the system.
+- **Every interview question is written by AI** (client, same day: "only ai
+  and not fixed questions"): the first from the CV and onboarding answers,
+  each next one after hearing the previous answer (`POST …/next-question`),
+  never an earlier session's question. Six per session, still
+  `QUESTIONS_PER_SESSION`. **No fixed-question fallback**: a refused draft is
+  sent back with the reason (up to 3 tries), then a 503 the app retries; a
+  failed start spends no purchase. OpenAI is the default provider; tests and
+  CI use the stub.
+- `/candidate/interview/history` and `…/sessions/{id}/recordings` for going
+  back through sessions and hearing them.
+
+**Decisions worth knowing:**
+
+- **Unlisted YouTube is not behind the paywall** -- anyone with the link can
+  watch. The client asked for it; uploads are the option that is.
+- **The widened college view reverses the version-1 words**, which promised
+  no contact and no CV. Hence a new version rather than a wider old one.
+- Transcribing in-session means Sarvam is billed per answer during the
+  interview rather than after; the evaluation reuses those transcripts, so
+  nothing is paid twice.
+- The course's `sync_catalogue` no longer decides `active`: re-running the
+  seed never takes a published course off sale or puts an empty one on.
+
+**Also added:** the data export gains `interview_questions`, `courses` and
+`messages` (never the sender); colleges get
+`GET /college/analytics/applications`, the cohort's application funnel,
+floored and suppressed like every aggregate (`college_cohort_applications`).
+
+**Tested live, 2026-09-29, with the real keys.** `scripts/smoke_interview_live.py`
+(OpenAI writes → OpenAI TTS speaks an answer → Sarvam hears it → OpenAI
+writes the follow-up, six times; the evaluator rates it; a second session
+repeats nothing) passed, questions in Hindi from a Hindi locale. A full run
+through the API on :8099 against LocalStack S3 -- sign-in, CV, questionnaire,
+subscription, device check, purchase, six real audio uploads, completion,
+evaluation, report, history, playback -- passed. Timing: first question
+~3 s, each next ~9 s (≈6 s Sarvam + ≈3 s OpenAI); the app needs a
+"thinking" state. Sarvam once heard "साठ" (60) as "सात" (7).
+
+**To deploy:** run migration 0005 (`alembic upgrade head`). **The API now
+refuses to boot without `OPENAI_API_KEY`** (the question writer defaults to
+`openai`, model `gpt-5.4-mini-2026-03-17`); set
+`INTERVIEW_TRANSCRIPTION_PROVIDER=sarvam` + `SARVAM_API_KEY` too, or
+questions cannot follow up answers. `infra/terraform/outputs.tf` now writes
+both question variables into the EC2 env file.
+
+---
+
 ## 2026-09-28 — product logo replaces panel monograms
 
 The supplied BharatPath logo now replaces the square `B` / `BP` monograms in

@@ -105,6 +105,24 @@ class AuditAction(StrEnum):
     SEARCH_FILTER_OPTION_CREATED = "search_filter_option_created"
     SEARCH_FILTER_OPTION_UPDATED = "search_filter_option_updated"
 
+    # Course content (2026-09-29). A lesson counts toward a score once
+    # watched, so what is in the course, and when it went on sale, is on the
+    # record. Metadata names the object and the fields that moved.
+    COURSE_CONTENT_CHANGED = "course_content_changed"
+
+    # The console's full candidate page (2026-09-29): the CV itself and the
+    # candidate's own voice, both asked for by the client. Each is its own
+    # row, apart from the drill-down, because each is a larger reveal.
+    ADMIN_CANDIDATE_RESUME_OPENED = "admin_candidate_resume_opened"
+    ADMIN_INTERVIEW_RECORDINGS_OPENED = "admin_interview_recordings_opened"
+
+    # A college opening a student's CV under INDIVIDUAL consent (2026-09-29).
+    COLLEGE_STUDENT_RESUME_OPENED = "college_student_resume_opened"
+
+    # An employer writing to an applicant through the platform (2026-09-29).
+    # Metadata holds the kind and ids, never the words.
+    APPLICATION_MESSAGE_SENT = "application_message_sent"
+
     # Colleges (Day 17). A seat is a student's paid access, and a referral
     # code is a credential that attaches students to a roster: issuing,
     # revoking and allocating are all privileged.

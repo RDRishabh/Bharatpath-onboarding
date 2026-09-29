@@ -79,7 +79,10 @@ class InterviewCheckoutRequest(_Base):
 class QuestionSchema(_Base):
     index: int = Field(ge=0)
     code: str
-    key: str = Field(description="Translation key. `prompt` is the English fallback.")
+    key: str | None = Field(
+        description="Translation key of a bank question; `prompt` is the English fallback. "
+        "None for a question written for this candidate, which is already in their language."
+    )
     prompt: str
     preparation_seconds: int
     answer_seconds: int
@@ -113,6 +116,11 @@ class SessionResponse(SessionSummary):
     question_set_title: str
     question_set_version: str
     started_at: datetime | None = None
+    questions_total: int = Field(
+        description="How many questions the session will ask. `questions` holds those asked "
+        "so far: all of them for a bank session, one more after each answer for a session "
+        "whose questions are written for the candidate (`question_set_code` ADAPTIVE)."
+    )
     questions: list[QuestionSchema]
     answers: list[AnswerSchema]
 
@@ -174,3 +182,28 @@ class InterviewReportResponse(_Base):
     strengths: list[str] = Field(default_factory=list, description="Dimension codes.")
     focus_areas: list[str] = Field(default_factory=list, description="Dimension codes.")
     questions: list[QuestionFeedbackSchema] = Field(default_factory=list)
+
+
+class SessionHistoryItem(SessionSummary):
+    """One session on the history screen."""
+
+    question_set_title: str
+    questions_asked: int
+    answers_stored: int
+    report_status: Literal["NOT_COMPLETED", "PENDING", "READY", "FAILED"]
+
+
+class RecordingSchema(_Base):
+    """One stored answer, to play back. `url` is a presigned GET that expires."""
+
+    question_index: int = Field(ge=0)
+    question_code: str
+    prompt: str
+    url: str
+    expires_in_seconds: int
+    mime: str | None = None
+    duration_ms: int | None = None
+    uploaded_at: datetime | None = None
+    transcript: str | None = Field(
+        default=None, description="What the speech model heard, once transcribed."
+    )

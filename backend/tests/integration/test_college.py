@@ -314,9 +314,9 @@ async def test_codes_are_issued_behind_payment_and_revoked_without_it(
     issued = await _code(client, college, expires_in_days=30, max_uses=5)
     assert len(issued["code"]) == 14 and issued["code"][4] == "-" and issued["state"] == "ACTIVE"
     assert issued["uses"] == 0 and issued["max_uses"] == 5
-    listed = (
-        await client.get(f"{COLLEGE}/referral-codes", headers=college["headers"])
-    ).json()["items"]
+    listed = (await client.get(f"{COLLEGE}/referral-codes", headers=college["headers"])).json()[
+        "items"
+    ]
     assert [c["id"] for c in listed] == [issued["id"]]
     active = (
         await client.get(
@@ -436,9 +436,9 @@ async def test_entering_a_code_links_the_student_with_roster_consent_only(
     links = (await client.get(STUDENT, headers=student["headers"])).json()
     assert [link["college_id"] for link in links] == [college["tenant_id"]]
     # The college learns a count exists, and nothing about who.
-    listed = (
-        await client.get(f"{COLLEGE}/referral-codes", headers=college["headers"])
-    ).json()["items"]
+    listed = (await client.get(f"{COLLEGE}/referral-codes", headers=college["headers"])).json()[
+        "items"
+    ]
     assert listed[0]["uses"] == 1 and str(student["id"]) not in str(listed)
 
 

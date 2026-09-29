@@ -40,7 +40,7 @@ from typing import Any, Final
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import ratelimit
+from app.core import ratelimit, storage
 from app.core.audit import AuditAction, audit_event
 from app.core.db import set_transaction_tenant, set_transaction_user
 from app.core.deps import CANDIDATE, COLLEGE_ADMIN, PLATFORM_ADMIN
@@ -106,6 +106,7 @@ from app.modules.notifications.domain import roster_invitation_contact_fields
 from app.modules.resume import service as resume_service
 from app.modules.scoring.domain import band_for, display_value
 from app.modules.subscriptions import service as subscriptions_service
+from app.settings import Settings, get_settings
 
 logger = get_logger(__name__)
 
@@ -1290,6 +1291,11 @@ async def grant_individual_visibility(
     versioned words. Needs a live ROSTER link to that college (404 without);
     `guard_student_consent_insert` holds the same rule for every writer.
     Idempotent: granted already, the existing grant is returned.
+
+    **A grant under older words is replaced, not returned** (2026-09-29): the
+    student is agreeing to the current words, which may show the college
+    more, so the old row is revoked and a new one written in this
+    transaction. Until they do, the college keeps the older, narrower view.
     """
     if consent_version != INDIVIDUAL_CONSENT_VERSION:
         raise ConsentVersionOutdatedError(params={"consent_version": INDIVIDUAL_CONSENT_VERSION})
@@ -1298,6 +1304,13 @@ async def grant_individual_visibility(
     if ROSTER not in live:
         raise CollegeLinkNotFoundError()
     existing = live.get(INDIVIDUAL)
+    upgraded_from: str | None = None
+    if existing is not None and existing.consent_version != INDIVIDUAL_CONSENT_VERSION:
+        upgraded_from = existing.consent_version
+        await repository.revoke_consent(
+            session, tenant_id=college_id, candidate_id=user_id, scope=INDIVIDUAL
+        )
+        existing = None
     consent = existing or await repository.insert_individual_consent(
         session,
         tenant_id=college_id,
@@ -1318,6 +1331,7 @@ async def grant_individual_visibility(
                 "scope": INDIVIDUAL,
                 "granted_via": GRANTED_VIA_DIRECT,
                 "consent_version": INDIVIDUAL_CONSENT_VERSION,
+                "upgraded_from": upgraded_from,
             },
         )
         await emit(
@@ -1550,9 +1564,7 @@ async def list_visible_students(
                     str(item.candidate_id) for item in page if item.candidate_id is not None
                 ],
                 "roster_entry_ids": [
-                    str(item.roster_entry_id)
-                    for item in page
-                    if item.roster_entry_id is not None
+                    str(item.roster_entry_id) for item in page if item.roster_entry_id is not None
                 ],
             },
         )
@@ -1635,3 +1647,198 @@ async def open_student(
         interviews=row.interviews,
         hires=[StudentHire(h.job_title, h.employer_name, h.hired_at) for h in hires],
     )
+
+
+# ---------------------------------------------------------------------------
+# A student's details, CV, courses and applications (2026-09-29)
+# ---------------------------------------------------------------------------
+# Asked for by the client. **Served only under INDIVIDUAL consent to the
+# current words** (`INDIVIDUAL_DETAILS_VERSIONS`), which name every one of
+# these, and read only through the consent-joined functions in migration 0005.
+# A student who agreed to version 1 keeps version 1's view: 409 here, with the
+# consent version the college should ask them to accept.
+
+
+class StudentDetailsNotSharedError(ConflictError):
+    """The student lets the college see them under earlier words, which did
+    not include these details. Only the student can agree to the new ones."""
+
+    code = "college_student_details_not_shared"
+    title = "This student has not agreed to share these details"
+
+
+async def _details_gate(
+    session: AsyncSession, ctx: TenantContext, candidate_id: uuid.UUID
+) -> tuple[uuid.UUID, repository.StudentDetailsRow]:
+    tenant_id = await _bind(session, ctx)
+    details = await repository.student_details(session, candidate_id=candidate_id)
+    if details is None:
+        if await repository.student_profile(session, candidate_id=candidate_id) is None:
+            raise CollegeStudentNotFoundError()
+        raise StudentDetailsNotSharedError(params={"consent_version": INDIVIDUAL_CONSENT_VERSION})
+    return tenant_id, details
+
+
+@dataclass(frozen=True, slots=True)
+class StudentCourse:
+    code: str
+    title: str
+    purchased_at: datetime
+    lessons_total: int
+    lessons_completed: int
+    completed_at: datetime | None
+
+    @property
+    def percent_complete(self) -> int:
+        if self.lessons_total <= 0:
+            return 0
+        return (100 * min(self.lessons_completed, self.lessons_total)) // self.lessons_total
+
+
+@dataclass(frozen=True, slots=True)
+class StudentApplication:
+    job_title: str
+    employer_name: str
+    job_location: str | None
+    stage: str
+    applied_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StudentDetails:
+    candidate_id: uuid.UUID
+    consent_version: str
+    email: str | None
+    phone: str | None
+    city: str | None
+    state_code: str | None
+    locale: str
+    questionnaire: dict[str, Any]
+    questionnaire_submitted_at: datetime | None
+    resume_confirmed_at: datetime | None
+    has_resume_file: bool
+    interviews_completed: int
+    courses: list[StudentCourse]
+    applications: list[StudentApplication]
+    reached: dict[str, int]
+
+
+async def open_student_details(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    candidate_id: uuid.UUID,
+    request_id: str | None = None,
+) -> StudentDetails:
+    """Everything the current consent words name beyond the core view.
+    Audited like every open, in the transaction, before anything is returned."""
+    tenant_id, row = await _details_gate(session, ctx, candidate_id)
+    courses = await repository.student_courses(session, candidate_id=candidate_id)
+    applications, reached = await repository.student_applications(
+        session, candidate_id=candidate_id
+    )
+    await audit_event(
+        session,
+        action=AuditAction.COLLEGE_STUDENT_VIEWED,
+        actor_id=ctx.user_id,
+        actor_role=ctx.role,
+        target_type="user",
+        target_id=candidate_id,
+        tenant_id=tenant_id,
+        request_id=request_id,
+        metadata={"consent_id": str(row.consent_id), "view": "details"},
+    )
+    return StudentDetails(
+        candidate_id=candidate_id,
+        consent_version=row.consent_version,
+        email=row.email,
+        phone=row.phone,
+        city=row.city,
+        state_code=row.state_code,
+        locale=row.locale,
+        questionnaire=row.questionnaire,
+        questionnaire_submitted_at=row.questionnaire_submitted_at,
+        resume_confirmed_at=row.resume_confirmed_at,
+        has_resume_file=row.resume_s3_key is not None,
+        interviews_completed=row.interviews_completed,
+        courses=[
+            StudentCourse(
+                c.course_code,
+                c.title,
+                c.purchased_at,
+                c.lessons_total,
+                c.lessons_completed,
+                c.completed_at,
+            )
+            for c in courses
+        ],
+        applications=[
+            StudentApplication(
+                a.job_title, a.employer_name, a.job_location, a.stage, a.applied_at, a.updated_at
+            )
+            for a in applications
+        ],
+        reached=reached,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class StudentResume:
+    confirmed_at: datetime | None
+    source: str
+    text: str | None
+    fields: dict[str, Any]
+    file_url: str | None
+    file_mime: str | None
+
+
+async def open_student_resume(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    candidate_id: uuid.UUID,
+    request_id: str | None = None,
+    settings: Settings | None = None,
+) -> StudentResume:
+    """The CV the student's score was built from: the newest confirmed
+    version, as text, and the uploaded file by a presigned GET that expires.
+    Its own audit row: a CV is a larger reveal than the profile."""
+    settings = settings or get_settings()
+    tenant_id, row = await _details_gate(session, ctx, candidate_id)
+    if row.resume_source is None:
+        raise CollegeStudentResumeNotFoundError()
+    await audit_event(
+        session,
+        action=AuditAction.COLLEGE_STUDENT_RESUME_OPENED,
+        actor_id=ctx.user_id,
+        actor_role=ctx.role,
+        target_type="user",
+        target_id=candidate_id,
+        tenant_id=tenant_id,
+        request_id=request_id,
+        metadata={"consent_id": str(row.consent_id)},
+    )
+    parsed = row.resume_parsed or {}
+    body = parsed.get("raw_text")
+    return StudentResume(
+        confirmed_at=row.resume_confirmed_at,
+        source=row.resume_source,
+        text=body if isinstance(body, str) else None,
+        fields={} if isinstance(body, str) else dict(parsed),
+        file_url=(
+            await storage.presign_get(
+                bucket=settings.s3_bucket_resumes,
+                key=row.resume_s3_key,
+                expires_in=settings.presigned_url_ttl_seconds,
+            )
+            if row.resume_s3_key
+            else None
+        ),
+        file_mime=row.resume_mime,
+    )
+
+
+class CollegeStudentResumeNotFoundError(NotFoundError):
+    code = "college_student_resume_not_found"
+    title = "This student has no confirmed CV yet"

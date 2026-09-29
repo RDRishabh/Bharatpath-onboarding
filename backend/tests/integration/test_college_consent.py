@@ -561,7 +561,8 @@ async def test_the_list_filters_every_link_stage(client: Any, mint_token: Any) -
         json={"consent_version": CONSENT_VERSION},
         headers=pending_student["headers"],
     )
-    assert accepted.status_code == 201, accepted.text
+    # 200, as `test_roster_import.py` holds: accepting answers with the link.
+    assert accepted.status_code == 200, accepted.text
 
     expected = {
         "LINKED": ("Linked Student", str(linked)),

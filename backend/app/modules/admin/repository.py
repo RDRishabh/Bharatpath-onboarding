@@ -788,3 +788,106 @@ async def throughput(
         integrity=integrity,
         disputes=disputes,
     )
+
+
+# ---------------------------------------------------------------------------
+# The full candidate page (2026-09-29). Read on the bypass session, after the
+# service has written the audit row naming the candidate.
+# ---------------------------------------------------------------------------
+async def candidate_onboarding(reader: AsyncSession, *, user_id: uuid.UUID) -> RowMapping | None:
+    """What the candidate told us at sign-up and on their profile."""
+    return await _one(
+        reader,
+        """
+        SELECT u.id, u.status, u.locale, u.email, u.phone, u.created_at,
+               p.full_name, p.city, p.state_code,
+               q.answers AS questionnaire_answers, q.submitted_at AS questionnaire_submitted_at
+          FROM users u
+          LEFT JOIN candidate_profiles p ON p.user_id = u.id
+          LEFT JOIN questionnaire_responses q ON q.user_id = u.id
+         WHERE u.id = :u AND u.pool = 'CANDIDATE'
+        """,
+        u=user_id,
+    )
+
+
+async def candidate_resume(
+    reader: AsyncSession, *, user_id: uuid.UUID
+) -> dict[str, RowMapping | None]:
+    """The newest resume version, and the newest confirmed one when that is
+    older: what the candidate is working on, and what their score was built
+    from."""
+    return {
+        "latest": await _one(
+            reader,
+            """
+            SELECT v.id, v.source, v.parsed, v.confirmed_at, v.created_at,
+                   f.s3_key, f.mime, f.size_bytes, f.uploaded_at
+              FROM resume_versions v
+              LEFT JOIN resume_files f ON f.id = v.resume_file_id
+             WHERE v.user_id = :u
+             ORDER BY v.created_at DESC, v.id DESC LIMIT 1
+            """,
+            u=user_id,
+        ),
+        "confirmed": await _one(
+            reader,
+            """
+            SELECT v.id, v.source, v.parsed, v.confirmed_at, v.created_at,
+                   f.s3_key, f.mime, f.size_bytes, f.uploaded_at
+              FROM resume_versions v
+              LEFT JOIN resume_files f ON f.id = v.resume_file_id
+             WHERE v.user_id = :u AND v.confirmed_at IS NOT NULL
+             ORDER BY v.confirmed_at DESC, v.id DESC LIMIT 1
+            """,
+            u=user_id,
+        ),
+    }
+
+
+async def score_history(reader: AsyncSession, *, user_id: uuid.UUID) -> list[RowMapping]:
+    """Every score row, oldest first. The service turns each into the display
+    value; the stored number never leaves it."""
+    return await _rows(
+        reader,
+        """
+        SELECT id, raw_value, addon_value, resume_version_id, algorithm_version, computed_at
+          FROM scores WHERE user_id = :u
+         ORDER BY computed_at, id
+        """,
+        u=user_id,
+    )
+
+
+async def candidate_applications(
+    reader: AsyncSession, *, user_id: uuid.UUID
+) -> tuple[list[RowMapping], dict[str, int]]:
+    """Every application, newest first, with the job and employer, and how
+    many ever reached each stage."""
+    rows = await _rows(
+        reader,
+        """
+        SELECT a.id, a.stage, a.created_at AS applied_at, a.updated_at,
+               a.interview_at, j.id AS job_id, j.title AS job_title,
+               j.location AS job_location, a.tenant_id AS employer_tenant_id,
+               e.legal_name AS employer_name
+          FROM applications a
+          JOIN jobs j ON j.id = a.job_id
+          LEFT JOIN employers e ON e.tenant_id = a.tenant_id
+         WHERE a.candidate_id = :u
+         ORDER BY a.created_at DESC, a.id DESC
+        """,
+        u=user_id,
+    )
+    reached = await _counts(
+        reader,
+        """
+        SELECT e.to_stage AS key, count(DISTINCT e.application_id) AS n
+          FROM application_events e
+          JOIN applications a ON a.id = e.application_id
+         WHERE a.candidate_id = :u AND e.to_stage IS NOT NULL
+         GROUP BY e.to_stage
+        """,
+        u=user_id,
+    )
+    return rows, reached

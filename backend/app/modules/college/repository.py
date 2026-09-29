@@ -176,10 +176,7 @@ async def list_codes(
         created_at, code_id = after
         query = query.where(
             (ReferralCode.created_at < created_at)
-            | (
-                (ReferralCode.created_at == created_at)
-                & (ReferralCode.id < code_id)
-            )
+            | ((ReferralCode.created_at == created_at) & (ReferralCode.id < code_id))
         )
     result = await session.execute(
         query.order_by(ReferralCode.created_at.desc(), ReferralCode.id.desc()).limit(limit)
@@ -438,10 +435,7 @@ async def list_imports(
         created_at, import_id = after
         query = query.where(
             (RosterImport.created_at < created_at)
-            | (
-                (RosterImport.created_at == created_at)
-                & (RosterImport.id < import_id)
-            )
+            | ((RosterImport.created_at == created_at) & (RosterImport.id < import_id))
         )
     result = await session.execute(
         query.order_by(RosterImport.created_at.desc(), RosterImport.id.desc()).limit(limit)
@@ -457,8 +451,7 @@ async def invitation_counts_for_tenant(
 ) -> dict[str, int]:
     displayed_state = case(
         (
-            (RosterEntry.invite_state == INVITE_SENT)
-            & (RosterEntry.sent_at <= expired_before),
+            (RosterEntry.invite_state == INVITE_SENT) & (RosterEntry.sent_at <= expired_before),
             INVITE_EXPIRED,
         ),
         else_=RosterEntry.invite_state,
@@ -901,3 +894,128 @@ async def sent_invitation(
         )
     )
     return result.scalar_one_or_none()
+
+
+# --- a student's details (2026-09-29), through the consent-joined reads ----------
+@dataclass(frozen=True, slots=True)
+class StudentDetailsRow:
+    consent_id: uuid.UUID
+    consent_version: str
+    email: str | None
+    phone: str | None
+    city: str | None
+    state_code: str | None
+    locale: str
+    questionnaire: dict[str, Any]
+    questionnaire_submitted_at: datetime | None
+    resume_source: str | None
+    resume_parsed: dict[str, Any] | None
+    resume_confirmed_at: datetime | None
+    resume_s3_key: str | None
+    resume_mime: str | None
+    interviews_completed: int
+
+
+async def student_details(
+    session: AsyncSession, *, candidate_id: uuid.UUID
+) -> StudentDetailsRow | None:
+    """None unless the student's INDIVIDUAL consent to this college is live
+    **and** under words that name these details."""
+    row = (
+        await session.execute(
+            text(
+                "SELECT consent_id, consent_version, email, phone, city, state_code, locale, "
+                "questionnaire, questionnaire_submitted_at, resume_source, resume_parsed, "
+                "resume_confirmed_at, resume_s3_key, resume_mime, interviews_completed "
+                "FROM college_student_details(:c)"
+            ),
+            {"c": str(candidate_id)},
+        )
+    ).first()
+    if row is None:
+        return None
+    return StudentDetailsRow(
+        row.consent_id,
+        row.consent_version,
+        row.email,
+        row.phone,
+        row.city,
+        row.state_code,
+        row.locale,
+        dict(row.questionnaire or {}),
+        row.questionnaire_submitted_at,
+        row.resume_source,
+        dict(row.resume_parsed) if row.resume_parsed is not None else None,
+        row.resume_confirmed_at,
+        row.resume_s3_key,
+        row.resume_mime,
+        int(row.interviews_completed),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class StudentCourseRow:
+    course_code: str
+    title: str
+    purchased_at: datetime
+    lessons_total: int
+    lessons_completed: int
+    completed_at: datetime | None
+
+
+async def student_courses(
+    session: AsyncSession, *, candidate_id: uuid.UUID
+) -> list[StudentCourseRow]:
+    result = await session.execute(
+        text(
+            "SELECT course_code, title, purchased_at, lessons_total, lessons_completed, "
+            "completed_at FROM college_student_courses(:c)"
+        ),
+        {"c": str(candidate_id)},
+    )
+    return [
+        StudentCourseRow(
+            r.course_code,
+            r.title,
+            r.purchased_at,
+            int(r.lessons_total),
+            int(r.lessons_completed),
+            r.completed_at,
+        )
+        for r in result
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class StudentApplicationRow:
+    job_title: str
+    employer_name: str
+    job_location: str | None
+    stage: str
+    applied_at: datetime
+    updated_at: datetime
+
+
+async def student_applications(
+    session: AsyncSession, *, candidate_id: uuid.UUID
+) -> tuple[list[StudentApplicationRow], dict[str, int]]:
+    """Each application and the stages it ever reached. No application id:
+    the college has no use for one, and nothing to open with it."""
+    result = await session.execute(
+        text(
+            "SELECT job_title, employer_name, job_location, stage, applied_at, updated_at, "
+            "reached FROM college_student_applications(:c)"
+        ),
+        {"c": str(candidate_id)},
+    )
+    rows: list[StudentApplicationRow] = []
+    reached: dict[str, int] = {}
+    for r in result:
+        rows.append(
+            StudentApplicationRow(
+                r.job_title, r.employer_name, r.job_location, r.stage, r.applied_at, r.updated_at
+            )
+        )
+        for stage in r.reached or []:
+            reached[str(stage)] = reached.get(str(stage), 0) + 1
+    return rows, reached

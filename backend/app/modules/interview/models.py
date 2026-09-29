@@ -264,6 +264,62 @@ class InterviewSession(Base, UUIDPrimaryKey):
     )
 
 
+class InterviewSessionQuestion(Base, UUIDPrimaryKey):
+    """One question a session asked, in order (2026-09-29).
+
+    Since questions are written for each candidate (`questions.py`), the bank
+    set a session names no longer says what was asked, so every question is
+    stored as it was put to the candidate. That is what the evaluator is given,
+    what the report shows, and what the next session is told not to repeat.
+
+    **Insert-only.** A question is written once, when the candidate reaches it,
+    and a later session reads it to avoid repeating it. `model_id` and
+    `prompt_version` say which writer produced it; a BANK question has neither.
+    Sessions started before 2026-09-29 have no rows and read their bank set.
+    """
+
+    __tablename__ = "interview_session_questions"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("interview_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    question_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: The bank's translation key, for a bank question. None for a written one,
+    #: which is already in the candidate's language.
+    key: Mapped[str | None] = mapped_column(String(128))
+    prompt: Mapped[str] = mapped_column(String(1000), nullable=False)
+    looking_for: Mapped[str] = mapped_column(String(1000), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    model_id: Mapped[str | None] = mapped_column(String(128))
+    prompt_version: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            f"question_index >= 0 AND question_index < {QUESTIONS_PER_SESSION}",
+            name="ck_interview_session_questions_index",
+        ),
+        CheckConstraint(
+            "kind IN ('OPENING', 'FOLLOW_UP', 'NEW_TOPIC', 'BANK')",
+            name="ck_interview_session_questions_kind",
+        ),
+        CheckConstraint(
+            "source IN ('MODEL', 'BANK') AND (source = 'BANK') = (kind = 'BANK') AND "
+            "(source = 'MODEL') = (model_id IS NOT NULL AND prompt_version IS NOT NULL)",
+            name="ck_interview_session_questions_source",
+        ),
+        # A position is asked once; a retried "next question" returns it.
+        UniqueConstraint("session_id", "question_index", name="uq_interview_session_question_slot"),
+        UniqueConstraint("session_id", "code", name="uq_interview_session_question_code"),
+    )
+
+
 class InterviewAnswer(Base, UUIDPrimaryKey):
     """One recorded answer. Per-question upload, never one large file.
 

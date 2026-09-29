@@ -50,6 +50,10 @@ Capability = Literal[
     "discounts_read",
     "dashboard",
     "search_filters",
+    "courses",
+    "candidate_resume",
+    "candidate_contact",
+    "candidate_recordings",
 ]
 
 #: `capability -> the staff roles that hold it`. PLATFORM_ADMIN holds all of
@@ -91,6 +95,20 @@ CONSOLE_ROLES: Final[dict[Capability, frozenset[str]]] = {
     # them too (client, 2026-09-24): an option is a suggestion that names
     # nobody and prices nothing, and every change is audited.
     "search_filters": frozenset({PLATFORM_ADMIN, SUPPORT_AGENT}),
+    # 2026-09-29. What the course teaches, and when it goes on sale. A lesson
+    # counts toward a score once watched, so building the course is the
+    # admin's alone, as the price of anything is.
+    "courses": frozenset({PLATFORM_ADMIN}),
+    # 2026-09-29, the full candidate page the client asked for. The CV is
+    # what anyone who can open a candidate is already looking into, the
+    # integrity reviewer above all. A recording is a person's own voice, and
+    # nothing about reviewing a CV needs it, so the integrity reviewer does
+    # not hear them.
+    "candidate_resume": frozenset({PLATFORM_ADMIN, SUPPORT_AGENT, INTEGRITY_REVIEWER}),
+    # The onboarding page carries the whole phone number and email: support
+    # contacts people; reviewing a CV does not need to.
+    "candidate_contact": frozenset({PLATFORM_ADMIN, SUPPORT_AGENT}),
+    "candidate_recordings": frozenset({PLATFORM_ADMIN, SUPPORT_AGENT}),
 }
 
 
