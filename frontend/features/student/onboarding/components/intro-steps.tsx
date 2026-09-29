@@ -12,6 +12,9 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { useGetStudentScoreScaleQuery } from "@/store/student";
+import { ScoreBandBar } from "@/features/student/components";
+
 import {
   FEATURED_LOCALE_COUNT,
   SCORE_CATEGORIES,
@@ -81,6 +84,8 @@ export function WelcomeStep({ onStart }: { onStart: () => void }) {
  * Deliberately no dial or gauge - the score is never drawn as one.
  */
 export function ResumeHero() {
+  const scale = useGetStudentScoreScaleQuery();
+
   return (
     <div className="relative mx-auto w-full max-w-[380px] py-4" aria-hidden="true">
       <div className="absolute -left-4 top-10 h-40 w-40 rounded-full bg-[#F1EAF7] blur-2xl" />
@@ -120,19 +125,27 @@ export function ResumeHero() {
         </div>
       </Card>
 
-      <div className="relative -mt-6 ml-auto w-[230px] rotate-[3deg] rounded-[20px] bg-[#5F4DB2] p-4 text-white shadow-[0_24px_50px_-24px_rgba(95,77,178,0.8)]">
+      <div className="relative -mt-6 ml-auto w-[240px] rotate-[3deg] rounded-[20px] bg-[#5F4DB2] p-4 text-white shadow-[0_24px_50px_-24px_rgba(95,77,178,0.8)]">
         <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#E0DBF4]">
-          Example score
+          Your score
         </span>
-        <div className="mt-1 flex items-end gap-2">
-          <span className="text-[34px] font-extrabold leading-8 tracking-[-0.045em]">706</span>
-          <span className="pb-1 text-[10px] font-semibold tracking-[0.14em] text-[#F1EAF7]">
-            OUT OF 999
+        {scale.data ? (
+          <>
+            <div className="mt-1 flex items-end gap-2">
+              <span className="text-[28px] font-extrabold leading-8 tracking-[-0.045em]">
+                {scale.data.lowest}–{scale.data.highest}
+              </span>
+            </div>
+            <span className="mb-2 mt-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#F1EAF7]">
+              {scale.data.bands.length} bands
+            </span>
+            <ScoreBandBar scale={scale.data} band={null} />
+          </>
+        ) : (
+          <span className="mt-1 block text-[15px] font-bold leading-5">
+            One score and one band, from your confirmed resume.
           </span>
-        </div>
-        <span className="mt-2 inline-block rounded-full bg-[#F4D685] px-2 py-0.5 text-[10px] font-bold tracking-[0.08em] text-[#0A1931]">
-          Band 1 of 4
-        </span>
+        )}
       </div>
     </div>
   );

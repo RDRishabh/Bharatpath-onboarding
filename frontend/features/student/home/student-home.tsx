@@ -9,14 +9,17 @@ import {
   useGetStudentJobsQuery,
   useGetStudentProfileQuery,
   useGetStudentScoreQuery,
+  useGetStudentScoreScaleQuery,
 } from "@/store/student";
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import { Skeleton } from "@/components/common/loading";
-import { firstName } from "@/features/student/formatters";
+import { bandLabel, firstName } from "@/features/student/formatters";
 import {
   CommerceBadge,
   EmptyState,
   JobCard,
+  ScoreBandBar,
+  ScoreScaleUnavailable,
   SectionEyebrow,
 } from "@/features/student/components";
 import { StudentJobGridSkeleton } from "@/features/student/loading";
@@ -27,6 +30,7 @@ export function StudentHome() {
   const router = useRouter();
   const profile = useGetStudentProfileQuery();
   const score = useGetStudentScoreQuery();
+  const scale = useGetStudentScoreScaleQuery();
   const jobs = useGetStudentJobsQuery({ eligibleOnly: true, limit: 3 });
   const questionnaire = useGetQuestionnaireQuery();
   const interview = useGetInterviewOfferQuery();
@@ -77,20 +81,50 @@ export function StudentHome() {
               onClick={() => router.push("/student/score")}
               className="relative flex min-h-48 flex-col justify-between gap-4 overflow-hidden rounded-[24px] bg-[#5F4DB2] p-5 text-left transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#5646A6] hover:shadow-[0_14px_30px_rgba(95,77,178,0.28)] active:translate-y-0 active:scale-[.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/40 focus-visible:ring-offset-2 sm:p-6"
             >
-              <span className="flex items-center justify-between">
+              <span className="flex items-center justify-between gap-3">
                 <span className="text-[11px] font-bold uppercase leading-3 tracking-[0.14em] text-[#E0DBF4]">
                   Your resume score
                 </span>
-                <ChevronRight size={16} className="text-white" />
+                <span className="flex items-center gap-2">
+                  {score.data?.status === "READY" && score.data.band ? (
+                    <span className="rounded-full bg-[#F4D685] px-3 py-1 text-[12px] font-bold text-[#0A1931]">
+                      {bandLabel(score.data.band)}
+                    </span>
+                  ) : null}
+                  <ChevronRight size={16} className="text-white" />
+                </span>
               </span>
               {score.data?.status === "READY" && score.data.value != null ? (
                 <>
-                  <span className="text-[52px] font-extrabold leading-none tracking-[-0.045em] text-white sm:text-[64px]">
-                    {score.data.value}
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-[52px] font-extrabold leading-none tracking-[-0.045em] text-white sm:text-[64px]">
+                      {score.data.value}
+                    </span>
+                    {scale.data ? (
+                      <span className="text-[16px] font-semibold text-[#E0DBF4] sm:text-[18px]">
+                        / {scale.data.highest}
+                      </span>
+                    ) : null}
                   </span>
-                  <span className="text-[13px] text-[#E0DBF4]">
-                    Band {score.data.band ?? "not available"}
-                  </span>
+                  {scale.isLoading ? (
+                    <span
+                      aria-hidden="true"
+                      className="bp-skeleton block h-[6px] w-full rounded-full opacity-55"
+                    />
+                  ) : scale.data ? (
+                    <ScoreBandBar
+                      scale={scale.data}
+                      band={score.data.band}
+                      value={score.data.value}
+                    />
+                  ) : scale.error ? (
+                    <ScoreScaleUnavailable
+                      message={getApiErrorMessage(
+                        scale.error,
+                        "Open your score to try again.",
+                      )}
+                    />
+                  ) : null}
                 </>
               ) : (
                 <span className="text-[18px] font-semibold text-white">

@@ -9,27 +9,81 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-29 — student score reads its scale from the backend
+
+The student web UI no longer holds any score number of its own. It reads
+`GET /candidate/score/scale` (lowest, highest, and the four bands with their
+ranges) through a typed RTK Query endpoint and draws everything from it:
+
+- **Home score card:** `value / highest`, the band pill, and a band bar with
+  one segment per backend band, lit up to the candidate's band.
+- **Score page:** the ring's floor and ceiling ("out of" the scale's highest)
+  and a labelled band bar with each band's range.
+- **Signup illustration:** the fake "706 / OUT OF 999 / Band 1 of 4" is gone.
+  It shows the real range and band count, or plain text when the endpoint
+  refuses an unauthenticated visitor.
+
+The client ruled out showing the distance to the next band and a
+points-gained ("+26") badge; neither exists in the web UI, and
+`ScoreBandBar` documents why. The hardcoded `SCORE_BANDS` names (which did not
+match the backend's ENTRY/DEVELOPING/SOLID/STRONG), the 4-segment `BandStrip`,
+and the ring's hardcoded 600 floor were removed. Band labels are the backend's
+codes, title-cased.
+
+**The endpoint is not deployed yet:** it was not in this branch or on
+`origin`, and the deployed backend answers 404. Until it ships, the score and
+band still show, and the scale-dependent parts are replaced by an explicit
+"Band scale unavailable" state. Nothing falls back to a hardcoded number.
+
+Not changed, and needs an owner:
+
+- **Employer UI** cannot use a `/candidate/` route. `employer/jobs/create/threshold.ts`
+  hardcodes 700 and 990, and `employer/applications/band.ts` invents its own
+  bands (900/800/700, "Exceptional"/"Building") that disagree with the backend.
+- **`mobile-app/`** is not wired to this backend (placeholder Supabase client
+  and mock data) and still shows "/999", "+26" and "more to next band" in
+  `screens/home/HomeScreen.tsx`, `app/home.tsx`, `app/index.tsx`,
+  `mocks/mockData.ts`, and the onboarding `ScoreReveal`, `ScoreBreakdown`,
+  `Suggestions`, `CreateAccount` and `ShareResult` screens, plus
+  `screens/jobs/JobDetailQualifiedScreen.tsx`.
+
+TypeScript, targeted ESLint and the production build pass. Browser checks with
+a mocked response in the agreed contract, and with a real 404, covered the
+home card, the score page and the signup illustration.
+
+---
+
 ## 2026-09-29 — student home and detail views expose the daily streak
 
 The student home now includes the supplied-design-inspired daily streak card,
 showing the live current streak, personal best, engagement-points balance and
-next milestone. The card opens `/student/streak` in a new tab. That responsive
+next milestone. The card opens `/student/streak` in the same tab. That responsive
 detail page adds the server-date-based week view, milestone progress and
 ladder, and the append-only points activity returned by the backend. Empty,
 loading, error and rules-with-no-milestones states are explicit; engagement
 points remain visually and semantically separate from the resume score.
-Update (same day): the card now navigates in the same tab, and the detail
-page re-fetches the summary and points history from the backend every time it
-opens rather than reusing a cached copy.
 
-The frontend API layer now maps all three existing candidate streak endpoints.
-The shell's idempotent check-in invalidates the summary and points caches, so
-the card and detail page refresh from backend truth without adding a second
-check-in path.
+The header, home card and detail page share one RTK Query cache entry backed by
+the required idempotent `POST /candidate/streak/me/check-in`. This removes the
+Strict Mode double mutation and the redundant `GET /candidate/streak/me`; a
+hard load of the detail page makes one check-in call, then one
+`GET /candidate/streak/me/points?limit=50` after it succeeds. Navigating Home →
+Streak again makes neither call while those cache entries are live.
+
+No streak metric is static. The response supplies current/longest streak,
+last-active and server-today dates, points, status and every milestone. The
+week starts on Monday around the server's `today`; completed days are exactly
+the uninterrupted `current_streak` ending on `last_active_on`, intersected
+with that displayed week. The API has no historical daily-open calendar, so
+activity before the current run is not guessed. Days-to-go and percentage are
+arithmetic over the response's current streak and next milestone.
 
 Targeted ESLint, TypeScript and the Next.js production build pass. Browser
 validation with mocked API-contract responses confirmed the home card and
 detail page at 1440x900 and 390x844 and no horizontal overflow.
+Points activity now loads the backend's default 50 entries and scrolls inside
+its card: on laptop widths it takes the Milestones card's height beside it,
+and when the cards stack it is capped and scrolls.
 
 ---
 

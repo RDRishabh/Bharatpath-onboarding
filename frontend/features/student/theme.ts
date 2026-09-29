@@ -35,6 +35,3 @@ export const studentTheme = {
   red: "#993A22",
   redBg: "#F8E6E0",
 } as const;
-
-/** The four score bands, gold marks your position. */
-export const SCORE_BANDS = ["Starting", "Building", "Strong", "Standout"] as const;

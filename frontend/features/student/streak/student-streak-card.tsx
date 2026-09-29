@@ -10,7 +10,7 @@ import {
 
 import { Skeleton } from "@/components/common/loading";
 import { getApiErrorMessage } from "@/lib/api/error-message";
-import { useGetStudentStreakQuery } from "@/store/student";
+import { useGetStudentStreakSessionQuery } from "@/store/student";
 
 import {
   daysToNextMilestone,
@@ -20,7 +20,7 @@ import {
 } from "./streak-utils";
 
 export function StudentStreakCard() {
-  const streak = useGetStudentStreakQuery();
+  const streak = useGetStudentStreakSessionQuery();
 
   if (streak.isLoading) {
     return <StudentStreakCardSkeleton />;

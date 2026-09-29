@@ -2,6 +2,7 @@ import type {
   ApplicationStatus,
   JobApplication,
   JobListing,
+  ScoreScale,
 } from "./types";
 
 const STAGE_ORDER: ApplicationStatus[] = [
@@ -29,6 +30,35 @@ export function firstName(name: string | null | undefined): string {
 
 export function employerMonogram(name: string | null): string {
   return initials(name || "Employer");
+}
+
+/** "SOLID" -> "Solid". The band code itself comes from the backend. */
+export function bandLabel(band: string | null | undefined): string {
+  if (!band) return "Not available";
+  const lower = band.replace(/_/g, " ").toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/**
+ * The position of a band on the scale. Prefers the band code the backend
+ * returned with the score; falls back to the value's range only if the code is
+ * missing. -1 when neither places it.
+ */
+export function bandIndex(
+  scale: ScoreScale,
+  band: string | null | undefined,
+  value?: number | null,
+): number {
+  if (band) {
+    const byCode = scale.bands.findIndex((range) => range.band === band);
+    if (byCode >= 0) return byCode;
+  }
+  if (value != null) {
+    return scale.bands.findIndex(
+      (range) => value >= range.lowest && value <= range.highest,
+    );
+  }
+  return -1;
 }
 
 export function formatDate(value: string): string {

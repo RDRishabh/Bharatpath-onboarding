@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/common/loading";
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import {
   useGetStudentStreakPointsQuery,
-  useGetStudentStreakQuery,
+  useGetStudentStreakSessionQuery,
 } from "@/store/student";
 import type {
   StreakPointsChange,
@@ -42,11 +42,9 @@ import {
 
 export function StudentStreakPage() {
   const router = useRouter();
-  const streak = useGetStudentStreakQuery(undefined, {
-    refetchOnMountOrArgChange: true,
-  });
-  const points = useGetStudentStreakPointsQuery(20, {
-    refetchOnMountOrArgChange: true,
+  const streak = useGetStudentStreakSessionQuery();
+  const points = useGetStudentStreakPointsQuery(200, {
+    skip: !streak.data,
   });
 
   return (
@@ -189,6 +187,7 @@ function StatTile({
 }
 
 function WeeklyActivity({ streak }: { streak: StudentStreak }) {
+  // `today` is the server's IST date. Never use the browser's calendar here.
   const week = weekFor(streak.today);
   const active = activeDateKeys(streak);
 
@@ -355,7 +354,7 @@ function MilestoneLadder({ streak }: { streak: StudentStreak }) {
       </SectionEyebrow>
       <div
         className={[
-          "rounded-[24px] border border-[#E7E0D4] bg-white p-4 shadow-[0_4px_14px_rgba(10,25,49,0.05)] sm:p-5",
+          "flex-1 rounded-[24px] border border-[#E7E0D4] bg-white p-4 shadow-[0_4px_14px_rgba(10,25,49,0.05)] sm:p-5",
           streak.milestones.length > 0
             ? "grid gap-3 sm:grid-cols-3"
             : "flex min-h-40 items-center justify-center",
@@ -440,7 +439,7 @@ function PointsActivity({
       <SectionEyebrow icon={<History size={13} />}>
         Points activity
       </SectionEyebrow>
-      <div className="h-full rounded-[24px] border border-[#E7E0D4] bg-white p-4 shadow-[0_4px_14px_rgba(10,25,49,0.05)] sm:p-5">
+      <div className="flex flex-1 flex-col rounded-[24px] border border-[#E7E0D4] bg-white p-4 shadow-[0_4px_14px_rgba(10,25,49,0.05)] sm:p-5">
         {isLoading ? (
           <div className="flex flex-col gap-4" aria-label="Loading points activity">
             {[0, 1, 2].map((item) => (
@@ -468,13 +467,21 @@ function PointsActivity({
             </button>
           </div>
         ) : rows?.length ? (
-          <div className="divide-y divide-[#F0EBDF]">
-            {rows.map((row, index) => (
-              <PointActivityRow
-                key={`${row.kind}-${row.activityOn}-${index}`}
-                row={row}
-              />
-            ))}
+          // On xl the list is taken out of flow so the card matches the
+          // Milestones card beside it, and scrolls inside that height.
+          <div className="relative flex-1 xl:min-h-32">
+            <div
+              tabIndex={0}
+              aria-label="Points activity, newest first"
+              className="bp-scrollbar max-h-80 divide-y divide-[#F0EBDF] overflow-y-auto pr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30 xl:absolute xl:inset-0 xl:max-h-none"
+            >
+              {rows.map((row, index) => (
+                <PointActivityRow
+                  key={`${row.kind}-${row.activityOn}-${index}`}
+                  row={row}
+                />
+              ))}
+            </div>
           </div>
         ) : (
           <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center">

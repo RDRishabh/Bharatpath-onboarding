@@ -7,6 +7,7 @@ import type {
   JobListing,
   Page,
   QuestionnaireView,
+  ScoreScale,
   StudentProfile,
   StudentScore,
   StudentStreak,
@@ -18,6 +19,12 @@ interface StudentScoreResponse {
   value: number | null;
   band: string | null;
   computed_at: string | null;
+}
+
+interface ScoreScaleResponse {
+  lowest: number;
+  highest: number;
+  bands: Array<{ band: string; lowest: number; highest: number }>;
 }
 
 interface StudentProfileResponse {
@@ -203,16 +210,6 @@ function mapStreakPointsChange(
   };
 }
 
-function mapStreakCheckIn(
-  response: StreakCheckInResponse,
-): StudentStreakCheckIn {
-  return {
-    counted: response.counted,
-    streak: mapStreak(response.streak),
-    changes: response.changes.map(mapStreakPointsChange),
-  };
-}
-
 function mapJob(response: JobResponse): JobListing {
   return {
     id: response.id,
@@ -313,21 +310,23 @@ export const studentApi = baseApi.injectEndpoints({
       transformResponse: mapScore,
       providesTags: [{ type: "Student", id: "SCORE" }],
     }),
-    getStudentStreak: builder.query<StudentStreak, void>({
-      query: () => "/candidate/streak/me",
-      transformResponse: mapStreak,
-      providesTags: [{ type: "Student", id: "STREAK" }],
+    getStudentScoreScale: builder.query<ScoreScale, void>({
+      query: () => "/candidate/score/scale",
+      transformResponse: (response: ScoreScaleResponse): ScoreScale => ({
+        lowest: response.lowest,
+        highest: response.highest,
+        bands: [...response.bands].sort((a, b) => a.lowest - b.lowest),
+      }),
+      providesTags: [{ type: "Student", id: "SCORE_SCALE" }],
     }),
-    checkInStudentStreak: builder.mutation<StudentStreakCheckIn, void>({
+    getStudentStreakSession: builder.query<StudentStreak, void>({
       query: () => ({
         url: "/candidate/streak/me/check-in",
         method: "POST",
       }),
-      transformResponse: mapStreakCheckIn,
-      invalidatesTags: [
-        { type: "Student", id: "STREAK" },
-        { type: "Student", id: "STREAK_POINTS" },
-      ],
+      transformResponse: (response: StreakCheckInResponse) =>
+        mapStreak(response.streak),
+      providesTags: [{ type: "Student", id: "STREAK_SESSION" }],
     }),
     getStudentStreakPoints: builder.query<
       StudentStreakCheckIn["changes"],
@@ -335,7 +334,7 @@ export const studentApi = baseApi.injectEndpoints({
     >({
       query: (limit) => ({
         url: "/candidate/streak/me/points",
-        params: { limit: limit ?? 50 },
+        params: { limit: limit ?? 200 },
       }),
       transformResponse: (response: StreakPointsChangeResponse[]) =>
         response.map(mapStreakPointsChange),
@@ -522,8 +521,8 @@ export const {
   useUpdateStudentNameMutation,
   useUpdateStudentLocationMutation,
   useGetStudentScoreQuery,
-  useGetStudentStreakQuery,
-  useCheckInStudentStreakMutation,
+  useGetStudentScoreScaleQuery,
+  useGetStudentStreakSessionQuery,
   useGetStudentStreakPointsQuery,
   useGetStudentJobsQuery,
   useLazyGetStudentJobsQuery,
