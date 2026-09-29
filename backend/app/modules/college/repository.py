@@ -258,7 +258,7 @@ async def insert_roster_consent(
 
 async def claim_seat(session: AsyncSession, *, tenant_id: uuid.UUID) -> uuid.UUID | None:
     result = await session.execute(text("SELECT claim_college_seat(:t)"), {"t": str(tenant_id)})
-    value = result.scalar_one()
+    value: Any = result.scalar_one()
     return uuid.UUID(str(value)) if value is not None else None
 
 
@@ -319,7 +319,7 @@ async def answer_invitation(
     result = await session.execute(
         text("SELECT answer_invitation(:e, :a)"), {"e": str(entry_id), "a": accept}
     )
-    value = result.scalar_one()
+    value: Any = result.scalar_one()
     return uuid.UUID(str(value)) if value is not None else None
 
 

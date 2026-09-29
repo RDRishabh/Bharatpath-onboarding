@@ -27,6 +27,13 @@ with red CI, and PR 23 then conflicted. Resolved:
   re-aligned the columns). The Day 16 section now says sessions are
   subscription-included, and that **no client decision is recorded for it**.
 
+- **CI's lint job was red for a reason in no PR.** CI installs fresh, and
+  picked up SQLAlchemy 2.1.1, whose stubs type `text(...)` results so that
+  three `scalar_one()` assignments need annotations (mypy `var-annotated`).
+  Local venvs had 2.0.52, so every local run was green. Pinned
+  `sqlalchemy<2.1` (upgrading is a decision, not a drift) and annotated the
+  three lines, so the check passes on either version.
+
 Not changed, reported instead (PR 21, merged 2026-09-26 with red CI): the
 college analytics now show a withheld score band as `0`, fill every metric
 with `0` below the cohort floor (`median_score: 0`), and no longer suppress

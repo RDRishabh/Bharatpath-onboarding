@@ -321,7 +321,7 @@ async def erase_candidate(
         text("SELECT erase_candidate(:user_id, :policy_version)"),
         {"user_id": user_id, "policy_version": policy_version},
     )
-    manifest = row.scalar_one()
+    manifest: Any = row.scalar_one()
     return dict(manifest) if isinstance(manifest, dict) else {}
 
 
