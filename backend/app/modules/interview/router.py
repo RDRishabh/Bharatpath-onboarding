@@ -101,7 +101,7 @@ def _session_response(view: service.SessionView) -> SessionResponse:
     "/offer",
     response_model=OfferResponse,
     dependencies=PayingCandidate,
-    summary="Interview availability, device check, and score-cap disclosure",
+    summary="Price, the device check, and whether a session would increase the score",
 )
 async def get_offer(user: CurrentUser, session: DbSession) -> OfferResponse:
     offer = await service.offer(session, user_id=user.user_id)
@@ -126,7 +126,7 @@ async def get_offer(user: CurrentUser, session: DbSession) -> OfferResponse:
     response_model=DeviceCheckResponse,
     status_code=status.HTTP_201_CREATED,
     dependencies=PayingCandidate,
-    summary="Record a device check before the interview",
+    summary="Record a device check (before payment)",
 )
 async def create_device_check(
     payload: DeviceCheckRequest, user: CurrentUser, session: DbSession
@@ -159,8 +159,7 @@ async def create_device_check(
     response_model=CheckoutResponse,
     status_code=status.HTTP_201_CREATED,
     dependencies=PayingCandidate,
-    deprecated=True,
-    summary="Legacy one-off interview checkout",
+    summary="Buy a mock interview session",
 )
 async def checkout_session(
     payload: InterviewCheckoutRequest, user: CurrentUser, session: DbSession
@@ -182,7 +181,7 @@ async def checkout_session(
     response_model=SessionResponse,
     status_code=status.HTTP_201_CREATED,
     dependencies=PayingCandidate,
-    summary="Start a subscription-included session, or resume the open one",
+    summary="Start a session, or resume the one in progress",
 )
 async def start_session(user: CurrentUser, session: DbSession) -> SessionResponse:
     started = await service.start_session(session, user_id=user.user_id)

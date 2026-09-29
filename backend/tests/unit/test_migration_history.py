@@ -33,3 +33,7 @@ def test_mains_merge_revision_stays_under_the_portal_dashboards() -> None:
     revision = _scripts().get_revision("0005_portal_dashboards")
     assert revision is not None
     assert revision.down_revision == "0005_merge_migration_heads"
+
+
+def test_interviews_are_bought_again_at_the_head() -> None:
+    assert _scripts().get_heads() == ["0006_interviews_are_bought"]

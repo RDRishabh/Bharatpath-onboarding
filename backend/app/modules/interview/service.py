@@ -274,11 +274,12 @@ def check_valid_until(check: DeviceCheck) -> datetime:
 # 2-3. Buying a session
 # ---------------------------------------------------------------------------
 async def _sessions_held(session: AsyncSession, *, user_id: uuid.UUID) -> int:
-    """Completed and in-progress sessions. Historical purchases are receipts,
-    not entitlements: mock interviews are included in the live subscription."""
-    return await repository.count_sessions(
+    """Completed, in progress, and bought but not started. Not abandoned."""
+    started = await repository.count_sessions(
         session, user_id=user_id, states=COMPLETED_STATES | OPEN_STATES
     )
+    unstarted = await repository.count_unstarted_purchases(session, user_id=user_id)
+    return started + unstarted
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,12 +292,9 @@ class Offer:
 
 
 async def offer(session: AsyncSession, *, user_id: uuid.UUID, now: datetime | None = None) -> Offer:
-    """Current interview state for a subscribed candidate.
-
-    One session is available whenever none is open. `product` remains in the
-    response for compatibility with clients from the former one-off checkout
-    model, but it no longer controls access.
-    """
+    """What the purchase screen needs, **including whether to warn**. The app
+    must show "this session will not increase your score" when
+    `will_increase_score` is false, before the payment screen."""
     now = _now(now)
     product = await repository.active_product(session, code=INTERVIEW_SESSION_PRODUCT.code)
     held = await _sessions_held(session, user_id=user_id)
@@ -305,7 +303,7 @@ async def offer(session: AsyncSession, *, user_id: uuid.UUID, now: datetime | No
         product=product,
         will_increase_score=purchase_earns_points(sessions_held=held),
         device_check=await _fresh_passed_check(session, user_id=user_id, now=now),
-        sessions_available=0 if open_row is not None else 1,
+        sessions_available=await repository.count_unstarted_purchases(session, user_id=user_id),
         open_session_id=open_row.id if open_row is not None else None,
     )
 
@@ -426,14 +424,14 @@ async def start_session(
     now: datetime | None = None,
     question_provider: QuestionProvider | None = None,
 ) -> StartedSession:
-    """Start a subscription-included session. **An open session is returned
+    """Consume the oldest unstarted purchase. **An open session is returned
     rather than a second started**: the client that crashed mid-interview
-    calls this again and resumes.
+    calls this again and resumes, and no purchase is spent twice.
 
     The session opens with its first question written by the model for this
     candidate, and the rest come one at a time from `next_question`. **If the
     first question cannot be written the whole start rolls back** -- no
-    session is created -- and the app retries.
+    purchase is spent -- and the app retries.
     """
     now = _now(now)
     provider = question_provider or get_question_provider()
@@ -445,6 +443,9 @@ async def start_session(
     check = await _fresh_passed_check(session, user_id=user_id, now=now)
     if check is None:
         raise DeviceCheckRequiredError()
+    purchase = await repository.oldest_unstarted_purchase(session, user_id=user_id)
+    if purchase is None:
+        raise InterviewPurchaseRequiredError()
 
     # Every session ever started counts, abandoned ones included, so a
     # candidate who abandons one is not handed the same questions again.
@@ -452,7 +453,7 @@ async def start_session(
     row = await repository.insert_session(
         session,
         user_id=user_id,
-        purchase_id=None,
+        purchase_id=purchase.id,
         device_check_id=check.id,
         session_number=number,
         question_set_code=ADAPTIVE_SET_CODE,

@@ -563,19 +563,20 @@ SUPPORT_AGENT).
   scoring never reads it, and `test_questionnaire_never_scores.py` fails on a
   score-like field in either add-on's schemas (`will_increase_score` and its acknowledgement are
   the allowed names). It has no badge on purpose (blockers E21).
-- **Sessions are included in the candidate subscription** since
-  `0002_interviews_in_subscription` (mobile branch, 2026-09-22, merged to
-  `main` 2026-09-29): a session starts with `purchase_id = NULL`, and the
-  guard requires a live USER subscription and a fresh passed device check.
-  **No client decision is recorded for this** -- it was a product change made
-  in the mobile flow. Any subscriber can start sessions without limit, and the
-  `acknowledge_no_score_increase` gate no longer stands in front of a fourth.
-- `/candidate/interview/checkout` is deprecated and kept for old clients and
-  historical records: `interview_purchases` (guarded like `course_purchases`),
-  payment purpose `INTERVIEW_SESSION`, CHECKs generated from
-  `billing.domain.PURPOSES` / `ONE_OFF_PURPOSES`. It still refuses without a
-  device check and, past three sessions, without the acknowledgement;
-  what the candidate was told is an insert-only `interview_checkout_notices` row.
+- **Interview sessions are bought like the course**, not through `entitlements`:
+  `interview_purchases` (guarded like `course_purchases`) and a session per
+  purchase (`purchase_id` NOT NULL). Payment purpose `INTERVIEW_SESSION`; the
+  payment CHECKs are generated from `billing.domain.PURPOSES` / `ONE_OFF_PURPOSES`.
+- **Checkout is refused before any payment exists** without a device check
+  passed in the last hour, or, once three sessions are held, without
+  `acknowledge_no_score_increase`. What the candidate was told is an
+  insert-only `interview_checkout_notices` row. Do not relax either.
+- **Sessions are not included in the subscription.** The mobile branch made
+  them so (`0002_interviews_in_subscription`, 2026-09-22) without a client
+  decision: any subscriber got unlimited sessions and the whole +60 unpaid.
+  `0006_interviews_are_bought` put the rule back, and **refuses to migrate a
+  database holding a session with no purchase** -- what such a row is (test
+  data, or a candidate owed something) is a decision, not a backfill.
 - **Each completed session records +20, a fourth included; the +60 cap is
   scoring's alone** (`addons_for` lists every session, `total_score` clamps).
   Completion goes through `interview.session_completed` → `rescore_for_addons`.
