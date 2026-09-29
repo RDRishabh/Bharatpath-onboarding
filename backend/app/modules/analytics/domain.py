@@ -203,9 +203,7 @@ def build_overview(
         for value in scores:
             by_band[band_for(value)] += 1
         suppressed = suppress_cells(by_band, min_cell_size=floors.min_cell_size)
-        distribution = {
-            label: 0 if count is None else count for label, count in suppressed.items()
-        }
+        distribution = {label: 0 if count is None else count for label, count in suppressed.items()}
         median = rounded_median(scores, step=floors.median_step)
     return CohortOverview(
         connected_students=connected,

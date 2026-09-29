@@ -1550,9 +1550,7 @@ async def list_visible_students(
                     str(item.candidate_id) for item in page if item.candidate_id is not None
                 ],
                 "roster_entry_ids": [
-                    str(item.roster_entry_id)
-                    for item in page
-                    if item.roster_entry_id is not None
+                    str(item.roster_entry_id) for item in page if item.roster_entry_id is not None
                 ],
             },
         )
