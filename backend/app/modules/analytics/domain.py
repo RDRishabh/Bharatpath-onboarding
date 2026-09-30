@@ -14,12 +14,16 @@ Three rules do that, in order:
 
   1. **A cohort floor.** Below `min_cohort_size` connected students, nothing
      is shown but the count. A median of three people is one of them.
-  2. **Small cells are suppressed, with a complement.** A band or a month
+  2. **Small cells can be suppressed, with a complement.** A band or a month
      holding fewer than `min_cell_size` students is withheld; and if exactly
      one cell was withheld, the next smallest is withheld too, because a total
      minus every other cell is the withheld one. Zero is shown: it names nobody.
+     **Off by default since 2026-09-30** (client, answers-log 12.1): above the
+     cohort floor a college sees exact numbers, because exact outcomes are what
+     it pays for on its students' behalf. `min_cell_size` 1 withholds nothing;
+     a config row may still raise it.
   3. **Coarse values.** The median is rounded to `median_step`; a job location
-     is named only when enough hires share it, and the rest are pooled.
+     is named only when `min_cell_size` hires share it, and the rest are pooled.
 
 **What this does not stop**, recorded rather than hidden: a college that reads
 the dashboard, watches one named student accept an invitation, and reads it
@@ -50,24 +54,26 @@ class PrivacyFloors:
     """Every number that decides what an aggregate may show.
 
     Loaded from `config_values` key `analytics.privacy`; these defaults apply
-    only when no row exists. **Ours, not the client's**, like the discovery
-    limits were until accepted.
+    only when no row exists. The cohort floor and the median step are still
+    ours; exact cells (`min_cell_size` 1) are the client's (answers-log 12.1).
     """
 
     #: Connected students below which nothing but the count is shown.
     min_cohort_size: int = 10
     #: Students (or hires) below which one band, month or location is withheld.
-    min_cell_size: int = 5
+    #: 1 withholds nothing: exact numbers above the cohort floor (2026-09-30).
+    min_cell_size: int = 1
     #: The median is rounded to the nearest multiple of this.
     median_step: int = 10
 
 
 DEFAULT_FLOORS: Final = PrivacyFloors()
 
-#: A config row can raise a floor, never remove one. Below these the "floor"
-#: is a single person, and a typo should not be able to put one there.
+#: The cohort floor may be raised, never set below 5: under that a median or a
+#: band is one person, and a typo should not be able to put one there. The
+#: cell floor may be 1 -- exact cells, the client's decision of 2026-09-30.
 LOWEST_COHORT_FLOOR: Final = 5
-LOWEST_CELL_FLOOR: Final = 3
+LOWEST_CELL_FLOOR: Final = 1
 MAX_FLOOR: Final = 10_000
 MAX_MEDIAN_STEP: Final = 50
 

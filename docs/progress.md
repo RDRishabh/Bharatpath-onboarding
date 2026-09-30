@@ -9,6 +9,99 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-30 — college analytics show exact numbers (client decision)
+
+A college dashboard showed "—" for September: one platform hire, under the
+cell floor of 5, withheld with October beside it. The client (Rishabh, relayed
+by the backend lead) asked for exact numbers, because they are what a college
+pays for on its students' behalf, and accepted the consent residual
+(answers-log Round 12).
+
+- `analytics.domain.DEFAULT_FLOORS.min_cell_size` is **1**, which withholds
+  nothing: bands, placement months, the application funnel and job locations
+  are exact above the cohort floor. `LOWEST_CELL_FLOOR` is 1.
+- **Existing databases** hold `analytics.privacy` version 1 with 5, and the
+  seed never updates a key, so `0008_exact_college_analytics` inserts
+  **version 2** copying the row in effect and changing only `min_cell_size`.
+  Nothing when there is no row or it is already 1. Checked on a database
+  seeded by `main`: v1 kept, v2 written, the app reads cell 1.
+- **Unchanged:** the cohort floor (10; the code refuses below 5) and the median
+  rounded to 10 -- neither was asked about. A withheld figure is still
+  `null`, never `0`.
+- The suppression code and its tests stay: a config row raising
+  `min_cell_size` switches it back on, and
+  `test_a_raised_cell_floor_withholds_small_cells_again` holds that. Invariant
+  9's revocation test is sharper for it: the one STRONG student is counted as
+  1 and gone on the next read after revoking.
+- E28 (a before/after read can show one student's band) is wider now and was
+  accepted by the client; counsel has not been asked. E27's cell-floor half is
+  answered.
+
+---
+
+## 2026-09-29 — streak activity calendar (week, month, year)
+
+For the mobile "This week's activity" strip and a LeetCode-style calendar.
+`GET /candidate/streak/me/calendar`, `docs/streaks.md` §4.1.
+
+**Client decisions (2026-09-29):** opened or not, with no count of opens; kept for one
+year.
+
+- **Before this, no day was stored.** `user_streaks` held only the current
+  run, so a past week could not be drawn. `streak_activity_days` is now one
+  row per counted day: the date, nothing else. The check-in that counts the
+  day writes it.
+- **Every day comes back with a status** (`ACTIVE`, `MISSED`,
+  `TODAY_PENDING`, `UPCOMING`, `BEFORE_START`, `NOT_RETAINED`), so clients
+  never work out IST days. A day before the first open, or today before the
+  app is opened, is never `MISSED`. `user_streaks.first_active_on` (new, set
+  once) is what tells those apart, because the days table forgets anything a
+  year old.
+- **Retention is a SECURITY DEFINER purge**, `purge_streak_activity_days`:
+  the app role has no DELETE, and the function clamps the cut-off to the
+  database's IST day, so a wrong clock can only delete less. Scheduled daily
+  at 00:10 IST (`streak-activity-retention`). Its 365 is frozen in `0007`,
+  and a test holds it equal to `domain.ACTIVITY_RETENTION_DAYS`.
+- **Migration `0007_streak_calendar`** creates the table and column only
+  when missing, backfills from the ledger, adds the purge and replaces
+  `erase_candidate` whole. The backfill works because a run is consecutive
+  days and each penalty and milestone row names its run's start and length.
+  A run with no ledger row (a break under a 0 penalty) is not recovered.
+- ERASE in the deletion policy, `streak_days.json` in the export, the new
+  queries in the index review.
+
+**Checked:**
+- a local database at `0006` upgraded with a seeded broken run and current
+  run, and the backfill rebuilt exactly those days;
+- downgrade and upgrade again;
+- a fresh build from the baseline in a scratch database, with the grants,
+  purge EXECUTE and erase cascade confirmed;
+- the CI lint set.
+
+---
+
+## 2026-09-29 — the score scale is served, not hardcoded
+
+The candidate home card was drawing the score as "832 / 999": the app had
+guessed the ceiling. `GET /candidate/score/scale` returns `lowest` (700),
+`highest` (990) and the four bands with inclusive ranges, read from
+`scoring.domain` (`BASE_SCORE`, `MAX_SCORE`, `BANDS`), so a change there
+reaches every client. Candidate role only; **not paywalled**, because it is
+the same for everyone and says nothing about this candidate's number.
+
+- The schemas live in `scoring/schemas.py`, so the never-explained scan
+  covers them. Field names are `lowest`/`highest`, kept well away from a
+  job's `min_score`, which must never reach a candidate.
+- `tests/integration/test_score_scale.py` compares the response with the
+  domain constants rather than literals, and checks that every value from 700
+  to 990 falls in exactly one band, the one `band_for` gives.
+- **What the frontend was told not to build from it:** "33 more to next
+  band" (screen-flows §2 already forbids it, R11) and the "+26" change badge,
+  which is the score history the client declined to show (see
+  `CandidateScoreResponse`). Neither is in any response.
+
+---
+
 ## 2026-09-30 — admin candidate detail layout
 
 The candidate detail page keeps Resume and Practice interviews in the right

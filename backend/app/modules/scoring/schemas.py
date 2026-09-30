@@ -85,6 +85,30 @@ class CandidateScoreResponse(_Base):
     computed_at: datetime | None = None
 
 
+class ScoreBandResponse(_Base):
+    band: str = Field(description="ENTRY, DEVELOPING, SOLID or STRONG.")
+    lowest: int = Field(description="Inclusive.")
+    highest: int = Field(description="Inclusive.")
+
+
+class ScoreScaleResponse(_Base):
+    """The scale every score sits on, so a client never hardcodes it.
+
+    **A fact about the scale, never about a person.** It is the same for
+    everyone, which is why it is not behind the paywall: it says nothing about
+    this candidate's number. What it must not become is a way to explain one --
+    no distance to the next band, no split of the scale into what earns what.
+    Those are a breakdown by another route (R11), and the forbidden-name scan
+    in `test_score_never_explained.py` covers this schema like every other.
+    """
+
+    lowest: int = Field(description="The lowest score anyone can be shown (700).")
+    highest: int = Field(description="The highest score anyone can hold (990).")
+    bands: list[ScoreBandResponse] = Field(
+        description="In order, lowest first. Together they cover the scale with no gap."
+    )
+
+
 class ScoreReplayResponse(_Base):
     """The result of re-running a stored score from its stored inputs.
 

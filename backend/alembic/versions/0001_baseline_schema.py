@@ -261,6 +261,8 @@ def _create_candidate_tables() -> None:
         "dsr_requests",
         "user_streaks",
         "streak_point_events",
+        # 2026-09-29, also created by 0007 on a database built before it.
+        "streak_activity_days",
         "candidate_profiles",
         "candidate_search_documents",
     )

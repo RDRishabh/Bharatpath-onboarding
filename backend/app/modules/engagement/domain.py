@@ -165,6 +165,9 @@ class StreakState:
     last_active_on: date | None = None
     streak_started_on: date | None = None
     points_balance: int = 0
+    #: The first day ever counted. Never moves once set, so the calendar can
+    #: tell a day before the candidate started from a day they missed.
+    first_active_on: date | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,6 +261,7 @@ def check_in(state: StreakState, *, today: date, rules: StreakRules) -> CheckInO
         last_active_on=today,
         streak_started_on=started,
         points_balance=balance,
+        first_active_on=state.first_active_on or today,
     )
     return CheckInOutcome(state=new_state, counted=True, changes=tuple(changes))
 
@@ -303,4 +307,154 @@ def view(state: StreakState, *, today: date, rules: StreakRules) -> StreakView:
         last_active_on=last,
         points_balance=state.points_balance,
         next_milestone=rules.next_milestone(current),
+    )
+
+
+# ---------------------------------------------------------------------------
+# The activity calendar
+# ---------------------------------------------------------------------------
+
+#: How far back a candidate's opened days are kept: today and the 365 days
+#: before it. The client's decision (2026-09-29). A daily sweep deletes older
+#: days through `purge_streak_activity_days`, which freezes this number in
+#: SQL; `test_streak_calendar.py` holds the two equal.
+ACTIVITY_RETENTION_DAYS: Final = 365
+
+#: The widest range one calendar request may ask for: the whole retained
+#: window, so a year view is one call.
+MAX_CALENDAR_DAYS: Final = ACTIVITY_RETENTION_DAYS + 1
+
+CalendarPeriod = Literal["week", "month", "year"]
+CalendarDayStatus = Literal[
+    "ACTIVE", "MISSED", "TODAY_PENDING", "UPCOMING", "BEFORE_START", "NOT_RETAINED"
+]
+
+
+class CalendarRangeError(ValueError):
+    """A calendar request that names no usable range."""
+
+
+def retained_since(today: date) -> date:
+    """The earliest day still kept on `today`."""
+    return today - timedelta(days=ACTIVITY_RETENTION_DAYS)
+
+
+def period_range(period: CalendarPeriod, anchor: date) -> tuple[date, date]:
+    """The days a named period covers, around `anchor`.
+
+    * week: Monday to Sunday, the week the mobile strip draws.
+    * month: the calendar month.
+    * year: the retained window ending on `anchor` -- rolling, as LeetCode's
+      "past year" is. A calendar year would be mostly NOT_RETAINED.
+    """
+    if period == "week":
+        start = anchor - timedelta(days=anchor.weekday())
+        return start, start + timedelta(days=6)
+    if period == "month":
+        start = anchor.replace(day=1)
+        following = (start + timedelta(days=32)).replace(day=1)
+        return start, following - timedelta(days=1)
+    return anchor - timedelta(days=ACTIVITY_RETENTION_DAYS), anchor
+
+
+def resolve_range(
+    *,
+    today: date,
+    period: CalendarPeriod | None = None,
+    anchor: date | None = None,
+    start: date | None = None,
+    end: date | None = None,
+) -> tuple[date, date]:
+    """Which days a request asked for. Either an explicit `start`/`end`, or a
+    `period` around `anchor`; neither means this week."""
+    if start is not None or end is not None:
+        if period is not None or anchor is not None:
+            raise CalendarRangeError("give from/to or period/date, not both")
+        if start is None or end is None:
+            raise CalendarRangeError("from and to go together")
+    else:
+        try:
+            start, end = period_range(period or "week", anchor or today)
+        except OverflowError as exc:  # a date at the edge of the calendar
+            raise CalendarRangeError("date is out of range") from exc
+    if start > end:
+        raise CalendarRangeError("from is after to")
+    if (end - start).days + 1 > MAX_CALENDAR_DAYS:
+        raise CalendarRangeError(f"at most {MAX_CALENDAR_DAYS} days at once")
+    return start, end
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarDay:
+    day: date
+    status: CalendarDayStatus
+    #: The milestone reached that day, if one was.
+    milestone_days: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarView:
+    start: date
+    end: date
+    today: date
+    days: tuple[CalendarDay, ...]
+    active_days: int
+    missed_days: int
+    #: The longest run of consecutive ACTIVE days inside the range. Not the
+    #: streak: a run can begin before the range does.
+    longest_run: int
+
+
+def day_status(
+    day: date, *, today: date, first_active_on: date | None, active: bool
+) -> CalendarDayStatus:
+    """One day's status. The order matters: a day not yet lived is never
+    missed, a day no longer kept is never guessed at, and a day before the
+    candidate first opened the app is not one they missed."""
+    if day > today:
+        return "UPCOMING"
+    if day < retained_since(today):
+        return "NOT_RETAINED"
+    if active:
+        return "ACTIVE"
+    if first_active_on is None or day < first_active_on:
+        return "BEFORE_START"
+    if day == today:
+        return "TODAY_PENDING"
+    return "MISSED"
+
+
+def calendar_view(
+    *,
+    start: date,
+    end: date,
+    today: date,
+    first_active_on: date | None,
+    active: frozenset[date],
+    milestones: Mapping[date, int],
+) -> CalendarView:
+    """Every day from `start` to `end`, with its status."""
+    days: list[CalendarDay] = []
+    run = longest = 0
+    day = start
+    while day <= end:
+        status = day_status(day, today=today, first_active_on=first_active_on, active=day in active)
+        days.append(
+            CalendarDay(
+                day=day,
+                status=status,
+                milestone_days=milestones.get(day) if status == "ACTIVE" else None,
+            )
+        )
+        run = run + 1 if status == "ACTIVE" else 0
+        longest = max(longest, run)
+        day += timedelta(days=1)
+    return CalendarView(
+        start=start,
+        end=end,
+        today=today,
+        days=tuple(days),
+        active_days=sum(1 for d in days if d.status == "ACTIVE"),
+        missed_days=sum(1 for d in days if d.status == "MISSED"),
+        longest_run=longest,
     )

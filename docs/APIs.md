@@ -113,11 +113,12 @@ Upload → parse → review → **confirm gate**. Every route is CANDIDATE-only.
 
 ## scoring — `/candidate/score`
 
-One route, deliberately.
+The number, and the scale it sits on. Nothing that explains it.
 
 | Method | Path | Auth | Response | Notes |
 |---|---|---|---|---|
 | GET | `/candidate/score/me` | CANDIDATE + active subscription | `{status: PENDING\|READY, value?, band?, computed_at?}` | 200 `PENDING` while unscored, not 404. Never a breakdown — the score is never explained, by dedicated test. Lapsed subscriber gets 402 |
+| GET | `/candidate/score/scale` | CANDIDATE (not paywalled) | `{lowest, highest, bands: [{band, lowest, highest}]}` | The engine's own constants: 700, 990, and the four bands in order (inclusive, contiguous). Draw the scale from this — never hardcode it. **Do not show "N points to next band"** or a delta between scores: both explain the score (R11) |
 
 Scoring itself has no other HTTP surface: it fires on the
 `resume.version_confirmed` event, never `version_created`, and
@@ -354,8 +355,9 @@ Aggregates over the students linked to the college **right now**, read through
 database functions that INNER JOIN live consent (invariant 9). Never cached, so
 a revocation leaves every figure on the next request. Floors are config
 (`analytics.privacy`): under `min_cohort_size` (default 10) connected students
-only the counts show; a band or month under `min_cell_size` (default 5) is
-`null`, and so is its complement.
+only the counts show. Above it every figure is **exact** (client, 2026-09-30):
+`min_cell_size` defaults to 1, which withholds nothing. A config row that raises
+it makes a band or month under it `null`, together with a complement.
 
 | Method | Path | Auth | Response | Notes |
 |---|---|---|---|---|
