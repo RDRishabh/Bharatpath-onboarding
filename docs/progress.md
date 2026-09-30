@@ -9,6 +9,36 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-30 — college analytics show exact numbers (client decision)
+
+A college dashboard showed "—" for September: one platform hire, under the
+cell floor of 5, withheld with October beside it. The client (Rishabh, relayed
+by the backend lead) asked for exact numbers, because they are what a college
+pays for on its students' behalf, and accepted the consent residual
+(answers-log Round 12).
+
+- `analytics.domain.DEFAULT_FLOORS.min_cell_size` is **1**, which withholds
+  nothing: bands, placement months, the application funnel and job locations
+  are exact above the cohort floor. `LOWEST_CELL_FLOOR` is 1.
+- **Existing databases** hold `analytics.privacy` version 1 with 5, and the
+  seed never updates a key, so `0008_exact_college_analytics` inserts
+  **version 2** copying the row in effect and changing only `min_cell_size`.
+  Nothing when there is no row or it is already 1. Checked on a database
+  seeded by `main`: v1 kept, v2 written, the app reads cell 1.
+- **Unchanged:** the cohort floor (10; the code refuses below 5) and the median
+  rounded to 10 -- neither was asked about. A withheld figure is still
+  `null`, never `0`.
+- The suppression code and its tests stay: a config row raising
+  `min_cell_size` switches it back on, and
+  `test_a_raised_cell_floor_withholds_small_cells_again` holds that. Invariant
+  9's revocation test is sharper for it: the one STRONG student is counted as
+  1 and gone on the next read after revoking.
+- E28 (a before/after read can show one student's band) is wider now and was
+  accepted by the client; counsel has not been asked. E27's cell-floor half is
+  answered.
+
+---
+
 ## 2026-09-29 — streak activity calendar (week, month, year)
 
 For the mobile "This week's activity" strip and a LeetCode-style calendar.

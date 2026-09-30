@@ -88,8 +88,9 @@ def _tunables() -> tuple[Tunable, ...]:
             key="analytics.privacy",
             document=lambda: _asdict(analytics.PrivacyFloors()),
             verify=analytics.floors_from_config,
-            note="Cohort and cell floors for college analytics (Day 18). Ours. "
-            "A later row may raise these, never lower them (blockers E27).",
+            note="Cohort and cell floors for college analytics (Day 18). Cohort floor "
+            "and median step ours; exact cells (min_cell_size 1) the client's, "
+            "2026-09-30 (answers-log 12.1). A row may raise them (blockers E27).",
         ),
         Tunable(
             key="applications.expiry",

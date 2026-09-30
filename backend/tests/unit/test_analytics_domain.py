@@ -4,6 +4,10 @@ The floors are the protection, so they are tested as rules rather than as
 numbers: below the cohort floor nothing but the count shows; a small cell is
 withheld and so is its complement, so a published total cannot give it back;
 a config row can raise a floor and never remove one.
+
+**Since 2026-09-30 the default shows exact cells** (client, answers-log 12.1):
+`min_cell_size` 1. The suppression rules are still tested with an explicit
+floor of 5, because a config row can switch them back on.
 """
 
 from __future__ import annotations
@@ -51,7 +55,7 @@ def _counts(connected: int, **overrides: int) -> CohortCounts:
 # --- config ------------------------------------------------------------------------
 def test_no_row_means_the_defaults_and_an_empty_row_means_them_too() -> None:
     assert floors_from_config({}) == DEFAULT_FLOORS
-    assert PrivacyFloors(min_cohort_size=10, min_cell_size=5, median_step=10) == DEFAULT_FLOORS
+    assert PrivacyFloors(min_cohort_size=10, min_cell_size=1, median_step=10) == DEFAULT_FLOORS
 
 
 @pytest.mark.parametrize(
@@ -62,7 +66,7 @@ def test_no_row_means_the_defaults_and_an_empty_row_means_them_too() -> None:
         ({"min_cohort_size": True}, "a boolean is not a number"),
         ({"min_cohort_size": 4}, "a floor below five is barely a floor"),
         ({"min_cohort_size": 1}, "a floor of one is a person"),
-        ({"min_cell_size": 2}, "a cell floor of two is a person and a friend"),
+        ({"min_cell_size": 0}, "a cell floor of zero is not a number of hires"),
         ({"min_cohort_size": 6, "min_cell_size": 7}, "a cell cannot be bigger than the cohort"),
         ({"median_step": 0}, "a step of zero divides by zero"),
         ({"median_step": 51}, "a step that wide is not a median"),
@@ -73,6 +77,27 @@ def test_a_config_row_can_raise_a_floor_and_never_remove_one(
 ) -> None:
     with pytest.raises(PrivacyFloorsError):
         floors_from_config(value)
+
+
+def test_the_client_default_shows_every_cell_exactly() -> None:
+    """2026-09-30: above the cohort floor a college sees exact numbers. One
+    hire in a month is 1, one STRONG student is 1, one hire's city is named."""
+    assert suppress_cells({"A": 0, "B": 1, "C": 3}, min_cell_size=1) == {"A": 0, "B": 1, "C": 3}
+    view = build_overview(_counts(10), [720] * 6 + [800, 800, 850, 950], DEFAULT_FLOORS)
+    assert not view.below_floor
+    assert view.score_distribution is not None
+    assert None not in view.score_distribution.values()
+    report = build_placements(40, [Hire(NOW, "Pune")], DEFAULT_FLOORS, now=NOW)
+    months = dict(report.by_month)
+    assert months["2026-09"] == 1 and None not in months.values()
+    assert report.by_location == [("Pune", 1)]
+
+
+def test_the_cohort_floor_still_holds_by_default() -> None:
+    """Exact cells are above the floor only: under ten connected students a
+    median or a band would be one of a handful of people."""
+    view = build_overview(_counts(9), [800] * 9, DEFAULT_FLOORS)
+    assert view.below_floor and view.score_distribution is None and view.median_score is None
 
 
 def test_raising_the_floors_is_accepted() -> None:

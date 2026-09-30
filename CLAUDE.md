@@ -261,7 +261,7 @@ test asserts**, so a placeholder cannot quietly become the product:
 | `app/core/i18n/locales/*.json` | non-English bundles still need a native-speaker pass |
 | `college/domain.py` | `CONSENT_VERSION` starts `placeholder-` — the words a student agrees to when linking to a college are ours, not counsel's |
 | `college/domain.py` | `INDIVIDUAL_CONSENT_VERSION` starts `placeholder-` — the words for letting a college see a student by name, and the field list they name (blockers E27). Version 2 (2026-09-29) names contact, CV, interviews, courses and application stages |
-| `analytics/domain.py` | `DEFAULT_FLOORS` (cohort 10, cell 5, median to 10) are ours; a config row may raise them, never lower them below 5 / 3 |
+| `analytics/domain.py` | `DEFAULT_FLOORS` cohort 10 and median to 10 are ours. **Cell 1 (exact numbers) is the client's**, 2026-09-30. A config row may raise them, never lower them below 5 / 1 |
 | `billing/domain.py` | `DISCOUNT_POLICY_VERSION` starts `placeholder-` — no 100% code, first checkout only, one use per payer (blockers E36) |
 | `resume/vocabulary.py` | `VOCABULARY_VERSION` starts `placeholder-` — the spellings the review screen flags near misses of |
 | `discovery/catalogue.py` | `FILTER_CATALOGUE_VERSION` starts `placeholder-` — the starter skills and cities in the employer filter panel |
@@ -658,9 +658,13 @@ SUPPORT_AGENT).
   must be added there with the CTE it joins, or invariant 9 fails; the college
   and analytics repositories may not name a student table.
 - **Aggregates carry no identifier and are floored in `analytics.domain`**:
-  under `min_cohort_size` only counts; a cell under `min_cell_size` is `null`
-  and so is a partner (a zero cell if nothing else), so the total cannot give
-  it back. Config `analytics.privacy`, strict: a bad row is a 500. Not audited
+  under `min_cohort_size` only counts. **Above it every number is exact**
+  (client, 2026-09-30, answers-log 12.1): `min_cell_size` defaults to 1, set
+  on existing databases by `0008_exact_college_analytics` as config version 2.
+  Raise it in a row and a cell under it is `null` with a partner (a zero cell
+  if nothing else), so the total cannot give it back. A withheld figure is
+  `null`, never `0`. The cohort floor is unchanged (10) and the code refuses
+  a row below 5: under that a median or a band is one person. Config `analytics.privacy`, strict: a bad row is a 500. Not audited
   — an aggregate is not a reveal. Never cache it.
 - **Every list page and every open of `/college/students` is audited in the
   transaction**, ids only; `CollegeStudentResponse`'s field list is an

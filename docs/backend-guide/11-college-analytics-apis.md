@@ -37,8 +37,12 @@ roster a college already holds (where it can see exactly who said yes):
    students currently connected → nothing is shown but the raw count. A
    median of three people is one of those three people's score, thinly
    disguised.
-2. **Small-cell suppression, with a complement.** A band or a month with
-   fewer than `min_cell_size` (5 by default) students is withheld as `null`
+2. **Small-cell suppression, with a complement — off by default since
+   2026-09-30.** The client wants exact numbers above the cohort floor
+   ("that is what the college is paying for on behalf of the students"), so
+   `min_cell_size` defaults to **1**, which withholds nothing. When a config
+   row raises it, a band or a month with fewer than `min_cell_size` students
+   is withheld as `null`
    — and if *exactly one* cell was withheld, a second one is withheld with
    it, because "total minus every other cell" would otherwise hand back the
    one that was supposed to be hidden. A cell that's genuinely `0` is shown
@@ -47,14 +51,17 @@ roster a college already holds (where it can see exactly who said yes):
    (10 by default); a job location is only ever named once enough hires
    share it — everything else is pooled into `"OTHER"`.
 
-**These floors are `analytics.privacy` config, read live, never the
-client's numbers by default — ours** (`DEFAULT_FLOORS` in
-`analytics/domain.py`: cohort 10, cell 5, median-step 10). A bad config row
+**These floors are `analytics.privacy` config, read live**
+(`DEFAULT_FLOORS` in `analytics/domain.py`: cohort 10, cell **1**,
+median-step 10). The cohort floor and median step are ours; exact cells are
+the client's decision of 2026-09-30 (answers-log 12.1), applied to existing
+databases by migration `0008_exact_college_analytics` as config version 2. A bad config row
 is a `500`, deliberately, rather than silently falling back to a smaller,
 less safe floor — see [01-architecture.md](01-architecture.md)'s note on
 strict config readers. A row may only ever **raise** a floor above the
-code default, never drop it below `min_cohort_size: 5` / `min_cell_size: 3`
-— those two numbers are hard-coded lower bounds a typo cannot cross.
+code default, never drop it below `min_cohort_size: 5` / `min_cell_size: 1`
+— hard-coded lower bounds a typo cannot cross. The cohort floor is the one
+that still protects: under five, a median or a band is one person.
 
 **Read live, cached nowhere.** Both queries join the college's *current*
 `ROSTER` consent at read time — a student who revokes consent a second
@@ -109,7 +116,7 @@ same as every other paid college surface.
 |---|---|
 | `connected_students` | Everyone with a **live** `ROSTER` (or `INDIVIDUAL`, which implies `ROSTER`) link right now. |
 | `individually_visible` | Of those, how many *additionally* granted `INDIVIDUAL` — the college doesn't get to see *which* ones from this response, only the count. |
-| `score_distribution` | Students per band. Two bands are `null` here because each held fewer than `min_cell_size` (5) — and because that left exactly *one* cell suppressed by count alone, a second smallest one was withheld too, so `SOLID` + `STRONG` together can't be inferred from `340 - 40 - 90`. |
+| `score_distribution` | Students per band, **exact by default**. The example shows a college whose config row raised `min_cell_size` to 5: two bands are `null` here because each held fewer than `min_cell_size` (5) — and because that left exactly *one* cell suppressed by count alone, a second smallest one was withheld too, so `SOLID` + `STRONG` together can't be inferred from `340 - 40 - 90`. |
 | `median_score` | The **display** score's median (`display_value`, same floor everywhere else in the product), rounded to the nearest `median_step`. `null` whenever the distribution is. |
 | `applicants` / `applications` / `interviews` / `platform_hires` | Funnel counts over the same cohort — how many of these students have ever applied to anything, how many total applications, how many reached an interview stage, how many were hired **and confirmed on BharatPath specifically** (see §3 for why that qualifier matters). |
 
@@ -174,8 +181,8 @@ sees `null` for the score fields, non-`null` for the funnel counts.
 | Field | Meaning |
 |---|---|
 | `source` | Always the literal `"PLATFORM"`. Every figure here is a hire **both sides confirmed inside BharatPath's own hiring pipeline** ([06](06-applications-pipeline-apis.md)'s `HIRED` stage) — a placement a student got some other way is never counted, never estimated, and never blended in. The field exists specifically so a client rendering this can't accidentally caption it as the college's *total* placement rate. |
-| `by_month` | Always exactly the last 12 calendar months (India time), oldest first, current month last — **even months with zero hires appear**, with `hires: 0`, so the array's length is a fixed 12 regardless of activity. A month is `null` instead of `0` only when it had *some* hires but fewer than `min_cell_size` — a real `0` and a suppressed small number look different on purpose. |
-| `by_location` | As the employer typed the job's location, title-cased and whitespace-collapsed for grouping — **only shown by name once at least `min_cell_size` hires share it**; everything short of that is pooled into `"OTHER"`, appended last, only when something was actually pooled into it. Sorted by hire count, descending. |
+| `by_month` | Always exactly the last 12 calendar months (India time), oldest first, current month last — **even months with zero hires appear**, with `hires: 0`, so the array's length is a fixed 12 regardless of activity. By default every month is exact (one hire is `1`). Only when a config row raises `min_cell_size` is a month with *some* hires but fewer than that `null` instead of its number — a real `0` and a suppressed small number look different on purpose. |
+| `by_location` | As the employer typed the job's location, title-cased and whitespace-collapsed for grouping — **shown by name once at least `min_cell_size` hires share it** (by default one hire is enough); anything short of that, or with no location, is pooled into `"OTHER"`, appended last, only when something was actually pooled into it. Sorted by hire count, descending. |
 
 **Below the cohort floor:** same shape as the overview — `below_floor:
 true`, `total_hires: null`, `by_month` still has all 12 months but every
@@ -194,9 +201,10 @@ Added 2026-09-29, beside the per-student stages in
 `by_stage` is where each application is now; `reached` counts applications
 that were *ever* at each milestone, wherever they are now (one rejected after
 an interview still reached one). **Every rule of this doc applies:** nothing
-below the cohort floor (everything `null`), and a small cell is withheld
-with a partner — above, the single hire is `null` and so is `REJECTED`,
-because otherwise the total would give the hire back. The database function
+below the cohort floor (everything `null`); above it the numbers are exact
+by default. The example shows a raised `min_cell_size` of 5: the single hire
+is `null` and so is `REJECTED`, because otherwise the total would give the
+hire back. The database function
 behind it returns one row per application with nothing saying whose.
 
 ---

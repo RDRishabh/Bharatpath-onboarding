@@ -1,7 +1,8 @@
 """Day 18 through HTTP: cohort analytics and platform-sourced placements.
 
-A college sees counts over the students linked to it **right now**, floored
-and suppressed so that no figure describes one of them. Hires are counted
+A college sees counts over the students linked to it **right now**, behind a
+cohort floor; above it, exact numbers (client, 2026-09-30; a config row can
+still switch small-cell suppression back on). Hires are counted
 only when both sides confirmed them on the platform, and are labelled so.
 Whether a revoked consent leaves the figures at once is invariant 9's, in
 `tests/invariants/test_invariant_09_consent.py`.
@@ -116,12 +117,12 @@ async def test_over_the_floor_the_cohort_is_described_without_describing_anyone(
     overview = (await client.get(OVERVIEW, headers=college["headers"])).json()
     assert (overview["connected_students"], overview["individually_visible"]) == (12, 1)
     assert overview["below_floor"] is False and overview["scored_students"] == 12
-    # Four SOLID and two STRONG are each fewer than five: both withheld.
+    # Exact above the cohort floor (client, 2026-09-30): no band is withheld.
     assert overview["score_distribution"] == {
         "ENTRY": 6,
         "DEVELOPING": 0,
-        "SOLID": None,
-        "STRONG": None,
+        "SOLID": 4,
+        "STRONG": 2,
     }
     assert overview["median_score"] == 780
     assert (overview["applicants"], overview["applications"]) == (4, 4)
@@ -130,9 +131,31 @@ async def test_over_the_floor_the_cohort_is_described_without_describing_anyone(
 
     placements = (await client.get(PLACEMENTS, headers=college["headers"])).json()
     assert placements["source"] == "PLATFORM" and placements["total_hires"] == 1
-    # One hire this month is too few to show, and hides beside a zero month.
-    assert [m["hires"] for m in placements["by_month"]].count(None) == 2
-    assert placements["by_location"] == [{"location": "OTHER", "hires": 1}]
+    # One hire this month is shown as one, and every other month as zero.
+    months = [m["hires"] for m in placements["by_month"]]
+    assert months[-1] == 1 and months[:-1] == [0] * 11
+    assert placements["by_location"] == [{"location": "Pune", "hires": 1}]
+
+
+async def test_a_raised_cell_floor_withholds_small_cells_again(
+    client: Any, mint_token: Any
+) -> None:
+    """Exact cells are the default, not the only setting: a config row that
+    raises `min_cell_size` brings suppression and its complement back."""
+    college = await _cohort(client, mint_token)
+    async with _floors({"min_cell_size": 5}):
+        overview = (await client.get(OVERVIEW, headers=college["headers"])).json()
+        # Four SOLID and two STRONG are each fewer than five: both withheld.
+        assert overview["score_distribution"] == {
+            "ENTRY": 6,
+            "DEVELOPING": 0,
+            "SOLID": None,
+            "STRONG": None,
+        }
+        placements = (await client.get(PLACEMENTS, headers=college["headers"])).json()
+        # One hire this month is too few to show, and hides beside a zero month.
+        assert [m["hires"] for m in placements["by_month"]].count(None) == 2
+        assert placements["by_location"] == [{"location": "OTHER", "hires": 1}]
 
 
 async def test_both_college_roles_read_analytics_and_nobody_else_does(
