@@ -5,13 +5,13 @@ import path from "node:path";
 
 import bundledAccounts from "./accounts.json";
 
+export { SESSION_COOKIE, sessionCookieOptions } from "./session-cookie";
+
 /**
  * The HTTP-only cookie that carries the backend RS256 bearer token for the
  * signed-in user, set by the sign-in route (`app/api/auth/token`). Never
  * exposed to browser JavaScript.
  */
-export const SESSION_COOKIE = "bharatpath_session";
-
 export type Pool = "CANDIDATE" | "BUSINESS";
 
 export type Portal = "student" | "employer" | "college" | "admin";
@@ -115,13 +115,4 @@ export function portalForRole(role: string): {
 
   // A candidate holds no membership, so an unknown/blank role is treated as one.
   return { portal: "student", path: "/student", authRole: "STUDENT" };
-}
-
-export function sessionCookieOptions() {
-  return {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-  };
 }

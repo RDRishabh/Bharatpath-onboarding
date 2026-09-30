@@ -203,6 +203,10 @@ export interface Course {
   currency: string;
   purchased: boolean;
   completed: boolean;
+  locked: boolean;
+  lessonsTotal: number;
+  lessonsCompleted: number;
+  percentComplete: number;
 }
 
 export interface CollegeLink {

@@ -31,30 +31,6 @@ function TopBarSkeleton({ actions = false }: { actions?: boolean }) {
   );
 }
 
-function ApplicationCardSkeleton() {
-  return (
-    <div className="flex min-h-[116px] flex-col gap-3 rounded-[20px] border border-[#E7E0D4] bg-white p-4">
-      <div className="flex items-center gap-3">
-        <Skeleton width={40} height={40} radius={14} />
-        <div className="min-w-0 flex-1">
-          <Skeleton width="58%" height={15} radius={6} />
-          <Skeleton className="mt-2" width="76%" height={11} radius={6} />
-        </div>
-        <Skeleton width={72} height={24} radius={999} />
-      </div>
-      <div className="mt-auto grid grid-cols-5 gap-1">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <Skeleton key={index} height={4} radius={999} />
-        ))}
-      </div>
-      <div className="flex justify-between">
-        <Skeleton width={64} height={10} radius={5} />
-        <Skeleton width={72} height={10} radius={5} />
-      </div>
-    </div>
-  );
-}
-
 export function StudentJobGridSkeleton({
   count = 3,
   label = "Loading jobs",
@@ -95,30 +71,6 @@ export function StudentJobGridSkeleton({
         </div>
       ))}
     </div>
-  );
-}
-
-export function StudentBoardSkeleton() {
-  return (
-    <StudentPage>
-      <LoadingRegion label="Loading applications">
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-3.5">
-            <Skeleton width={164} height={28} radius={8} />
-            <div className="flex gap-2">
-              {[52, 68, 88, 72].map((width) => (
-                <Skeleton key={width} width={width} height={36} radius={999} />
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <ApplicationCardSkeleton key={index} />
-            ))}
-          </div>
-        </div>
-      </LoadingRegion>
-    </StudentPage>
   );
 }
 

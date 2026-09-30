@@ -1,6 +1,5 @@
 export {
   StudentApplicationDetailSkeleton,
-  StudentBoardSkeleton,
   StudentJobDetailSkeleton,
   StudentJobGridSkeleton,
   StudentProfileSkeleton,

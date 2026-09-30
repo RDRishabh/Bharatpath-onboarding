@@ -151,6 +151,10 @@ interface CourseResponse {
   currency: string;
   purchased: boolean;
   completed: boolean;
+  locked: boolean;
+  lessons_total: number;
+  lessons_completed: number;
+  percent_complete: number;
 }
 
 interface CollegeLinkResponse {
@@ -495,6 +499,10 @@ export const studentApi = baseApi.injectEndpoints({
           currency: course.currency,
           purchased: course.purchased,
           completed: course.completed,
+          locked: course.locked,
+          lessonsTotal: course.lessons_total,
+          lessonsCompleted: course.lessons_completed,
+          percentComplete: course.percent_complete,
         })),
       providesTags: [{ type: "Student", id: "COURSES" }],
     }),

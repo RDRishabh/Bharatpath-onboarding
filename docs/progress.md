@@ -102,6 +102,46 @@ the same for everyone and says nothing about this candidate's number.
 
 ---
 
+## 2026-09-30 — admin candidate detail layout
+
+The candidate detail page keeps Resume and Practice interviews in the right
+column, opposite Onboarding details and Score timeline. The details use stacked
+flex columns rather than a row-based grid; at desktop widths, Practice
+interviews stretches to the same bottom edge as the Score timeline.
+
+## 2026-09-30 — student interview checkout
+
+The student interview page follows the portal's purple, cream and navy palette.
+Its checkout uses the existing offer, device-check, interview checkout and
+session APIs, including the required network and storage measurements. In local
+stub-payment mode, the page settles its checkout through the development-only
+simulation endpoint rather than sending candidates to the stub gateway's
+unavailable redirect URL; successful settlement refreshes the interview offer.
+
+## 2026-09-30 — student portal page headers
+
+Removed redundant in-page "Your board" and detail-page top bars from the
+student board, interview, and course screens. The shell header remains the
+single page heading; course routes now show "Courses" there. Course and
+interview content remains on its existing page without a redundant back arrow.
+
+## 2026-09-30 — session expiry prompt
+
+Protected routing still sends a request with no session token to login without
+a session-expired notice. When a token is present but expired, routing sends
+the user to login with a brief session-expired toast. An expiry detected while
+the page is open uses the same redirect and toast flow.
+
+## 2026-09-30 — frontend session timeout and route guard
+
+Protected frontend routes now require the HTTP-only session cookie to contain
+a parseable, unexpired token. Missing or expired sessions are cleared and
+redirected to the login page with a session-timeout dialog; login, signup and
+admin login remain public. A client guard also detects token expiry while a
+page is open. A backend 401 clears the browser token and follows the same
+logout-to-login path. The backend build plan remains unchanged: its scope is
+the backend, while this is a frontend auth correction.
+
 ## 2026-09-29 — `main` made correct again after PRs 21, 22 and 23
 
 PR 21 (college APIs) was merged with red CI; the mobile branch (PR 22) and

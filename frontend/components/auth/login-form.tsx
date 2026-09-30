@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Mail } from "lucide-react";
+import { AlertCircle, ArrowRight, Loader2, Mail, X } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -31,6 +31,29 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
   const [serverError, setServerError] = useState("");
+  const sessionTimedOut = searchParams.get("session") === "timeout";
+  const [showSessionExpiredToast, setShowSessionExpiredToast] = useState(false);
+
+  useEffect(() => {
+    if (!sessionTimedOut) {
+      return;
+    }
+
+    setShowSessionExpiredToast(true);
+    router.replace("/login", { scroll: false });
+  }, [router, sessionTimedOut]);
+
+  useEffect(() => {
+    if (!showSessionExpiredToast) {
+      return;
+    }
+
+    const timeout = window.setTimeout(
+      () => setShowSessionExpiredToast(false),
+      5_000,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [showSessionExpiredToast]);
 
   const {
     register,
@@ -139,6 +162,32 @@ export function LoginForm() {
           Create a free candidate account
         </Link>
       </p>
+
+      {showSessionExpiredToast ? (
+        <div
+          className="fixed right-5 top-5 z-110 flex w-[min(26rem,calc(100vw-2.5rem))] items-start gap-3 rounded-2xl border border-[#f2d3a0] bg-white p-4 text-[#613b08] shadow-[0_18px_50px_rgba(23,35,58,0.2)]"
+          role="alert"
+          aria-live="assertive"
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#fff4df] text-[#ad6b0b]">
+            <AlertCircle size={19} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-bold">Session expired</p>
+            <p className="mt-0.5 text-[12px] leading-5 text-[#765a31]">
+              Sign in again to continue.
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Dismiss session expired message"
+            onClick={() => setShowSessionExpiredToast(false)}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[#8c744f] transition hover:bg-[#fff4df]"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      ) : null}
     </form>
   );
 }

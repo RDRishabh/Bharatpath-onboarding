@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGetInterviewSessionQuery, useGetInterviewUploadMutation, useCompleteInterviewAnswerMutation, useNextInterviewQuestionMutation, useCompleteInterviewMutation } from "@/store/student/learning.api";
-import { StudentPage, StudentTopBar } from "@/features/student/shell";
+import { StudentPage } from "@/features/student/shell";
 
 export default function InterviewSessionPage() {
   const id = useParams<{ sessionId: string }>().sessionId;
@@ -53,7 +53,7 @@ export default function InterviewSessionPage() {
     finally { setBusy(false); }
   }
   async function finish() { setError(""); try { await complete(id).unwrap(); await session.refetch(); } catch { setError("Could not finish the interview. Please retry."); } }
-  return <StudentPage><StudentTopBar title="Mock interview" /><div className="mt-5 rounded-xl border bg-white p-5">
+  return <StudentPage><div className="rounded-xl border bg-white p-5">
     {session.isLoading && <p>Loading your interview…</p>}{session.error && <p>Interview unavailable.</p>}
     {session.data && <><p className="text-sm">{session.data.questions.filter((q) => session.data?.answers.find((a) => a.question_index === q.index)?.upload_state === "STORED").length} of {session.data.questions_total} answers saved</p>
       {current ? <><h2 className="mt-4 text-xl font-bold">Question {current.index + 1}</h2><p className="mt-2">{current.prompt}</p>

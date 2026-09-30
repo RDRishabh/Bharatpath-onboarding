@@ -1,10 +1,11 @@
 import { baseApi } from "@/store/api/base-api";
 
 export type CourseDetail = {
-  id: string; title: string; purchased: boolean; locked: boolean; percent_complete: number;
+  id: string; title: string; price_minor: number; currency: string; purchased: boolean; locked: boolean; completed: boolean; lessons_total: number; lessons_completed: number; percent_complete: number;
   modules: Array<{ id: string; title: string; lessons: Array<{ id: string; title: string; description: string | null; media_kind: "YOUTUBE" | "UPLOAD"; media_url: string | null; position_seconds: number; duration_seconds: number; completed: boolean }> }>;
 };
 export type PaymentCheckout = { payment_id: string; redirect_url: string | null; status: string };
+export type PaymentSimulation = { id: string; status: "PENDING" | "SUCCEEDED" | "FAILED" | "REFUNDED"; purpose: string };
 export type InterviewHistory = { id: string; session_number: number; state: string; created_at: string; completed_at: string | null; question_set_title: string; questions_asked: number; answers_stored: number; report_status: string };
 export type InterviewSession = { id: string; state: string; questions_total: number; questions: Array<{ index: number; prompt: string; preparation_seconds: number; answer_seconds: number }>; answers: Array<{ question_index: number; upload_state: string }> };
 
@@ -21,7 +22,14 @@ export const learningApi = baseApi.injectEndpoints({
     getInterviewReport: builder.query<{ status: string; failure_reason: string | null; dimensions: Array<{ code: string; label: string; level: string; what_good_looks_like: string }>; questions: Array<{ index: number; prompt: string; looking_for: string; transcript: string; comment: string | null }> }, string>({ query: (id) => `/candidate/interview/sessions/${id}/report` }),
     getApplicationMessages: builder.query<Array<{ id: string; kind: string; body: string; scheduled_at: string | null; link: string | null; employer_name: string | null; created_at: string }>, string>({ query: (id) => `/candidate/applications/${id}/messages` }),
     checkoutInterview: builder.mutation<PaymentCheckout, { acknowledge_no_score_increase: boolean }>({ query: (body) => ({ url: "/candidate/interview/checkout", method: "POST", body }) }),
-    checkInterviewDevice: builder.mutation<{ passed: boolean; failures: string[] }, { mic_ok: boolean; audio_out_ok: boolean; quiet_env_ok: boolean; network_kbps?: number }>({ query: (body) => ({ url: "/candidate/interview/device-checks", method: "POST", body }), invalidatesTags: ["Student"] }),
+    simulatePayment: builder.mutation<PaymentSimulation, { paymentId: string; outcome: "SUCCEEDED" | "FAILED" }>({
+      query: ({ paymentId, outcome }) => ({
+        url: `/billing/dev/payments/${paymentId}/simulate`,
+        method: "POST",
+        body: { outcome },
+      }),
+    }),
+    checkInterviewDevice: builder.mutation<{ passed: boolean; failures: string[] }, { mic_ok: boolean; audio_out_ok: boolean; quiet_env_ok: boolean; network_kbps: number | null; storage_mb: number | null }>({ query: (body) => ({ url: "/candidate/interview/device-checks", method: "POST", body }), invalidatesTags: ["Student"] }),
     startInterview: builder.mutation<InterviewSession, void>({ query: () => ({ url: "/candidate/interview/sessions", method: "POST" }), invalidatesTags: ["Student"] }),
     getInterviewSession: builder.query<InterviewSession, string>({ query: (id) => `/candidate/interview/sessions/${id}`, providesTags: ["Student"] }),
     getInterviewUpload: builder.mutation<{ url: string; accepted_types: string[]; max_bytes: number; max_duration_ms: number }, { id: string; index: number }>({ query: ({ id, index }) => ({ url: `/candidate/interview/sessions/${id}/answers/${index}/upload`, method: "POST" }) }),
@@ -31,4 +39,4 @@ export const learningApi = baseApi.injectEndpoints({
   }),
 });
 
-export const { useGetCourseDetailQuery, useCheckoutCourseMutation, useUpdateLessonProgressMutation, useGetInterviewHistoryQuery, useGetInterviewRecordingsQuery, useGetInterviewReportQuery, useGetApplicationMessagesQuery, useCheckoutInterviewMutation, useCheckInterviewDeviceMutation, useStartInterviewMutation, useGetInterviewSessionQuery, useGetInterviewUploadMutation, useCompleteInterviewAnswerMutation, useNextInterviewQuestionMutation, useCompleteInterviewMutation } = learningApi;
+export const { useGetCourseDetailQuery, useCheckoutCourseMutation, useUpdateLessonProgressMutation, useGetInterviewHistoryQuery, useGetInterviewRecordingsQuery, useGetInterviewReportQuery, useGetApplicationMessagesQuery, useCheckoutInterviewMutation, useSimulatePaymentMutation, useCheckInterviewDeviceMutation, useStartInterviewMutation, useGetInterviewSessionQuery, useGetInterviewUploadMutation, useCompleteInterviewAnswerMutation, useNextInterviewQuestionMutation, useCompleteInterviewMutation } = learningApi;

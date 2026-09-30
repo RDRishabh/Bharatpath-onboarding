@@ -50,6 +50,9 @@ function sectionFor(pathname: string): Section {
   if (pathname.startsWith("/student/attribute")) {
     return { title: "Attribute check", subtitle: "How you like to work" };
   }
+  if (pathname.startsWith("/student/courses")) {
+    return { title: "Courses", subtitle: "Learn at your own pace" };
+  }
   if (pathname.startsWith("/student/interview")) {
     return { title: "Mock interview", subtitle: "Practise before it counts" };
   }

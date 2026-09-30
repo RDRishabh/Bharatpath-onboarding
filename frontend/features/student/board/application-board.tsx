@@ -12,7 +12,7 @@ import {
 } from "@/store/student";
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import { ApplicationCard, EmptyState } from "@/features/student/components";
-import { StudentBoardSkeleton } from "@/features/student/loading";
+import { Spinner } from "@/components/common/loading";
 import { StudentPage } from "@/features/student/shell";
 
 const FILTERS: { key: BoardFilter; label: string }[] = [
@@ -40,17 +40,14 @@ export function ApplicationBoard() {
     [applications.data?.items, filter],
   );
 
-  if (applications.isLoading) {
-    return <StudentBoardSkeleton />;
-  }
-
   return (
-    <StudentPage>
-      <div className="flex flex-col gap-5">
+    <StudentPage
+      className={
+        applications.isLoading ? "flex min-h-[calc(100dvh-5rem)] flex-col" : ""
+      }
+    >
+      <div className="flex flex-1 flex-col gap-5">
         <div className="flex flex-col gap-3.5">
-          <span className="text-[24px] font-bold leading-7 tracking-[-0.025em] text-[#0A1931] sm:text-[28px]">
-            Your board
-          </span>
           <div className="bp-scrollbar flex gap-2 overflow-x-auto pb-1">
             {FILTERS.map((tab) => (
               <button
@@ -70,7 +67,25 @@ export function ApplicationBoard() {
           </div>
         </div>
 
-        {applications.error ? (
+        {!applications.isLoading && (
+          <div className="flex items-baseline justify-between">
+            <span className="text-[11px] font-bold uppercase leading-4 tracking-[0.12em] text-[#5F6B80]">
+              {filtered.length} applications
+            </span>
+          </div>
+        )}
+
+        {applications.isLoading ? (
+          <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-3 text-center">
+            <Spinner size={32} tone="primary" />
+            <p className="text-[15px] font-semibold text-[#0A1931]">
+              Loading your board
+            </p>
+            <p className="text-[13px] text-[#5F6B80]">
+              Checking the latest status of your applications.
+            </p>
+          </div>
+        ) : applications.error ? (
           <EmptyState
             icon={<ListChecks size={22} />}
             title="Applications unavailable"

@@ -84,15 +84,16 @@ export function Modal({
             ) : null}
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={closeDisabled}
-            aria-label="Close dialog"
-            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-lg text-[#7b8494] transition-colors hover:bg-[#f5f6f8] hover:text-[#151b2b] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <X size={17} strokeWidth={1.8} />
-          </button>
+          {!closeDisabled ? (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close dialog"
+              className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-lg text-[#7b8494] transition-colors hover:bg-[#f5f6f8] hover:text-[#151b2b]"
+            >
+              <X size={17} strokeWidth={1.8} />
+            </button>
+          ) : null}
         </header>
 
         <div className="mt-5">{children}</div>
