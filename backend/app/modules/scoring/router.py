@@ -5,7 +5,7 @@ Engine interface, versions, history, breakdown.
 Routes only. No business logic, no repository access.
 import-linter enforces the second half of that sentence.
 
-**There is one candidate-facing route and it returns a number.** No breakdown
+**The candidate-facing routes return a number and the scale it sits on.** No breakdown
 endpoint, no category detail, no "how to improve" -- the client confirmed the
 score is never explained (2026-08-27, re-confirmed 2026-09-11). A route that
 served the stored breakdown would satisfy every test in this repository except
@@ -25,12 +25,33 @@ from app.core.deps import (
     require_role,
 )
 from app.modules.scoring import service
-from app.modules.scoring.domain import band_for, display_value
-from app.modules.scoring.schemas import CandidateScoreResponse
+from app.modules.scoring.domain import BANDS, BASE_SCORE, MAX_SCORE, band_for, display_value
+from app.modules.scoring.schemas import (
+    CandidateScoreResponse,
+    ScoreBandResponse,
+    ScoreScaleResponse,
+)
 
 router = APIRouter()
 
 CandidateOnly = Depends(require_role(CANDIDATE))
+
+
+@router.get(
+    "/scale",
+    response_model=ScoreScaleResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[CandidateOnly],
+    summary="The score scale and its bands",
+)
+async def score_scale() -> ScoreScaleResponse:
+    """Read from `scoring.domain`, so the numbers a client draws are the
+    numbers the engine uses. Not paywalled: it is the same for everyone."""
+    return ScoreScaleResponse(
+        lowest=BASE_SCORE,
+        highest=MAX_SCORE,
+        bands=[ScoreBandResponse(band=b, lowest=lo, highest=hi) for b, lo, hi in BANDS],
+    )
 
 
 @router.get(
