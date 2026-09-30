@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useState } from "react";
 import { BookOpen, Check, ChevronRight, CircleCheck, LockKeyhole, Play, Video } from "lucide-react";
 
@@ -29,7 +29,6 @@ function durationLabel(seconds: number) {
 
 export default function CoursePage() {
   const id = useParams<{ courseId: string }>().courseId;
-  const router = useRouter();
   const course = useGetCourseDetailQuery(id);
   const [checkout, payment] = useCheckoutCourseMutation();
   const [saveProgress] = useUpdateLessonProgressMutation();
@@ -37,7 +36,7 @@ export default function CoursePage() {
   const [error, setError] = useState("");
 
   if (course.isLoading) return <CourseDetailSkeleton />;
-  if (course.error || !course.data) return <StudentPage><StudentTopBar title="Course" onBack={() => router.push("/student/courses")} /><EmptyState icon={<BookOpen size={22} />} title="Course unavailable" message={getApiErrorMessage(course.error, "Could not load this course.")} /></StudentPage>;
+  if (course.error || !course.data) return <StudentPage><StudentTopBar title="Back to courses" backHref="/student/courses" /><EmptyState icon={<BookOpen size={22} />} title="Course unavailable" message={getApiErrorMessage(course.error, "Could not load this course.")} /></StudentPage>;
 
   const data = course.data;
   const activeLesson = data.modules.flatMap((module) => module.lessons).find((lesson) => lesson.id === activeLessonId);
@@ -59,7 +58,7 @@ export default function CoursePage() {
   }
 
   return <StudentPage>
-    <StudentTopBar title="Course" onBack={() => router.push("/student/courses")} />
+    <StudentTopBar title="Back to courses" backHref="/student/courses" />
     <div className="flex flex-col gap-5">
       <StudentCard className="p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">

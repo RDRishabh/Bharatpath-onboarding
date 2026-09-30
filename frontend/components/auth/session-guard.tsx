@@ -1,17 +1,21 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname } from "next/navigation";
-
+import { usePathname, useRouter } from "next/navigation";
 import { handleSessionExpired } from "@/lib/auth/handle-session-expired";
 import { isPublicAuthPath } from "@/lib/auth/session-routes";
 import { getStoredToken } from "@/lib/auth/token";
 import { getTokenExpiration } from "@/lib/auth/token-expiration";
+import { clearUser } from "@/store/common/slices/auth.slice";
+import { clearTenant } from "@/store/common/slices/tenant.slice";
+import { useAppDispatch } from "@/store/hooks";
 
 const MAX_TIMEOUT = 2_147_483_647;
 
 export function SessionGuard() {
   const pathname = usePathname();
+  const router = useRouter();
+  const dispatch = useAppDispatch();
 
   useEffect(() => {
     if (isPublicAuthPath(pathname)) {
@@ -28,13 +32,24 @@ export function SessionGuard() {
       const token = getStoredToken();
       const expiration = token ? getTokenExpiration(token) : null;
 
+      if (!token) {
+        dispatch(clearUser());
+        dispatch(clearTenant());
+        router.replace("/login");
+        return;
+      }
+
       if (!expiration) {
+        dispatch(clearUser());
+        dispatch(clearTenant());
         handleSessionExpired();
         return;
       }
 
       const remaining = expiration * 1000 - Date.now();
       if (remaining <= 0) {
+        dispatch(clearUser());
+        dispatch(clearTenant());
         handleSessionExpired();
         return;
       }
@@ -47,9 +62,6 @@ export function SessionGuard() {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        if (timeoutId !== undefined) {
-          window.clearTimeout(timeoutId);
-        }
         checkSession();
       }
     };
@@ -65,7 +77,7 @@ export function SessionGuard() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("storage", checkSession);
     };
-  }, [pathname]);
+  }, [dispatch, pathname, router]);
 
   return null;
 }

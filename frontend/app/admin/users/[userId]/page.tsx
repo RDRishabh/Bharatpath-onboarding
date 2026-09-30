@@ -103,26 +103,48 @@ export default function AdminCandidatePage() {
       ].map(({ label, value, detail, icon: Icon }) => <div key={label} className={panel}><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-semibold text-[#7b8494]">{label}</span><Icon size={16} className="text-[#315c9f]" /></div><p className="mt-3 text-[25px] font-bold leading-none">{value}</p><p className="mt-1 text-[11px] text-[#7b8494]">{detail}</p></div>)}
     </div>
 
-    <div className="grid items-start gap-5 xl:grid-cols-2">
-      {onboarding.isLoading ? <SectionSkeleton /> : <Section title="Onboarding details" detail={onboarding.data?.questionnaire.length ? `${onboarding.data.questionnaire.length} answers` : undefined}>
-        {onboarding.error ? <Empty>Onboarding details are unavailable for this account.</Empty> : onboarding.data && <>
-          <dl className="grid gap-4 sm:grid-cols-2"><Field label="Full name" value={onboarding.data.full_name} /><Field label="Email" value={onboarding.data.email} /><Field label="Phone" value={onboarding.data.phone} /><Field label="Location" value={[onboarding.data.city, onboarding.data.state_code].filter(Boolean).join(", ")} /><Field label="Language" value={onboarding.data.locale} /></dl>
-          <div className="mt-5 border-t border-[#edf0f3] pt-4"><h3 className="mb-3 text-[12px] font-bold">Onboarding answers</h3>{onboarding.data.questionnaire.length ? <dl className="space-y-3">{onboarding.data.questionnaire.map((answer) => <div key={answer.code}><dt className="text-[11px] text-[#7b8494]">{answer.question}</dt><dd className="mt-0.5 text-[12px] font-medium text-[#172033]">{answer.answer}</dd></div>)}</dl> : <Empty>No questionnaire answers submitted.</Empty>}</div>
-          {onboarding.data.college_links.length > 0 && <div className="mt-5 border-t border-[#edf0f3] pt-4"><h3 className="mb-3 text-[12px] font-bold">College links</h3><div className="space-y-2">{onboarding.data.college_links.map((link) => <div key={link.tenant_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#f8f9fb] px-3 py-2 text-[12px]"><span className="font-semibold">{link.college}</span><span className="text-[#7b8494]">{humanise(link.scope)} · {formatDate(link.granted_at)}</span></div>)}</div></div>}
-        </>}
-      </Section>}
+    <div className="flex flex-col gap-5 xl:flex-row xl:items-stretch">
+      <div className="flex min-w-0 flex-col gap-5 xl:flex-1">
+        {onboarding.isLoading ? <SectionSkeleton /> : <Section title="Onboarding details" detail={onboarding.data?.questionnaire.length ? `${onboarding.data.questionnaire.length} answers` : undefined}>
+          {onboarding.error ? <Empty>Onboarding details are unavailable for this account.</Empty> : onboarding.data && <>
+            <dl className="grid gap-4 sm:grid-cols-2"><Field label="Full name" value={onboarding.data.full_name} /><Field label="Email" value={onboarding.data.email} /><Field label="Phone" value={onboarding.data.phone} /><Field label="Location" value={[onboarding.data.city, onboarding.data.state_code].filter(Boolean).join(", ")} /><Field label="Language" value={onboarding.data.locale} /></dl>
+            <div className="mt-5 border-t border-[#edf0f3] pt-4"><h3 className="mb-3 text-[12px] font-bold">Onboarding answers</h3>{onboarding.data.questionnaire.length ? <dl className="space-y-3">{onboarding.data.questionnaire.map((answer) => <div key={answer.code}><dt className="text-[11px] text-[#7b8494]">{answer.question}</dt><dd className="mt-0.5 text-[12px] font-medium text-[#172033]">{answer.answer}</dd></div>)}</dl> : <Empty>No questionnaire answers submitted.</Empty>}</div>
+            {onboarding.data.college_links.length > 0 && <div className="mt-5 border-t border-[#edf0f3] pt-4"><h3 className="mb-3 text-[12px] font-bold">College links</h3><div className="space-y-2">{onboarding.data.college_links.map((link) => <div key={link.tenant_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#f8f9fb] px-3 py-2 text-[12px]"><span className="font-semibold">{link.college}</span><span className="text-[#7b8494]">{humanise(link.scope)} · {formatDate(link.granted_at)}</span></div>)}</div></div>}
+          </>}
+        </Section>}
 
-      {resume.isLoading ? <SectionSkeleton /> : <Section title="Resume" detail={latestResume ? "Latest version" : undefined}>
-        {resume.error ? <Empty>Resume details are unavailable.</Empty> : latestResume ? <><ResumeContent version={latestResume} />{confirmedResume && confirmedResume.id !== latestResume.id && <div className="mt-5 border-t border-[#edf0f3] pt-4"><h3 className="mb-3 text-[12px] font-bold">Scored from this version</h3><ResumeContent version={confirmedResume} /></div>}</> : <Empty>No resume has been added yet.</Empty>}
-      </Section>}
+        {scores.isLoading ? <SectionSkeleton /> : <Section title="Score timeline" detail={scores.data?.points.length ? `${scores.data.points.length} changes` : undefined} className="xl:flex-1">
+          {scores.error ? <Empty>Score timeline is unavailable.</Empty> : scores.data?.points.length ? <ol className="space-y-0">{scores.data.points.map((point, index) => <li key={`${point.computed_at}-${index}`} className="relative border-l-2 border-[#dce5f2] pb-5 pl-5 last:pb-0"><span className="absolute -left-[6px] top-1 h-2.5 w-2.5 rounded-full bg-[#315c9f]" /><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[13px] font-bold">{point.display_value} <span className="font-medium text-[#687182]">· {humanise(point.band)}</span></span><span className={muted}>{formatDateTime(point.computed_at)}</span></div><p className="mt-1 text-[11px] text-[#7b8494]">{humanise(point.cause)}{point.change === null ? "" : ` · ${point.change > 0 ? "+" : ""}${point.change} points`}</p></li>)}</ol> : <Empty>No score history yet.</Empty>}
+        </Section>}
+      </div>
 
-      {scores.isLoading ? <SectionSkeleton /> : <Section title="Score timeline" detail={scores.data?.points.length ? `${scores.data.points.length} changes` : undefined}>
-        {scores.error ? <Empty>Score timeline is unavailable.</Empty> : scores.data?.points.length ? <ol className="space-y-0">{scores.data.points.map((point, index) => <li key={`${point.computed_at}-${index}`} className="relative border-l-2 border-[#dce5f2] pb-5 pl-5 last:pb-0"><span className="absolute -left-[6px] top-1 h-2.5 w-2.5 rounded-full bg-[#315c9f]" /><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[13px] font-bold">{point.display_value} <span className="font-medium text-[#687182]">· {humanise(point.band)}</span></span><span className={muted}>{formatDateTime(point.computed_at)}</span></div><p className="mt-1 text-[11px] text-[#7b8494]">{humanise(point.cause)}{point.change === null ? "" : ` · ${point.change > 0 ? "+" : ""}${point.change} points`}</p></li>)}</ol> : <Empty>No score history yet.</Empty>}
-      </Section>}
+      <div className="flex min-w-0 flex-col gap-5 xl:flex-1">
+        {resume.isLoading ? (
+          <SectionSkeleton />
+        ) : (
+          <Section title="Resume" detail={latestResume ? "Latest version" : undefined}>
+            {resume.error ? (
+              <Empty>Resume details are unavailable.</Empty>
+            ) : latestResume ? (
+              <div className="space-y-5">
+                <ResumeContent version={latestResume} />
+                {confirmedResume && confirmedResume.id !== latestResume.id ? (
+                  <div className="border-t border-[#edf0f3] pt-4">
+                    <h3 className="mb-3 text-[12px] font-bold">Scored from this version</h3>
+                    <ResumeContent version={confirmedResume} />
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <Empty>No resume has been added yet.</Empty>
+            )}
+          </Section>
+        )}
 
-      {interviews.isLoading ? <SectionSkeleton /> : <Section title="Practice interviews" detail={interviews.data?.length ? `${interviews.data.length} sessions` : undefined}>
-        {interviews.error ? <Empty>Interviews are unavailable.</Empty> : <PracticeInterviews candidateId={id} sessions={interviews.data ?? []} />}
-      </Section>}
+        {interviews.isLoading ? <SectionSkeleton /> : <Section title="Practice interviews" detail={interviews.data?.length ? `${interviews.data.length} sessions` : undefined} className="xl:flex-1">
+          {interviews.error ? <Empty>Interviews are unavailable.</Empty> : <PracticeInterviews candidateId={id} sessions={interviews.data ?? []} />}
+        </Section>}
+      </div>
     </div>
 
     {courses.isLoading ? <SectionSkeleton /> : <Section title="Courses" detail={courses.data?.length ? `${courses.data.length} available` : undefined}>

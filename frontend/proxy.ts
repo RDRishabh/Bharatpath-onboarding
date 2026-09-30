@@ -298,7 +298,20 @@ export function proxy(
   if (!isPublicAuthPath(pathname)) {
     const token = request.cookies.get(SESSION_COOKIE)?.value;
 
-    if (!token || isExpiredOrInvalidToken(token)) {
+    if (!token) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/login";
+      loginUrl.search = "";
+
+      const response = NextResponse.redirect(loginUrl);
+      response.cookies.set(SESSION_COOKIE, "", {
+        ...sessionCookieOptions(),
+        maxAge: 0,
+      });
+      return response;
+    }
+
+    if (isExpiredOrInvalidToken(token)) {
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = "/login";
       loginUrl.search = "";

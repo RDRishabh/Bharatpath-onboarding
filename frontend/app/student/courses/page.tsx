@@ -7,7 +7,7 @@ import { getApiErrorMessage } from "@/lib/api/error-message";
 import { useGetStudentCoursesQuery } from "@/store/student";
 import { EmptyState, MeterBar, StatusChip, interactiveCardClass } from "@/features/student/components";
 import { CourseListSkeleton } from "@/features/student/courses/course-skeletons";
-import { StudentPage, StudentTopBar } from "@/features/student/shell";
+import { StudentPage } from "@/features/student/shell";
 
 function priceLabel(amountMinor: number, currency: string) {
   return new Intl.NumberFormat("en-IN", {
@@ -23,7 +23,6 @@ export default function CoursesPage() {
   if (courses.isLoading) return <CourseListSkeleton />;
 
   return <StudentPage>
-    <StudentTopBar title="Courses" />
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-[24px] font-bold tracking-[-0.03em] text-[#0A1931] sm:text-[28px]">Learn at your pace</h1>

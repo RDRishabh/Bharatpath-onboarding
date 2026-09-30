@@ -32,6 +32,12 @@ const CODE_MESSAGES: Record<string, string> = {
     "Your account is not linked to an organisation yet.",
   subscription_required:
     "An active subscription is required to continue.",
+  interview_device_check_required:
+    "Complete a passing microphone, audio, network and storage check before checkout.",
+  interview_no_score_increase_unacknowledged:
+    "Confirm that this interview will not increase your score before continuing.",
+  interview_unavailable:
+    "Interview sessions are temporarily unavailable. Please try again later.",
   access_window_expired:
     "Your access window has expired. Renew to continue.",
   account_inactive:
