@@ -9,6 +9,16 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-30 — frontend session timeout and route guard
+
+Protected frontend routes now require the HTTP-only session cookie to contain
+a parseable, unexpired token. Missing or expired sessions are cleared and
+redirected to the login page with a session-timeout dialog; login, signup and
+admin login remain public. A client guard also detects token expiry while a
+page is open. A backend 401 clears the browser token and follows the same
+logout-to-login path. The backend build plan remains unchanged: its scope is
+the backend, while this is a frontend auth correction.
+
 ## 2026-09-29 — `main` made correct again after PRs 21, 22 and 23
 
 PR 21 (college APIs) was merged with red CI; the mobile branch (PR 22) and

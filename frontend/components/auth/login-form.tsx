@@ -1,22 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Mail } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
-import { ErrorState } from "@/components/ui";
+import { Button, ErrorState, Modal } from "@/components/ui";
 import { PORTAL_TYPES, PortalType } from "@/config/portal";
 import {
   LoginFormValues,
   loginSchema,
 } from "@/features/auth/schemas/login.schema";
 import { authService } from "@/features/auth/services/auth.service";
-import { setStoredToken } from "@/lib/auth/token";
-import { setUser } from "@/store/common/slices/auth.slice";
-import { setTenant } from "@/store/common/slices/tenant.slice";
+import { clearStoredToken, setStoredToken } from "@/lib/auth/token";
+import { clearUser, setUser } from "@/store/common/slices/auth.slice";
+import { clearTenant, setTenant } from "@/store/common/slices/tenant.slice";
 import { useAppDispatch } from "@/store/hooks";
 
 const portalTypeByName: Record<string, PortalType> = {
@@ -31,6 +31,21 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
   const [serverError, setServerError] = useState("");
+  const sessionTimedOut = searchParams.get("session") === "timeout";
+
+  useEffect(() => {
+    if (!sessionTimedOut) {
+      return;
+    }
+
+    clearStoredToken();
+    dispatch(clearUser());
+    dispatch(clearTenant());
+  }, [dispatch, sessionTimedOut]);
+
+  const dismissSessionTimeout = () => {
+    router.replace("/login", { scroll: false });
+  };
 
   const {
     register,
@@ -139,6 +154,19 @@ export function LoginForm() {
           Create a free candidate account
         </Link>
       </p>
+
+      <Modal
+        open={sessionTimedOut}
+        title="Session timed out"
+        description="Your session has expired or is no longer available. Please sign in again to continue."
+        onClose={dismissSessionTimeout}
+      >
+        <div className="flex justify-end">
+          <Button type="button" variant="dark" onClick={dismissSessionTimeout}>
+            Go to login
+          </Button>
+        </div>
+      </Modal>
     </form>
   );
 }

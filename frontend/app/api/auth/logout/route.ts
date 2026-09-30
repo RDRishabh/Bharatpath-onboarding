@@ -21,7 +21,12 @@ export async function POST() {
 }
 
 export async function GET(request: Request) {
+  const loginUrl = new URL("/login", request.url);
+  if (new URL(request.url).searchParams.get("session") === "timeout") {
+    loginUrl.searchParams.set("session", "timeout");
+  }
+
   return clearSession(
-    NextResponse.redirect(new URL("/login", request.url)),
+    NextResponse.redirect(loginUrl),
   );
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import logo from "@/assets/Logo.png";
+import { SessionGuard } from "@/components/auth/session-guard";
 import { SuccessFeedback } from "@/components/common/success-feedback";
 import { ReduxProvider } from "@/store/provider";
 
@@ -21,6 +22,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <ReduxProvider>
+          <SessionGuard />
           {children}
           <SuccessFeedback />
         </ReduxProvider>

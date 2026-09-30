@@ -1,4 +1,5 @@
 import { API_CONFIG } from "@/config/api";
+import { handleSessionExpired } from "@/lib/auth/handle-session-expired";
 import { getStoredToken } from "@/lib/auth/token";
 import { ApiError } from "./errors";
 
@@ -60,6 +61,10 @@ class ApiClient {
       const result = contentType.includes("application/json")
         ? await response.json()
         : await response.text();
+
+      if (response.status === 401) {
+        handleSessionExpired();
+      }
 
       if (!response.ok) {
         throw new ApiError(

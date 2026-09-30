@@ -2,6 +2,15 @@
 
 A Next.js application for BharatPath, structured around role-based portals for college and employer workflows.
 
+## Authentication and session protection
+
+The root `proxy.ts` requires a parseable, unexpired `bharatpath_session` token
+for application routes. Without one, requests are redirected to
+`/login?session=timeout`; `/login`, `/signup` and the admin login route remain
+public. The client session guard watches for missing or expired browser tokens
+and shows the same timeout dialog after routing through logout. A backend
+`401` also clears the browser token and returns to login.
+
 ## Project Structure
 
 The structure below reflects the complete application source tree. Generated
@@ -14,7 +23,7 @@ bharatpath/
 ├─ CLAUDE.md
 ├─ README.md
 ├─ eslint.config.mjs
-├─ middleware.ts
+├─ proxy.ts
 ├─ next-env.d.ts
 ├─ next.config.ts
 ├─ package-lock.json

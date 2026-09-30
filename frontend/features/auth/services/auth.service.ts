@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api/errors";
+import { handleSessionExpired } from "@/lib/auth/handle-session-expired";
 import {
   LoginRequest,
   LoginResponse,
@@ -105,9 +106,16 @@ export const authService = {
   },
 
   async me(): Promise<LoginResponse> {
-    return authRequest<LoginResponse>(
-      "/api/auth/me",
-      { method: "GET" },
-    );
+    try {
+      return await authRequest<LoginResponse>(
+        "/api/auth/me",
+        { method: "GET" },
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        handleSessionExpired();
+      }
+      throw error;
+    }
   },
 };
