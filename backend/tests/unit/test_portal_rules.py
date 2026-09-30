@@ -173,11 +173,14 @@ def test_the_funnel_says_nothing_below_the_cohort_floor() -> None:
     assert set(funnel.by_stage.values()) == {None} and set(funnel.reached.values()) == {None}
 
 
-def test_the_funnel_withholds_small_cells_and_counts_what_was_reached() -> None:
+def test_the_funnel_is_exact_by_default_and_counts_what_was_reached() -> None:
+    """Exact above the cohort floor (client, 2026-09-30, answers-log 12.1); a
+    raised `min_cell_size` withholds small cells with a partner again."""
     from app.modules.analytics.domain import (
         APPLICATION_STAGES,
         DEFAULT_FLOORS,
         CohortApplication,
+        PrivacyFloors,
         build_application_funnel,
     )
 
@@ -189,7 +192,13 @@ def test_the_funnel_withholds_small_cells_and_counts_what_was_reached() -> None:
     funnel = build_application_funnel(40, rows, DEFAULT_FLOORS)
     assert funnel.total == 19 and set(funnel.by_stage) == set(APPLICATION_STAGES)
     assert funnel.by_stage["SUBMITTED"] == 12
-    assert funnel.by_stage["HIRED"] is None, "one hire is one person"
-    assert funnel.by_stage["REJECTED"] is None, "withheld with it, or the total gives it back"
+    assert funnel.by_stage["HIRED"] == 1 and funnel.by_stage["REJECTED"] == 6
     assert funnel.reached["INTERVIEW"] == 7 and funnel.reached["SHORTLISTED"] == 7
-    assert funnel.reached["HIRED"] is None and funnel.reached["DECISION"] is None
+    assert funnel.reached["HIRED"] == 1 and funnel.reached["DECISION"] == 1
+
+    raised = build_application_funnel(40, rows, PrivacyFloors(min_cell_size=5))
+    assert raised.by_stage["SUBMITTED"] == 12
+    assert raised.by_stage["HIRED"] is None, "one hire is one person"
+    assert raised.by_stage["REJECTED"] is None, "withheld with it, or the total gives it back"
+    assert raised.reached["INTERVIEW"] == 7 and raised.reached["SHORTLISTED"] == 7
+    assert raised.reached["HIRED"] is None and raised.reached["DECISION"] is None
