@@ -16,6 +16,18 @@
 | Round | Source | Asked | Answered | Still open |
 |---
 
+## Round 12 — client decision, 2026-09-30
+
+Relayed by the backend lead from Rishabh (client side), 9:47 am, after a college
+dashboard showed "—" for a month with one hire.
+
+| # | Question | Client answer (verbatim) | What we did |
+|---|---|---|---|
+| **12.1** | College analytics withhold a band or month under 5 (and a partner), so September's single hire showed as "—". Keep it? | *"Show exact number and analytics. That is what the college is paying for on behalf of the students, because if the colleges does not see the incentive for paying on behalf of the student, they might avoid it. So that's why providing accurate analytics is important."* | **Exact above the cohort floor.** `min_cell_size` defaults to 1 (withholds nothing); `0008_exact_college_analytics` inserts config version 2 on existing databases. **Kept:** the cohort floor (10 connected students; the code refuses below 5) and the median rounded to 10 — neither was asked about. A row can raise `min_cell_size` again. |
+| **12.2** | The ROSTER consent words promise "totals and statistics that never name you"; an exact small cell beside the college's own roster can point at one student (E28). | *Accepted* (relayed by the backend lead, same day) | Recorded. The consent text is unchanged; **E28 accepted by the client**, counsel not yet asked. |
+
+---
+
 ## Round 11 — client requests, 2026-09-29
 
 A feature request for the four portals, relayed by the backend developer, with

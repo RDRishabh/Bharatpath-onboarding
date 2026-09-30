@@ -355,8 +355,9 @@ Aggregates over the students linked to the college **right now**, read through
 database functions that INNER JOIN live consent (invariant 9). Never cached, so
 a revocation leaves every figure on the next request. Floors are config
 (`analytics.privacy`): under `min_cohort_size` (default 10) connected students
-only the counts show; a band or month under `min_cell_size` (default 5) is
-`null`, and so is its complement.
+only the counts show. Above it every figure is **exact** (client, 2026-09-30):
+`min_cell_size` defaults to 1, which withholds nothing. A config row that raises
+it makes a band or month under it `null`, together with a complement.
 
 | Method | Path | Auth | Response | Notes |
 |---|---|---|---|---|
