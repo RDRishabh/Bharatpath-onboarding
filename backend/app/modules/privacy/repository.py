@@ -415,8 +415,13 @@ _EXPORT_QUERIES: dict[str, str] = {
          ORDER BY submitted_at
     """,
     "streaks": """
-        SELECT current_streak, longest_streak, last_active_on
+        SELECT current_streak, longest_streak, last_active_on, first_active_on
           FROM user_streaks WHERE user_id = :user_id
+    """,
+    # The calendar: dates only, the last year of them.
+    "streak_days": """
+        SELECT activity_on FROM streak_activity_days WHERE user_id = :user_id
+         ORDER BY activity_on
     """,
     # The college is named because the student chose it. The consent version
     # is included because it is the wording they agreed to, and a person

@@ -21,18 +21,23 @@ from typing import Any, Final
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AppError
+from app.core.errors import AppError, ValidationError
 from app.core.logging import get_logger
 from app.core.outbox import emit
 from app.modules.engagement import repository
 from app.modules.engagement.domain import (
     DEFAULT_RULES,
+    CalendarPeriod,
+    CalendarRangeError,
+    CalendarView,
     PointsChange,
     StreakRules,
     StreakRulesError,
     StreakState,
     StreakView,
+    calendar_view,
     check_in,
+    resolve_range,
     rules_from_config,
     view,
 )
@@ -60,6 +65,14 @@ class StreakRulesInvalidError(AppError):
 
     code = "streak_rules_invalid"
     title = "Streak rules are misconfigured"
+
+
+class CalendarRangeInvalidError(ValidationError):
+    """A calendar request naming no usable range. `reason` is for developers;
+    clients match on the code."""
+
+    code = "streak_calendar_range_invalid"
+    title = "The calendar range is not valid"
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +120,7 @@ def _state_of(row: Any) -> StreakState:
         last_active_on=row.last_active_on,
         streak_started_on=row.streak_started_on,
         points_balance=row.points_balance,
+        first_active_on=row.first_active_on,
     )
 
 
@@ -129,6 +143,7 @@ async def record_app_open(
 
     if outcome.counted:
         repository.apply_state(row, outcome.state)
+        await repository.record_active_day(session, user_id=user_id, day=today)
         for change in outcome.changes:
             await repository.insert_point_event(
                 session,
@@ -189,3 +204,41 @@ async def get_streak(
 async def list_point_history(session: AsyncSession, *, user_id: uuid.UUID, limit: int) -> list[Any]:
     """The candidate's ledger, newest first."""
     return await repository.list_point_events(session, user_id=user_id, limit=limit)
+
+
+async def get_calendar(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    period: CalendarPeriod | None = None,
+    anchor: date | None = None,
+    start: date | None = None,
+    end: date | None = None,
+    now: datetime | None = None,
+) -> CalendarView:
+    """Which days in a range the candidate opened the app. Read-only.
+
+    Every day carries a status, so a client never works out IST days, "today"
+    or the retention window for itself.
+    """
+    today = local_day(now or datetime.now(UTC))
+    try:
+        start, end = resolve_range(today=today, period=period, anchor=anchor, start=start, end=end)
+    except CalendarRangeError as exc:
+        raise CalendarRangeInvalidError(params={"reason": str(exc)}) from exc
+    row = await repository.get_streak(session, user_id=user_id)
+    active = await repository.active_days_between(session, user_id=user_id, start=start, end=end)
+    milestones = await repository.milestones_between(session, user_id=user_id, start=start, end=end)
+    return calendar_view(
+        start=start,
+        end=end,
+        today=today,
+        first_active_on=row.first_active_on if row is not None else None,
+        active=active,
+        milestones=milestones,
+    )
+
+
+async def purge_expired_activity(session: AsyncSession, *, now: datetime) -> int:
+    """Forget opened days older than the retention window. The sweep's job."""
+    return await repository.purge_expired_activity_days(session, today=local_day(now))

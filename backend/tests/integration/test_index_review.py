@@ -44,7 +44,7 @@ GROWING = frozenset(
         "college_seat_assignments", "roster_entries", "interview_sessions", "interview_answers",
         "device_checks", "interview_checkout_notices", "dsr_requests", "disputes",
         "streak_point_events", "questionnaire_responses", "course_completions", "entitlements",
-        "referral_codes", "roster_imports",
+        "referral_codes", "roster_imports", "streak_activity_days",
     }
 )  # fmt: skip
 
@@ -131,7 +131,9 @@ HOT_PATHS: tuple[tuple[str, str], ...] = (
     ("due erasures", "SELECT id FROM dsr_requests WHERE type = 'DELETE' AND state = 'RECEIVED' AND created_at <= now() ORDER BY created_at LIMIT 50"),
     ("expired exports", "SELECT id FROM dsr_requests WHERE type = 'EXPORT' AND export_s3_key IS NOT NULL AND completed_at IS NOT NULL AND completed_at <= now() ORDER BY completed_at LIMIT 50"),
     ("membership", "SELECT * FROM memberships WHERE user_id = :u"),
-    ("payments by user", "SELECT * FROM payments WHERE user_id = :u ORDER BY created_at"),
+    ("streak calendar", "SELECT activity_on FROM streak_activity_days WHERE user_id = :u AND activity_on BETWEEN '2026-01-01' AND '2026-12-31'"),
+    ("streak retention", "DELETE FROM streak_activity_days WHERE activity_on < '2025-01-01'"),
+    ("payments by user","SELECT * FROM payments WHERE user_id = :u ORDER BY created_at"),
     ("live access window", "SELECT 1 FROM subscriptions WHERE subscriber_type = 'USER' AND subscriber_id = :u AND state IN ('ACTIVE', 'GRACE') AND current_period_end > now()"),
     # The erasure's own predicates, one per growing table it reaches.
     ("erase: search document", "DELETE FROM candidate_search_documents WHERE user_id = :u"),
@@ -151,6 +153,7 @@ HOT_PATHS: tuple[tuple[str, str], ...] = (
     ("erase: completions", "DELETE FROM course_completions WHERE user_id = :u"),
     ("erase: entitlements", "DELETE FROM entitlements WHERE user_id = :u"),
     ("erase: streak points", "DELETE FROM streak_point_events WHERE user_id = :u"),
+    ("erase: streak days", "DELETE FROM streak_activity_days WHERE user_id = :u"),
     ("erase: questionnaire", "DELETE FROM questionnaire_responses WHERE user_id = :u"),
     ("erase: memberships", "DELETE FROM memberships WHERE user_id = :u"),
 )  # fmt: skip

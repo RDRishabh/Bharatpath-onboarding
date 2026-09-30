@@ -151,6 +151,7 @@ TASK_MODULES: Final = (
     "app.tasks.profile_nudges",
     "app.tasks.rescore_addons",
     "app.tasks.score_resume",
+    "app.tasks.streak_activity_retention",
     "app.tasks.subscription_renewals",
     "app.tasks.view_event_partitions",
 )

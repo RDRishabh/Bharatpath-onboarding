@@ -35,5 +35,17 @@ def test_mains_merge_revision_stays_under_the_portal_dashboards() -> None:
     assert revision.down_revision == "0005_merge_migration_heads"
 
 
-def test_interviews_are_bought_again_at_the_head() -> None:
-    assert _scripts().get_heads() == ["0006_interviews_are_bought"]
+def test_interviews_are_bought_again_on_the_way_to_the_head() -> None:
+    """Every database that reaches the head has run `0006`. It was the head
+    itself until `0007_streak_calendar`; pinning the head's name would make
+    every new migration fail this, which protects nothing."""
+    scripts = _scripts()
+    (head,) = scripts.get_heads()
+    lineage = {rev.revision for rev in scripts.iterate_revisions(head, "base")}
+    assert "0006_interviews_are_bought" in lineage
+
+
+def test_the_streak_calendar_follows_interviews_are_bought() -> None:
+    revision = _scripts().get_revision("0007_streak_calendar")
+    assert revision is not None
+    assert revision.down_revision == "0006_interviews_are_bought"
