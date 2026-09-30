@@ -17,11 +17,16 @@ decision (`docs/streaks.md` §7, S4), not a default to slip in.
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, Query, status
 
 from app.core.deps import CANDIDATE, CurrentUser, DbSession, require_role
 from app.modules.engagement import service
+from app.modules.engagement.domain import CalendarPeriod
 from app.modules.engagement.schemas import (
+    StreakCalendarDay,
+    StreakCalendarResponse,
     StreakCheckInResponse,
     StreakMilestone,
     StreakPointsChangeResponse,
@@ -107,3 +112,44 @@ async def point_history(
 ) -> list[StreakPointsChangeResponse]:
     rows = await service.list_point_history(session, user_id=user.user_id, limit=limit)
     return [StreakPointsChangeResponse.model_validate(row) for row in rows]
+
+
+@router.get(
+    "/me/calendar",
+    response_model=StreakCalendarResponse,
+    dependencies=[CandidateOnly],
+    summary="Which days the candidate opened the app, for a week, month, year or range",
+)
+async def calendar(
+    user: CurrentUser,
+    session: DbSession,
+    period: CalendarPeriod | None = Query(
+        default=None,
+        description="week (Monday to Sunday), month, or year (the 366 days ending on `date`). "
+        "Defaults to this week when neither a period nor a range is given.",
+    ),
+    anchor: date | None = Query(
+        default=None, alias="date", description="The day the period is around. Defaults to today."
+    ),
+    start: date | None = Query(
+        default=None, alias="from", description="With `to`, instead of a period."
+    ),
+    end: date | None = Query(default=None, alias="to"),
+) -> StreakCalendarResponse:
+    """Read-only; never counts today. At most 366 days (`domain.MAX_CALENDAR_DAYS`) at once,
+    and days older than a year come back NOT_RETAINED."""
+    result = await service.get_calendar(
+        session, user_id=user.user_id, period=period, anchor=anchor, start=start, end=end
+    )
+    return StreakCalendarResponse(
+        start=result.start,
+        end=result.end,
+        today=result.today,
+        days=[
+            StreakCalendarDay(date=d.day, status=d.status, milestone_days=d.milestone_days)
+            for d in result.days
+        ],
+        active_days=result.active_days,
+        missed_days=result.missed_days,
+        longest_run=result.longest_run,
+    )

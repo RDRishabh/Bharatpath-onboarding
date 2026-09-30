@@ -925,6 +925,13 @@ and the event routing table.
 - **The day is IST and decided by the server.** A check-in carries no date.
 - Streak integration tests inject `now`, so a config row they insert must be
   `effective_from` before the simulated day, not the real `now()`.
+- **The activity calendar** (`GET /candidate/streak/me/calendar`, 2026-09-29)
+  reads `streak_activity_days`: the date only, **opened or not, never a count
+  of opens**, kept **one year** (client). The app role cannot delete a day;
+  `purge_streak_activity_days` does, and it clamps the cut-off to the
+  database's IST day, so a wrong clock can only delete less. Its 365 is frozen
+  in migration `0007`; a test holds it equal to `ACTIVITY_RETENTION_DAYS`.
+  A day before `first_active_on` is `BEFORE_START`, never `MISSED`.
 
 ## Environment
 

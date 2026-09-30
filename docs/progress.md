@@ -9,6 +9,47 @@ states. Newest entries first.
 
 ---
 
+## 2026-09-29 — streak activity calendar (week, month, year)
+
+For the mobile "This week's activity" strip and a LeetCode-style calendar.
+`GET /candidate/streak/me/calendar`, `docs/streaks.md` §4.1.
+
+**Client decisions (2026-09-29):** opened or not, with no count of opens; kept for one
+year.
+
+- **Before this, no day was stored.** `user_streaks` held only the current
+  run, so a past week could not be drawn. `streak_activity_days` is now one
+  row per counted day: the date, nothing else. The check-in that counts the
+  day writes it.
+- **Every day comes back with a status** (`ACTIVE`, `MISSED`,
+  `TODAY_PENDING`, `UPCOMING`, `BEFORE_START`, `NOT_RETAINED`), so clients
+  never work out IST days. A day before the first open, or today before the
+  app is opened, is never `MISSED`. `user_streaks.first_active_on` (new, set
+  once) is what tells those apart, because the days table forgets anything a
+  year old.
+- **Retention is a SECURITY DEFINER purge**, `purge_streak_activity_days`:
+  the app role has no DELETE, and the function clamps the cut-off to the
+  database's IST day, so a wrong clock can only delete less. Scheduled daily
+  at 00:10 IST (`streak-activity-retention`). Its 365 is frozen in `0007`,
+  and a test holds it equal to `domain.ACTIVITY_RETENTION_DAYS`.
+- **Migration `0007_streak_calendar`** creates the table and column only
+  when missing, backfills from the ledger, adds the purge and replaces
+  `erase_candidate` whole. The backfill works because a run is consecutive
+  days and each penalty and milestone row names its run's start and length.
+  A run with no ledger row (a break under a 0 penalty) is not recovered.
+- ERASE in the deletion policy, `streak_days.json` in the export, the new
+  queries in the index review.
+
+**Checked:**
+- a local database at `0006` upgraded with a seeded broken run and current
+  run, and the backfill rebuilt exactly those days;
+- downgrade and upgrade again;
+- a fresh build from the baseline in a scratch database, with the grants,
+  purge EXECUTE and erase cascade confirmed;
+- the CI lint set.
+
+---
+
 ## 2026-09-29 — `main` made correct again after PRs 21, 22 and 23
 
 PR 21 (college APIs) was merged with red CI; the mobile branch (PR 22) and

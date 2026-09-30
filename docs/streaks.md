@@ -104,6 +104,7 @@ college users get 403. None are behind the subscription gate (see S4).
 | `GET` | `/api/v1/candidate/streak/me` | Current state. Read-only, never counts today. |
 | `POST` | `/api/v1/candidate/streak/me/check-in` | Count today. Idempotent by day. |
 | `GET` | `/api/v1/candidate/streak/me/points?limit=50` | Points history, newest first (1–200). |
+| `GET` | `/api/v1/candidate/streak/me/calendar` | Which days the app was opened, for a week, month, year or range (§4.1). |
 
 `POST /me/check-in` response:
 
@@ -146,6 +147,64 @@ deduction `points` is negative and `milestone_days` is null.
 - Never label it as score, and never add the two together.
 - The design-system rule still applies: no gauges or dials.
 
+### 4.1 The activity calendar
+
+Added 2026-09-29 for the "This week's activity" strip and a LeetCode-style
+calendar. Two client decisions that day:
+
+- **Opened or not, nothing more.** One row per day counted
+  (`streak_activity_days`): the date, no time of day, no count of opens.
+- **Kept for one year.** A daily sweep deletes older days
+  (`domain.ACTIVITY_RETENTION_DAYS` = 365, so today and the 365 days before
+  it).
+
+Choose the days in one of two ways:
+
+| Query | Days returned |
+|---|---|
+| *(none)* | This week, Monday to Sunday |
+| `?period=week&date=2026-09-17` | The Monday-to-Sunday week containing `date` |
+| `?period=month&date=2026-08-01` | That calendar month |
+| `?period=year` | The 366 days ending on `date` (default today): rolling, as LeetCode's "past year" is |
+| `?from=2026-09-01&to=2026-09-30` | Exactly that range |
+
+`date` defaults to today. `from`/`to` go together and cannot be mixed with
+`period`/`date`. A range longer than 366 days or running backwards is 422
+`streak_calendar_range_invalid`.
+
+```json
+{
+  "start": "2026-09-28", "end": "2026-10-04", "today": "2026-09-29",
+  "days": [
+    {"date": "2026-09-28", "status": "ACTIVE", "milestone_days": null},
+    {"date": "2026-09-29", "status": "TODAY_PENDING", "milestone_days": null},
+    {"date": "2026-09-30", "status": "UPCOMING", "milestone_days": null}
+  ],
+  "active_days": 1, "missed_days": 0, "longest_run": 1
+}
+```
+
+**Every day in the range is listed, with a status**, so the client never works
+out IST days, "today" or the retention window for itself:
+
+| Status | Meaning |
+|---|---|
+| `ACTIVE` | The app was opened. `milestone_days` is set if a milestone was reached that day |
+| `MISSED` | A past day on or after the first day ever counted, not opened |
+| `TODAY_PENDING` | Today, not opened yet. **Not missed**: the day is not over |
+| `UPCOMING` | A future day |
+| `BEFORE_START` | Before the first day ever counted. **Not missed**: they had not started |
+| `NOT_RETAINED` | Older than a year. We no longer know |
+
+`longest_run` counts consecutive `ACTIVE` days *inside the range*. It is not
+the streak, which can begin before the range does; use `GET /me` for that.
+
+**History from before 2026-09-29 was rebuilt, not guessed.** A streak run is
+consecutive days, and every break penalty and milestone row records its run's
+first day and length, so migration `0007` filled the calendar from the ledger.
+A run that left no ledger row cannot be recovered and is not invented. That
+only happens if a run was broken while the penalty was configured to 0.
+
 ## 5. Changing the numbers
 
 The numbers live in `config_values` under the key `engagement.streak_rules`.
@@ -186,8 +245,13 @@ VALUES (
 
 | Table | Holds | Write rules |
 |---|---|---|
-| `user_streaks` | One row per candidate: current, longest, `last_active_on`, `streak_started_on`, `points_balance` | Updated in place under `SELECT … FOR UPDATE`. CHECKs: all counts ≥ 0, longest ≥ current, balance ≥ 0 |
+| `user_streaks` | One row per candidate: current, longest, `last_active_on`, `streak_started_on`, `first_active_on`, `points_balance` | Updated in place under `SELECT … FOR UPDATE`. CHECKs: all counts ≥ 0, longest ≥ current, balance ≥ 0. `first_active_on` is set once |
 | `streak_point_events` | Every change to a balance | **Append-only.** The app role has no UPDATE or DELETE (tested). Unique per milestone per run, and per break per day |
+| `streak_activity_days` | One row per day counted: `(user_id, activity_on)` and nothing else | Written by the check-in that counts the day. The app role has INSERT and SELECT only. Rows older than a year are deleted by `purge_streak_activity_days` (SECURITY DEFINER), which clamps the cut-off to the database's own IST day, so a caller can only ever delete less. Runs daily at 00:10 IST (`streak-activity-retention` in `app/tasks/schedule.py`) |
+
+- **Erasure and export.** `streak_activity_days` is ERASE in
+  `privacy/domain.py`, `erase_candidate` deletes it (migration `0007`), and the
+  export carries it as `streak_days.json`.
 
 - **Concurrency.** A phone and a laptop checking in at the same moment count
   once and deduct once. The row lock does this, and both cases are tested.
@@ -205,6 +269,8 @@ VALUES (
 |---|---|
 | `tests/unit/test_streak_domain.py` | Pure rules, config parsing, the IST day boundary, and a 25-seed property test: the balance is never negative and the ledger reproduces it |
 | `tests/integration/test_streak.py` | Real Postgres via the app role: multi-day flows, clipping, config override, `effective_from`, bad config, concurrency, grants, and the HTTP flow |
+| `tests/unit/test_streak_calendar_domain.py` | Periods, range validation, every day status, counts and the longest run |
+| `tests/integration/test_streak_calendar.py` | A check-in records its day once, the first day survives a break, grants, statuses from real data, retention (and that the purge's frozen 365 equals the domain's), and HTTP |
 | `tests/invariants/test_streak_never_moves_the_score.py` | §2 |
 
 ## 7. Decisions we took that the client should confirm
