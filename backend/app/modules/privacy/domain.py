@@ -211,6 +211,9 @@ ERASURE_PLAN: Final[Mapping[str, TablePlan]] = {
     "questionnaire_responses": _erase("user_id", "Their answers. Worth no points; still theirs."),
     "user_streaks": _erase("user_id", "When they opened the app."),
     "streak_point_events": _erase("user_id", "The same, itemised."),
+    "streak_activity_days": _erase(
+        "user_id", "Which days they opened the app, the last year of them."
+    ),
     "candidate_search_documents": _erase(
         "user_id",
         "The employer-facing projection of them. Written only by a trigger on "
@@ -396,6 +399,7 @@ EXPORT_SECTIONS: Final = (
     "messages",
     "questionnaire",
     "streaks",
+    "streak_days",
     "colleges",
     "notifications",
     "requests",

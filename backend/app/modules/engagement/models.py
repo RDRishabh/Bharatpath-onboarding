@@ -9,13 +9,16 @@ Neither table is tenant-scoped: a streak belongs to a candidate, and
 candidates belong to no tenant. Isolation is the `user_id` every query filters
 on, which comes from the verified token and never from the request.
 
-**Two tables, two lifecycles**, the same split as `scores` and its cache:
+**Three tables, three lifecycles**:
 
 * `user_streaks` is current state, one row per candidate, updated in place
   under a row lock. It is a convenience, not the record.
 * `streak_point_events` is the record. **Append-only** -- the app role holds
   no UPDATE or DELETE -- so every change to a balance is explained by a row
   saying what changed it, under which rules version.
+* `streak_activity_days` is the calendar: one row per day counted, and
+  nothing about the day but its date. Kept for a year, then deleted by the
+  retention sweep (`domain.ACTIVITY_RETENTION_DAYS`).
 """
 
 from __future__ import annotations
@@ -62,6 +65,10 @@ class UserStreak(Base, Timestamps):
     points_balance: Mapped[int] = mapped_column(
         Integer, default=0, server_default=text("0"), nullable=False
     )
+    #: The first day ever counted, set once. The calendar needs it to tell a
+    #: day before the candidate started from a day they missed, and the days
+    #: table cannot say: it forgets anything older than a year.
+    first_active_on: Mapped[date | None] = mapped_column(Date)
 
     __table_args__ = (
         CheckConstraint("current_streak >= 0", name="ck_user_streaks_current_nonnegative"),
@@ -126,4 +133,31 @@ class StreakPointEvent(Base, UUIDPrimaryKey):
             unique=True,
             postgresql_where=text("kind = 'STREAK_BREAK_PENALTY'"),
         ),
+    )
+
+
+class StreakActivityDay(Base):
+    """A day the candidate opened the app. One row per day, never updated.
+
+    **The date and nothing else.** No time of day and no count of opens: the
+    calendar shows opened-or-not, and a finer record of when somebody uses an
+    app is data we would hold for no feature (client, 2026-09-29).
+
+    The app role holds INSERT and SELECT only. Rows older than a year go
+    through `purge_streak_activity_days`, which decides the cut-off itself, so
+    no caller can delete a day still inside the window.
+    """
+
+    __tablename__ = "streak_activity_days"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    #: The candidate's calendar day (IST), as `service.local_day` decides it.
+    activity_on: Mapped[date] = mapped_column(Date, primary_key=True)
+
+    __table_args__ = (
+        # The retention sweep's predicate. The key leads with `user_id`, so
+        # without this every purge is a full scan.
+        Index("ix_streak_activity_days_activity_on", "activity_on"),
     )

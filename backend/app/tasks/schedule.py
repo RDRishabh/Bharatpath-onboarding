@@ -1,6 +1,6 @@
 """When each periodic task runs. One table, like `routing.py`.
 
-Eight tasks sweep rather than subscribe, because what triggers them is the
+Nine tasks sweep rather than subscribe, because what triggers them is the
 passage of time and not an event: a subscription lapses because a date
 passed, not because anybody did anything. From Day 12 to 2026-09-22 nothing
 ran any of them (`blockers.md` E4), which meant a deletion request was
@@ -121,6 +121,13 @@ BEAT_SCHEDULE: Final[dict[str, dict[str, object]]] = {
     "view-event-partitions": {
         "task": "discovery.ensure_view_partitions",
         "schedule": crontab(hour="18", minute="30"),
+        "options": {"expires": 43200.0},
+    },
+    # The streak calendar keeps a year of opened days (client, 2026-09-29).
+    # 18:40 UTC is 00:10 IST, just after the window has moved by a day.
+    "streak-activity-retention": {
+        "task": "engagement.purge_expired_activity",
+        "schedule": crontab(hour="18", minute="40"),
         "options": {"expires": 43200.0},
     },
 }

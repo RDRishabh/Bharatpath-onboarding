@@ -73,3 +73,38 @@ class StreakCheckInResponse(_Base):
     )
     streak: StreakResponse
     changes: list[StreakPointsChangeResponse]
+
+
+CalendarDayStatusField = Literal[
+    "ACTIVE", "MISSED", "TODAY_PENDING", "UPCOMING", "BEFORE_START", "NOT_RETAINED"
+]
+
+
+class StreakCalendarDay(_Base):
+    date: date
+    status: CalendarDayStatusField = Field(
+        description="ACTIVE: the app was opened. MISSED: a past day it was not. "
+        "TODAY_PENDING: today, not opened yet -- not missed, the day is not over. "
+        "UPCOMING: a future day. BEFORE_START: before the first day ever counted. "
+        "NOT_RETAINED: older than a year; opened days are kept for one year."
+    )
+    milestone_days: int | None = Field(
+        default=None, description="The milestone reached that day, on an ACTIVE day only."
+    )
+
+
+class StreakCalendarResponse(_Base):
+    """Which days in a range the candidate opened the app. Opened or not:
+    there is no count of opens per day."""
+
+    start: date
+    end: date
+    today: date = Field(description="The server's calendar day (IST).")
+    days: list[StreakCalendarDay] = Field(description="Every day from start to end, in order.")
+    active_days: int = Field(ge=0, description="Days in the range the app was opened.")
+    missed_days: int = Field(ge=0)
+    longest_run: int = Field(
+        ge=0,
+        description="The longest run of consecutive ACTIVE days inside the range. "
+        "Not the streak, which can begin before the range does.",
+    )
