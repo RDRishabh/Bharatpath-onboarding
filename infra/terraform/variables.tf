@@ -228,3 +228,19 @@ variable "budget_monthly_usd" {
   type        = number
   default     = 45
 }
+
+variable "cognito_email_via_ses" {
+  description = <<-DESC
+    Send Cognito's own email (sign-up codes, password resets, invitations)
+    through the SES identity above instead of Cognito's built-in sender.
+
+    **Leave false until SES has production access** (2026-10-01). A new SES
+    account is in the sandbox and delivers only to verified addresses, so
+    turning this on there means nobody but us receives a sign-up code --
+    while Cognito's built-in sender reaches anyone, about 50 a day. Separate
+    from `email_sender_address` so the app's notifications can use SES before
+    sign-up does.
+  DESC
+  type        = bool
+  default     = false
+}

@@ -43,6 +43,7 @@ host that cannot be rebuilt.
 | On the host | caddy, api, worker, beat, redis — `deploy/docker-compose.prod.yml` with no `local-db` profile |
 | State | `s3://bharatpath-tfstate-335345888157`, locked by DynamoDB (`infra/terraform/backend.tf`) |
 | Settings | `infra/terraform/deploy.auto.tfvars` (gitignored; `example.tfvars` is the template) |
+| Email | App notifications through SES **from `bharatpath63@gmail.com`** (an address identity, E38's stop-gap). SES is still in the **sandbox**: it delivers only to verified addresses, 200/day. Cognito keeps its own sender (`cognito_email_via_ses = false`) so sign-up codes reach anyone, ~50/day |
 
 ### 0.1 Storage — what survives what
 

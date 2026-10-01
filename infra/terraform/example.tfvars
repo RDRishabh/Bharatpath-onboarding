@@ -8,5 +8,8 @@ api_domain        = "bharatpath-api.duckdns.org" # A record -> terraform output 
 ssh_allowed_cidrs = ["203.0.113.4/32"]           # curl -s https://checkip.amazonaws.com
 ssh_public_key    = "ssh-ed25519 AAAA... you@laptop"
 
+email_sender_address  = "ops@example.com" # or email_domain once there is one
+cognito_email_via_ses = false             # true only after SES production access
+
 budget_alert_email = "alerts@example.com"
 budget_monthly_usd = 45

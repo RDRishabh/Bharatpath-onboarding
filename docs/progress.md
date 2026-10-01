@@ -61,8 +61,13 @@ HTTP healthcheck, which reported them unhealthy.
 
 **Open:** upgrade to the Paid plan before the credit or 2027-04-01 runs out
 (E45), then set `rds_backup_retention_days = 7`; SES production access
-(email notifications are `none`, Cognito's own sender covers sign-up codes at
-~50/day); the first platform admin (`create_platform_staff.py` on the host);
+(notifications go through SES from `bharatpath63@gmail.com` since later on
+2026-10-01, sandboxed; **Cognito stays on its own sender** --
+`cognito_email_via_ses` -- because a sandboxed SES would deliver sign-up codes
+to nobody but us); the first platform admin exists (bharatpath63@gmail.com, PLATFORM_ADMIN,
+invited by Cognito) but **cannot sign in from any client yet: the web and
+mobile apps sign in through `/auth/dev/token`**, which the deployed API does not
+register and must not;
 SSH is limited to one home IP, which will change.
 
 ---
