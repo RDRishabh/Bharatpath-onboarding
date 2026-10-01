@@ -138,10 +138,18 @@ data "aws_iam_policy_document" "app" {
   }
 }
 
-resource "aws_iam_user_policy" "app" {
+# A managed policy, not an inline one: an inline USER policy is capped at
+# 2,048 bytes and this document outgrew it (a fresh account refused it,
+# 2026-10-01). A managed policy allows 6,144 characters. The instance role
+# keeps its inline copy -- role policies are allowed 10,240.
+resource "aws_iam_policy" "app" {
   name   = "${var.project}-app-${var.environment}"
-  user   = aws_iam_user.app.name
   policy = data.aws_iam_policy_document.app.json
+}
+
+resource "aws_iam_user_policy_attachment" "app" {
+  user       = aws_iam_user.app.name
+  policy_arn = aws_iam_policy.app.arn
 }
 
 resource "aws_iam_access_key" "app" {

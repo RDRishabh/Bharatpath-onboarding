@@ -43,6 +43,25 @@ systemctl enable --now docker
 usermod -aG docker ec2-user
 
 # ---------------------------------------------------------------------------
+# Swap (2026-10-01)
+# ---------------------------------------------------------------------------
+# 2 GiB of RAM holds the running stack, but not with room to spare, and the
+# image is built on this host: `pip install` compiling wheels next to a live
+# API and worker is exactly when the kernel's OOM killer picks a container.
+# Swap turns that into a slow minute instead. Swappiness 10 keeps it a safety
+# margin -- the stack should never live in it; if `free -m` shows it in steady
+# use, the answer is t3.medium, not more swap.
+if [ ! -f /swapfile ]; then
+  dd if=/dev/zero of=/swapfile bs=1M count=2048
+  chmod 600 /swapfile
+  mkswap /swapfile
+fi
+swapon /swapfile || true
+grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap defaults 0 0' >> /etc/fstab
+echo 'vm.swappiness=10' > /etc/sysctl.d/90-bharatpath-swap.conf
+sysctl -p /etc/sysctl.d/90-bharatpath-swap.conf
+
+# ---------------------------------------------------------------------------
 # The data volume
 # ---------------------------------------------------------------------------
 # Postgres's data directory lives on a separate EBS volume so that replacing
@@ -89,6 +108,10 @@ mkdir -p /mnt/data/redis           # Redis append-only file
 mkdir -p /mnt/data/celerybeat      # beat's last-run state (settings.celery_beat_schedule_path)
 mkdir -p /mnt/data/caddy           # issued TLS certificates
 chown -R ec2-user:ec2-user /opt/bharatpath /mnt/data
+# Beat writes its state file here as the image's user (uid 10001, see
+# backend/Dockerfile), not as ec2-user; owned by ec2-user, beat died at boot
+# with "Permission denied" (2026-10-01).
+chown -R 10001:10001 /mnt/data/celerybeat
 
 # Docker's logs are the only logs here and they grow without limit by
 # default, which fills a 30 GiB root volume and stops the host.

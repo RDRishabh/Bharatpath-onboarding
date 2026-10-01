@@ -9,6 +9,64 @@ states. Newest entries first.
 
 ---
 
+## 2026-10-01 — deployed to a new AWS account: EC2 + RDS
+
+The old account (`592033927084`) expired. Everything was built fresh in
+`335345888157`, with Postgres moved to RDS so the database has backups —
+option B of the costing (~$43/month against $100 of Free-plan credit). The API
+is live at `https://bharatpath-api.duckdns.org/api/v1`; `aws-deployment.md` §0
+is the as-built record and the rebuild sequence.
+
+**Verified on the live stack:** `/health` over a real Let's Encrypt
+certificate; every migration to `0008` and all four seeds on RDS as the
+migrator; `bharatpath_app` is `bypassrls=false` and owns nothing; beat sends
+the relay every 30s and the worker runs it against RDS; a real Cognito access
+token from the candidate pool gets 200 on `/auth/me` (an ID token gets 401).
+The smoke user was deleted from Cognito; its `users` row
+(`b28ad9eb-4f25-43b7-b6b6-f3e8bb461d0d`) remains as test data.
+
+**New:** `rds.tf` (`deploy_rds`; private, TLS forced, deletion-protected,
+`prevent_destroy`), `network.tf` (the picture and why there is no NAT),
+`budgets.tf` (gross spend — a budget that nets credits off never fires),
+remote state in S3 (`backend.tf`), `deploy/init_rds.sh` (the three roles on
+RDS) and `deploy/ship.sh` (ship the tree, build on the host, restart). The
+app verifies the RDS certificate against Amazon's bundle, which the image
+downloads (`DATABASE_SSL_ROOT_CERT`; `connect_args_for` refuses an RDS host
+without it). Postgres in compose is now the `local-db` profile. 2 GiB swap and
+`standard` CPU credits on the host.
+
+**Seven things that had never run anywhere, and broke on first contact:**
+
+1. Cognito pools could not be created on a fresh account: the provider sends
+   an empty SMS invite, and the API wants six characters. A placeholder is set;
+   nothing is sent by SMS.
+2. The app's inline IAM user policy outgrew the 2,048-byte cap; it is a
+   managed policy now.
+3. The Free plan caps RDS backup retention at **1 day** (`FreeTierRestrictionError`).
+4. `seed_config.py` died with `No module named 'app'` in the image — scripts
+   put `scripts/` on the path, not `/srv`. `PYTHONPATH=/srv` in the Dockerfile.
+   `create_platform_staff.py` had the same bug.
+5. The prod compose never ran `seed_catalogue.py`, so no plan could be bought.
+   It runs now, and refuses its placeholder prices outside dev, which fails the
+   deploy rather than selling them.
+6. Beat could not write its state file: `/mnt/data/celerybeat` belonged to
+   ec2-user, the image runs as uid 10001.
+7. **The SQS broker never worked** (E44): nothing reads `SQS_QUEUE_URL`, so
+   kombu wanted a queue named `celery` and ListQueues/CreateQueue. The host's
+   broker is Redis now.
+
+Also: the RDS master user does **not** hold BYPASSRLS, yet RDS let it create
+the two roles that do. The worker and beat no longer inherit the image's
+HTTP healthcheck, which reported them unhealthy.
+
+**Open:** upgrade to the Paid plan before the credit or 2027-04-01 runs out
+(E45), then set `rds_backup_retention_days = 7`; SES production access
+(email notifications are `none`, Cognito's own sender covers sign-up codes at
+~50/day); the first platform admin (`create_platform_staff.py` on the host);
+SSH is limited to one home IP, which will change.
+
+---
+
 ## 2026-09-30 — college analytics show exact numbers (client decision)
 
 A college dashboard showed "—" for September: one platform hire, under the

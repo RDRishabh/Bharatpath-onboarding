@@ -65,6 +65,11 @@ resource "aws_cognito_user_pool" "candidates" {
     invite_message_template {
       email_subject = "Your BharatPath account is ready"
       email_message = "An account has been created for you on BharatPath.<br><br>Sign in with<br>Email: {username}<br>Temporary password: {####}<br><br>You will be asked to choose your own password. This temporary password expires in 7 days; if it has, ask us to send a new one."
+      # Never sent -- the pool has no SMS configuration (no SMS since
+      # 2026-09-18). It must still be set: left out, the provider sends "",
+      # and CreateUserPool refuses anything under 6 characters, so a fresh
+      # account cannot create the pool at all (found 2026-10-01).
+      sms_message = "BharatPath: user {username}, temporary password {####}"
     }
   }
 
@@ -176,6 +181,11 @@ resource "aws_cognito_user_pool" "business" {
     invite_message_template {
       email_subject = "Your BharatPath account is ready"
       email_message = "An account has been created for you on BharatPath.<br><br>Sign in with<br>Email: {username}<br>Temporary password: {####}<br><br>You will be asked to choose your own password. This temporary password expires in 7 days; if it has, ask us to send a new one."
+      # Never sent -- the pool has no SMS configuration (no SMS since
+      # 2026-09-18). It must still be set: left out, the provider sends "",
+      # and CreateUserPool refuses anything under 6 characters, so a fresh
+      # account cannot create the pool at all (found 2026-10-01).
+      sms_message = "BharatPath: user {username}, temporary password {####}"
     }
   }
 

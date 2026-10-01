@@ -16,6 +16,7 @@ Written 2026-09-22.
 
 ## Contents
 
+0. [What is running now: EC2 + RDS (2026-10-01)](#0-what-is-running-now)
 1. [What gets built, and what you are trading away](#1-what-gets-built)
 2. [Before you start](#2-before-you-start)
 3. [Step by step](#3-step-by-step)
@@ -23,6 +24,116 @@ Written 2026-09-22.
 5. [Day-to-day operation](#5-day-to-day)
 6. [Changing AWS account later](#6-changing-aws-account)
 7. [Migrating to ECS Fargate](#7-migrating-to-ecs-fargate)
+
+---
+
+## 0. What is running now
+
+Added 2026-10-01. The sections below describe the single-host shape; this is
+what is actually deployed, which is that shape **with Postgres moved to RDS**
+— step 1 of §7, taken alone because the database is the only thing on the
+host that cannot be rebuilt.
+
+| | |
+|---|---|
+| Account | `335345888157`, `ap-south-1`. **AWS Free plan** (see 0.3) |
+| API | `https://bharatpath-api.duckdns.org/api/v1` (DuckDNS, free; swap for the client's domain with one variable) |
+| Host | EC2 `t3.small`, Elastic IP `43.204.56.60`, 2 GiB swap, CPU credits `standard` |
+| Database | RDS PostgreSQL 16, `db.t4g.micro`, 20 GB gp3 (grows to 50), Single-AZ, private |
+| On the host | caddy, api, worker, beat, redis — `deploy/docker-compose.prod.yml` with no `local-db` profile |
+| State | `s3://bharatpath-tfstate-335345888157`, locked by DynamoDB (`infra/terraform/backend.tf`) |
+| Settings | `infra/terraform/deploy.auto.tfvars` (gitignored; `example.tfvars` is the template) |
+
+### 0.1 Storage — what survives what
+
+| Data | Lives on | Survives a container restart | Survives the instance being replaced | Backed up |
+|---|---|---|---|---|
+| Everything in Postgres | **RDS** | yes | yes | daily snapshot + point-in-time restore |
+| CVs, audio, exports, KYB documents | **S3**, versioned | yes | yes | versioning |
+| Users and passwords | **Cognito** | yes | yes | AWS-managed |
+| Redis (membership cache, rate counters) | EBS data volume `/mnt/data` | yes | yes | no — it refills |
+| Beat's schedule state, TLS certificates | EBS data volume `/mnt/data` | yes | yes | no — re-created |
+| The image, the code, `.env` | EBS root volume | yes | **no** — re-run `ship.sh`, re-write `.env` | no |
+
+Containers are disposable; nothing in them is the only copy of anything.
+
+### 0.2 Network
+
+`infra/terraform/network.tf` has the picture. In short: the default VPC; the
+host's security group admits 80 and 443 from anywhere and 22 from
+`ssh_allowed_cidrs` only; the database has **no public IP** and its security
+group admits 5432 **from the host's security group and nothing else**. No NAT
+gateway (~$32/month) and no load balancer. TLS to the client is Caddy's Let's
+Encrypt certificate; TLS to the database is forced by RDS and verified by the
+app against Amazon's CA (`DATABASE_SSL_ROOT_CERT`, set in the image).
+
+**If your IP changes, SSH stops working** (Indian ISPs reassign often). Update
+`ssh_allowed_cidrs` in `deploy.auto.tfvars` and apply, or use Session Manager,
+which needs no open port.
+
+### 0.3 The Free plan, and what it costs
+
+About **$43/month**, measured from the Price List API on 2026-10-01: EC2
+$16.35, RDS $15.33 + storage $2.62, EBS $3.19, public IPv4 $3.65, Secrets
+Manager ~$1.20, the rest cents.
+
+The account is on AWS's **Free plan**: $100 of credit (up to $100 more from
+the console's "Explore AWS" activities), and **the account closes when the
+credits run out or on 2027-04-01**, whichever is first — resources stop and
+are deleted 90 days later. **Upgrade to the Paid plan before either**
+(Billing → Upgrade plan; unused credit carries over). Until then the plan
+imposes limits, two of which we hit:
+
+- **RDS backup retention is capped at 1 day** (`FreeTierRestrictionError`).
+  `rds_backup_retention_days = 1` in the tfvars; set 7 after upgrading.
+- **Textract** is unavailable, as on the old account (E2).
+
+`budgets.tf` emails `budget_alert_email` at $15, $30 and $45 of **gross**
+monthly spend, and when the forecast passes $45. Gross matters: a budget
+that nets credits off reads $0 and never fires.
+
+### 0.4 How it was built — and how to rebuild it
+
+```bash
+# once per account: the state bucket
+terraform -chdir=infra/bootstrap init && terraform -chdir=infra/bootstrap apply
+terraform -chdir=infra/bootstrap output -raw backend_configuration   # -> infra/terraform/backend.tf
+
+# everything else; read the plan before applying it
+cd infra/terraform
+cp example.tfvars deploy.auto.tfvars      # fill in
+terraform init
+terraform plan -out=main.tfplan && terraform apply main.tfplan
+
+# point the DuckDNS name (or the A record) at: terraform output -raw app_public_ip
+
+# code to the host, image built there (ships the working tree; see the script)
+BP_SSH_KEY=~/.ssh/bharatpath_ed25519 bash deploy/ship.sh 43.204.56.60
+
+# the host's .env: generate, fill in the model keys and PAYMENTS_WEBHOOK_SECRET
+terraform output -raw host_env_file > /tmp/bp.env    # then scp to /opt/bharatpath/.env, chmod 600
+
+# the three database roles on RDS, passwords written into that .env
+aws secretsmanager get-secret-value --query SecretString --output text \
+    --secret-id "$(terraform output -raw rds_master_secret_arn)" \
+  | ssh -i ~/.ssh/bharatpath_ed25519 ec2-user@43.204.56.60 'bash /opt/bharatpath/init_rds.sh'
+
+# start: migrations, then the stack
+ssh -i ~/.ssh/bharatpath_ed25519 ec2-user@43.204.56.60 \
+  'cd /opt/bharatpath && docker compose -f docker-compose.prod.yml up -d'
+```
+
+**`init_rds.sh` replaces the two `init_db_*.sql` mounts** used with the
+container. RDS has no superuser; the master user has CREATEROLE and
+`rds_superuser`, which is enough, given two grants a real superuser would not need
+(membership of `bharatpath_migrator`, and CREATE on the database for the new
+schema owner). It prints the role attributes as a check — `bharatpath_app`
+must show `bypassrls=f`. **The app never connects as the master user**,
+which owns the database and is therefore not subject to RLS.
+
+Every later deploy is just `deploy/ship.sh`. Restoring the database is the
+RDS console (Automated backups → Restore to point in time), which makes a
+*new* instance — point the three URLs in `.env` at it.
 
 ---
 

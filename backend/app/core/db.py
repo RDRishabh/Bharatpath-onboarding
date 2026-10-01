@@ -39,6 +39,11 @@ def connect_args_for(url: str) -> dict[str, Any]:
     asyncpg's statement cache keeps the pooled (PgBouncer) endpoint safe too;
     it is a harmless no-op on the direct endpoint we normally use. Local
     Postgres matches neither branch and is left untouched.
+
+    RDS requires TLS too, and signs with Amazon's own CA, so the certificate is
+    verified against ``DATABASE_SSL_ROOT_CERT`` (the RDS bundle). Without it
+    this refuses rather than connecting unverified: the database password
+    crosses this connection.
     """
     try:
         host = make_url(url).host or ""
@@ -46,6 +51,15 @@ def connect_args_for(url: str) -> dict[str, Any]:
         return {}
     if host.endswith(".neon.tech"):
         return {"ssl": ssl.create_default_context(), "statement_cache_size": 0}
+    if host.endswith(".rds.amazonaws.com"):
+        cafile = get_settings().database_ssl_root_cert
+        if not cafile:
+            raise RuntimeError(
+                f"{host} is an RDS host and DATABASE_SSL_ROOT_CERT is not set. "
+                "RDS requires TLS and signs with Amazon's CA; point this at "
+                "the RDS bundle (the image ships one, see backend/Dockerfile)."
+            )
+        return {"ssl": ssl.create_default_context(cafile=cafile)}
     return {}
 
 

@@ -50,9 +50,12 @@ parser worker may not be running."_ `scripts/dev_all.sh` starts both the API
 Logs: `/tmp/bp_api.log`, `/tmp/bp_workers.log`. Use it instead of
 `dev_api.sh` for any flow that touches resumes or scoring.
 
-**Deploying it: [`docs/aws-deployment.md`](docs/aws-deployment.md).** One EC2
-host, docker compose, deliberately not production (no database backups); §7 is
-the migration to ECS Fargate + RDS.
+**Deploying it: [`docs/aws-deployment.md`](docs/aws-deployment.md)** — §0 is
+what runs now (2026-10-01): one EC2 host (API, worker, beat, Redis, Caddy) and
+Postgres on RDS, at `https://bharatpath-api.duckdns.org/api/v1`. A deploy is
+`BP_SSH_KEY=~/.ssh/bharatpath_ed25519 bash deploy/ship.sh 43.204.56.60`.
+**Celery's broker on the host is Redis, not SQS** — the SQS path never worked
+(`blockers.md` E44). §7 is the rest of the migration to ECS Fargate.
 
 **Run tests as CI does — bare `pytest`, not `python -m pytest`.** The latter puts
 the working directory on `sys.path`, which hides import errors that CI will catch.
@@ -946,12 +949,20 @@ and the event routing table.
 
 ## AWS
 
-Account `592033927084`, region `ap-south-1` (Mumbai — data residency, plan §13 N2
-is still open). Terraform in `infra/terraform`, applied 2026-09-11. See
-`infra/README.md` for what is deliberately _not_ provisioned and why.
+Account `335345888157` since 2026-10-01 (the old `592033927084` expired; its
+Cognito users did not move), region `ap-south-1` (Mumbai — data residency,
+plan §13 N2 is still open). Terraform in `infra/terraform`, **state in S3**
+(`backend.tf`, made by `infra/bootstrap`), this deployment's settings in the
+gitignored `deploy.auto.tfvars`. See `infra/README.md` for what is
+deliberately _not_ provisioned and why.
 
-Everything provisioned is ~free at idle. Postgres and Redis are **not** in AWS by
-design — docker locally, service containers in CI.
+- **The account is on AWS's Free plan and closes when its credit runs out or
+  on 2027-04-01** (`blockers.md` E45). It caps RDS backups at 1 day.
+- **Always `terraform plan -out` and read it before applying.** `deploy_rds`
+  and the RDS instance carry `prevent_destroy` and deletion protection; a plan
+  that wants to destroy the database is refused, and that is the guard working.
+- The host costs ~$43/month with RDS; the rest is ~free at idle. Locally,
+  Postgres and Redis are still docker, and service containers in CI.
 
 ## Conventions
 
