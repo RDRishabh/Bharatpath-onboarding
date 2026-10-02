@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ErrorState } from "@/components/ui";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useGetEmployerCandidateSkillSuggestionsQuery } from "@/store/employer/candidates";
 
@@ -233,7 +233,8 @@ export function JobSkillsField({
       </div>
 
       {!disabled && suggestionsError && debouncedQuery ? (
-        <ErrorState
+        <EmployerErrorState
+          variant="inline"
           error={suggestionsError}
           fallback="Skill suggestions could not be loaded."
           onRetry={() => void refetch()}

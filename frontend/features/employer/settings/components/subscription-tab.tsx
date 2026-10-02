@@ -1,7 +1,7 @@
 "use client";
 
 import { useCancelEmployerSubscriptionMutation, useCheckoutEmployerSubscriptionMutation, useCreateEmployerMandateMutation, useGetEmployerPlansQuery, useGetEmployerSubscriptionQuery } from "@/store/employer/billing";
-import { ErrorState } from "@/components/ui";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import { Skeleton } from "@/components/common/loading";
 
 function SubscriptionTabSkeleton() {
@@ -96,7 +96,7 @@ export function SubscriptionTab() {
           </section>)}
         </div>
       )}
-      {(checkoutState.isError || cancelState.isError || mandateState.isError) && <ErrorState error={checkoutState.error || cancelState.error || mandateState.error} fallback="The billing request could not be completed." />}
+      {(checkoutState.isError || cancelState.isError || mandateState.isError) && <EmployerErrorState variant="inline" error={checkoutState.error || cancelState.error || mandateState.error} fallback="The billing request could not be completed." />}
     </div>
   );
 }

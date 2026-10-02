@@ -9,7 +9,7 @@ import {
   Skeleton,
 } from "@/components/common/loading";
 import { RecentActivityList } from "@/components/common/dashboard/recent-activity";
-import { ErrorState } from "@/components/ui";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 
 import { DashboardStats } from "./dashboard-stats";
 import { QuickActions } from "./quick-actions";
@@ -66,7 +66,7 @@ export function EmployerDashboard() {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       {isError ? (
-        <ErrorState
+        <EmployerErrorState
           fallback="Some dashboard data could not be loaded. Please try again."
           onRetry={refetch}
         />

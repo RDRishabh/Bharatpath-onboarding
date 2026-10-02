@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 
-import { ErrorState } from "@/components/ui";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import type { RevealedCandidateResponse } from "@/store/employer/candidates";
 
 import type { CandidateBand } from "./types";
@@ -150,7 +150,7 @@ export function CandidateDetailsDialog({
           {isLoading ? <CandidateProfileSkeleton /> : null}
 
           {!isLoading && error ? (
-            <ErrorState
+            <EmployerErrorState
               error={error}
               fallback="This candidate profile could not be opened."
               title="Unable to open profile"

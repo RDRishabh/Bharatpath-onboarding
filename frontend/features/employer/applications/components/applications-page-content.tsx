@@ -8,7 +8,7 @@ import {
   ApplicationDrawer,
   ApplicationsPipelineSkeleton,
 } from "@/features/employer/applications";
-import { ErrorState } from "@/components/ui";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import {
   usePageHeader,
   type Breadcrumb,
@@ -112,7 +112,7 @@ export function ApplicationsPageContent() {
         />
 
         {error ? (
-          <ErrorState
+          <EmployerErrorState
             error={error}
             fallback="Something went wrong with that action. Please try again."
             className="mt-3"

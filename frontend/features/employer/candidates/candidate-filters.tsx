@@ -10,7 +10,11 @@ import {
   useGetEmployerCandidateSkillSuggestionsQuery,
 } from "@/store/employer/candidates";
 import { Skeleton } from "@/components/common/loading";
-import { Dropdown, ErrorState } from "@/components/ui";
+import { Dropdown } from "@/components/ui";
+import {
+  EmployerErrorState,
+  isSubscriptionRequired,
+} from "@/features/employer/components/employer-error-state";
 
 import type { CandidateBand, CandidateFiltersState } from "./types";
 
@@ -203,8 +207,8 @@ export function CandidateFilters({
           ) : null}
         </div>
 
-        {panelError ? (
-          <ErrorState
+        {panelError && !isSubscriptionRequired(panelError) ? (
+          <EmployerErrorState
             error={panelError}
             fallback="Filter options could not be loaded."
             onRetry={() => void refetchPanel()}

@@ -4,7 +4,7 @@ import { useEffect, type ChangeEvent } from "react";
 import { Loader2 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { Skeleton } from "@/components/common/loading";
-import { ErrorState } from "@/components/ui";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import { AppSelect } from "@/components/ui/app-select";
 import {
   saveCompanyProfile,
@@ -146,7 +146,7 @@ export function CompanyTab() {
       </div>
 
       {isError && (
-        <ErrorState className="mb-3" fallback="Unable to load company details. Please try again." />
+        <EmployerErrorState className="mb-3" fallback="Unable to load company details. Please try again." />
       )}
 
       <Field label="Legal business name">

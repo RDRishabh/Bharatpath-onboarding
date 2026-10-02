@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { CursorPagination, ErrorState } from "@/components/ui";
+import { CursorPagination } from "@/components/ui";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import { usePageHeader } from "@/components/layout/header-context";
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -176,7 +177,7 @@ export function CandidatesPage() {
             ))}
 
             {!isCandidateListLoading && error && (
-              <ErrorState
+              <EmployerErrorState
                 error={error}
                 fallback="Candidates could not be loaded. Check your employer subscription and API connection."
               />
