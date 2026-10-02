@@ -39,6 +39,9 @@ READS_NO_CANDIDATE: dict[str, str] = {
     "view_counts": "counts the organisation's own view log to enforce its caps",
     "revealed_counts": "counts the organisation's own view log for its dashboard",
     "ensure_view_partitions": "creates view-log partitions; reads no rows",
+    # 2026-10-02: a candidate reading their own view log. The CTE decides what
+    # an employer may see; this answers only for `current_candidate_id()`.
+    "profile_views": "the bound candidate's own view log, through candidate_profile_views()",
     # 2026-09-24: the search filter catalogue -- skill and city names staff
     # curate, never drawn from candidates.
     "featured_filter_options": "reads the filter catalogue",

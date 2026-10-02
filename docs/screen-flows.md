@@ -178,7 +178,7 @@ Android, phone-first, low-end devices, slow networks.
 | Interview "Audio or video", camera and lighting checks | **Audio only.** Checks: microphone, audio output, network, storage, quiet room | Decided |
 | "One retake per question" | A retake is allowed **only before the answer is submitted**. Once `/complete` is called, the answer is final | A stored answer never changes |
 | "Your session waits 30 days", "deleted after 90 days", "report under 10 min" | Don't promise durations. The session stays open until finished. **Audio retention is undecided** (E22) and evaluation is stubbed | Open items |
-| Privacy "Who has seen me · unlocked your contact" | No unlocks exist. Employers can open any profile with an active subscription. **"Who viewed me" has no API yet** | R14 |
+| Privacy "Who has seen me · unlocked your contact" | No unlocks exist. Employers can open any profile with an active subscription. **"Who has seen me" is `GET /candidate/profile/views`**: organisation name and last viewed time, last 90 days. No recruiter name and no view count | R14 |
 | "Let employers find me" toggle | **Not built.** Leave it out | — |
 | Application detail: "Reschedule" | Not built. The candidate can **Withdraw**, and at a proposed hire, **Confirm hire** or **Dispute**. Both are missing from the mockup and must be added | Pipeline API |
 | Filters: distance in km; Full-time/Part-time/Internship | API filters: `q`, `location`, `work_mode` (ONSITE/HYBRID/REMOTE), `skill`, `min_salary_minor`, `eligible_only` | Job board API |
@@ -1287,7 +1287,7 @@ invent the API shape without checking with backend.
 | **Manual-form CVs never score** | S9 "Fill a form" | Blocker E6 |
 | **Google sign-in** | S4 | Not configured on the candidate pool |
 | **Employer self sign-up** | E1 "Create account" | Admin-only today (E7) |
-| **Activity feeds, invoice list, "who viewed me"** | Employer dashboard, invoices tab, student privacy | No API |
+| **Activity feeds, invoice list** | Employer dashboard, invoices tab | No API |
 | **Questionnaire answers reaching employers** | — | E21 |
 | **Abandoning an interview session** | S21 | No abandon; resume only (E20) |
 | **Refunds** | All checkouts | No refund flow (E18) |

@@ -517,6 +517,37 @@ once revealed (§9) — `full_name` in `RevealedCandidate` falls back to
 whatever was typed on the structured resume form for anyone who signed up
 before this endpoint existed, but this is what every new candidate sets.
 
+### `GET /candidate/profile/views` — who viewed my profile
+
+**Query:** `cursor` (from the previous page), `limit` (1–100, default 50).
+
+**Response** — `200 OK`, `Page[ProfileView]`:
+```json
+{
+  "items": [
+    { "employer_name": "Acme Logistics Pvt Ltd", "last_viewed_at": "2026-10-02T09:14:03.512Z" }
+  ],
+  "next_cursor": null,
+  "total": null
+}
+```
+One entry per organisation that opened the profile (§9) in the last 90 days,
+latest open first; an organisation opening again moves back to the top.
+Built from the same `candidate_view_events` row every reveal writes.
+
+- **The organisation, never the recruiter.** Which person looked is the
+  organisation's business, and a name would give a candidate someone to chase
+  off-platform. No count of opens either: re-opens are the audit trail, not a
+  measure of interest.
+- **No total**, and an empty list means nobody looked, not an error.
+- **Not paywalled**, like the rest of the profile. Employers get `403`.
+- A cursor that is not one of ours is `422 invalid_cursor`.
+
+It reads through `candidate_profile_views()` (migration 0009, SECURITY
+DEFINER), which answers only for the candidate bound to the transaction and
+takes no candidate id. The 90 days is frozen in that migration and held equal
+to `discovery.domain.PROFILE_VIEWS_LOOKBACK_DAYS` by a test.
+
 ---
 
 ## Quick reference: who can see what

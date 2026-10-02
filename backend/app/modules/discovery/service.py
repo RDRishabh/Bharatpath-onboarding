@@ -34,7 +34,7 @@ from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import AuditAction, audit_event
-from app.core.db import set_transaction_tenant
+from app.core.db import set_transaction_tenant, set_transaction_user
 from app.core.errors import (
     AppError,
     ConflictError,
@@ -92,6 +92,7 @@ from app.modules.discovery.schemas import (
     FilterLimits,
     FilterPanel,
     MaskedCandidate,
+    ProfileView,
     SkillChoice,
     SkillSuggestions,
     StateChoice,
@@ -480,6 +481,63 @@ async def _flag_anomaly(
         payload={"tenant_id": str(tenant_id), "actor_id": str(ctx.user_id), "kind": kind, **detail},
     )
     logger.warning("candidate_view_anomaly_flagged", tenant_id=str(tenant_id), kind=kind)
+
+
+# ---------------------------------------------------------------------------
+# Who viewed my profile (2026-10-02)
+# ---------------------------------------------------------------------------
+def _views_after(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
+    if cursor is None:
+        return None
+    payload = decode_cursor(cursor)
+    try:
+        viewed_at = datetime.fromisoformat(str(payload["t"]))
+        if viewed_at.tzinfo is None:
+            raise ValueError("naive")
+        return viewed_at, uuid.UUID(str(payload["o"]))
+    except (KeyError, ValueError) as exc:
+        raise ValidationError(code="invalid_cursor") from exc
+
+
+async def profile_views(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    cursor: str | None = None,
+    limit: int | None = None,
+) -> Page[ProfileView]:
+    """Which organisations opened this candidate's profile, latest open first.
+
+    The candidate's side of the view log the reveal writes. One entry per
+    organisation, within `PROFILE_VIEWS_LOOKBACK_DAYS`: its name and when it
+    last looked. Never the recruiter, never a count of opens.
+
+    **Not paywalled**, like the rest of the profile: it is the candidate's own
+    data. **No total**: the list is short and paging it is cheap, and a count
+    of organisations is a number the screen does not need.
+
+    `app.user_id` is bound here, because the function reads
+    `current_candidate_id()` and nothing else -- forget it and the list comes
+    back empty, which looks exactly like nobody having looked.
+    """
+    if ctx.tenant_id is not None or ctx.role != "CANDIDATE":
+        raise PermissionDeniedError()
+    await set_transaction_user(session, ctx.user_id)
+    page_size = clamp_limit(limit)
+    rows = await repository.profile_views(session, after=_views_after(cursor), limit=page_size + 1)
+    page, more = rows[:page_size], len(rows) > page_size
+    last = page[-1] if more and page else None
+    return Page[ProfileView](
+        items=[
+            ProfileView(employer_name=row.employer_name, last_viewed_at=row.last_viewed_at)
+            for row in page
+        ],
+        next_cursor=(
+            encode_cursor({"t": last.last_viewed_at.isoformat(), "o": str(last.tenant_id)})
+            if last is not None
+            else None
+        ),
+    )
 
 
 async def ensure_view_partitions(session: AsyncSession, *, now: datetime) -> int:
