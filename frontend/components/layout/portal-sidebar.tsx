@@ -27,7 +27,7 @@ import {
   clearUser,
 } from "@/store/common/slices/auth.slice";
 
-import { clearStoredToken } from "@/lib/auth/token";
+import { authService } from "@/features/auth/services/auth.service";
 import {
   identityInitials,
   roleLabel,

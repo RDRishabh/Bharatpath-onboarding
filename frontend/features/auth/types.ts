@@ -18,6 +18,9 @@ export interface AuthUser {
 
 export interface LoginRequest {
   email: string;
+  password?: string;
+  pool?: "CANDIDATE" | "BUSINESS";
+  token?: string;
 }
 
 export interface LoginResponse {

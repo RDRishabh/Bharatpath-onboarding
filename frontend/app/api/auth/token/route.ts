@@ -13,30 +13,46 @@ const UPSTREAM_HEADERS = {
   "content-type": "application/json",
 };
 
+function extractEmailFromJwt(token: string): string {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return "";
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonStr = Buffer.from(base64, "base64").toString("utf-8");
+    const claims = JSON.parse(jsonStr) as Record<string, unknown>;
+    return (
+      (claims.email as string) ||
+      (claims.username as string) ||
+      (claims["cognito:username"] as string) ||
+      ""
+    );
+  } catch {
+    return "";
+  }
+}
+
 export async function POST(request: Request) {
   let email = "";
+  let token = "";
+  let pool = "CANDIDATE";
 
   try {
     const body: unknown = await request.json();
 
-    if (
-      body &&
-      typeof body === "object" &&
-      "email" in body &&
-      typeof body.email === "string"
-    ) {
-      email = body.email.trim();
+    if (body && typeof body === "object") {
+      if ("email" in body && typeof body.email === "string") {
+        email = body.email.trim();
+      }
+      if ("token" in body && typeof body.token === "string") {
+        token = body.token.trim();
+      }
+      if ("pool" in body && typeof body.pool === "string") {
+        pool = body.pool.trim();
+      }
     }
   } catch {
     return NextResponse.json(
       { detail: "Invalid request body." },
-      { status: 400 },
-    );
-  }
-
-  if (!email) {
-    return NextResponse.json(
-      { detail: "Email is required." },
       { status: 400 },
     );
   }
@@ -58,83 +74,82 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  let account;
+  let accessToken = token;
 
-  try {
-    account = await loadAccount(email);
-  } catch (error) {
-    console.error("Could not read the account directory.", error);
+  // If no direct Cognito token provided, attempt the local-dev token endpoint
+  if (!accessToken) {
+    if (!email) {
+      return NextResponse.json(
+        { detail: "Email or authentication token is required." },
+        { status: 400 },
+      );
+    }
 
-    return NextResponse.json(
-      { detail: "The account directory is unavailable on this server." },
-      { status: 500 },
-    );
+    let account;
+    try {
+      account = await loadAccount(email);
+    } catch (error) {
+      console.error("Could not read account directory.", error);
+    }
+
+    if (!account) {
+      return NextResponse.json(
+        {
+          detail:
+            "No account found for that email. Please sign in with your password or register.",
+        },
+        { status: 401 },
+      );
+    }
+
+    try {
+      const tokenResponse = await fetch(`${base}/auth/dev/token`, {
+        method: "POST",
+        cache: "no-store",
+        headers: UPSTREAM_HEADERS,
+        body: JSON.stringify({
+          subject: account.subject,
+          pool: account.pool,
+          email: account.email,
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        return NextResponse.json(
+          {
+            detail:
+              "Local token minting disabled. Please sign in with your Cognito password.",
+          },
+          { status: tokenResponse.status === 404 ? 503 : 502 },
+        );
+      }
+
+      const tokenBody = (await tokenResponse.json()) as {
+        access_token?: string;
+      };
+      accessToken = tokenBody.access_token ?? "";
+    } catch (error) {
+      console.error("Token endpoint unreachable.", error);
+      return NextResponse.json(
+        { detail: "Authentication service unavailable. Please try again." },
+        { status: 502 },
+      );
+    }
   }
-
-  if (!account) {
-    return NextResponse.json(
-      { detail: "No account found for that email. Signed up on this site? Continue from the sign-up page with the same email." },
-      { status: 401 },
-    );
-  }
-
-  // 1. Mint a real RS256 token for this account's subject and pool.
-  let tokenResponse: Response;
-
-  try {
-    tokenResponse = await fetch(`${base}/auth/dev/token`, {
-      method: "POST",
-      cache: "no-store",
-      headers: UPSTREAM_HEADERS,
-      body: JSON.stringify({
-        subject: account.subject,
-        pool: account.pool,
-        email: account.email,
-      }),
-    });
-  } catch (error) {
-    console.error("Token endpoint unreachable.", error);
-
-    return NextResponse.json(
-      { detail: "The authentication service is unavailable. Please try again." },
-      { status: 502 },
-    );
-  }
-
-  if (tokenResponse.status === 404) {
-    return NextResponse.json(
-      {
-        detail:
-          "Token sign-in is disabled on the backend. Set AUTH_ALLOW_LOCAL_TOKENS=true and restart it.",
-      },
-      { status: 503 },
-    );
-  }
-
-  if (!tokenResponse.ok) {
-    return NextResponse.json(
-      { detail: "Could not sign you in. Please try again." },
-      { status: 502 },
-    );
-  }
-
-  const tokenBody: unknown = await tokenResponse.json();
-  const accessToken =
-    tokenBody &&
-    typeof tokenBody === "object" &&
-    "access_token" in tokenBody &&
-    typeof tokenBody.access_token === "string"
-      ? tokenBody.access_token
-      : "";
 
   if (!accessToken) {
     return NextResponse.json(
-      { detail: "The authentication service returned an invalid token." },
-      { status: 502 },
+      { detail: "Missing authentication token." },
+      { status: 400 },
     );
   }
 
-  // 2. Resolve the authoritative identity for that token.
+  // Fallback email from JWT claims if not explicitly passed
+  if (!email) {
+    email = extractEmailFromJwt(accessToken);
+  }
+
+  // Resolve authoritative identity from backend
   let meResponse: Response;
 
   try {
@@ -155,12 +170,34 @@ export async function POST(request: Request) {
   }
 
   if (!meResponse.ok) {
-    const detail =
-      meResponse.status === 403
-        ? "This account has no active membership yet."
-        : "Could not confirm your account. Please try again.";
+    if (meResponse.status === 403) {
+      // Business account with no organisation yet: allow them in to complete setup
+      const isBusiness = pool === "BUSINESS";
+      const fallbackPortal = isBusiness ? "employer" : "student";
+      const fallbackPath = isBusiness ? "/employer/settings" : "/student";
 
-    return NextResponse.json({ detail }, { status: meResponse.status });
+      const response = NextResponse.json({
+        user: {
+          id: "",
+          email,
+          name: email,
+          role: isBusiness ? "EMPLOYER" : "STUDENT",
+        },
+        portal: fallbackPortal,
+        path: fallbackPath,
+        backendRole: "NO_ACTIVE_MEMBERSHIP",
+        needsOrganisation: isBusiness,
+        token: accessToken,
+      });
+
+      response.cookies.set(SESSION_COOKIE, accessToken, sessionCookieOptions());
+      return response;
+    }
+
+    return NextResponse.json(
+      { detail: "Could not confirm your account with the server." },
+      { status: meResponse.status },
+    );
   }
 
   const me = (await meResponse.json()) as {
@@ -169,14 +206,14 @@ export async function POST(request: Request) {
     tenant_id?: string | null;
   };
 
-  const role = typeof me.role === "string" ? me.role : account.role;
+  const role = typeof me.role === "string" ? me.role : "CANDIDATE";
   const mapping = portalForRole(role);
 
   const response = NextResponse.json({
     user: {
-      id: me.user_id ?? account.subject,
-      email: account.email,
-      name: account.email,
+      id: me.user_id ?? "",
+      email: email,
+      name: email,
       role: mapping.authRole,
       tenantId: me.tenant_id ?? undefined,
     },
