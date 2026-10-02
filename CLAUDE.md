@@ -243,6 +243,12 @@ path is a requirement, not an optimisation. `resume_textract_fallback_enabled`
 turns it off; scanned CVs then fail loudly rather than scoring as empty.
 Textract runs in `ap-south-1`, so text stays in India while **N2** is open.
 
+**A document longer than a CV is refused, not truncated** (2026-10-02):
+over `MAX_PAGES` (10) pages or `MAX_TEXT_CHARS` (30,000) characters it fails
+`resume_too_long`, before any model call and never through Textract, whose
+page cap is held equal. It used to be cut to 40 pages and scored, so a book
+reached employers as a 700.
+
 Every extraction records `parser` and `parser_version`. This is not
 bookkeeping: invariant 1 requires a score to be replayable from the stored
 extraction chain, and a different parser produces different text and therefore

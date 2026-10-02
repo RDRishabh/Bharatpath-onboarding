@@ -24,6 +24,8 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from app.core.logging import get_logger
 from app.modules.resume.parser import (
+    MAX_TEXT_CHARS,
+    DocumentTooLongError,
     ExtractedDocument,
     UnreadableDocumentError,
     UnsupportedDocumentError,
@@ -121,8 +123,13 @@ class TextractResumeParser:
             )
             logger.warning("textract_unavailable", error_code=code, bucket=bucket, key=key)
             raise TextractUnavailableError(params={"reason": code}) from exc
+        text = "\n".join(pages).strip()
+        if len(text) > MAX_TEXT_CHARS:
+            raise DocumentTooLongError(
+                params={"max_pages": self._settings.resume_textract_max_pages}
+            )
         return ExtractedDocument(
-            text="\n".join(pages).strip(),
+            text=text,
             page_count=page_count,
             parser=self.name,
             parser_version=self.version,
@@ -160,8 +167,11 @@ class TextractResumeParser:
             if page_count > self._settings.resume_textract_max_pages:
                 # Billing is per page, so an unbounded document is an
                 # unbounded bill. Stop rather than finish and be surprised.
+                # The candidate gets the same answer as from the local parser.
                 logger.warning("textract_too_many_pages", job_id=job_id, pages=page_count)
-                raise TextractUnavailableError(params={"reason": "too_many_pages"})
+                raise DocumentTooLongError(
+                    params={"max_pages": self._settings.resume_textract_max_pages}
+                )
 
             lines.extend(
                 block["Text"]
