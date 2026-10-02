@@ -42,10 +42,11 @@ let pending: Promise<boolean> | null = null;
 
 /**
  * The signed-in person. Sign-in stores them in the auth slice; after a page
- * reload the slice is empty, so it is filled once from `/api/auth/me`, which
- * resolves the identity from the session cookie rather than from anything
- * the browser remembered. `isResolving` is false once there is an answer
- * either way, so callers never wait on a session that cannot be read.
+ * reload the slice is empty, so it is filled once from the backend's
+ * `/auth/me`, resolved from the bearer token kept in localStorage rather
+ * than from anything the browser remembered. `isResolving` is false once
+ * there is an answer either way, so callers never wait on a session that
+ * cannot be read.
  */
 export function useSessionIdentity(): {
   user: AuthUser | null;

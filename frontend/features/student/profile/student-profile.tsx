@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Bell,
   BookOpen,
+  Building2,
   CircleUser,
   Eye,
   GraduationCap,
@@ -17,6 +18,7 @@ import {
   useGetStudentCollegeLinksQuery,
   useGetStudentCoursesQuery,
   useGetStudentProfileQuery,
+  useGetStudentProfileViewsQuery,
   useGetStudentScoreQuery,
   useUpdateStudentLocationMutation,
   useUpdateStudentNameMutation,
@@ -27,7 +29,7 @@ import {
 } from "@/store/api/notification-api";
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
-import { initials } from "@/features/student/formatters";
+import { initials, formatDateTime } from "@/features/student/formatters";
 import type { StudentProfile as StudentProfileData } from "@/features/student/types";
 import {
   interactiveCardClass,
@@ -36,6 +38,7 @@ import {
   SectionEyebrow,
   StudentCard,
 } from "@/features/student/components";
+import { Skeleton } from "@/components/common/loading";
 import { StudentProfileSkeleton } from "@/features/student/loading";
 import { StudentPage } from "@/features/student/shell";
 
@@ -147,6 +150,8 @@ export function StudentProfile() {
                 </span>
               </div>
             </StudentCard>
+
+            <ProfileViewsCard />
           </div>
 
           <div className="flex flex-col gap-2">
@@ -204,6 +209,86 @@ export function StudentProfile() {
         </div>
       </div>
     </StudentPage>
+  );
+}
+
+/**
+ * `GET /candidate/profile/views`: the organisations that opened this profile
+ * in the last 90 days, latest first. The organisation only — never the
+ * recruiter in it, and never a count of opens, which is what the API itself
+ * is limited to.
+ */
+function ProfileViewsCard() {
+  const views = useGetStudentProfileViewsQuery({ limit: 10 });
+
+  return (
+    <StudentCard className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <Building2 size={20} className="text-[#5F4DB2]" />
+        <span className="flex flex-1 flex-col">
+          <span className="text-[15px] font-medium text-[#0A1931]">
+            Profile views
+          </span>
+          <span className="text-[12px] text-[#5F6B80]">
+            {views.isLoading
+              ? "Loading…"
+              : views.isError
+                ? "Could not load who viewed your profile"
+                : "Organisations that opened your profile"}
+          </span>
+        </span>
+      </div>
+
+      {views.isLoading ? (
+        <div className="flex flex-col gap-2" aria-label="Loading profile views">
+          {[0, 1, 2].map((row) => (
+            <Skeleton key={row} width="100%" height={14} radius={6} />
+          ))}
+        </div>
+      ) : views.isError ? (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[12px] text-[#5F6B80]">
+            {getApiErrorMessage(
+              views.error,
+              "We could not load your profile views.",
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => void views.refetch()}
+            className="shrink-0 rounded-full border border-[#DDD6C7] px-3 py-1.5 text-[12px] font-semibold text-[#0A1931] hover:bg-[#F7F4EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30"
+          >
+            Try again
+          </button>
+        </div>
+      ) : views.data?.items.length ? (
+        <>
+          <ul className="flex flex-col divide-y divide-[#F0EBDF]">
+            {views.data.items.map((view) => (
+              <li
+                key={`${view.employerName}-${view.lastViewedAt}`}
+                className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+              >
+                <span className="min-w-0 truncate text-[13px] font-medium text-[#0A1931]">
+                  {view.employerName}
+                </span>
+                <span className="shrink-0 text-[11px] text-[#5F6B80]">
+                  {formatDateTime(view.lastViewedAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] leading-4 text-[#5F6B80]">
+            Last 90 days, most recent first. Which organisation looked — never
+            which person, and never how many times.
+          </p>
+        </>
+      ) : (
+        <p className="text-[12px] leading-5 text-[#5F6B80]">
+          No organisation has opened your profile in the last 90 days.
+        </p>
+      )}
+    </StudentCard>
   );
 }
 

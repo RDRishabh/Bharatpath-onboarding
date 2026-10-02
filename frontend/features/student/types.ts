@@ -28,6 +28,16 @@ export interface StudentProfile {
   updatedAt: string | null;
 }
 
+/**
+ * One organisation that opened this profile (`GET /candidate/profile/views`).
+ * The organisation, never the recruiter in it, and no count of opens —
+ * the API holds the field list to those two values, so neither belongs here.
+ */
+export interface ProfileView {
+  employerName: string;
+  lastViewedAt: string;
+}
+
 export type StreakStatus =
   | "NONE"
   | "ACTIVE_TODAY"
@@ -66,6 +76,35 @@ export interface StudentStreakCheckIn {
   counted: boolean;
   streak: StudentStreak;
   changes: StreakPointsChange[];
+}
+
+/**
+ * `GET /candidate/streak/me/calendar`: which days the app was opened. Opened
+ * or not — the API never returns a count of opens per day, so neither does
+ * this.
+ */
+export type StreakCalendarDayStatus =
+  | "ACTIVE"
+  | "MISSED"
+  | "TODAY_PENDING"
+  | "UPCOMING"
+  | "BEFORE_START"
+  | "NOT_RETAINED";
+
+export interface StreakCalendarDay {
+  date: string;
+  status: StreakCalendarDayStatus;
+  milestoneDays: number | null;
+}
+
+export interface StreakCalendar {
+  start: string;
+  end: string;
+  today: string;
+  days: StreakCalendarDay[];
+  activeDays: number;
+  missedDays: number;
+  longestRun: number;
 }
 
 export type JobEligibility =

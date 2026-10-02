@@ -7,7 +7,7 @@ import { getStoredToken } from "@/lib/auth/token";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:8099/api/v1";
+  "https://bharatpath-api.duckdns.org/api/v1";
 
 function serializeParams(params: Record<string, unknown>) {
   const searchParams = new URLSearchParams();

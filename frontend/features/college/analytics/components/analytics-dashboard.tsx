@@ -15,7 +15,7 @@ import {
 } from "@/components/ui";
 
 import { useAnalytics } from "../hooks/use-analytics";
-import { CollegeAnalyticsView } from "../types";
+import { CollegeAnalyticsView, FunnelCount } from "../types";
 import { AnalyticsSkeleton } from "./analytics-skeleton";
 import { PlacementsByLocationTable } from "./outcomes-table";
 
@@ -101,6 +101,35 @@ export function AnalyticsDashboard() {
         ))}
       </div>
 
+      <Panel
+        title="Where applications stand"
+        meta={
+          data.totalApplications != null
+            ? `${data.totalApplications} applications`
+            : undefined
+        }
+        footer="Counted over students who have consented to share, as they stand now. A figure shown as — is withheld to protect individual privacy."
+      >
+        {data.funnelBelowFloor ? (
+          <FunnelBelowFloorNote />
+        ) : (
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div className="flex flex-col gap-3">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-(--ink-muted)">
+                Current stage
+              </p>
+              <ProgressList items={funnelProgress(data.funnelStages)} />
+            </div>
+            <div className="flex flex-col gap-3">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-(--ink-muted)">
+                Ever reached
+              </p>
+              <ProgressList items={funnelProgress(data.funnelMilestones)} />
+            </div>
+          </div>
+        )}
+      </Panel>
+
       <div
         id="hires"
         className="grid scroll-mt-4 items-stretch gap-4 lg:grid-cols-[1.55fr_1fr]"
@@ -143,6 +172,32 @@ export function AnalyticsDashboard() {
 
       <PlacementsByLocationTable placements={data.placementsByLocation} />
     </div>
+  );
+}
+
+/**
+ * Bars are drawn relative to the largest count in their own column; the
+ * number itself is what is displayed. A withheld cell (`null`) is a zero
+ * width bar and an em dash — never a zero, which would add back up to the
+ * total the floors withhold.
+ */
+function funnelProgress(rows: FunnelCount[]) {
+  const max = Math.max(1, ...rows.map((row) => row.value ?? 0));
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    value: row.value == null ? 0 : Math.round((row.value / max) * 100),
+    display: row.value == null ? "—" : String(row.value),
+    tone: "info" as const,
+  }));
+}
+
+function FunnelBelowFloorNote() {
+  return (
+    <p className="rounded-lg bg-[#f5f6f8] p-4 text-xs text-[#697386]">
+      Application figures are withheld until more students consent to share,
+      to protect individual privacy.
+    </p>
   );
 }
 
