@@ -126,7 +126,7 @@ variable "instance_type" {
 }
 
 variable "data_volume_size_gb" {
-  description = "Postgres's data directory. Separate from the root volume so replacing the instance does not destroy the database."
+  description = "Postgres's data directory (or, with `deploy_rds`, only Redis, beat's state and Caddy's certificates -- a few GB is plenty). Separate from the root volume so replacing the instance does not destroy it."
   type        = number
   default     = 20
 }
@@ -165,4 +165,82 @@ variable "api_domain" {
   DESC
   type        = string
   default     = ""
+}
+
+variable "primary_availability_zone" {
+  description = "The one zone the host and the database share (network.tf says why one)."
+  type        = string
+  default     = "ap-south-1a"
+}
+
+# ---------------------------------------------------------------------------
+# Managed Postgres (2026-10-01) -- see rds.tf
+# ---------------------------------------------------------------------------
+variable "deploy_rds" {
+  description = <<-DESC
+    Run Postgres on RDS instead of in a container on the host. The reason is
+    backups: RDS takes a daily snapshot and keeps the write-ahead log, so the
+    database can be restored to any second in the retention window. The
+    container on EBS has neither.
+
+    Unlike `deploy_ec2`, switching this off does NOT quietly stop a bill:
+    the instance has deletion protection and `prevent_destroy`, so the plan
+    refuses. Deleting the database is a deliberate, two-step act.
+  DESC
+  type        = bool
+  default     = false
+}
+
+variable "rds_instance_class" {
+  description = "db.t4g.micro: 2 vCPU (burstable), 1 GiB, ~$15/month in ap-south-1. Graviton is fine here -- nothing we build runs on it."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "rds_allocated_storage_gb" {
+  description = "Starting size. Storage autoscaling grows it up to `rds_max_allocated_storage_gb` rather than letting a full disk stop the database."
+  type        = number
+  default     = 20
+}
+
+variable "rds_max_allocated_storage_gb" {
+  type    = number
+  default = 50
+}
+
+variable "rds_backup_retention_days" {
+  description = "Days of automated snapshots and point-in-time recovery. Backup storage up to the size of the database is free. **AWS's Free plan allows at most 1** (FreeTierRestrictionError); raise it to 7 once the account is on the Paid plan."
+  type        = number
+  default     = 7
+}
+
+# ---------------------------------------------------------------------------
+# Spend alerts (2026-10-01) -- see budgets.tf
+# ---------------------------------------------------------------------------
+variable "budget_alert_email" {
+  description = "Who hears about spend. Empty: no budget is created."
+  type        = string
+  default     = ""
+}
+
+variable "budget_monthly_usd" {
+  description = "The month's expected spend. Alerts fire at a third, two thirds and all of it, and when the forecast passes it."
+  type        = number
+  default     = 45
+}
+
+variable "cognito_email_via_ses" {
+  description = <<-DESC
+    Send Cognito's own email (sign-up codes, password resets, invitations)
+    through the SES identity above instead of Cognito's built-in sender.
+
+    **Leave false until SES has production access** (2026-10-01). A new SES
+    account is in the sandbox and delivers only to verified addresses, so
+    turning this on there means nobody but us receives a sign-up code --
+    while Cognito's built-in sender reaches anyone, about 50 a day. Separate
+    from `email_sender_address` so the app's notifications can use SES before
+    sign-up does.
+  DESC
+  type        = bool
+  default     = false
 }

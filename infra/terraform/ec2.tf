@@ -41,26 +41,7 @@ locals {
   deploy = var.deploy_ec2 ? 1 : 0
 }
 
-# ---------------------------------------------------------------------------
-# Where it lives: the default VPC, on purpose
-# ---------------------------------------------------------------------------
-# A VPC of our own is the right answer for production and pure overhead here:
-# it would need subnets, a route table, an internet gateway and -- the moment
-# anything moves to a private subnet -- a NAT gateway at about $32/month to
-# solve a problem this deployment does not have.
-data "aws_vpc" "default" {
-  count   = local.deploy
-  default = true
-}
-
-data "aws_subnets" "default" {
-  count = local.deploy
-
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default[0].id]
-  }
-}
+# Network: the default VPC, looked up in network.tf.
 
 # Amazon Linux 2023, x86_64. **Not ARM**, deliberately: `backend/Dockerfile`
 # is built by whatever machine runs it, and an image built on an x86 laptop or
@@ -84,7 +65,7 @@ resource "aws_security_group" "app" {
   count       = local.deploy
   name        = "${var.project}-app-${var.environment}"
   description = "BharatPath test host: HTTP/HTTPS from anywhere, SSH from the admin CIDR."
-  vpc_id      = data.aws_vpc.default[0].id
+  vpc_id      = data.aws_vpc.default.id
 
   # **Postgres (5432) and Redis (6379) are absent and must stay absent.**
   # They are containers on this host reached over the compose network. A rule
@@ -196,7 +177,7 @@ resource "aws_instance" "app" {
 
   ami                    = data.aws_ami.al2023[0].id
   instance_type          = var.instance_type
-  subnet_id              = data.aws_subnets.default[0].ids[0]
+  subnet_id              = data.aws_subnet.primary.id
   vpc_security_group_ids = [aws_security_group.app[0].id]
   iam_instance_profile   = aws_iam_instance_profile.instance[0].name
   key_name               = var.ssh_public_key != "" ? aws_key_pair.admin[0].key_name : null
@@ -208,6 +189,14 @@ resource "aws_instance" "app" {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
     http_put_response_hop_limit = 2 # containers are one hop further out
+  }
+
+  # `standard`, not the t3 default of `unlimited`. Unlimited bills for every
+  # minute spent above the baseline once banked credits are gone, so a
+  # runaway worker becomes a line on the invoice; standard throttles it to
+  # the baseline instead. On a credit budget, slow is the better failure.
+  credit_specification {
+    cpu_credits = "standard"
   }
 
   root_block_device {
@@ -226,7 +215,12 @@ resource "aws_instance" "app" {
   lifecycle {
     # The AMI moves every few weeks and Terraform would otherwise offer to
     # replace a running host to pick it up. Replace it deliberately.
-    ignore_changes = [ami]
+    #
+    # user_data runs on first boot only, so an edit does nothing to a running
+    # host -- except that applying it makes AWS stop and start the instance,
+    # which is downtime for no effect. Make the same change on the live host
+    # by hand; a rebuilt host picks up the file (2026-10-01).
+    ignore_changes = [ami, user_data]
   }
 }
 

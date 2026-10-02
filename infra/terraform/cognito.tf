@@ -65,6 +65,11 @@ resource "aws_cognito_user_pool" "candidates" {
     invite_message_template {
       email_subject = "Your BharatPath account is ready"
       email_message = "An account has been created for you on BharatPath.<br><br>Sign in with<br>Email: {username}<br>Temporary password: {####}<br><br>You will be asked to choose your own password. This temporary password expires in 7 days; if it has, ask us to send a new one."
+      # Never sent -- the pool has no SMS configuration (no SMS since
+      # 2026-09-18). It must still be set: left out, the provider sends "",
+      # and CreateUserPool refuses anything under 6 characters, so a fresh
+      # account cannot create the pool at all (found 2026-10-01).
+      sms_message = "BharatPath: user {username}, temporary password {####}"
     }
   }
 
@@ -77,8 +82,11 @@ resource "aws_cognito_user_pool" "candidates" {
 
   # Through SES once the client's domain is verified (ses.tf); Cognito's own
   # sender until then, which is capped at about 50 emails a day.
+  # Only with `cognito_email_via_ses` (2026-10-01) -- see variables.tf. A
+  # sandboxed SES delivers only to verified addresses, so switching Cognito
+  # to it before production access stops every sign-up code but our own.
   dynamic "email_configuration" {
-    for_each = local.email_enabled ? [1] : []
+    for_each = local.email_enabled && var.cognito_email_via_ses ? [1] : []
     content {
       email_sending_account = "DEVELOPER"
       source_arn            = local.email_identity_arn
@@ -176,6 +184,11 @@ resource "aws_cognito_user_pool" "business" {
     invite_message_template {
       email_subject = "Your BharatPath account is ready"
       email_message = "An account has been created for you on BharatPath.<br><br>Sign in with<br>Email: {username}<br>Temporary password: {####}<br><br>You will be asked to choose your own password. This temporary password expires in 7 days; if it has, ask us to send a new one."
+      # Never sent -- the pool has no SMS configuration (no SMS since
+      # 2026-09-18). It must still be set: left out, the provider sends "",
+      # and CreateUserPool refuses anything under 6 characters, so a fresh
+      # account cannot create the pool at all (found 2026-10-01).
+      sms_message = "BharatPath: user {username}, temporary password {####}"
     }
   }
 
@@ -188,8 +201,11 @@ resource "aws_cognito_user_pool" "business" {
 
   # Through SES once the client's domain is verified (ses.tf); Cognito's own
   # sender until then, which is capped at about 50 emails a day.
+  # Only with `cognito_email_via_ses` (2026-10-01) -- see variables.tf. A
+  # sandboxed SES delivers only to verified addresses, so switching Cognito
+  # to it before production access stops every sign-up code but our own.
   dynamic "email_configuration" {
-    for_each = local.email_enabled ? [1] : []
+    for_each = local.email_enabled && var.cognito_email_via_ses ? [1] : []
     content {
       email_sending_account = "DEVELOPER"
       source_arn            = local.email_identity_arn

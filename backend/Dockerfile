@@ -3,15 +3,29 @@
 # workers can never drift on model definitions.
 
 FROM python:3.12-slim AS base
+# PYTHONPATH: `pip install .` runs before `app/` is copied, so the package is
+# importable only from the working directory -- which `uvicorn` and
+# `python -m alembic` add to sys.path and `python scripts/x.py` does not
+# (it adds `scripts/`). Without this, `seed_config.py` and
+# `create_platform_staff.py` die with "No module named 'app'" (2026-10-01).
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/srv
 
 WORKDIR /srv
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends build-essential libpq5 curl \
  && rm -rf /var/lib/apt/lists/*
+
+# Amazon's RDS CA bundle. RDS forces TLS and its certificates chain to this,
+# not to anything in the system store, so `connect_args_for` verifies
+# against it. Unused by any other database host.
+RUN mkdir -p /srv/certs \
+ && curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+      -o /srv/certs/rds-global-bundle.pem
+ENV DATABASE_SSL_ROOT_CERT=/srv/certs/rds-global-bundle.pem
 
 COPY pyproject.toml ./
 RUN pip install --upgrade pip && pip install .

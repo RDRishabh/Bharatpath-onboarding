@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # Nothing would fail; tenant isolation would just quietly not be there.
     database_url_migrator: PostgresDsn | None = None
 
+    # The CA bundle an RDS server certificate is verified against. RDS forces
+    # TLS (`rds.force_ssl` is on by default from PostgreSQL 15) and signs with
+    # its own CA, which is in no system trust store. The image sets this to the
+    # bundle it downloads (`backend/Dockerfile`); read by `connect_args_for`.
+    database_ssl_root_cert: str | None = None
+
     # -- redis -------------------------------------------------------------
     redis_url: RedisDsn
     membership_cache_ttl_seconds: int = 60
