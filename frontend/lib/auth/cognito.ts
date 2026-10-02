@@ -6,6 +6,7 @@ import {
   resendSignUpCode,
   signIn,
   signOut,
+  signUp,
 } from "aws-amplify/auth";
 
 export type CognitoPoolType = "CANDIDATE" | "BUSINESS";
@@ -105,6 +106,10 @@ export function formatCognitoError(error: unknown): string {
       return "No account found with this email in the selected pool. Please check your account type or sign up.";
     case "NotAuthorizedException":
       return "Incorrect email or password. Please verify your credentials.";
+    case "UsernameExistsException":
+      return "An account with this email already exists. Sign in instead.";
+    case "InvalidPasswordException":
+      return msg || "Password does not meet the requirements.";
     case "UserNotConfirmedException":
       return "Your account email is not yet confirmed. Please verify your code.";
     case "PasswordResetRequiredException":
@@ -252,6 +257,21 @@ export async function verifyTotpSetupCognito(
   throw new Error(
     `Unsupported step after TOTP setup: ${response.nextStep.signInStep}`,
   );
+}
+
+export async function signUpWithCognito({
+  email,
+  password,
+  pool,
+}: CognitoSignInParams): Promise<void> {
+  configureAmplify(pool);
+
+  const trimmedEmail = email.trim();
+  await signUp({
+    username: trimmedEmail,
+    password,
+    options: { userAttributes: { email: trimmedEmail } },
+  });
 }
 
 export async function confirmSignUpCognito(

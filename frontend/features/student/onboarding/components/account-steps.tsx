@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Mail, MapPin, User } from "lucide-react";
+import { KeyRound, Lock, Mail, MapPin, User } from "lucide-react";
 
 import { AppSelect } from "@/components/ui/app-select";
 import { getApiErrorMessage } from "@/lib/api/error-message";
-import { ApiError } from "@/lib/api/errors";
 import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
-import { authService } from "@/features/auth/services/auth.service";
+import {
+  passwordError,
+  useSignupFlow,
+} from "@/features/auth/hooks/use-signup-flow";
 import type { SignupResponse } from "@/features/auth/types";
 import {
   useUpdateStudentLocationMutation,
@@ -29,7 +31,8 @@ import {
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /* -------------------------------------------------------------------------
- * 13 Create account - by email (the client has deferred phone OTP and SMS).
+ * 13 Create account - email and password, confirmed by a code emailed by
+ * Cognito (the client has deferred phone OTP and SMS).
  * ---------------------------------------------------------------------- */
 interface AccountStepProps {
   onBack: () => void;
@@ -38,65 +41,114 @@ interface AccountStepProps {
 
 export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) {
   const [email, setEmail] = useState("");
-  const [fieldError, setFieldError] = useState<string>();
-  const [serverError, setServerError] = useState<string | null>(null);
-  const [existing, setExisting] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const flow = useSignupFlow("CANDIDATE", async (session, signedUpEmail) => {
+    showSuccessFeedback("Your account is ready.");
+    await onSignedUp(session, signedUpEmail);
+  });
+
+  const submitDetails = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setServerError(null);
-    setExisting(false);
 
-    const value = email.trim();
-    if (!EMAIL_PATTERN.test(value)) {
-      setFieldError("Enter a valid email address.");
-      return;
-    }
+    const next = {
+      email: EMAIL_PATTERN.test(email.trim()) ? undefined : "Enter a valid email address.",
+      password: passwordError(password),
+    };
+    setErrors(next);
+    if (next.email || next.password) return;
 
-    setSubmitting(true);
-    try {
-      const result = await authService.signupCandidate(value);
-      showSuccessFeedback("Your account is ready.");
-      await onSignedUp(result, value);
-    } catch (error) {
-      setExisting(error instanceof ApiError && error.status === 409);
-      setServerError(
-        error instanceof Error
-          ? error.message
-          : "Could not create your account. Please try again.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    void flow.register(email.trim(), password);
   };
 
+  const submitCode = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void flow.confirm(code.trim());
+  };
+
+  const errorNote = flow.error ? (
+    <ErrorNote
+      action={
+        flow.existingAccount ? (
+          <Link
+            href={`/login?email=${encodeURIComponent(email.trim())}`}
+            className="w-fit font-semibold text-[#0A1931] underline underline-offset-2 transition-colors hover:text-[#5F4DB2]"
+          >
+            Sign in instead
+          </Link>
+        ) : null
+      }
+    >
+      {flow.error}
+    </ErrorNote>
+  ) : null;
+
+  if (flow.phase === "CONFIRM") {
+    return (
+      <form onSubmit={submitCode} noValidate className="flex flex-col gap-6">
+        <StepHeader
+          step="account"
+          title="Check your email"
+          subtitle={`We sent a confirmation code to ${flow.email}.`}
+        />
+
+        {errorNote}
+        {flow.notice && <p className="m-0 text-[13px] text-green-700">{flow.notice}</p>}
+
+        <Field id="signup-code" label="Confirmation code">
+          <div className="relative">
+            <KeyRound
+              className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#3A4761]"
+              aria-hidden="true"
+            />
+            <input
+              id="signup-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              placeholder="Code from your email"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              className={`${fieldClass} ${fieldBorder(false)} pl-12 text-[17px] font-semibold`}
+            />
+          </div>
+        </Field>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-2">
+            <PillButton variant="secondary" onClick={flow.back} className="flex-1">
+              Back
+            </PillButton>
+            <PillButton
+              type="submit"
+              isLoading={flow.busy}
+              disabled={code.trim().length < 4}
+              className="flex-[2]"
+            >
+              {flow.busy ? "Confirming…" : "Confirm"}
+            </PillButton>
+          </div>
+          <PillButton variant="ghost" onClick={() => void flow.resend()} disabled={flow.busy}>
+            Resend code
+          </PillButton>
+        </div>
+      </form>
+    );
+  }
+
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-6">
+    <form onSubmit={submitDetails} noValidate className="flex flex-col gap-6">
       <StepHeader
         step="account"
         title="Your email address"
         subtitle="We'll use it to sign you in and to tell you when your score is ready."
       />
 
-      {serverError && (
-        <ErrorNote
-          action={
-            existing ? (
-              <Link
-                href={`/login?email=${encodeURIComponent(email.trim())}`}
-                className="w-fit font-semibold text-[#0A1931] underline underline-offset-2 transition-colors hover:text-[#5F4DB2]"
-              >
-                Sign in instead
-              </Link>
-            ) : null
-          }
-        >
-          {serverError}
-        </ErrorNote>
-      )}
+      {errorNote}
 
-      <Field id="signup-email" label="Email" error={fieldError}>
+      <Field id="signup-email" label="Email" error={errors.email}>
         <div className="relative">
           <Mail
             className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#3A4761]"
@@ -109,13 +161,41 @@ export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) 
             autoFocus
             placeholder="you@example.com"
             value={email}
-            aria-invalid={Boolean(fieldError)}
-            aria-describedby={fieldError ? "signup-email-error" : undefined}
+            aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? "signup-email-error" : undefined}
             onChange={(event) => {
               setEmail(event.target.value);
-              setFieldError(undefined);
+              setErrors((current) => ({ ...current, email: undefined }));
             }}
-            className={`${fieldClass} ${fieldBorder(Boolean(fieldError))} pl-12 text-[17px] font-semibold`}
+            className={`${fieldClass} ${fieldBorder(Boolean(errors.email))} pl-12 text-[17px] font-semibold`}
+          />
+        </div>
+      </Field>
+
+      <Field
+        id="signup-password"
+        label="Password"
+        hint="At least 14 characters, with uppercase, lowercase, a number and a symbol."
+        error={errors.password}
+      >
+        <div className="relative">
+          <Lock
+            className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#3A4761]"
+            aria-hidden="true"
+          />
+          <input
+            id="signup-password"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Choose a strong password"
+            value={password}
+            aria-invalid={Boolean(errors.password)}
+            aria-describedby={errors.password ? "signup-password-error" : "signup-password-hint"}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              setErrors((current) => ({ ...current, password: undefined }));
+            }}
+            className={`${fieldClass} ${fieldBorder(Boolean(errors.password))} pl-12`}
           />
         </div>
       </Field>
@@ -125,12 +205,15 @@ export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) 
           <PillButton variant="secondary" onClick={onBack} className="flex-1">
             Back
           </PillButton>
-          <PillButton type="submit" isLoading={submitting} className="flex-[2]">
-            {submitting ? "Creating your account…" : "Continue"}
+          <PillButton type="submit" isLoading={flow.busy} className="flex-[2]">
+            {flow.busy ? "Creating your account…" : "Continue"}
           </PillButton>
         </div>
         <p className="m-0 text-center text-[12px] leading-4 text-[#5F6B80]">
-          Started before? Use the same email to pick up where you left off.
+          Already have an account?{" "}
+          <Link href="/login" className="font-semibold text-[#0A1931] underline underline-offset-2">
+            Sign in
+          </Link>
         </p>
       </div>
     </form>

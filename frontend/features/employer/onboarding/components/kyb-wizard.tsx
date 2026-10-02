@@ -369,7 +369,9 @@ function KybFlow({
       const done = !editing || (index !== stepIndex && visited && isSectionComplete(item, answers, uploaded));
 
       return {
-        key: item.code,
+        // Namespaced: the form's own "organisation" section would otherwise
+        // collide with the leading "Your organisation" step.
+        key: `kyb-${item.code}`,
         title: item.title,
         status: editing && index === stepIndex ? "current" : done ? "complete" : "upcoming",
         onSelect: visited && !busy ? () => goTo(index) : undefined,

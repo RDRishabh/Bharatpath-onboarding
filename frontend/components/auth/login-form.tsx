@@ -41,6 +41,7 @@ import {
   verifyTotpSetupCognito,
 } from "@/lib/auth/cognito";
 import { setStoredToken } from "@/lib/auth/token";
+import { baseApi } from "@/store/api/base-api";
 import { setUser } from "@/store/common/slices/auth.slice";
 import { setTenant } from "@/store/common/slices/tenant.slice";
 import { useAppDispatch } from "@/store/hooks";
@@ -143,6 +144,9 @@ export function LoginForm() {
       pool,
     );
 
+    // A different person may have used this browser; drop their cached
+    // responses (a stale `has_access` would fire paywalled calls -> 402).
+    dispatch(baseApi.util.resetApiState());
     dispatch(
       setUser({
         ...result.user,
