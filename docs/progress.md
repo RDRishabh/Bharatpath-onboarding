@@ -9,6 +9,35 @@ states. Newest entries first.
 
 ---
 
+## 2026-10-02 — who viewed my profile (candidate)
+
+`GET /candidate/profile/views`. The privacy screen's "Who has seen me" had no
+API (screen-flows §2.1).
+
+- **One entry per organisation**, `employer_name` and `last_viewed_at`, last
+  **90 days**, latest first, cursor-paged, no total. Built from the
+  `candidate_view_events` row every reveal already writes; nothing new is
+  recorded.
+- **Never the recruiter (`actor_id`) and no count of opens.** A test holds
+  `ProfileView`'s field list.
+- **Through a SECURITY DEFINER function, not a policy**
+  (`candidate_profile_views`, migration `0009_candidate_profile_views`). A
+  candidate cannot read the view log under RLS (tenant policy only,
+  partitions revoked), and the `employers` candidate policy only names
+  organisations with a job on the board. The function reads
+  `current_candidate_id()` and takes no candidate id; bound to a tenant or to
+  nobody it returns nothing. It clamps its own lookback and row count.
+- **Not paywalled**, like the rest of the profile.
+- **Ours, not the client's:** the 90-day lookback
+  (`discovery.domain.PROFILE_VIEWS_LOOKBACK_DAYS`, frozen in 0009 and held
+  equal by a test), showing the organisation's name at all rather than only a
+  count, and not paywalling it. Employers are not yet told that a candidate
+  can see they opened the profile. That belongs in their terms.
+- No table changed, so `erase_candidate` and the erasure plan are untouched;
+  the view log stays RETAIN.
+
+---
+
 ## 2026-10-01 — deployed to a new AWS account: EC2 + RDS
 
 The old account (`592033927084`) expired. Everything was built fresh in

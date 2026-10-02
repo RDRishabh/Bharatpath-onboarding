@@ -96,6 +96,7 @@ Covered in [05-jobs-and-discovery-apis.md §10](05-jobs-and-discovery-apis.md#10
 | ✅ | GET | `/candidate/profile` |
 | ✅ | PUT | `/candidate/profile/location` |
 | ✅ | PUT | `/candidate/profile/name` |
+| ✅ | GET | `/candidate/profile/views` |
 
 ## Employer — masked search & reveal (`discovery` + `candidate`, prefix `/employer/discovery`)
 

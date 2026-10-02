@@ -23,6 +23,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import PermissionDeniedError
+from app.core.pagination import Page
 from app.core.tenant import TenantContext
 from app.modules.candidate import repository
 from app.modules.candidate.schemas import (
@@ -32,6 +33,7 @@ from app.modules.candidate.schemas import (
     RevealedCandidate,
 )
 from app.modules.discovery import service as discovery_service
+from app.modules.discovery.schemas import ProfileView
 from app.modules.resume import service as resume_service
 from app.modules.scoring import service as scoring_service
 from app.modules.scoring.domain import display_value
@@ -72,6 +74,19 @@ async def set_full_name(
         session, user_id=ctx.user_id, full_name=payload.full_name
     )
     return CandidateProfileResponse.model_validate(profile)
+
+
+async def profile_views(
+    session: AsyncSession,
+    *,
+    ctx: TenantContext,
+    cursor: str | None = None,
+    limit: int | None = None,
+) -> Page[ProfileView]:
+    """Which organisations opened the candidate's profile. Discovery owns the
+    view log and decides what of it the candidate sees."""
+    _candidate(ctx)
+    return await discovery_service.profile_views(session, ctx=ctx, cursor=cursor, limit=limit)
 
 
 async def reveal_to_employer(
