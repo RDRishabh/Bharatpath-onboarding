@@ -3,12 +3,14 @@
 import { useMemo } from "react";
 
 import {
+  useGetApplicationFunnelQuery,
   useGetCohortOverviewQuery,
   useGetPlacementReportQuery,
 } from "@/store/college/analytics/analytics.api";
 import { useGetCollegeSeatsQuery } from "@/store/college/settings/settings.api";
 
 import type {
+  ApplicationFunnel,
   CohortOverview,
   PlacementReport,
 } from "@/store/college/types";
@@ -16,9 +18,51 @@ import type {
 import type {
   AnalyticsMetric,
   CollegeAnalyticsView,
+  FunnelCount,
   LocationPlacement,
   MonthPlacement,
 } from "../types";
+
+/*
+ * The order the backend counts them (`analytics.domain.APPLICATION_STAGES` /
+ * `APPLICATION_MILESTONES`), held here rather than read off the response, so
+ * the panel's order never depends on JSON key order.
+ */
+const STAGE_ORDER = [
+  "SUBMITTED",
+  "VIEWED",
+  "SHORTLISTED",
+  "INTERVIEW",
+  "DECISION",
+  "HIRED",
+  "REJECTED",
+  "WITHDRAWN",
+  "EXPIRED",
+] as const;
+
+const MILESTONE_ORDER = [
+  "SHORTLISTED",
+  "INTERVIEW",
+  "DECISION",
+  "HIRED",
+] as const;
+
+/** `SHORTLISTED` -> `Shortlisted`. The code itself comes from the backend. */
+function stageLabel(code: string): string {
+  return code.charAt(0) + code.slice(1).toLowerCase();
+}
+
+function funnelRows(
+  order: readonly string[],
+  counts: Record<string, number | null> | undefined,
+): FunnelCount[] {
+  return order.map((code) => ({
+    id: code,
+    label: stageLabel(code),
+    // `null` is withheld by the privacy floors; a missing key is too.
+    value: counts?.[code] ?? null,
+  }));
+}
 
 function metricsFrom(
   overview: CohortOverview | undefined,
@@ -66,6 +110,7 @@ function locationsFrom(
 function toView(
   overview: CohortOverview | undefined,
   report: PlacementReport | undefined,
+  funnel: ApplicationFunnel | undefined,
   seats:
     | { allocated: number; used: number }
     | undefined,
@@ -82,6 +127,11 @@ function toView(
     totalHires: report?.totalHires ?? null,
     placementsByMonth: monthsFrom(report),
     placementsByLocation: locationsFrom(report),
+
+    funnelBelowFloor: funnel?.belowFloor ?? false,
+    totalApplications: funnel?.totalApplications ?? null,
+    funnelStages: funnelRows(STAGE_ORDER, funnel?.byStage),
+    funnelMilestones: funnelRows(MILESTONE_ORDER, funnel?.reached),
   };
 }
 
@@ -93,6 +143,7 @@ function toView(
 export function useAnalytics() {
   const overviewQuery = useGetCohortOverviewQuery();
   const placementsQuery = useGetPlacementReportQuery();
+  const funnelQuery = useGetApplicationFunnelQuery();
   const seatsQuery = useGetCollegeSeatsQuery();
 
   const data = useMemo<CollegeAnalyticsView>(
@@ -100,9 +151,15 @@ export function useAnalytics() {
       toView(
         overviewQuery.data,
         placementsQuery.data,
+        funnelQuery.data,
         seatsQuery.data ?? undefined,
       ),
-    [overviewQuery.data, placementsQuery.data, seatsQuery.data],
+    [
+      overviewQuery.data,
+      placementsQuery.data,
+      funnelQuery.data,
+      seatsQuery.data,
+    ],
   );
 
   return {
@@ -110,10 +167,12 @@ export function useAnalytics() {
     isLoading:
       overviewQuery.isLoading ||
       placementsQuery.isLoading ||
+      funnelQuery.isLoading ||
       seatsQuery.isLoading,
     isError:
       overviewQuery.isError ||
       placementsQuery.isError ||
+      funnelQuery.isError ||
       seatsQuery.isError,
   };
 }

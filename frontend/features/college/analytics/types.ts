@@ -24,6 +24,13 @@ export interface LocationPlacement {
   hires: number;
 }
 
+/** One row of the application funnel. `null` is withheld, never a zero. */
+export interface FunnelCount {
+  id: string;
+  label: string;
+  value: number | null;
+}
+
 export interface CollegeAnalyticsView {
   seatsUsed: number;
   seatsTotal: number;
@@ -36,4 +43,10 @@ export interface CollegeAnalyticsView {
   totalHires: number | null;
   placementsByMonth: MonthPlacement[];
   placementsByLocation: LocationPlacement[];
+
+  /** `GET /college/analytics/applications` — aggregate, no student named. */
+  funnelBelowFloor: boolean;
+  totalApplications: number | null;
+  funnelStages: FunnelCount[];
+  funnelMilestones: FunnelCount[];
 }

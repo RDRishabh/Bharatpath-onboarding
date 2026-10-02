@@ -4,10 +4,8 @@ import {
   confirmSignUp,
   fetchAuthSession,
   resendSignUpCode,
-  setUpTOTP,
   signIn,
   signOut,
-  verifyTOTPSetup,
 } from "aws-amplify/auth";
 
 export type CognitoPoolType = "CANDIDATE" | "BUSINESS";
@@ -29,13 +27,11 @@ export const COGNITO_CONFIG: CognitoConfig = {
     process.env.NEXT_PUBLIC_COGNITO_CANDIDATE_CLIENT_ID ??
     "2bpl99ukq9mjalvku2r9rha80u",
   businessPoolId:
-    process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID ??
     process.env.NEXT_PUBLIC_COGNITO_BUSINESS_USER_POOL_ID ??
-    "ap-south-1_w1u6W6fTP",
+    "ap-south-1_YlPonHUV6",
   businessClientId:
-    process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ??
     process.env.NEXT_PUBLIC_COGNITO_BUSINESS_CLIENT_ID ??
-    "3fomv3e9agld2mvrbhaj52vsfm",
+    "2prgfuo6fmfr4un46gsonth75b",
 };
 
 let activeConfiguredPool: CognitoPoolType | null = null;
@@ -172,7 +168,10 @@ export async function signInWithCognito({
   }
 
   if (nextStep.signInStep === "CONTINUE_SIGN_IN_WITH_TOTP_SETUP") {
-    const totpDetails = await setUpTOTP();
+    // The challenge response already carries the TOTP secret — `setUpTOTP()`
+    // would call `fetchAuthSession()` for an access token, and there is no
+    // session yet: the user hasn't finished signing in.
+    const totpDetails = nextStep.totpSetupDetails;
     const setupUri = totpDetails.getSetupUri("BharatPath", trimmedEmail);
     return {
       status: "TOTP_SETUP_REQUIRED",
@@ -207,7 +206,7 @@ export async function confirmNewPasswordCognito(
   }
 
   if (nextStep.signInStep === "CONTINUE_SIGN_IN_WITH_TOTP_SETUP") {
-    const totpDetails = await setUpTOTP();
+    const totpDetails = nextStep.totpSetupDetails;
     const setupUri = totpDetails.getSetupUri("BharatPath", email ?? "User");
     return {
       status: "TOTP_SETUP_REQUIRED",
@@ -237,12 +236,22 @@ export async function confirmTotpCodeCognito(
 export async function verifyTotpSetupCognito(
   code: string,
 ): Promise<CognitoSignInResult> {
-  await verifyTOTPSetup({
-    code: code.trim(),
+  // `verifyTOTPSetup()` is for an already-signed-in user adding MFA from
+  // their account settings — it needs an access token that doesn't exist
+  // mid-challenge. Completing *this* step, like the TOTP_REQUIRED step, is
+  // just answering the sign-in challenge.
+  const response = await confirmSignIn({
+    challengeResponse: code.trim(),
   });
 
-  const accessToken = await fetchCognitoAccessToken();
-  return { status: "COMPLETE", accessToken };
+  if (response.nextStep.signInStep === "DONE") {
+    const accessToken = await fetchCognitoAccessToken();
+    return { status: "COMPLETE", accessToken };
+  }
+
+  throw new Error(
+    `Unsupported step after TOTP setup: ${response.nextStep.signInStep}`,
+  );
 }
 
 export async function confirmSignUpCognito(

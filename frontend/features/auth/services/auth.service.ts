@@ -1,17 +1,8 @@
 import { ApiError } from "@/lib/api/errors";
-import {
-  backendBaseUrl,
-  loadAccount,
-  portalForRole,
-} from "@/lib/auth/backend-auth";
+import { backendBaseUrl, portalForRole } from "@/lib/auth/backend-auth";
 import { handleSessionExpired } from "@/lib/auth/handle-session-expired";
 import { clearStoredToken, getStoredToken, setStoredToken } from "@/lib/auth/token";
-import {
-  LoginRequest,
-  LoginResponse,
-  SignupRequest,
-  SignupResponse,
-} from "../types";
+import { LoginResponse, SignupRequest, SignupResponse } from "../types";
 
 /*
  * Every call here goes straight to the backend from the browser — there is
@@ -203,56 +194,6 @@ async function resolveSession(
 
 export const authService = {
   /**
-   * Email-only sign-in, for local development against the backend's dev
-   * token endpoint (`AUTH_ALLOW_LOCAL_TOKENS=true`). Resolves identity and
-   * stores the resulting bearer token.
-   */
-  async login(payload: LoginRequest): Promise<LoginResponse> {
-    if (payload.token) {
-      return authService.loginWithToken(
-        payload.token,
-        payload.email,
-        payload.pool ?? "CANDIDATE",
-      );
-    }
-
-    const email = payload.email.trim();
-    if (!email) {
-      throw new ApiError("Email or authentication token is required.", 400, "AUTH_ERROR");
-    }
-
-    const account = loadAccount(email);
-    if (!account) {
-      throw new ApiError(
-        "No account found for that email. Please sign in with your password or register.",
-        401,
-        "AUTH_ERROR",
-      );
-    }
-
-    const tokenBody = await backendRequest<{ access_token?: string }>(
-      "/auth/dev/token",
-      {
-        method: "POST",
-        cache: "no-store",
-        body: JSON.stringify({
-          subject: account.subject,
-          pool: account.pool,
-          email: account.email,
-        }),
-      },
-    );
-
-    if (!tokenBody.access_token) {
-      throw new ApiError("Missing authentication token.", 400, "AUTH_ERROR");
-    }
-
-    return resolveSession(tokenBody.access_token, email, {
-      pool: (payload.pool ?? account.pool) as "CANDIDATE" | "BUSINESS",
-    });
-  },
-
-  /**
    * Resolve identity from a Cognito access token obtained directly in the
    * browser, and store it as the backend bearer token.
    */
@@ -318,15 +259,6 @@ async function devSignup(
 
   if (!email || email.length > 255 || !EMAIL_PATTERN.test(email)) {
     throw new ApiError("Enter a valid email address.", 400, "AUTH_ERROR");
-  }
-
-  // A seeded account already has a sign-in of its own; it must use it.
-  if (loadAccount(email)) {
-    throw new ApiError(
-      "An account already exists for this email. Sign in instead.",
-      409,
-      "account_exists",
-    );
   }
 
   const subject = await devSubject(email, pool);

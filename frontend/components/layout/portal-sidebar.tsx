@@ -173,11 +173,11 @@ export function PortalSidebar({
    */
 
   const handleLogout = () => {
-    clearStoredToken();
+    void authService.logout();
     dispatch(clearUser());
     dispatch(clearTenant());
 
-    router.push("/api/auth/logout");
+    router.push("/login");
   };
 
   return (

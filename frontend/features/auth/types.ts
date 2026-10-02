@@ -16,13 +16,6 @@ export interface AuthUser {
   tenantName?: string;
 }
 
-export interface LoginRequest {
-  email: string;
-  password?: string;
-  pool?: "CANDIDATE" | "BUSINESS";
-  token?: string;
-}
-
 export interface LoginResponse {
   user: AuthUser;
   /** The portal that serves this account: student | employer | college | admin. */
