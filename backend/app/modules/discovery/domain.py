@@ -61,6 +61,12 @@ MAX_CARD_SKILLS: Final = 20
 MAX_SKILL_FILTERS: Final = 5
 MAX_EXPERIENCE_YEARS: Final = 60
 
+#: How far back a candidate's "who viewed my profile" list reaches
+#: (2026-10-02). Ours, not the client's. Frozen as SQL in migration
+#: `0009_candidate_profile_views`, and a test holds the two equal; a new
+#: period is a new migration.
+PROFILE_VIEWS_LOOKBACK_DAYS: Final = 90
+
 
 def looks_like_contact(value: str) -> bool:
     return _CONTACT_LIKE.search(value) is not None

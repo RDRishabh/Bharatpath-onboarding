@@ -93,6 +93,7 @@ Candidate's own profile, and — co-located because it needs the display score
 | GET | `/candidate/profile` | CANDIDATE | — | `CandidateProfileResponse` | |
 | PUT | `/candidate/profile/location` | CANDIDATE | `{city?, state?}` | `CandidateProfileResponse` | Shown on masked employer cards; city rejects digits/`@` |
 | PUT | `/candidate/profile/name` | CANDIDATE | `{full_name}` | `CandidateProfileResponse` | Only ever shown to an employer who reveals the profile; never guessed from a CV |
+| GET | `/candidate/profile/views` | CANDIDATE | `?cursor&limit` | `Page[ProfileView]` | Who viewed my profile: one entry per organisation (`employer_name`, `last_viewed_at`), last 90 days, latest first. Never the recruiter, no count of opens, no total. Not paywalled |
 | GET | `/employer/discovery/candidates/{candidate_id}` | OWNER/RECRUITER + `require_active_access_window` | path | `RevealedCandidate` | **The reveal.** Name, contact, display score. Every call — including re-opens — writes an audit row and a view event in the same transaction. 402 `access_window_expired`, 403 `kyb_required`, 429 rate/view-cap, 404 not visible |
 
 ## resume — `/candidate/resume`

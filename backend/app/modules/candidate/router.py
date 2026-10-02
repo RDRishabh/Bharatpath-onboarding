@@ -9,8 +9,9 @@ import-linter enforces the second half of that sentence.
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.deps import (
     CANDIDATE,
@@ -22,6 +23,7 @@ from app.core.deps import (
     require_active_access_window,
     require_role,
 )
+from app.core.pagination import MAX_PAGE_SIZE, Page
 from app.modules.candidate import service
 from app.modules.candidate.schemas import (
     CandidateProfileResponse,
@@ -29,6 +31,7 @@ from app.modules.candidate.schemas import (
     NameRequest,
     RevealedCandidate,
 )
+from app.modules.discovery.schemas import ProfileView
 
 router = APIRouter()
 #: Mounted at `/employer/discovery`, beside masked search (`__init__.py`).
@@ -79,6 +82,25 @@ async def set_name(
     """Asked at sign-up. Only an employer who opens the profile sees it, never
     a masked card. Digits and `@` are refused (422)."""
     return await service.set_full_name(session, ctx=user, payload=payload)
+
+
+@router.get(
+    "/profile/views",
+    response_model=Page[ProfileView],
+    dependencies=[CandidateOnly],
+    summary="Which organisations viewed the candidate's profile",
+)
+async def profile_views(
+    user: CurrentUser,
+    session: DbSession,
+    cursor: str | None = None,
+    limit: Annotated[int | None, Query(ge=1, le=MAX_PAGE_SIZE)] = None,
+) -> Page[ProfileView]:
+    """One entry per organisation that opened the profile in the last 90 days,
+    latest first: its name and when it last looked. Never which recruiter,
+    and no count of opens. Not paywalled. A bad cursor is 422
+    `invalid_cursor`."""
+    return await service.profile_views(session, ctx=user, cursor=cursor, limit=limit)
 
 
 @employer_router.get(

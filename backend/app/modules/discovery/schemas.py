@@ -16,6 +16,7 @@ field list, so widening the card is a visible change to a test.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
@@ -74,6 +75,18 @@ class MaskedCandidate(_Base):
         # The candidate module refuses such a city on the way in. This is the
         # second lock, for a row that reached the table some other way.
         return None if value is not None and looks_like_contact(value) else value
+
+
+class ProfileView(_Base):
+    """One organisation that opened the candidate's profile (2026-10-02).
+
+    **The organisation, never the person in it**, and no count of opens:
+    `tests/integration/test_profile_views.py` holds the field list. An open
+    within the last `domain.PROFILE_VIEWS_LOOKBACK_DAYS` days, latest first.
+    """
+
+    employer_name: str
+    last_viewed_at: datetime
 
 
 # ---------------------------------------------------------------------------

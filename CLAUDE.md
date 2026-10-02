@@ -523,6 +523,14 @@ SUPPORT_AGENT).
 - Discovery repository functions that do not use the CTE must be named in
   `READS_NO_CANDIDATE` (`test_discovery_suppression.py`) and may not mention a
   candidate table.
+- **The candidate reads the view log back only through
+  `candidate_profile_views()`** (`GET /candidate/profile/views`, migration
+  0009, 2026-10-02): organisation name and latest open, 90 days. **Never
+  `actor_id` and never a count of opens.** It answers for
+  `current_candidate_id()` alone, so the service must bind `app.user_id` or
+  the list reads empty. Do not replace it with a candidate RLS policy on
+  `candidate_view_events`: that would expose `actor_id` and still not reach
+  the names of employers with no job on the board.
 
 ## Payments, subscriptions and courses — Day 15
 

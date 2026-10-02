@@ -419,6 +419,35 @@ async def ensure_view_partitions(session: AsyncSession, *, first_month: date, mo
 
 
 # ---------------------------------------------------------------------------
+# Who viewed my profile (2026-10-02)
+# ---------------------------------------------------------------------------
+async def profile_views(
+    session: AsyncSession, *, after: tuple[datetime, uuid.UUID] | None, limit: int
+) -> list[Any]:
+    """Organisations that opened the bound candidate's profile, latest first.
+
+    Through `candidate_profile_views()` (migration 0009), which answers only
+    for `current_candidate_id()` -- there is no candidate id to pass, so the
+    caller must have bound `app.user_id`. It returns the organisation's name
+    and its latest open, never who in it looked. Named in `READS_NO_CANDIDATE`:
+    the visibility CTE decides what an employer may see, and this is the
+    candidate reading their own log.
+    """
+    result = await session.execute(
+        text(
+            "SELECT tenant_id, employer_name, last_viewed_at FROM candidate_profile_views("
+            "CAST(:before_at AS timestamptz), CAST(:before_tenant AS uuid), :limit)"
+        ),
+        {
+            "before_at": after[0] if after is not None else None,
+            "before_tenant": str(after[1]) if after is not None else None,
+            "limit": limit,
+        },
+    )
+    return list(result)
+
+
+# ---------------------------------------------------------------------------
 # Search filter options (2026-09-24)
 # ---------------------------------------------------------------------------
 # The catalogue staff curate. None of these reads a candidate, and each is
