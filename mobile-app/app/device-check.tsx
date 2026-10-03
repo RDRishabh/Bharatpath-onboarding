@@ -1,5 +1,5 @@
 /**
- * BharatPath — Device Check Route
+ * BharatPath - Device Check Route
  * Audio pre-flight diagnostics before a subscription-included interview.
  */
 import { useRouter } from 'expo-router';

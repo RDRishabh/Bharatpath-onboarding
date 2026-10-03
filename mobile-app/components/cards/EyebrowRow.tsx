@@ -1,5 +1,5 @@
 /**
- * EyebrowRow — Mono eyebrow label (uppercase) with optional icon.
+ * EyebrowRow - Mono eyebrow label (uppercase) with optional icon.
  * Used above section titles and card content.
  */
 import { ReactNode } from 'react';

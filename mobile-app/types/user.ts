@@ -61,3 +61,14 @@ export interface CareerScoreData {
     presentation: number;
   };
 }
+
+export interface ProfileViewItem {
+  employer_name: string;
+  last_viewed_at: string;
+}
+
+export interface ProfileViewsPage {
+  items: ProfileViewItem[];
+  next_cursor: string | null;
+  total: number | null;
+}

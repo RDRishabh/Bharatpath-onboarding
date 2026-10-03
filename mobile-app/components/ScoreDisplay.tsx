@@ -1,5 +1,5 @@
 /**
- * ScoreDisplay — Large computed score with Space Mono.
+ * ScoreDisplay - Large computed score with Space Mono.
  * Shows current / max format, optional delta, gold accent for earned.
  */
 import { View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';

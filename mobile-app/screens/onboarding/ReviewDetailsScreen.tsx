@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -24,6 +25,9 @@ import {
   Globe,
   FileText,
   Sparkle,
+  ArrowLeft,
+  UploadSimple,
+  ArrowRight,
 } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
 import { ManualResumeData, ManualResumeModal } from './ManualResumeModal';
@@ -41,9 +45,15 @@ import {
   SectionKind,
 } from '@/services/api/resume';
 import { ApiError } from '@/services/api/client';
+import { extractCandidateResumeInfo } from '@/services/profile/extractedResume';
 
-interface ReviewDetailsScreenProps {
-  onConfirm?: (confirmedVersionId?: string) => void;
+export interface ReviewDetailsScreenProps {
+  onBack?: () => void;
+  title?: string;
+  subtitle?: string;
+  confirmButtonText?: string;
+  showReadyBadge?: boolean;
+  onConfirm?: (confirmedVersionId?: string, confirmedAt?: string) => void;
   onFixField?: (field: string) => void;
   candidateName?: string;
   candidateEmail?: string;
@@ -54,6 +64,7 @@ interface ReviewDetailsScreenProps {
     versionId: string,
     versionDetails: ResumeVersionDetailResponse
   ) => void;
+  onUploadNewResume?: () => void;
 }
 
 // Parse header lines into structured basics
@@ -99,13 +110,19 @@ function parseHeaderBasics(body: string, parsed?: any, fallbackName?: string) {
 }
 
 export function ReviewDetailsScreen({
+  onBack,
+  title,
+  subtitle,
+  confirmButtonText,
+  showReadyBadge = false,
   onConfirm,
-  candidateName = 'Priya Sharma',
-  candidateEmail = 'priya.sharma@example.com',
+  candidateName,
+  candidateEmail,
   manualData,
   versionId,
   versionDetails,
   onVersionUpdated,
+  onUploadNewResume,
 }: ReviewDetailsScreenProps) {
   const [activeVersionId, setActiveVersionId] = useState(versionId);
   const [details, setDetails] = useState(versionDetails);
@@ -138,6 +155,11 @@ export function ReviewDetailsScreen({
   const rawText = typeof parsed?.raw_text === 'string' ? parsed.raw_text : '';
   const sections = details?.sections || null;
 
+  const resumeInfo = useMemo(
+    () => extractCandidateResumeInfo(details, candidateName),
+    [details, candidateName]
+  );
+
   const totalUnclear = useMemo(() => {
     if (!sections) return 0;
     return sections.reduce((acc, section) => {
@@ -148,7 +170,12 @@ export function ReviewDetailsScreen({
 
   const structuredData = useMemo<ManualResumeData>(
     () => ({
-      full_name: parsed?.full_name?.trim() || manualData?.full_name || candidateName,
+      full_name:
+        parsed?.full_name?.trim() ||
+        resumeInfo.name ||
+        manualData?.full_name ||
+        candidateName ||
+        '',
       headline: parsed?.headline || manualData?.headline,
       experience: Array.isArray(parsed?.experience)
         ? parsed.experience
@@ -158,7 +185,7 @@ export function ReviewDetailsScreen({
         : manualData?.education || [],
       skills: Array.isArray(parsed?.skills) ? parsed.skills : manualData?.skills || [],
     }),
-    [candidateName, manualData, parsed]
+    [candidateName, manualData, parsed, resumeInfo.name]
   );
 
   const errorMessage = (error: unknown, fallback: string) =>
@@ -355,8 +382,8 @@ export function ReviewDetailsScreen({
     if (activeVersionId) {
       try {
         setIsConfirming(true);
-        await confirmResumeVersion(activeVersionId);
-        onConfirm?.(activeVersionId);
+        const res = await confirmResumeVersion(activeVersionId);
+        onConfirm?.(activeVersionId, res?.confirmed_at);
       } catch (error) {
         setConfirmError(errorMessage(error, 'Could not confirm this resume version.'));
       } finally {
@@ -365,17 +392,6 @@ export function ReviewDetailsScreen({
     } else {
       setConfirmError('Resume version is missing. Please return and submit your resume again.');
     }
-  };
-
-  const handleConfirmClick = () => {
-    Alert.alert(
-      'Confirm this resume?',
-      'Your score will be calculated from exactly these details. Updating your resume later creates a new version and a new score.',
-      [
-        { text: 'Keep reviewing', style: 'cancel' },
-        { text: 'Confirm and score', onPress: confirmCurrentVersion },
-      ]
-    );
   };
 
   const sectionIconForKind = (kind: SectionKind) => {
@@ -415,24 +431,62 @@ export function ReviewDetailsScreen({
         >
           {/* Header Title & Subtitle */}
           <View style={styles.titleSection}>
+            {onBack ? (
+              <View style={styles.topBackRow}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.backButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                  onPress={onBack}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back"
+                >
+                  <ArrowLeft size={18} color="#0A1931" weight="bold" />
+                </Pressable>
+              </View>
+            ) : null}
             <View style={styles.titleRow}>
-              <Text style={styles.title}>Review details</Text>
+              <Text style={styles.title}>{title || 'Review details'}</Text>
               {totalUnclear > 0 ? (
                 <View style={styles.toFixBadge}>
                   <WarningCircle size={15} color="#7A5C0E" weight="bold" />
                   <Text style={styles.toFixBadgeText}>{totalUnclear} to fix</Text>
                 </View>
-              ) : (
+              ) : showReadyBadge ? (
                 <View style={styles.allFixedBadge}>
                   <CheckCircle size={15} color="#1F6B45" weight="fill" />
                   <Text style={styles.allFixedBadgeText}>
                     {details?.source === 'EDIT' ? 'New version' : 'Ready to review'}
                   </Text>
                 </View>
-              )}
+              ) : null}
             </View>
-            <Text style={styles.subtitle}>Nothing is scored until you confirm.</Text>
+            <Text style={styles.subtitle}>{subtitle || 'Nothing is scored until you confirm.'}</Text>
           </View>
+
+          {onUploadNewResume ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.uploadNewBanner,
+                pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] },
+              ]}
+              onPress={onUploadNewResume}
+              accessibilityRole="button"
+              accessibilityLabel="Upload new resume file"
+            >
+              <View style={styles.uploadNewBannerIcon}>
+                <UploadSimple size={20} color="#5F4DB2" weight="bold" />
+              </View>
+              <View style={styles.uploadNewBannerTextCol}>
+                <Text style={styles.uploadNewBannerTitle}>Upload new resume</Text>
+                <Text style={styles.uploadNewBannerSub}>
+                  Upload a PDF or DOCX file to replace current resume
+                </Text>
+              </View>
+              <ArrowRight size={16} color="#5F4DB2" weight="bold" />
+            </Pressable>
+          ) : null}
 
           {confirmError ? (
             <View style={styles.errorBanner}>
@@ -829,7 +883,7 @@ export function ReviewDetailsScreen({
               isConfirming && styles.buttonDisabled,
               pressed && !isConfirming && styles.buttonPressed,
             ]}
-            onPress={handleConfirmClick}
+            onPress={confirmCurrentVersion}
             disabled={isConfirming}
           >
             {isConfirming ? (
@@ -838,7 +892,9 @@ export function ReviewDetailsScreen({
                 <Text style={styles.confirmButtonText}>Confirming...</Text>
               </View>
             ) : (
-              <Text style={styles.confirmButtonText}>Confirm</Text>
+              <Text style={styles.confirmButtonText}>
+                {confirmButtonText || 'Confirm'}
+              </Text>
             )}
           </Pressable>
           <Text style={styles.bottomSubtext}>You can edit any of this later</Text>
@@ -921,6 +977,21 @@ const styles = StyleSheet.create({
   titleSection: {
     gap: 6,
   },
+  topBackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#DDD6C7',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -996,13 +1067,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EAE4DA',
     borderRadius: 22,
-    padding: Spacing.lg, // 20px
+    padding: Spacing.lg,
     gap: 16,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.03,
     shadowRadius: 6,
-    elevation: 1,
   },
   cardPressed: {
     opacity: 0.7,
@@ -1013,6 +1083,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   cardEyebrow: {
+    flex: 1,
     fontFamily: 'GeneralSans-Bold',
     fontSize: 12,
     lineHeight: 16,
@@ -1085,12 +1156,14 @@ const styles = StyleSheet.create({
     gap: Spacing.base,
   },
   keyText: {
+    flexShrink: 0,
     fontFamily: 'GeneralSans-Regular',
     fontSize: 15,
     lineHeight: 20,
     color: '#5F6B80',
   },
   valueText: {
+    flexShrink: 1,
     fontFamily: 'GeneralSans-Bold',
     fontSize: 15,
     lineHeight: 20,
@@ -1250,5 +1323,43 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: '#5F6B80',
     textAlign: 'center',
+  },
+  uploadNewBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D4C7F5',
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+    marginBottom: 8,
+    shadowColor: '#5F4DB2',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  uploadNewBannerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F1EAF7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadNewBannerTextCol: {
+    flex: 1,
+    gap: 2,
+  },
+  uploadNewBannerTitle: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 14,
+    color: '#0A1931',
+  },
+  uploadNewBannerSub: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 12,
+    color: '#5F6B80',
   },
 });

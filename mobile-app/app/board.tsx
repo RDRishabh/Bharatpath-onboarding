@@ -1,5 +1,5 @@
 /**
- * BharatPath — Application Board Route
+ * BharatPath - Application Board Route
  *
  * The Board tab. Lists the candidate's own applications and routes to the
  * detail screen with the application id.

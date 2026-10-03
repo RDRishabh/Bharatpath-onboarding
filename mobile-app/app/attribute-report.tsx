@@ -5,9 +5,17 @@ import { QuestionnaireReportScreen } from '@/screens/attribute-check/Questionnai
 export default function AttributeReportRoute() {
   const router = useRouter();
 
+  const handleDone = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/you');
+    }
+  };
+
   return (
     <QuestionnaireReportScreen
-      onDone={() => router.replace('/home')}
+      onDone={handleDone}
       onUpdateAnswers={() => router.replace('/attribute-quiz')}
     />
   );

@@ -1,11 +1,11 @@
 /**
- * BharatPath — Membership (the paywall before resume intake)
+ * BharatPath - Membership (the paywall before resume intake)
  *
  * Everything the candidate does next is behind a live subscription: the score
  * itself, job matches and applying, the skill check, mock interviews and
  * courses all answer 402 `subscription_required` without one. So the choice is
  * made here, before a CV is uploaded, and `has_access` is the only thing this
- * screen trusts — plans, prices and periods all come from the API.
+ * screen trusts - plans, prices and periods all come from the API.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -261,7 +261,7 @@ export function SubscribeScreen({
               <View style={styles.activeCard}>
                 <CheckCircle size={24} color="#1F6B45" weight="fill" />
                 <Text style={styles.activeCardText}>
-                  Nothing more to pay. Your resume comes next — we read it, you check what we
+                  Nothing more to pay. Your resume comes next - we read it, you check what we
                   read, and the score follows from that.
                 </Text>
               </View>
@@ -274,7 +274,7 @@ export function SubscribeScreen({
                 </Text>
                 <Text style={styles.subtitle}>
                   Membership opens your score, job matches and everything that builds on them.
-                  Pick a length — you pay once for it.
+                  Pick a length - you pay once for it.
                 </Text>
               </View>
 

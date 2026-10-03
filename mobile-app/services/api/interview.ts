@@ -121,8 +121,16 @@ export interface InterviewReport {
   }>;
 }
 
+import { CheckoutResponse } from './subscription';
+
 export const getInterviewOffer = () =>
   apiRequest<InterviewOffer>('/candidate/interview/offer');
+
+export const checkoutInterviewSession = (acknowledgeNoScoreIncrease: boolean = false) =>
+  apiRequest<CheckoutResponse>('/candidate/interview/checkout', {
+    method: 'POST',
+    body: { acknowledge_no_score_increase: acknowledgeNoScoreIncrease },
+  });
 
 export const recordDeviceCheck = (readings: DeviceCheckReadings) =>
   apiRequest<DeviceCheckResult>('/candidate/interview/device-checks', {
@@ -207,6 +215,11 @@ export const completeInterviewAnswer = (
     `/candidate/interview/sessions/${sessionId}/answers/${questionIndex}/complete`,
     { method: 'POST', body: { duration_ms: durationMs } }
   );
+
+export const getNextInterviewQuestion = (sessionId: string) =>
+  apiRequest<InterviewSession>(`/candidate/interview/sessions/${sessionId}/next-question`, {
+    method: 'POST',
+  });
 
 export const completeInterviewSession = (sessionId: string) =>
   apiRequest<InterviewSession>(`/candidate/interview/sessions/${sessionId}/complete`, {

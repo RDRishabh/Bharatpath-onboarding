@@ -42,6 +42,14 @@ export function QuestionnaireReportScreen({
               <Pressable style={styles.primaryButton} onPress={onUpdateAnswers}>
                 <Text style={styles.primaryText}>Open questions</Text>
               </Pressable>
+              {onDone && (
+                <Pressable
+                  style={[styles.secondaryButton, { marginTop: 8 }]}
+                  onPress={onDone}
+                >
+                  <Text style={styles.secondaryText}>Back</Text>
+                </Pressable>
+              )}
             </>
           ) : (
             <ActivityIndicator color="#5F4DB2" />
@@ -137,9 +145,9 @@ const styles = StyleSheet.create({
   answer: { fontFamily: 'GeneralSans-Semibold', fontSize: 15, lineHeight: 20, color: '#0A1931' },
   skipped: { fontFamily: 'GeneralSans-Regular', color: '#8892A5' },
   actions: { gap: 10 },
-  primaryButton: { backgroundColor: '#5F4DB2', borderRadius: Radii.pill, paddingVertical: 16, paddingHorizontal: 24, alignItems: 'center' },
+  primaryButton: { backgroundColor: '#5F4DB2', borderRadius: Radii.pill, paddingVertical: 16, paddingHorizontal: 24, alignItems: 'center', width: '100%' },
   primaryText: { fontFamily: 'GeneralSans-Semibold', fontSize: 15, color: '#FFFFFF' },
-  secondaryButton: { borderWidth: 1, borderColor: '#DDD6C7', borderRadius: Radii.pill, paddingVertical: 15, alignItems: 'center' },
+  secondaryButton: { borderWidth: 1, borderColor: '#DDD6C7', borderRadius: Radii.pill, paddingVertical: 15, paddingHorizontal: 24, alignItems: 'center', width: '100%' },
   secondaryText: { fontFamily: 'GeneralSans-Semibold', fontSize: 15, color: '#0A1931' },
   errorText: { fontFamily: 'GeneralSans-Regular', textAlign: 'center', color: '#8C2F1B', lineHeight: 20 },
 });

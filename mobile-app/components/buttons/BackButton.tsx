@@ -1,5 +1,5 @@
 /**
- * BackButton — Navigation back control using IconButton with ArrowLeft.
+ * BackButton - Navigation back control using IconButton with ArrowLeft.
  * Uses bold weight Phosphor icon. Minimum 44px touch target.
  */
 import { useRouter } from 'expo-router';

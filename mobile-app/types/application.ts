@@ -1,19 +1,19 @@
 /**
- * BharatPath — Application types
+ * BharatPath - Application types
  *
  * Mirrors the backend candidate-facing application contract:
  *   - `ApplicationResponse`        → `GET /candidate/applications`        (list)
  *   - `ApplicationDetailResponse` → `GET /candidate/applications/{id}`   (detail)
  *
  * The candidate's own Application Board. Reading, withdrawing and answering a
- * hire are NOT paywalled (R13 — a lapsed subscriber loses access, not their
+ * hire are NOT paywalled (R13 - a lapsed subscriber loses access, not their
  * data). Only applying is behind the subscription.
  *
  * Invariants enforced by the contract:
- *   - No `min_score`, no threshold, no gap (R11 — the score is never explained).
+ *   - No `min_score`, no threshold, no gap (R11 - the score is never explained).
  *   - No employer notes, no recruiter id in the candidate's history. `by` is a
  *     party (`CANDIDATE` | `EMPLOYER` | `SYSTEM`), never "which recruiter".
- *   - `total` is `null` on the board list — counts come from loaded items.
+ *   - `total` is `null` on the board list - counts come from loaded items.
  *   - No location or salary on the application; the job fetch is paywalled and
  *     404s for closed jobs, so the board/detail never show them.
  */
@@ -33,7 +33,7 @@ export type ApplicationStage =
 /** The two-step hire state from `applications.domain.HireState`. */
 export type HireConfirmation = 'NONE' | 'PENDING' | 'DISPUTED' | 'CONFIRMED';
 
-/** Who moved an application, as a party — never which recruiter. */
+/** Who moved an application, as a party - never which recruiter. */
 export type ApplicationActor = 'CANDIDATE' | 'EMPLOYER' | 'SYSTEM';
 
 /** Event kinds recorded in `application_events`. */
@@ -74,7 +74,7 @@ export interface CandidateHistoryItem {
   occurred_at: string;
 }
 
-/** One application with its history — the detail view. */
+/** One application with its history - the detail view. */
 export interface ApplicationDetailResponse extends ApplicationResponse {
   history: CandidateHistoryItem[];
 }
@@ -87,7 +87,7 @@ export interface ApplicationPage {
 }
 
 // ---------------------------------------------------------------------------
-// Stage helpers — the pipeline, tabs, labels and chip styles.
+// Stage helpers - the pipeline, tabs, labels and chip styles.
 // ---------------------------------------------------------------------------
 
 /** The open pipeline stages, in order (5 steps). */
@@ -99,7 +99,7 @@ export const PIPELINE: readonly ApplicationStage[] = [
   'DECISION',
 ] as const;
 
-/** Terminal stages — finished applications. They no longer count against the
+/** Terminal stages - finished applications. They no longer count against the
  *  one-active-application-per-job rule. */
 export const TERMINAL_STAGES: readonly ApplicationStage[] = [
   'HIRED',
@@ -134,7 +134,7 @@ export const PIPELINE_LENGTH = PIPELINE.length;
  * The candidate-facing label for a stage, per screen-flows §2.10.
  *
  * REJECTED is "Not selected" (not "Rejected") and EXPIRED is "Closed, no
- * response" (not "Expired") — these are deliberate: "not selected" is not a
+ * response" (not "Expired") - these are deliberate: "not selected" is not a
  * failure, and expiry is the server's housekeeping, not a warning.
  */
 export function stageLabel(stage: ApplicationStage): string {

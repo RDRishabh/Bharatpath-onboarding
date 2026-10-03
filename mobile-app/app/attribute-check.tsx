@@ -1,5 +1,5 @@
 /**
- * BharatPath — Attribute Check Route
+ * BharatPath - Attribute Check Route
  * "How you like to work" - Work style & interests evaluation.
  */
 import { useRouter } from 'expo-router';

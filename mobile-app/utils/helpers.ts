@@ -61,7 +61,7 @@ export function pickFromString<T>(str: string, options: T[]): T {
 // ─── JOB BOARD FORMATTING ─────────────────────────────────────
 // Money on the backend is integer paise (minor units). These helpers convert
 // paise → display strings for the candidate board. Never send rupees back to
-// the API — only paise.
+// the API - only paise.
 
 /**
  * Convert integer paise to a compact monthly salary label.
@@ -151,6 +151,6 @@ export function formatPostedAgo(iso: string | null | undefined): string {
   if (diffDays <= 0) return 'Posted today';
   if (diffDays === 1) return 'Posted yesterday';
   if (diffDays < 30) return `Posted ${diffDays} days ago`;
-  // Older — short date.
+  // Older - short date.
   return then.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }

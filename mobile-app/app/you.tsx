@@ -1,5 +1,5 @@
 /**
- * BharatPath — You / Profile Route
+ * BharatPath - You / Profile Route
  *
  * Wires the profile screen to real backend data:
  *   - `GET /candidate/profile`        → full_name, city, state_code
@@ -9,11 +9,12 @@
  *   - `GET /candidate/interview/sessions` → completed sessions (add-ons)
  *
  * The profile response carries no phone number (only name + location), so the
- * subtitle is "City, ST" — never a masked phone. The score card shows a dash
+ * subtitle is "City, ST" - never a masked phone. The score card shows a dash
  * while PENDING and a real number when READY; it never invents a value.
  */
-import { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { AppAlert } from "@/components/feedback/AppAlert";
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Alert } from 'react-native';
 import { ProfileScreen } from '@/screens/profile/ProfileScreen';
 import { TabName } from '@/components/navigation/BottomTabBar';
@@ -35,7 +36,7 @@ import { listInterviewSessions } from '@/services/api/interview';
 
 export default function YouRoute() {
   const router = useRouter();
-  const { session, candidateFullName, setCandidateFullName } = useAuthContext();
+  const { session, candidateFullName, setCandidateFullName, signOut, candidateScore, refreshScore } = useAuthContext();
   const [activeTab, setActiveTab] = useState<TabName>('you');
 
   // Seed the name with the email's local part so the header is never blank
@@ -45,7 +46,7 @@ export default function YouRoute() {
     candidateFullName || emailName || null,
   );
   const [locationLabel, setLocationLabel] = useState<string>('');
-  const [score, setScore] = useState<CandidateScoreResponse | null>(null);
+  const score = candidateScore;
   const [appliedCount, setAppliedCount] = useState<number | null>(null);
   const [addonsCount, setAddonsCount] = useState<number | null>(null);
 
@@ -95,18 +96,12 @@ export default function YouRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Score. PENDING is a normal 200, not an error — the card shows a dash.
-  useEffect(() => {
-    let cancelled = false;
-    getMyScore()
-      .then((s) => {
-        if (!cancelled) setScore(s);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Score. Re-fetches on focus so edits/recalculated score immediately reflect.
+  useFocusEffect(
+    useCallback(() => {
+      refreshScore();
+    }, [refreshScore])
+  );
 
   // Applied count. Walks cursor pages; 0 on any error (incl. 402).
   useEffect(() => {
@@ -169,14 +164,23 @@ export default function YouRoute() {
       addonsCount={addonsCount ?? undefined}
       activeTab={activeTab}
       onTabPress={handleTabPress}
-      onScorePress={() => router.push('/' as any)}
+      onScorePress={() =>
+        router.push({
+          pathname: '/share-result',
+          params: {
+            score: scoreValue != null ? String(scoreValue) : '',
+            bandName: bandName || '',
+          },
+        } as any)
+      }
       onAppliedPress={() => router.push('/board' as any)}
-      onAddonsPress={() => router.push('/attribute-report' as any)}
+      onAddonsPress={() => router.push('/courses' as any)}
       onResumeDetailsPress={() => router.push('/resume-details' as any)}
       onAttributeReportPress={() => router.push('/attribute-report' as any)}
-      onInterviewReportPress={() => router.push('/interview-report' as any)}
+      onInterviewReportPress={() => router.push('/interview-sessions' as any)}
+      onCoursesPress={() => router.push('/courses' as any)}
       onLanguagePress={() => {
-        Alert.alert(
+        AppAlert.alert(
           'Language Settings',
           'Currently active: English. Hindi and regional languages available soon.',
           [{ text: 'OK' }],
@@ -184,22 +188,29 @@ export default function YouRoute() {
       }}
       onWhoHasSeenMePress={() => router.push('/who-has-seen-me' as any)}
       onDownloadDataPress={() => {
-        Alert.alert(
+        AppAlert.alert(
           'Download Data',
           'Your data archive is being prepared. It will be ready by 15 Aug.',
           [{ text: 'Got it' }],
         );
       }}
-      onDeleteAccountPress={() => {
-        Alert.alert(
-          'Delete Account',
-          'Are you sure you want to permanently delete your BharatPath profile and test results?',
+      onLogoutPress={() => {
+        AppAlert.alert(
+          'Logout',
+          'Are you sure you want to log out of your BharatPath account?',
           [
             { text: 'Cancel', style: 'cancel' },
             {
-              text: 'Delete',
+              text: 'Log out',
               style: 'destructive',
-              onPress: () => router.replace('/' as any),
+              onPress: async () => {
+                try {
+                  await signOut();
+                } catch (err) {
+                  console.warn('[Profile] Error signing out:', err);
+                }
+                router.replace({ pathname: '/', params: { step: 'intro' } } as any);
+              },
             },
           ],
         );
@@ -211,7 +222,7 @@ export default function YouRoute() {
 /**
  * Build the location subtitle from the profile response.
  *
- * The profile carries no phone number — only `city` and `state_code` — so the
+ * The profile carries no phone number - only `city` and `state_code` - so the
  * subtitle is "City, ST" (or just one half if the other is missing). Returns
  * an empty string when neither is set, and the caller hides the line.
  */

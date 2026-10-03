@@ -1,5 +1,5 @@
 /**
- * EmptyState — Centered icon, title, and optional subtitle/action.
+ * EmptyState - Centered icon, title, and optional subtitle/action.
  * Uses duotone Phosphor icon for information context.
  */
 import { ReactNode } from 'react';

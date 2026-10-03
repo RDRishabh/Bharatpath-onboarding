@@ -1,5 +1,5 @@
 /**
- * TopBar — Screen header with optional back button, title, and right action.
+ * TopBar - Screen header with optional back button, title, and right action.
  * Translucent off-white surface with border hairline at the bottom.
  */
 import { ReactNode } from 'react';

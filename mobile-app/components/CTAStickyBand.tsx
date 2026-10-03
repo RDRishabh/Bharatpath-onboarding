@@ -1,5 +1,5 @@
 /**
- * CTAStickyBand — Sticky bottom call-to-action with title, subtitle, and button.
+ * CTAStickyBand - Sticky bottom call-to-action with title, subtitle, and button.
  * Designed to sit above the floating bottom navigation.
  */
 import { View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';

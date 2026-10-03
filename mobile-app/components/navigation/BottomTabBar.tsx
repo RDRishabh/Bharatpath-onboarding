@@ -1,5 +1,5 @@
 /**
- * BottomTabBar — Floating navigation matching BharatPath Design Specification.
+ * BottomTabBar - Floating navigation matching BharatPath Design Specification.
  * Features 4 core product tabs: Home, Jobs, Board, You.
  * Active tab has full rounded highlight container (#F1EAF7) with filled icon.
  */
@@ -8,6 +8,7 @@ import { BlurView } from 'expo-blur';
 import { House, Briefcase, ListChecks, User } from 'phosphor-react-native';
 import { Colors, Radii, Spacing, Layout, Shadows } from '@/theme/tokens';
 import type { IconWeight } from 'phosphor-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type TabName = 'home' | 'jobs' | 'board' | 'you' | 'preview';
 
@@ -32,8 +33,9 @@ interface BottomTabBarProps {
 }
 
 export function BottomTabBar({ activeTab, onTabPress, style }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.wrapper, style]}>
+    <View style={[styles.wrapper, { bottom: Math.max(insets.bottom + 8, 12) }, style]}>
       <View style={styles.barContainer}>
         {Platform.OS === 'web' ? (
           <View style={styles.bar}>

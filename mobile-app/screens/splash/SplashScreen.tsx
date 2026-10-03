@@ -85,7 +85,7 @@ export function SplashScreen({ onFinish, autoPlay = true }: SplashScreenProps) {
       // Delay to Phase 3 (2000ms mark)
       Animated.delay(200),
 
-      // Phase 3: Gold Rule expansion
+      // Phase 3: Saffron Rule expansion
       Animated.parallel([
         Animated.timing(ruleOpacity, {
           toValue: 1,
@@ -156,13 +156,13 @@ export function SplashScreen({ onFinish, autoPlay = true }: SplashScreenProps) {
             ]}
           >
             <Image
-              source={require('../../assets/icons/bp-logo-mark.png')}
+              source={require('../../assets/icons/logo-safron.png')}
               style={styles.logoImage}
               resizeMode="contain"
             />
           </Animated.View>
 
-          {/* Two-tone Wordmark: Bharat (#05255C) + Path (#B9891A) */}
+          {/* Two-tone Wordmark: Bharat (#05255C) + Path (#FC8201) */}
           <Animated.View
             style={[
               styles.wordmarkWrapper,
@@ -179,10 +179,10 @@ export function SplashScreen({ onFinish, autoPlay = true }: SplashScreenProps) {
           </Animated.View>
         </View>
 
-        {/* Horizontal Gold Rule (#B9891A) */}
+        {/* Horizontal Saffron Rule (#FC8201) */}
         <Animated.View
           style={[
-            styles.goldRule,
+            styles.saffronRule,
             {
               opacity: ruleOpacity,
               width: ruleWidth,
@@ -221,14 +221,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoContainer: {
-    width: 84,
-    height: 73,
+    width: 88,
+    height: 88,
     justifyContent: 'center',
     alignItems: 'center',
   },
   logoImage: {
-    width: 84,
-    height: 73,
+    width: 88,
+    height: 88,
   },
   wordmarkWrapper: {
     overflow: 'hidden',
@@ -245,12 +245,12 @@ const styles = StyleSheet.create({
     color: '#05255C', // Deep Navy Blue
   },
   wordmarkPath: {
-    color: '#B9891A', // Warm Gold
+    color: '#FC8201', // Saffron matching logo-safron.png
   },
-  goldRule: {
+  saffronRule: {
     height: 2,
     borderRadius: 2,
-    backgroundColor: '#B9891A', // Warm Gold Rule
+    backgroundColor: '#FC8201', // Exact saffron color from logo-safron.png
     marginTop: 22,
   },
   taglineText: {

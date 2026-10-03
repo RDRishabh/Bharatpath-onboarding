@@ -1,9 +1,9 @@
 /**
- * BharatPath — Applications Service
+ * BharatPath - Applications Service
  * Integrates with Backend /api/v1/candidate/applications endpoints.
  *
  * The candidate's own Application Board. Reading, withdrawing and answering a
- * hire are NOT paywalled (R13 — a lapsed subscriber loses access, not their
+ * hire are NOT paywalled (R13 - a lapsed subscriber loses access, not their
  * data). Only applying is behind the subscription.
  *
  * The list endpoint is cursor-paginated and `total` is always `null` on the
@@ -44,7 +44,7 @@ export async function listMyApplications(opts?: {
  *
  * Used by the profile screen's "Applied" stat card. A candidate's board is
  * small, so this is at most a couple of round trips. Returns 0 on error so
- * the card never shows a spinner forever — the number is a convenience, not
+ * the card never shows a spinner forever - the number is a convenience, not
  * a guarantee, and a 402 (lapsed subscription) is a normal "no count" case
  * for reading-derived stats.
  */
@@ -85,7 +85,7 @@ export async function getMyApplication(
  * `POST /candidate/applications/{id}/withdraw`. Allowed at any active stage
  * before the outcome; idempotent (withdrawing twice returns the withdrawn
  * application). 409 `application_invalid_transition` if the application is
- * already HIRED/REJECTED/EXPIRED — the state changed while the screen was
+ * already HIRED/REJECTED/EXPIRED - the state changed while the screen was
  * open; show "This application has changed" and reload.
  */
 export async function withdrawApplication(
@@ -101,9 +101,9 @@ export async function withdrawApplication(
  * Confirm a hire the employer proposed. Makes the hire final (→ HIRED).
  *
  * `POST /candidate/applications/{id}/hire/confirm`. Allowed only when
- * `hire_confirmation === 'PENDING'` (or `DISPUTED` — a candidate who disputed
+ * `hire_confirmation === 'PENDING'` (or `DISPUTED` - a candidate who disputed
  * by mistake can still confirm). 409 `hire_confirmation_not_pending` if there
- * is nothing to confirm — reload.
+ * is nothing to confirm - reload.
  */
 export async function confirmHire(
   applicationId: string,
@@ -120,7 +120,7 @@ export async function confirmHire(
  *
  * `POST /candidate/applications/{id}/hire/dispute`. Allowed only when
  * `hire_confirmation === 'PENDING'`. 409 `hire_confirmation_not_pending` if
- * the state changed — reload.
+ * the state changed - reload.
  */
 export async function disputeHire(
   applicationId: string,

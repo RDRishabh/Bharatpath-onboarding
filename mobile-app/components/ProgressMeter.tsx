@@ -1,5 +1,5 @@
 /**
- * ProgressMeter — Horizontal progress bar with indigo fill.
+ * ProgressMeter - Horizontal progress bar with indigo fill.
  * Supports discrete steps (band mode) or continuous percentage.
  */
 import { View, StyleSheet, StyleProp, ViewStyle } from 'react-native';

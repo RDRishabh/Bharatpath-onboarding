@@ -1,11 +1,16 @@
 /**
- * BharatPath — WhoHasSeenMeScreen
- * Exactly matches Screen 41 from BharatPath Handoff and Screenshot 2.
+ * BharatPath - WhoHasSeenMeScreen
+ * Matches Screen 41 from BharatPath Handoff and Screenshot 2.
+ * Integrated with Backend GET /candidate/profile/views.
+ *
  * Features:
  * - Circular back button & TopBar
  * - Title "Every unlock, logged" + subtitle
- * - Employer activity logs (Aurum Labs, Sterling Diagnostics, Kanhaiya Logistics)
- * - "Let employers find me" toggle switch
+ * - Live employer activity logs fetched from /candidate/profile/views
+ * - Initials badge with deterministic brand palette
+ * - Empty state when no employers have unlocked/viewed yet
+ * - Pull-to-refresh & pagination
+ * - "Let employers find me" interactive toggle switch
  * - Privacy protection banner
  */
 import React, { useState, useRef } from 'react';
@@ -16,21 +21,86 @@ import {
   ScrollView,
   Pressable,
   Animated,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { ArrowLeft, LockOpen, Eye, Info } from 'phosphor-react-native';
+import { ArrowLeft, LockOpen, Info, WarningCircle } from 'phosphor-react-native';
 import { Colors, Spacing } from '@/theme/tokens';
+import { useProfileViews } from '@/hooks/useProfileViews';
+import { getInitials, pickFromString } from '@/utils/helpers';
 
 export interface WhoHasSeenMeScreenProps {
   onBack?: () => void;
   defaultLetEmployersFindMe?: boolean;
 }
 
+const COLOR_PAIRS = [
+  { bg: '#F1EAF7', fg: '#4A3E8F' },
+  { bg: '#F7EFD6', fg: '#7A5C0E' },
+  { bg: '#E6F1EA', fg: '#1F6B45' },
+  { bg: '#E7E0D4', fg: '#5F6B80' },
+  { bg: '#F8E6E0', fg: '#993A22' },
+];
+
+function formatActivityDate(iso: string | null | undefined): string {
+  if (!iso) return 'Recently';
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return 'Recently';
+  const now = new Date();
+
+  const isToday =
+    then.getDate() === now.getDate() &&
+    then.getMonth() === now.getMonth() &&
+    then.getFullYear() === now.getFullYear();
+  if (isToday) return 'Today';
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday =
+    then.getDate() === yesterday.getDate() &&
+    then.getMonth() === yesterday.getMonth() &&
+    then.getFullYear() === yesterday.getFullYear();
+  if (isYesterday) return 'Yesterday';
+
+  const day = then.getDate();
+  const monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  const month = monthNames[then.getMonth()];
+  if (then.getFullYear() === now.getFullYear()) {
+    return `${day} ${month}`;
+  }
+  return `${day} ${month} ${then.getFullYear()}`;
+}
+
 export function WhoHasSeenMeScreen({
   onBack,
   defaultLetEmployersFindMe = true,
 }: WhoHasSeenMeScreenProps) {
+  const {
+    views,
+    loading,
+    loadingMore,
+    refreshing,
+    hasReachedEnd,
+    error,
+    loadMore,
+    reload,
+  } = useProfileViews();
+
   const [letEmployersFindMe, setLetEmployersFindMe] = useState(
     defaultLetEmployersFindMe
   );
@@ -67,6 +137,14 @@ export function WhoHasSeenMeScreen({
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={reload}
+              tintColor={Colors.brandAccent}
+              colors={[Colors.brandAccent]}
+            />
+          }
         >
           {/* Top Bar with back button */}
           <View style={styles.topBar}>
@@ -94,47 +172,91 @@ export function WhoHasSeenMeScreen({
 
           {/* Employer Activity List */}
           <View style={styles.listContainer}>
-            {/* Card 1: Aurum Labs */}
-            <View style={styles.employerCard}>
-              <View style={styles.companyBadge}>
-                <Text style={styles.companyBadgeText}>AT</Text>
-              </View>
-              <View style={styles.employerInfo}>
-                <Text style={styles.companyName}>Aurum Labs</Text>
-                <Text style={styles.activityTime}>
-                  15 July · unlocked your contact
-                </Text>
-              </View>
-              <LockOpen size={18} color={Colors.indigo} weight="fill" />
-            </View>
+            {/* Loading Skeleton */}
+            {loading && views.length === 0 && (
+              <>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={[styles.employerCard, { opacity: 0.6 }]}>
+                    <View style={[styles.companyBadge, { backgroundColor: '#EDE8E1' }]} />
+                    <View style={styles.employerInfo}>
+                      <View style={styles.skeletonTitle} />
+                      <View style={styles.skeletonSubtitle} />
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
 
-            {/* Card 2: Sterling Diagnostics */}
-            <View style={styles.employerCard}>
-              <View style={styles.companyBadge}>
-                <Text style={styles.companyBadgeText}>SD</Text>
+            {/* Error State */}
+            {error && (
+              <View style={styles.errorCard}>
+                <WarningCircle size={20} color={Colors.red.fg} weight="fill" />
+                <Text style={styles.errorText}>{error}</Text>
+                <Pressable style={styles.retryButton} onPress={reload}>
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </Pressable>
               </View>
-              <View style={styles.employerInfo}>
-                <Text style={styles.companyName}>Sterling Diagnostics</Text>
-                <Text style={styles.activityTime}>
-                  Today · viewed masked profile
-                </Text>
-              </View>
-              <Eye size={18} color="#5F6B80" weight="bold" />
-            </View>
+            )}
 
-            {/* Card 3: Kanhaiya Logistics */}
-            <View style={styles.employerCard}>
-              <View style={styles.companyBadge}>
-                <Text style={styles.companyBadgeText}>KL</Text>
-              </View>
-              <View style={styles.employerInfo}>
-                <Text style={styles.companyName}>Kanhaiya Logistics</Text>
-                <Text style={styles.activityTime}>
-                  5 June · unlocked your contact
+            {/* Empty State */}
+            {!loading && !error && views.length === 0 && (
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIconCircle}>
+                  <LockOpen size={24} color={Colors.brandAccent} weight="duotone" />
+                </View>
+                <Text style={styles.emptyTitle}>No employer views yet</Text>
+                <Text style={styles.emptySub}>
+                  When an employer views your profile, their activity will be logged here.
                 </Text>
               </View>
-              <LockOpen size={18} color={Colors.navy} weight="fill" />
-            </View>
+            )}
+
+            {/* Live Views List */}
+            {views.map((item, idx) => {
+              const initials = getInitials(item.employer_name);
+              const dateLabel = formatActivityDate(item.last_viewed_at);
+              const colorPair = pickFromString(item.employer_name, COLOR_PAIRS);
+
+              return (
+                <View
+                  key={`${item.employer_name}-${item.last_viewed_at}-${idx}`}
+                  style={styles.employerCard}
+                >
+                  <View style={[styles.companyBadge, { backgroundColor: colorPair.bg }]}>
+                    <Text style={[styles.companyBadgeText, { color: colorPair.fg }]}>
+                      {initials}
+                    </Text>
+                  </View>
+                  <View style={styles.employerInfo}>
+                    <Text style={styles.companyName} numberOfLines={1}>
+                      {item.employer_name}
+                    </Text>
+                    <Text style={styles.activityTime}>
+                      {`${dateLabel} · unlocked your contact`}
+                    </Text>
+                  </View>
+                  <LockOpen size={18} color={Colors.indigo} weight="fill" />
+                </View>
+              );
+            })}
+
+            {/* Load More Button */}
+            {!hasReachedEnd && views.length > 0 && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.loadMoreButton,
+                  pressed && { opacity: 0.8 },
+                ]}
+                onPress={loadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? (
+                  <ActivityIndicator size="small" color={Colors.brandAccent} />
+                ) : (
+                  <Text style={styles.loadMoreText}>Load older activity</Text>
+                )}
+              </Pressable>
+            )}
           </View>
 
           {/* Toggle Card: Let employers find me */}
@@ -251,7 +373,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 13,
-    backgroundColor: '#F1EAF7',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -259,7 +380,6 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Bold',
     fontSize: 13,
     lineHeight: 16,
-    color: '#4A3E8F',
   },
   employerInfo: {
     flex: 1,
@@ -276,6 +396,98 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: '#5F6B80',
+  },
+  skeletonTitle: {
+    width: 140,
+    height: 14,
+    borderRadius: 6,
+    backgroundColor: '#EDE8E1',
+    marginBottom: 6,
+  },
+  skeletonSubtitle: {
+    width: 90,
+    height: 11,
+    borderRadius: 5,
+    backgroundColor: '#F3EFE9',
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F1EAF7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 16,
+    lineHeight: 22,
+    color: Colors.navy,
+    textAlign: 'center',
+  },
+  emptySub: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#5F6B80',
+    textAlign: 'center',
+    maxWidth: 280,
+  },
+  errorCard: {
+    backgroundColor: Colors.red.bg,
+    borderWidth: 1,
+    borderColor: '#F0C4B8',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  errorText: {
+    flex: 1,
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.red.fg,
+  },
+  retryButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
+  },
+  retryButtonText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 12,
+    color: Colors.navy,
+  },
+  loadMoreButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E0D4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 4,
+  },
+  loadMoreText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 13,
+    color: Colors.brandAccent,
   },
   toggleCard: {
     backgroundColor: '#FFFFFF',

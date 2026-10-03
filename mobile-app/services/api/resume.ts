@@ -1,5 +1,5 @@
 /**
- * BharatPath — Resume Service
+ * BharatPath - Resume Service
  * Integrates with Backend /api/v1/candidate/resume/* endpoints:
  * - Uploads (presigned URL PUT + complete + polling)
  * - Paste Text (POST /candidate/resume/text)
@@ -205,16 +205,16 @@ function reachableFromThisDevice(presignedUrl: string): string {
 
   try {
     const parsed = new URL(presignedUrl);
-    const urlIsLocalhost =
-      parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
-    // If the presigned URL still names localhost but the API is reached on a
-    // different host (LAN IP or 10.0.2.2), swap the host — keeping the port.
-    if (urlIsLocalhost && !isLocalhostHost) {
-      parsed.hostname = backendHost;
-      return parsed.toString();
+    // If it's a LocalStack port (4566) or localhost, and backend is reached via LAN IP:
+    // ensure the device connects to backendHost on port 4566
+    if (!isLocalhostHost && (parsed.port === '4566' || parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
+      if (parsed.hostname !== backendHost) {
+        parsed.hostname = backendHost;
+        return parsed.toString();
+      }
     }
   } catch {
-    // Fall through to the simple replace below if URL parsing fails.
+    // Fall through to presignedUrl
   }
   return presignedUrl;
 }

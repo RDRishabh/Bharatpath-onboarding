@@ -1,5 +1,5 @@
 /**
- * BharatPath — JobFiltersSheet
+ * BharatPath - JobFiltersSheet
  *
  * Implements S17a (Filters) from `docs/screen-flows.md`, wired to the backend
  * `JobFilters` type. The board has no total count, so the CTA reads "Show jobs"
@@ -12,7 +12,7 @@
  *  - Minimum monthly salary: ₹10k / ₹15k / ₹20k / ₹25k+  (min_salary_minor, paise)
  *  - Skill: free text                             (skill)
  *
- * No distance slider — the API has no geo search.
+ * No distance slider - the API has no geo search.
  */
 import React, { useState, useEffect } from 'react';
 import {
@@ -283,7 +283,7 @@ export function JobFiltersSheet({
             </View>
           </View>
 
-          {/* Bottom Action — no count (board has no total) */}
+          {/* Bottom Action - no count (board has no total) */}
           <Pressable
             style={({ pressed }) => [
               styles.applyButton,

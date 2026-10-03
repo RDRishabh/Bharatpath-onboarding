@@ -1,15 +1,23 @@
 /**
- * BharatPath — NotificationScreen
- * Matches Screen 15 from BharatPath Handoff ("Can we message you?")
- * and serves as the Notifications Hub for the app.
- * Features:
- * - Circular back button & TopBar
- * - "Can we message you?" with the 3 strict communication guarantees
- * - 3D Bell illustration
- * - Action buttons: "Allow notifications" / "Not now"
- * - Preferences state showing active channels (WhatsApp, Push, SMS)
+ * BharatPath - NotificationScreen
+ *
+ * Shows the candidate's real in-app inbox from `GET /api/v1/notifications`
+ * (newest first, cursor-paginated) and marks items read on tap via
+ * `POST /notifications/{id}/read`.
+ *
+ * Backend contract (`backend/app/modules/notifications/schemas.py`):
+ *   - `InboxPage`: items[], next_cursor, unread
+ *   - `InboxItem`: id, template_code, body, created_at, read_at
+ *
+ * The `body` is rendered server-side in the reader's language - the app just
+ * displays it. The `template_code` picks an icon and (optionally) a tap
+ * destination. No score, amount, or third-party name is ever in a body
+ * (invariant: the inbox obeys the same rules as every other channel).
+ *
+ * The "Can we message you?" onboarding card collapses to a small banner once
+ * notifications have been allowed, so the inbox is the main content.
  */
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -17,18 +25,35 @@ import {
   ScrollView,
   Pressable,
   Image,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
-  Eye,
-  ChatCircleText,
-  Target,
-  CheckCircle,
   BellSimpleRinging,
+  CheckCircle,
+  ChatCircleText,
+  Eye,
+  Target,
+  CreditCard,
+  WarningCircle,
+  Clock,
+  MicrophoneStage,
+  ShieldCheck,
+  Question,
+  UserMinus,
+  Scales,
+  FileText,
 } from 'phosphor-react-native';
-import { Colors, Spacing } from '@/theme/tokens';
+import { Colors, Spacing, Radii } from '@/theme/tokens';
+import {
+  InboxItem,
+  getInbox,
+  markNotificationRead,
+} from '@/services/api/notifications';
 
 export interface NotificationScreenProps {
   onBack?: () => void;
@@ -43,143 +68,182 @@ export function NotificationScreen({
   onNotNow,
   initialEnabled = false,
 }: NotificationScreenProps) {
+  const router = useRouter();
   const [isEnabled, setIsEnabled] = useState(initialEnabled);
-  const [allowWhatsapp, setAllowWhatsapp] = useState(true);
-  const [allowPush, setAllowPush] = useState(true);
+  const [items, setItems] = useState<InboxItem[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleAllow = () => {
-    setIsEnabled(true);
-    if (onAllow) {
-      onAllow();
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const page = await getInbox(null, 30);
+      setItems(page.items);
+      setUnread(page.unread);
+      setCursor(page.next_cursor);
+      setHasMore(page.next_cursor != null);
+    } catch {
+      setError('Could not load your notifications.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const loadMore = useCallback(async () => {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await getInbox(cursor, 30);
+      setItems((prev) => [...prev, ...page.items]);
+      setCursor(page.next_cursor);
+      setHasMore(page.next_cursor != null);
+    } catch {
+      // Silent: the first page is already shown.
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [cursor, loadingMore]);
+
+  const handleTap = async (item: InboxItem) => {
+    // Mark read optimistically.
+    if (!item.read_at) {
+      setItems((prev) =>
+        prev.map((n) =>
+          n.id === item.id ? { ...n, read_at: new Date().toISOString() } : n,
+        ),
+      );
+      setUnread((u) => Math.max(0, u - 1));
+      try {
+        await markNotificationRead(item.id);
+      } catch {
+        // Revert on failure.
+        setItems((prev) =>
+          prev.map((n) => (n.id === item.id ? { ...n, read_at: null } : n)),
+        );
+        setUnread((u) => u + 1);
+      }
+    }
+    const dest = destinationFor(item.template_code);
+    if (dest) {
+      try {
+        router.push(dest as any);
+      } catch {
+        router.push('/home');
+      }
     }
   };
 
+  const handleAllow = () => {
+    setIsEnabled(true);
+    if (onAllow) onAllow();
+  };
+
   const handleNotNow = () => {
-    if (onNotNow) {
-      onNotNow();
-    } else if (onBack) {
-      onBack();
-    }
+    if (onNotNow) onNotNow();
+    else if (onBack) onBack();
+    else if (router.canGoBack()) router.back();
+  };
+
+  const goBack = () => {
+    if (onBack) onBack();
+    else if (router.canGoBack()) router.back();
+    else router.replace('/home');
   };
 
   return (
     <View style={styles.root}>
       <StatusBar style="dark" animated />
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        {/* Top Bar */}
+        <View style={styles.topBar}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.backButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={goBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <ArrowLeft size={16} color={Colors.navy} weight="bold" />
+          </Pressable>
+          <Text style={styles.topBarTitle}>Notifications</Text>
+          {unread > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>{unread}</Text>
+            </View>
+          )}
+        </View>
+
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-        >
-          {/* Top Bar */}
-          <View style={styles.topBar}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.backButton,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={onBack}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <ArrowLeft size={16} color={Colors.navy} weight="bold" />
-            </Pressable>
-            <Text style={styles.topBarTitle}>Notifications</Text>
-          </View>
-
-          {/* Heading Section */}
-          <View style={styles.headingSection}>
-            <Text style={styles.mainTitle}>Can we message you?</Text>
-            <Text style={styles.mainSubtitle}>
-              Only these three things. Nothing else, ever.
-            </Text>
-          </View>
-
-          {/* 3 Value Proposition Cards */}
-          <View style={styles.cardsContainer}>
-            <View style={styles.card}>
-              <Eye size={20} color={Colors.indigo} weight="duotone" />
-              <Text style={styles.cardText}>
-                An employer opened your profile
-              </Text>
-            </View>
-
-            <View style={styles.card}>
-              <ChatCircleText size={20} color={Colors.navy} weight="duotone" />
-              <Text style={styles.cardText}>
-                Your application moved forward
-              </Text>
-            </View>
-
-            <View style={styles.card}>
-              <Target size={20} color={Colors.navy} weight="duotone" />
-              <Text style={styles.cardText}>
-                A job you nearly qualify for opened
-              </Text>
-            </View>
-          </View>
-
-          {/* Center Illustration */}
-          <View style={styles.illustrationContainer}>
-            <Image
-              source={require('@/assets/icons/notify-bell.png')}
-              style={styles.bellImage}
-              resizeMode="contain"
+          refreshControl={
+            <RefreshControl
+              refreshing={loading && items.length === 0}
+              onRefresh={load}
             />
-          </View>
-
-          {/* Status feedback if enabled */}
-          {isEnabled ? (
-            <View style={styles.enabledBox}>
-              <View style={styles.enabledRow}>
-                <CheckCircle size={20} color="#15803D" weight="fill" />
-                <Text style={styles.enabledText}>
-                  Notifications are enabled for your account.
-                </Text>
+          }
+          onScroll={({ nativeEvent }) => {
+            const { layoutMeasurement, contentOffset, contentSize } =
+              nativeEvent;
+            if (
+              hasMore &&
+              !loadingMore &&
+              layoutMeasurement.height + contentOffset.y >=
+                contentSize.height - 200
+            ) {
+              loadMore();
+            }
+          }}
+          scrollEventThrottle={16}
+        >
+          {/* Onboarding banner - only when notifications not yet allowed */}
+          {!isEnabled && (
+            <View style={styles.onboardingCard}>
+              <Text style={styles.onboardingTitle}>Can we message you?</Text>
+              <Text style={styles.onboardingSubtitle}>
+                Only these three things. Nothing else, ever.
+              </Text>
+              <View style={styles.onboardingPoints}>
+                <View style={styles.onboardingPoint}>
+                  <Eye size={16} color={Colors.indigo} weight="duotone" />
+                  <Text style={styles.onboardingPointText}>
+                    An employer opened your profile
+                  </Text>
+                </View>
+                <View style={styles.onboardingPoint}>
+                  <ChatCircleText
+                    size={16}
+                    color={Colors.navy}
+                    weight="duotone"
+                  />
+                  <Text style={styles.onboardingPointText}>
+                    Your application moved forward
+                  </Text>
+                </View>
+                <View style={styles.onboardingPoint}>
+                  <Target size={16} color={Colors.navy} weight="duotone" />
+                  <Text style={styles.onboardingPointText}>
+                    A job you nearly qualify for opened
+                  </Text>
+                </View>
               </View>
-              <View style={styles.channelToggles}>
-                <Pressable
-                  style={styles.channelRow}
-                  onPress={() => setAllowWhatsapp(!allowWhatsapp)}
-                >
-                  <Text style={styles.channelLabel}>WhatsApp Updates</Text>
-                  <View
-                    style={[
-                      styles.toggleMini,
-                      allowWhatsapp && styles.toggleMiniActive,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.toggleThumb,
-                        allowWhatsapp && styles.toggleThumbActive,
-                      ]}
-                    />
-                  </View>
-                </Pressable>
-                <Pressable
-                  style={styles.channelRow}
-                  onPress={() => setAllowPush(!allowPush)}
-                >
-                  <Text style={styles.channelLabel}>Push Notifications</Text>
-                  <View
-                    style={[
-                      styles.toggleMini,
-                      allowPush && styles.toggleMiniActive,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.toggleThumb,
-                        allowPush && styles.toggleThumbActive,
-                      ]}
-                    />
-                  </View>
-                </Pressable>
+              <View style={styles.illustrationContainer}>
+                <Image
+                  source={require('@/assets/icons/notify-bell.png')}
+                  style={styles.bellImage}
+                  resizeMode="contain"
+                />
               </View>
-            </View>
-          ) : (
-            /* Bottom Action Buttons */
-            <View style={styles.bottomActions}>
               <Pressable
                 style={({ pressed }) => [
                   styles.allowButton,
@@ -191,7 +255,6 @@ export function NotificationScreen({
                 <BellSimpleRinging size={18} color="#FFFFFF" weight="bold" />
                 <Text style={styles.allowButtonText}>Allow notifications</Text>
               </Pressable>
-
               <Pressable
                 style={({ pressed }) => [
                   styles.notNowButton,
@@ -204,31 +267,291 @@ export function NotificationScreen({
               </Pressable>
             </View>
           )}
+
+          {/* Inbox */}
+          {loading && items.length === 0 ? (
+            <View style={styles.centerState}>
+              <ActivityIndicator size="large" color={Colors.indigo} />
+              <Text style={styles.centerTitle}>Loading your notifications</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.centerState}>
+              <WarningCircle size={42} color="#993A22" weight="fill" />
+              <Text style={styles.centerTitle}>Could not load</Text>
+              <Text style={styles.centerBody}>{error}</Text>
+              <Pressable style={styles.primaryButton} onPress={load}>
+                <Text style={styles.primaryButtonText}>Try again</Text>
+              </Pressable>
+            </View>
+          ) : items.length === 0 ? (
+            <View style={styles.centerState}>
+              <BellSimpleRinging
+                size={44}
+                color={Colors.indigo}
+                weight="duotone"
+              />
+              <Text style={styles.centerTitle}>No notifications yet</Text>
+              <Text style={styles.centerBody}>
+                When an employer views your profile, your application moves
+                forward, or your interview feedback is ready, it will show up
+                here.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.inboxList}>
+              {items.map((item) => (
+                <NotificationRow
+                  key={item.id}
+                  item={item}
+                  onPress={() => handleTap(item)}
+                />
+              ))}
+              {loadingMore && (
+                <View style={styles.loadingMoreRow}>
+                  <ActivityIndicator size="small" color={Colors.indigo} />
+                </View>
+              )}
+              {isEnabled && (
+                <View style={styles.enabledFooter}>
+                  <CheckCircle size={16} color="#15803D" weight="fill" />
+                  <Text style={styles.enabledFooterText}>
+                    Notifications are enabled for your account.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
   );
 }
 
+/** A single notification row. Unread items get a stronger visual weight. */
+function NotificationRow({
+  item,
+  onPress,
+}: {
+  item: InboxItem;
+  onPress: () => void;
+}) {
+  const isUnread = !item.read_at;
+  const icon = iconFor(item.template_code);
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.row,
+        isUnread && styles.rowUnread,
+        pressed && styles.buttonPressed,
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      <View style={[styles.rowIcon, { backgroundColor: icon.bg }]}>
+        {icon.node}
+      </View>
+      <View style={styles.rowCopy}>
+        <Text
+          style={[styles.rowBody, isUnread && styles.rowBodyUnread]}
+          numberOfLines={3}
+        >
+          {item.body}
+        </Text>
+        <Text style={styles.rowTime}>{formatRelative(item.created_at)}</Text>
+      </View>
+      {isUnread && <View style={styles.unreadDot} />}
+    </Pressable>
+  );
+}
+
+/** Pick an icon + tint for a template code. Falls back to a bell. */
+function iconFor(code: string): { node: React.ReactNode; bg: string } {
+  const indigo = '#F1EAF7';
+  const navy = '#E7E0D4';
+  const green = '#DFF2E6';
+  const amber = '#F4EFD8';
+  const red = '#F8E2DC';
+  switch (code) {
+    case 'IN_APP_APPLICATION_SENT':
+      return {
+        node: <CheckCircle size={18} color="#1F7A4D" weight="fill" />,
+        bg: green,
+      };
+    case 'IN_APP_APPLICATION_UPDATE':
+      return {
+        node: <ChatCircleText size={18} color={Colors.navy} weight="duotone" />,
+        bg: navy,
+      };
+    case 'IN_APP_PAYMENT_RECEIVED':
+      return {
+        node: <CreditCard size={18} color="#1F7A4D" weight="duotone" />,
+        bg: green,
+      };
+    case 'IN_APP_PAYMENT_FAILED':
+      return {
+        node: <CreditCard size={18} color="#993A22" weight="duotone" />,
+        bg: red,
+      };
+    case 'IN_APP_ACCESS_ENDED':
+      return {
+        node: <Clock size={18} color="#7A5C0E" weight="duotone" />,
+        bg: amber,
+      };
+    case 'IN_APP_PRE_DEBIT':
+      return {
+        node: <CreditCard size={18} color={Colors.indigo} weight="duotone" />,
+        bg: indigo,
+      };
+    case 'IN_APP_KYB_APPROVED':
+      return {
+        node: <ShieldCheck size={18} color="#1F7A4D" weight="duotone" />,
+        bg: green,
+      };
+    case 'IN_APP_KYB_NEEDS_INFO':
+      return {
+        node: <ShieldCheck size={18} color="#7A5C0E" weight="duotone" />,
+        bg: amber,
+      };
+    case 'IN_APP_INTERVIEW_FEEDBACK_READY':
+    case 'IN_APP_INTERVIEW_INVITATION':
+      return {
+        node: (
+          <MicrophoneStage size={18} color={Colors.indigo} weight="duotone" />
+        ),
+        bg: indigo,
+      };
+    case 'IN_APP_ASSESSMENT_INVITATION':
+      return {
+        node: <Target size={18} color={Colors.indigo} weight="duotone" />,
+        bg: indigo,
+      };
+    case 'IN_APP_EMPLOYER_MESSAGE':
+      return {
+        node: <ChatCircleText size={18} color="#1F7A4D" weight="duotone" />,
+        bg: green,
+      };
+    case 'IN_APP_COLLEGE_STUDENT_DISCONNECTED':
+    case 'IN_APP_COLLEGE_STUDENT_STOPPED_SHARING':
+      return {
+        node: <UserMinus size={18} color={Colors.navy} weight="duotone" />,
+        bg: navy,
+      };
+    case 'IN_APP_DISPUTE_ANSWERED':
+      return {
+        node: <Scales size={18} color={Colors.indigo} weight="duotone" />,
+        bg: indigo,
+      };
+    case 'IN_APP_PROFILE_INCOMPLETE':
+      return {
+        node: <FileText size={18} color="#7A5C0E" weight="duotone" />,
+        bg: amber,
+      };
+    default:
+      return {
+        node: <Question size={18} color={Colors.navy} weight="duotone" />,
+        bg: navy,
+      };
+  }
+}
+
+/** Where tapping a notification should go. Always routes to an existing valid screen. */
+function destinationFor(code: string): string {
+  switch (code) {
+    case 'IN_APP_APPLICATION_SENT':
+    case 'IN_APP_APPLICATION_UPDATE':
+    case 'IN_APP_EMPLOYER_MESSAGE':
+    case 'IN_APP_DISPUTE_ANSWERED':
+      return '/board';
+    case 'IN_APP_PAYMENT_RECEIVED':
+    case 'IN_APP_PAYMENT_FAILED':
+    case 'IN_APP_ACCESS_ENDED':
+    case 'IN_APP_PRE_DEBIT':
+      return '/you';
+    case 'IN_APP_INTERVIEW_FEEDBACK_READY':
+    case 'IN_APP_INTERVIEW_INVITATION':
+      return '/interview-sessions';
+    case 'IN_APP_ASSESSMENT_INVITATION':
+    case 'IN_APP_PROFILE_INCOMPLETE':
+      return '/attribute-check';
+    case 'IN_APP_COURSE_ENROLLED':
+    case 'IN_APP_COURSE_COMPLETED':
+      return '/courses';
+    default:
+      if (
+        code.includes('PAYMENT') ||
+        code.includes('ACCESS') ||
+        code.includes('SUB') ||
+        code.includes('BILL') ||
+        code.includes('INVOICE')
+      ) {
+        return '/you';
+      }
+      if (code.includes('INTERVIEW')) {
+        return '/interview-sessions';
+      }
+      if (code.includes('COURSE') || code.includes('LESSON')) {
+        return '/courses';
+      }
+      if (code.includes('JOB') || code.includes('APPLICAT') || code.includes('OFFER')) {
+        return '/board';
+      }
+      if (code.includes('STREAK')) {
+        return '/streak';
+      }
+      return '/home';
+  }
+}
+
+/** "2m", "3h", "Yesterday", "Mon 15 Jul" - short relative time. */
+function formatRelative(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  const diffHr = Math.floor(diffMs / 3_600_000);
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const startOfThat = new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+  ).getTime();
+  const dayDiff = Math.round((startOfThat - startOfToday) / 86_400_000);
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHr < 24 && dayDiff === 0) return `${diffHr}h ago`;
+  if (dayDiff === 1) return 'Yesterday';
+  if (dayDiff > 1 && dayDiff < 7) {
+    return d.toLocaleDateString('en-IN', {
+      weekday: 'short',
+      timeZone: 'Asia/Kolkata',
+    });
+  }
+  return d.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'Asia/Kolkata',
+  });
+}
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FFFCF7', // Matches brand offWhite canvas
+    backgroundColor: '#FFFCF7',
   },
   safeArea: {
     flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.xl,
-    gap: 20,
-    flexGrow: 1,
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
   backButton: {
     width: 40,
@@ -247,62 +570,77 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: Colors.navy,
   },
-  headingSection: {
-    gap: 2,
-  },
-  mainTitle: {
-    fontFamily: 'GeneralSans-Bold',
-    fontSize: 28,
-    lineHeight: 32,
-    letterSpacing: -0.7,
-    color: Colors.navy,
-  },
-  mainSubtitle: {
-    fontFamily: 'GeneralSans-Regular',
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#3A4761',
-  },
-  cardsContainer: {
-    gap: 8,
-  },
-  card: {
-    flexDirection: 'row',
+  unreadBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 7,
+    backgroundColor: '#5F4DB2',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadBadgeText: {
+    fontFamily: 'GeneralSans-Bold',
+    fontSize: 11,
+    color: '#FFFFFF',
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: Spacing.xl,
     gap: 12,
+    flexGrow: 1,
+  },
+  // Onboarding card (shown only until notifications are allowed)
+  onboardingCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E7E0D4',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    borderRadius: Radii.card,
+    padding: 20,
+    gap: 14,
   },
-  cardText: {
-    flex: 1,
-    fontFamily: 'GeneralSans-Medium',
+  onboardingTitle: {
+    fontFamily: 'GeneralSans-Bold',
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: -0.5,
+    color: Colors.navy,
+  },
+  onboardingSubtitle: {
+    fontFamily: 'GeneralSans-Regular',
     fontSize: 14,
     lineHeight: 20,
+    color: '#3A4761',
+  },
+  onboardingPoints: {
+    gap: 8,
+  },
+  onboardingPoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  onboardingPointText: {
+    flex: 1,
+    fontFamily: 'GeneralSans-Medium',
+    fontSize: 13,
+    lineHeight: 18,
     color: Colors.navy,
   },
   illustrationContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 8,
+    marginVertical: 4,
   },
   bellImage: {
-    width: '80%',
-    height: 180,
+    width: '70%',
+    height: 140,
     alignSelf: 'center',
   },
-  bottomActions: {
-    marginTop: 'auto',
-    gap: 8,
-  },
   allowButton: {
-    width: '100%',
     backgroundColor: '#5F4DB2',
-    borderRadius: 999,
-    paddingVertical: 18,
+    borderRadius: Radii.pill,
+    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -310,79 +648,121 @@ const styles = StyleSheet.create({
   },
   allowButtonText: {
     fontFamily: 'GeneralSans-Semibold',
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: 15,
     color: '#FFFFFF',
   },
   notNowButton: {
-    width: '100%',
     paddingVertical: 10,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   notNowButtonText: {
     fontFamily: 'GeneralSans-Medium',
     fontSize: 14,
-    lineHeight: 20,
     color: '#3A4761',
   },
-  enabledBox: {
-    marginTop: 'auto',
+  // Inbox
+  inboxList: {
+    gap: 8,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E7E0D4',
-    borderRadius: 20,
-    padding: 16,
-    gap: 14,
+    borderRadius: Radii.input,
+    padding: 14,
   },
-  enabledRow: {
-    flexDirection: 'row',
+  rowUnread: {
+    borderColor: '#5F4DB2',
+    borderWidth: 1.5,
+    backgroundColor: '#FBFAFF',
+  },
+  rowIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'center',
   },
-  enabledText: {
+  rowCopy: {
     flex: 1,
-    fontFamily: 'GeneralSans-Semibold',
-    fontSize: 14,
-    lineHeight: 18,
-    color: '#15803D',
+    gap: 4,
   },
-  channelToggles: {
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F4EFE4',
-    paddingTop: 12,
-  },
-  channelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  channelLabel: {
+  rowBody: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 14,
-    lineHeight: 18,
+    lineHeight: 20,
+    color: '#3A4761',
+  },
+  rowBodyUnread: {
+    fontFamily: 'GeneralSans-Semibold',
     color: Colors.navy,
   },
-  toggleMini: {
-    width: 44,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#DDD6C7',
-    justifyContent: 'center',
-    paddingHorizontal: 2,
+  rowTime: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 12,
+    color: '#5F6B80',
   },
-  toggleMiniActive: {
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: '#5F4DB2',
+    marginTop: 6,
   },
-  toggleThumb: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
+  loadingMoreRow: {
+    paddingVertical: 16,
+    alignItems: 'center',
   },
-  toggleThumbActive: {
-    alignSelf: 'flex-end',
+  enabledFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  enabledFooterText: {
+    flex: 1,
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 13,
+    color: '#15803D',
+  },
+  // Center states
+  centerState: {
+    flex: 1,
+    minHeight: 300,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 10,
+  },
+  centerTitle: {
+    fontFamily: 'GeneralSans-Bold',
+    fontSize: 20,
+    color: Colors.navy,
+    textAlign: 'center',
+  },
+  centerBody: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#3A4761',
+    textAlign: 'center',
+  },
+  primaryButton: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: Radii.pill,
+    backgroundColor: '#5F4DB2',
+    marginTop: 4,
+  },
+  primaryButtonText: {
+    fontFamily: 'GeneralSans-Semibold',
+    fontSize: 15,
+    color: '#FFFFFF',
   },
   buttonPressed: {
     transform: [{ scale: 0.98 }],

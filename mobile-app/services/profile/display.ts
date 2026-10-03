@@ -4,7 +4,7 @@
  * The source of truth is `candidate_profiles.full_name` (asked at sign-up,
  * `PUT /candidate/profile/name`). The greeting uses the first word; the
  * avatar uses the first letter of the first word and of the last word.
- * A CV-extracted name is never used here — that would guess identity from
+ * A CV-extracted name is never used here - that would guess identity from
  * a document the candidate has not confirmed as their account name.
  *
  * When no profile name has been set yet, the candidate's sign-in email is

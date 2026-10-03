@@ -1,16 +1,16 @@
 /**
- * StatusChip — Unified status taxonomy for BharatPath.
+ * StatusChip - Unified status taxonomy for BharatPath.
  * Each chip communicates meaning through text AND visual styling.
  * Uses Space Mono for labels. Never relies on color alone.
  *
  * Taxonomy:
- *   MATCH     — Green: strong profile match
- *   SHORT    — Amber: shortlisted / 14-day window
- *   INTERVIEW — Indigo: interview stage
- *   SENT      — Neutral: application sent
- *   EXPIRING  — Red: deadline approaching
- *   PAID      — Gold: premium / paid status
- *   BAND      — Indigo: progress band (e.g. "BAND 1 OF 4")
+ *   MATCH     - Green: strong profile match
+ *   SHORT    - Amber: shortlisted / 14-day window
+ *   INTERVIEW - Indigo: interview stage
+ *   SENT      - Neutral: application sent
+ *   EXPIRING  - Red: deadline approaching
+ *   PAID      - Gold: premium / paid status
+ *   BAND      - Indigo: progress band (e.g. "BAND 1 OF 4")
  */
 import { View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import { Colors, Typography, Radii, Spacing } from '@/theme/tokens';

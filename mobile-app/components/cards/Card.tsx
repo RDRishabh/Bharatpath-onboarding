@@ -1,5 +1,5 @@
 /**
- * Card — Primary container with border (not shadow), 22px radius, white surface.
+ * Card - Primary container with border (not shadow), 22px radius, white surface.
  * Supports optional header, body, and footer slots.
  */
 import { ReactNode } from 'react';

@@ -1,5 +1,5 @@
 /**
- * PrimaryButton — Deep Navy fill, off-white text, 600 weight, ~16px text, 999px radius.
+ * PrimaryButton - Deep Navy fill, off-white text, 600 weight, ~16px text, 999px radius.
  * Never uses gold as background. Scales to .98 on press.
  */
 import { ReactNode } from 'react';

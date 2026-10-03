@@ -34,11 +34,11 @@ SUMMARY
 Passionate software engineer with 2+ years of experience building modern React Native and web applications. Experienced with TypeScript, REST APIs, and clean UI/UX design.
 
 EXPERIENCE
-Software Engineer — BharatTech Labs (2023 - Present)
+Software Engineer - BharatTech Labs (2023 - Present)
 - Developed cross-platform mobile app features for 50,000+ active candidates.
 - Built reusable UI component libraries and integrated backend REST APIs.
 
-Junior Developer — Apex Solutions (2022 - 2023)
+Junior Developer - Apex Solutions (2022 - 2023)
 - Built responsive web dashboards using React and Tailwind CSS.
 - Collaborated with product design teams to enhance user retention by 20%.
 

@@ -16,7 +16,7 @@ import { Colors, Radii, Spacing } from '@/theme/tokens';
 
 /**
  * `score` and `bandName` come from `GET /candidate/score/me` via the caller.
- * Until a score exists the card shows a dash rather than a stand-in number —
+ * Until a score exists the card shows a dash rather than a stand-in number -
  * see the note in `ScoreRevealScreen.tsx` for what has to run to produce one.
  *
  * `candidateField` and `candidateCity` are still placeholders. A city can be
@@ -40,15 +40,34 @@ export function ShareResultScreen({
   score,
   maxScore = 990,
   bandName,
-  candidateName = 'Priya D.',
-  candidateField = 'B.Sc Microbiology',
-  candidateCity = 'Pune',
-  scoreDate = 'AUG 2026',
+  candidateName,
+  candidateField,
+  candidateCity,
+  scoreDate,
   onBack,
   onSave,
   onShare,
 }: ShareResultScreenProps) {
   const [showExact, setShowExact] = useState(false);
+
+  const sanitizeField = (field?: string) => {
+    if (!field) return '';
+    return field
+      .replace(/\s*[({\[]\s*$/, '')
+      .replace(/[,·•|-]\s*$/, '')
+      .trim();
+  };
+
+  const detailsParts = [candidateName, sanitizeField(candidateField), candidateCity]
+    .map((p) => p?.trim())
+    .filter((p): p is string => Boolean(p));
+  const detailsLine = detailsParts.join(' · ');
+
+  const formattedDate = scoreDate?.trim() || (() => {
+    const now = new Date();
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    return `${months[now.getMonth()]} ${now.getFullYear()}`;
+  })();
 
   return (
     <View style={styles.root}>
@@ -79,7 +98,7 @@ export function ShareResultScreen({
             {/* Top Brand Logo Row */}
             <View style={styles.brandRow}>
               <Image
-                source={require('../../assets/icons/bp-logo-mark.png')}
+                source={require('../../assets/icons/logo-safron.png')}
                 style={styles.logoMark}
                 resizeMode="contain"
               />
@@ -91,22 +110,49 @@ export function ShareResultScreen({
               {showExact ? (
                 <View style={styles.exactScoreContainer}>
                   <View style={styles.scoreRow}>
-                    <Text style={styles.bigScoreText}>{score ?? '—'}</Text>
-                    <Text style={styles.maxScoreText}>/ {maxScore}</Text>
+                    <Text
+                      style={styles.bigScoreText}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.7}
+                    >
+                      {score ?? '-'}
+                    </Text>
+                    <Text style={styles.maxScoreText} numberOfLines={1}>/ {maxScore}</Text>
                   </View>
-                  <Text style={styles.revealedBandText}>{bandName || 'Not scored yet'}</Text>
+                  <Text
+                    style={styles.revealedBandText}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                  >
+                    {bandName || 'Not scored yet'}
+                  </Text>
                 </View>
               ) : (
-                <Text style={styles.hugeBandText}>{bandName || 'Not scored yet'}</Text>
+                <Text
+                  style={styles.hugeBandText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.65}
+                >
+                  {bandName || 'Not scored yet'}
+                </Text>
               )}
 
               {/* Candidate Info Footer */}
               <View style={styles.metaContainer}>
-                <Text style={styles.candidateDetails}>
-                  {candidateName} · {candidateField} · {candidateCity}
-                </Text>
-                <Text style={styles.dateMeta}>
-                  SCORED FROM MY RESUME · {scoreDate}
+                {detailsLine ? (
+                  <Text
+                    style={styles.candidateDetails}
+                    numberOfLines={2}
+                    ellipsizeMode="tail"
+                  >
+                    {detailsLine}
+                  </Text>
+                ) : null}
+                <Text style={styles.dateMeta} numberOfLines={1}>
+                  SCORED FROM MY RESUME · {formattedDate}
                 </Text>
               </View>
             </View>
@@ -120,7 +166,7 @@ export function ShareResultScreen({
             <View style={styles.toggleTextContainer}>
               <Text style={styles.toggleTitle}>Show my exact number</Text>
               <Text style={styles.toggleSubtitle}>
-                Off by default — only your band is shared
+                Off by default - only your band is shared
               </Text>
             </View>
             <Switch
@@ -227,7 +273,7 @@ const styles = StyleSheet.create({
   },
   logoMark: {
     width: 22,
-    height: 20,
+    height: 22,
   },
   brandName: {
     fontFamily: 'GeneralSans-Bold',
@@ -241,9 +287,9 @@ const styles = StyleSheet.create({
   },
   hugeBandText: {
     fontFamily: 'GeneralSans-Bold',
-    fontSize: 52,
-    lineHeight: 56,
-    letterSpacing: -1.5,
+    fontSize: 42,
+    lineHeight: 46,
+    letterSpacing: -1,
     color: '#FFFFFF',
   },
   exactScoreContainer: {

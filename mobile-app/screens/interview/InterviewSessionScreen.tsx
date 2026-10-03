@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppAlert } from "@/components/feedback/AppAlert";
 import {
   ActivityIndicator,
   Alert,
@@ -43,6 +44,7 @@ import {
   completeInterviewAnswer,
   completeInterviewSession,
   getInterviewSession,
+  getNextInterviewQuestion,
   interviewErrorMessage,
   issueAnswerUpload,
   putInterviewAudio,
@@ -115,6 +117,8 @@ export function InterviewSessionScreen({ sessionId }: Props) {
   const [session, setSession] = useState<InterviewSession | null>(null);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>('loading');
+  const [loadingMessage, setLoadingMessage] = useState('Restoring your session…');
+  const [isPreparingNext, setIsPreparingNext] = useState(false);
   const [prepLeft, setPrepLeft] = useState(0);
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [durationMs, setDurationMs] = useState(0);
@@ -122,33 +126,40 @@ export function InterviewSessionScreen({ sessionId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const stopping = useRef(false);
 
-  const selectNext = useCallback((value: InterviewSession) => {
-    const index = value.answers.findIndex((answer) => answer.upload_state !== 'STORED');
-    if (index < 0) {
-      setQuestionIndex(value.questions.length - 1);
-      setPhase('finishing');
-      return;
-    }
-    setQuestionIndex(index);
-    setPrepLeft(value.questions[index]?.preparation_seconds ?? 30);
+  const selectQuestion = useCallback((value: InterviewSession, targetIndex: number) => {
+    setQuestionIndex(targetIndex);
+    setPrepLeft(value.questions[targetIndex]?.preparation_seconds ?? 30);
     setPhase('prep');
   }, []);
 
   const load = useCallback(async () => {
     setError(null);
+    setLoadingMessage('Restoring your session…');
+    setPhase('loading');
     try {
-      const value = await getInterviewSession(sessionId);
-      setSession(value);
+      let value = await getInterviewSession(sessionId);
       if (['COMPLETED', 'EVALUATED', 'FAILED'].includes(value.state)) {
         router.replace({ pathname: '/interview-report', params: { sessionId } });
         return;
       }
-      selectNext(value);
+      const firstUnstored = value.answers.findIndex((answer) => answer.upload_state !== 'STORED');
+      if (firstUnstored < 0) {
+        setSession(value);
+        setQuestionIndex(Math.max(0, value.questions.length - 1));
+        setPhase('finishing');
+        return;
+      }
+      if (!value.questions[firstUnstored]) {
+        setLoadingMessage('The interviewer is preparing your next question…');
+        value = await getNextInterviewQuestion(sessionId);
+      }
+      setSession(value);
+      selectQuestion(value, firstUnstored);
     } catch (caught) {
       setError(interviewErrorMessage(caught, 'Could not load this interview session.'));
       setPhase('loading');
     }
-  }, [router, selectNext, sessionId]);
+  }, [router, selectQuestion, sessionId]);
 
   useEffect(() => {
     load();
@@ -247,11 +258,26 @@ export function InterviewSessionScreen({ sessionId }: Props) {
       const refreshed = await getInterviewSession(sessionId);
       setSession(refreshed);
       setPhase('feedback');
+
+      // Pre-generate next adaptive question in background while candidate reviews feedback
+      const nextIdx = question.index + 1;
+      if (nextIdx < 6) {
+        getNextInterviewQuestion(sessionId)
+          .then((updated) => setSession(updated))
+          .catch((err) => console.log('Background next-question prefetch:', err));
+      }
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === 'interview_answer_already_stored') {
         const refreshed = await getInterviewSession(sessionId);
         setSession(refreshed);
-        selectNext(refreshed);
+        const nextIdx = refreshed.answers.findIndex((a) => a.upload_state !== 'STORED');
+        if (nextIdx < 0) {
+          setPhase('finishing');
+        } else if (refreshed.questions[nextIdx]) {
+          selectQuestion(refreshed, nextIdx);
+        } else {
+          load();
+        }
         return;
       }
       setError(interviewErrorMessage(caught, 'Could not send this answer.'));
@@ -259,13 +285,41 @@ export function InterviewSessionScreen({ sessionId }: Props) {
     }
   };
 
-  const nextQuestion = () => {
+  const nextQuestion = async () => {
     if (!session) return;
     setLocalUri(null);
     setDurationMs(0);
     setLookingFor(null);
     stopPlayback(player);
-    selectNext(session);
+
+    const storedCount = session.answers.filter((answer) => answer.upload_state === 'STORED').length;
+    if (storedCount >= 6) {
+      finish();
+      return;
+    }
+
+    if (session.questions[storedCount]) {
+      selectQuestion(session, storedCount);
+      return;
+    }
+
+    setIsPreparingNext(true);
+    setLoadingMessage('The interviewer is preparing your next question…');
+    setPhase('loading');
+    try {
+      const updated = await getNextInterviewQuestion(sessionId);
+      setSession(updated);
+      if (updated.questions[storedCount]) {
+        selectQuestion(updated, storedCount);
+      } else {
+        selectQuestion(updated, updated.questions.length - 1);
+      }
+    } catch (caught) {
+      setError(interviewErrorMessage(caught, 'Could not load the next question.'));
+      setPhase('feedback');
+    } finally {
+      setIsPreparingNext(false);
+    }
   };
 
   const finish = async () => {
@@ -278,7 +332,6 @@ export function InterviewSessionScreen({ sessionId }: Props) {
       setError(interviewErrorMessage(caught, 'Could not finish this session.'));
       const refreshed = await getInterviewSession(sessionId);
       setSession(refreshed);
-      selectNext(refreshed);
     }
   };
 
@@ -291,7 +344,7 @@ export function InterviewSessionScreen({ sessionId }: Props) {
   }, [phase, session]);
 
   const leave = () => {
-    Alert.alert(
+    AppAlert.alert(
       'Leave this interview?',
       'Stored answers are safe. Your current unsent recording stays only on this device and may be lost.',
       [
@@ -316,8 +369,8 @@ export function InterviewSessionScreen({ sessionId }: Props) {
             </>
           ) : (
             <>
-              <ActivityIndicator color="#5F4DB2" />
-              <Text style={styles.muted}>Restoring your session…</Text>
+              <ActivityIndicator color="#5F4DB2" size="large" />
+              <Text style={styles.muted}>{loadingMessage}</Text>
             </>
           )}
         </View>
@@ -330,10 +383,10 @@ export function InterviewSessionScreen({ sessionId }: Props) {
       <SafeAreaView style={styles.recordingSafe}>
         <View style={styles.recording}>
           <View style={styles.topRow}>
-            <Text style={styles.recordingEyebrow}>QUESTION {questionIndex + 1} OF {session.questions.length}</Text>
+            <Text style={styles.recordingEyebrow}>QUESTION {questionIndex + 1} OF {session.answers.length || 6}</Text>
             <Text style={styles.recordingTimer}>{time}</Text>
           </View>
-          <Text style={styles.recordingPrompt}>{question.prompt}</Text>
+          <Text style={styles.recordingPrompt}>{formatQuestionPrompt(question.prompt)}</Text>
           <View style={styles.micCircle}><Microphone size={48} color="#5F4DB2" weight="fill" /></View>
           <Text style={styles.recordingHint}>
             Recording · maximum {formatTime(maxDurationMs)}
@@ -398,10 +451,18 @@ export function InterviewSessionScreen({ sessionId }: Props) {
             </View>
           )}
           <View style={styles.bottom}>
-            <Pressable style={styles.primary} onPress={nextQuestion}>
-              <Text style={styles.primaryText}>
-                {storedCount === session.questions.length ? 'Finish session' : 'Next question'}
-              </Text>
+            <Pressable
+              style={[styles.primary, isPreparingNext && styles.disabled]}
+              onPress={nextQuestion}
+              disabled={isPreparingNext}
+            >
+              {isPreparingNext ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryText}>
+                  {storedCount >= 6 ? 'Finish session' : 'Next question'}
+                </Text>
+              )}
             </Pressable>
           </View>
         </View>
@@ -427,7 +488,7 @@ export function InterviewSessionScreen({ sessionId }: Props) {
       <View style={styles.page}>
         <View style={styles.topRow}>
           <Pressable onPress={leave}><ArrowLeft size={21} color="#0A1931" weight="bold" /></Pressable>
-          <Text style={styles.eyebrow}>QUESTION {questionIndex + 1} OF {session.questions.length}</Text>
+          <Text style={styles.eyebrow}>QUESTION {questionIndex + 1} OF {session.answers.length || 6}</Text>
           <View style={styles.timerBadge}><Timer size={15} color="#0A1931" /><Text style={styles.timerText}>0:{String(prepLeft).padStart(2, '0')}</Text></View>
         </View>
         <View style={styles.segments}>
@@ -436,7 +497,7 @@ export function InterviewSessionScreen({ sessionId }: Props) {
           ))}
         </View>
         <ScrollView contentContainerStyle={styles.questionContent}>
-          <Text style={styles.prompt}>{question.prompt}</Text>
+          <Text style={styles.prompt}>{formatQuestionPrompt(question.prompt)}</Text>
           <View style={styles.durationBox}>
             <Microphone size={20} color="#5F4DB2" />
             <Text style={styles.durationText}>
@@ -455,6 +516,12 @@ export function InterviewSessionScreen({ sessionId }: Props) {
       </View>
     </SafeAreaView>
   );
+}
+
+export function formatQuestionPrompt(raw: string): string {
+  if (!raw) return '';
+  const cleaned = raw.replace(/^Stub question \d+ \([a-f0-9]+\):\s*/i, '').trim();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 function formatTime(milliseconds: number): string {

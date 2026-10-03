@@ -11,13 +11,13 @@ import {
 } from '@/services/api/scoring';
 
 /**
- * Waits for a real score. Confirming a resume does not compute one — it emits
+ * Waits for a real score. Confirming a resume does not compute one - it emits
  * `resume.version_confirmed`, and a worker turns that into a score row. This
  * screen polls `GET /candidate/score/me` until it answers READY, and shows an
  * honest "still pending" state if it never does. It must never invent a number.
  *
  * Locally, nothing scores until all three of these are true:
- *   1. the outbox is being drained and a Celery worker is up —
+ *   1. the outbox is being drained and a Celery worker is up -
  *      `PYTHON=.venv/bin/python bash backend/scripts/dev_workers.sh`
  *   2. Layer 1 extraction is enabled in `backend/.env`:
  *        SCORING_EXTRACTION_ENABLED=true
@@ -45,9 +45,30 @@ interface ScoringScreenProps {
   onReady: (score: CandidateScoreResponse) => void;
   /** Move on with no score. The next screens show a dash, not a number. */
   onContinueWithoutScore?: () => void;
+  /**
+   * Minimum ISO timestamp for computed_at. Scores older than this were computed
+   * for a previous resume version and must not be accepted.
+   */
+  minComputedAt?: string | null;
+  /**
+   * The previously known score row's computed_at.
+   * If the API returns this identical timestamp, the background worker has not
+   * completed scoring the new version yet.
+   */
+  previousComputedAt?: string | null;
+  /**
+   * The previously known score value.
+   */
+  previousScore?: number | null;
 }
 
-export function ScoringScreen({ onReady, onContinueWithoutScore }: ScoringScreenProps) {
+export function ScoringScreen({
+  onReady,
+  onContinueWithoutScore,
+  minComputedAt,
+  previousComputedAt,
+  previousScore,
+}: ScoringScreenProps) {
   const [statusIdx, setStatusIdx] = useState(0);
   const [pollCount, setPollCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -65,13 +86,29 @@ export function ScoringScreen({ onReady, onContinueWithoutScore }: ScoringScreen
     if (settledRef.current) return true;
     const score = await getMyScore();
     if (score.status === 'READY' && score.value != null) {
+      // 1. If we have a previous computed_at and the server returns the exact same timestamp,
+      // it means the background worker hasn't scored the new version yet. Wait up to 10 polls (~20s).
+      if (pollCount < 10 && previousComputedAt && score.computed_at && score.computed_at === previousComputedAt) {
+        return false;
+      }
+
+      // 2. If we have a minimum confirmation timestamp, ensure the score was computed on or after it.
+      if (pollCount < 10 && minComputedAt && score.computed_at) {
+        const scoreTime = new Date(score.computed_at).getTime();
+        const minTime = new Date(minComputedAt).getTime();
+        // Allow up to 2 seconds clock drift
+        if (scoreTime < minTime - 2000) {
+          return false;
+        }
+      }
+
       settledRef.current = true;
       setIsPolling(false);
       onReady(score);
       return true;
     }
     return false;
-  }, [onReady]);
+  }, [onReady, minComputedAt, previousComputedAt, pollCount]);
 
   useEffect(() => {
     if (!isPolling || settledRef.current || error || pollCount >= MAX_POLLS) return;

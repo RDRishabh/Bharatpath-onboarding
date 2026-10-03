@@ -1,5 +1,5 @@
 /**
- * BharatPath — JobsFeedScreen ("Jobs" Tab Screen)
+ * BharatPath - JobsFeedScreen ("Jobs" Tab Screen)
  *
  * Implements S17 (Job feed) from `docs/screen-flows.md`, wired to the real
  * backend `GET /candidate/jobs`.
@@ -432,7 +432,7 @@ function EligibilityChip({ eligibility }: EligibilityChipProps) {
         </View>
       );
     case 'BELOW_THRESHOLD':
-      // Neutral grey, NOT red (R11 — never shame the score).
+      // Neutral grey, NOT red (R11 - never shame the score).
       return (
         <View style={styles.chipBelow}>
           <XCircle size={12} color="#5F6B80" weight="bold" />

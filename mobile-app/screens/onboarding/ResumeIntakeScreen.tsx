@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AppAlert } from "@/components/feedback/AppAlert";
 import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -58,7 +59,7 @@ export function ResumeIntakeScreen({ onSelectOption, onBack, userName }: ResumeI
         const mimeType = asset.mimeType || 'application/pdf';
 
         if (fileName.toLowerCase().endsWith('.doc') || mimeType === 'application/msword') {
-          Alert.alert('Unsupported Format', 'Old Word files are not supported. Save it as DOCX or PDF, or paste the text.');
+          AppAlert.alert('Unsupported Format', 'Old Word files are not supported. Save it as DOCX or PDF, or paste the text.');
           return;
         }
 

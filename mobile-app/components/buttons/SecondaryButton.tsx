@@ -1,5 +1,5 @@
 /**
- * SecondaryButton — Light background with #DDD6C7-style border.
+ * SecondaryButton - Light background with #DDD6C7-style border.
  * Scales to .98 on press.
  */
 import { ReactNode } from 'react';

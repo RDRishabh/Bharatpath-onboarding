@@ -1,13 +1,13 @@
 /**
- * BharatPath — Foundation Preview & Authentication Flow
+ * BharatPath - Foundation Preview & Authentication Flow
  * Seamlessly connects Candidate Auth (Cognito-aligned) with the Onboarding & Core App.
  */
-import { useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useState, useMemo, useEffect } from 'react';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { SplashScreen } from '@/screens/splash/SplashScreen';
 import { IntroScreen } from '@/screens/onboarding/IntroScreen';
-import { SignUpScreen, LoginScreen, EmailVerificationScreen } from '@/screens/auth';
+import { SignUpScreen, LoginScreen, EmailVerificationScreen, ForgotPasswordScreen } from '@/screens/auth';
 import { SubscribeScreen } from '@/screens/subscription/SubscribeScreen';
 import { LanguageSelectScreen } from '@/screens/onboarding/LanguageSelectScreen';
 import { HowItWorksScreen } from '@/screens/onboarding/HowItWorksScreen';
@@ -16,8 +16,6 @@ import { ParsingScreen } from '@/screens/onboarding/ParsingScreen';
 import { ReviewDetailsScreen } from '@/screens/onboarding/ReviewDetailsScreen';
 import { ScoringScreen } from '@/screens/onboarding/ScoringScreen';
 import { ScoreRevealScreen } from '@/screens/onboarding/ScoreRevealScreen';
-import { ScoreBreakdownScreen } from '@/screens/onboarding/ScoreBreakdownScreen';
-import { SuggestionsScreen } from '@/screens/onboarding/SuggestionsScreen';
 import { NotificationPermissionScreen } from '@/screens/onboarding/NotificationPermissionScreen';
 import { ShareResultScreen } from '@/screens/onboarding/ShareResultScreen';
 import {
@@ -25,15 +23,24 @@ import {
   getResumeVersionDetails,
   listResumeVersions,
 } from '@/services/api/resume';
-import { CandidateScoreResponse, bandIndex, bandLabel, nextBandLabel, pointsToNextBand } from '@/services/api/scoring';
+import { extractCandidateResumeInfo } from '@/services/profile/extractedResume';
+import { CandidateScoreResponse, bandIndex, bandLabel, nextBandLabel, pointsToNextBand, getMyScore } from '@/services/api/scoring';
 import { HomeScreen } from '@/screens/home/HomeScreen';
 import { useAuthContext } from '@/context/AuthContext';
+import {
+  confirmSignUpWithCode,
+  signInWithEmail,
+  updateCandidateName,
+  resendConfirmationCode,
+  getCurrentSession,
+} from '@/services/api/auth';
 
 type AppStep =
   | 'splash'
   | 'intro'
   | 'signup'
   | 'login'
+  | 'forgot-password'
   | 'verify-email'
   | 'language'
   | 'howItWorks'
@@ -52,17 +59,40 @@ type AppStep =
 
 export default function FoundationPreview() {
   const router = useRouter();
-  const { candidateFullName } = useAuthContext();
-  const [step, setStep] = useState<AppStep>('splash');
+  const params = useLocalSearchParams<{ step?: AppStep }>();
+  const { session, candidateFullName, refreshScore, rememberCandidate } = useAuthContext();
+  const [step, setStep] = useState<AppStep>(params.step || 'splash');
   const [fileMeta, setFileMeta] = useState<UploadedFileMeta | undefined>();
   const [intakePayload, setIntakePayload] = useState<ResumeIntakePayload | undefined>();
   const [userEmail, setUserEmail] = useState<string>('');
   const [userName, setUserName] = useState<string>('');
+  const [userPassword, setUserPassword] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'preview' | 'home' | 'jobs' | 'board' | 'you'>('home');
 
   const [resumeVersionId, setResumeVersionId] = useState<string | undefined>();
   const [resumeVersionDetails, setResumeVersionDetails] = useState<ResumeVersionDetailResponse | null>(null);
   const [candidateScore, setCandidateScore] = useState<CandidateScoreResponse | null>(null);
+
+  useEffect(() => {
+    if (params.step) {
+      setStep(params.step);
+      if (params.step === 'intro' || params.step === 'login') {
+        setUserEmail('');
+        setUserName('');
+        setUserPassword('');
+        setResumeVersionId(undefined);
+        setResumeVersionDetails(null);
+        setCandidateScore(null);
+      }
+    }
+  }, [params.step]);
+
+  const resumeInfo = useMemo(() => {
+    return extractCandidateResumeInfo(
+      resumeVersionDetails,
+      userName || candidateFullName || undefined
+    );
+  }, [resumeVersionDetails, userName, candidateFullName]);
 
   const handleTabPress = (tab: string, href: string) => {
     setActiveTab(tab as typeof activeTab);
@@ -72,7 +102,19 @@ export default function FoundationPreview() {
   };
 
   if (step === 'splash') {
-    return <SplashScreen onFinish={() => setStep('intro')} />;
+    return (
+      <SplashScreen
+        onFinish={async () => {
+          const activeSession = session || (await getCurrentSession());
+          if (activeSession) {
+            refreshScore().catch(() => undefined);
+            router.replace('/home');
+            return;
+          }
+          setStep('intro');
+        }}
+      />
+    );
   }
 
   // 1. Initial Intro Screen with "Get started free" & "I already have an account"
@@ -94,6 +136,7 @@ export default function FoundationPreview() {
         onSubmit={(data) => {
           setUserEmail(data.email);
           setUserName(data.fullName);
+          setUserPassword(data.password);
           setStep('verify-email');
         }}
       />
@@ -104,10 +147,17 @@ export default function FoundationPreview() {
   if (step === 'login') {
     return (
       <LoginScreen
+        initialEmail={userEmail}
         onBack={() => setStep('intro')}
         onNavigateToSignUp={() => setStep('signup')}
-        onForgotPassword={() => {
-          // Placeholder for forgot password flow
+        onNavigateToVerification={(email, pass) => {
+          setUserEmail(email);
+          if (pass) setUserPassword(pass);
+          setStep('verify-email');
+        }}
+        onForgotPassword={(typedEmail) => {
+          if (typedEmail) setUserEmail(typedEmail);
+          setStep('forgot-password');
         }}
         onSubmit={async (data) => {
           setUserEmail(data.session.email);
@@ -117,6 +167,23 @@ export default function FoundationPreview() {
           }
           try {
             const versions = await listResumeVersions();
+            const confirmed =
+              versions.find((v) => v.confirmed && !v.superseded) ||
+              versions.find((v) => v.confirmed);
+
+            // If user resume is already submitted/confirmed:
+            // Move directly to the Home page! Editing is handled in the Profile section.
+            if (confirmed) {
+              const verDetails = await getResumeVersionDetails(confirmed.resume_version_id).catch(() => null);
+              setResumeVersionId(confirmed.resume_version_id);
+              if (verDetails) setResumeVersionDetails(verDetails);
+
+              refreshScore().catch(() => undefined);
+              router.replace('/home');
+              return;
+            }
+
+            // Only if user has never confirmed any resume, check for an unconfirmed draft
             const unconfirmed = versions.find((v) => !v.confirmed && !v.superseded);
             if (unconfirmed) {
               const verDetails = await getResumeVersionDetails(unconfirmed.resume_version_id);
@@ -128,9 +195,22 @@ export default function FoundationPreview() {
           } catch (e) {
             console.warn('Could not check existing resume versions:', e);
           }
-          // Backend flow: membership first — the score, jobs and every add-on
-          // answer 402 without a live subscription.
-          setStep('subscribe');
+
+          router.replace('/home');
+        }}
+      />
+    );
+  }
+
+  // 3b. Forgot Password Screen (Reset password with email verification code)
+  if (step === 'forgot-password') {
+    return (
+      <ForgotPasswordScreen
+        initialEmail={userEmail}
+        onBack={() => setStep('login')}
+        onSuccess={(resetEmail) => {
+          if (resetEmail) setUserEmail(resetEmail);
+          setStep('login');
         }}
       />
     );
@@ -142,11 +222,67 @@ export default function FoundationPreview() {
       <EmailVerificationScreen
         email={userEmail}
         onBack={() => setStep('signup')}
-        onVerify={(_code) => {
-          setStep('subscribe');
+        onVerify={async (code) => {
+          // 1. Confirm code in AWS Cognito Candidate User Pool
+          await confirmSignUpWithCode(userEmail, code);
+
+          // 2. Sign in with candidate credentials
+          if (userPassword) {
+            try {
+              const { session, profile } = await signInWithEmail({
+                email: userEmail,
+                password: userPassword,
+              });
+              rememberCandidate(session, profile, userName);
+            } catch (authErr) {
+              console.warn('Auto sign-in after verification failed:', authErr);
+            }
+          }
+
+          // 3. Save candidate full name if available
+          if (userName) {
+            try {
+              await updateCandidateName(userName);
+            } catch (e) {
+              console.warn('Could not update candidate name after verification:', e);
+            }
+          }
+
+          // 4. Check for existing resume versions or proceed to home
+          try {
+            const versions = await listResumeVersions();
+            const confirmed =
+              versions.find((v) => v.confirmed && !v.superseded) ||
+              versions.find((v) => v.confirmed);
+
+            // If user resume is already submitted:
+            // Move directly to the Home page!
+            if (confirmed) {
+              const verDetails = await getResumeVersionDetails(confirmed.resume_version_id).catch(() => null);
+              setResumeVersionId(confirmed.resume_version_id);
+              if (verDetails) setResumeVersionDetails(verDetails);
+
+              refreshScore().catch(() => undefined);
+              router.replace('/home');
+              return;
+            }
+
+            const unconfirmed = versions.find((v) => !v.confirmed && !v.superseded);
+            if (unconfirmed) {
+              const verDetails = await getResumeVersionDetails(unconfirmed.resume_version_id);
+              setResumeVersionId(unconfirmed.resume_version_id);
+              setResumeVersionDetails(verDetails);
+              setStep('review');
+              return;
+            }
+          } catch (e) {
+            console.warn('Could not check existing resume versions:', e);
+          }
+
+          router.replace('/home');
         }}
-        onResendCode={() => {
-          // Resend trigger
+        onResendCode={async () => {
+          await resendConfirmationCode(userEmail);
         }}
       />
     );
@@ -171,13 +307,14 @@ export default function FoundationPreview() {
     );
   }
 
-  // 7. Membership — pay-first, before a CV is taken
+  // 7. Membership - pay-first, before a CV is taken
   if (step === 'subscribe') {
+    const nextStepAfterSubscribe = resumeVersionId ? 'scoring' : 'intake';
     return (
       <SubscribeScreen
         candidateName={userName}
-        onSubscribed={() => setStep('intake')}
-        onSkip={() => setStep('intake')}
+        onSubscribed={() => setStep(nextStepAfterSubscribe)}
+        onSkip={() => setStep(nextStepAfterSubscribe)}
       />
     );
   }
@@ -210,6 +347,10 @@ export default function FoundationPreview() {
         onReviewFound={(verId, details) => {
           setResumeVersionId(verId);
           setResumeVersionDetails(details);
+          const extracted = extractCandidateResumeInfo(details);
+          if (extracted.name && !userName) {
+            setUserName(extracted.name);
+          }
           setStep('review');
         }}
       />
@@ -220,7 +361,8 @@ export default function FoundationPreview() {
   if (step === 'review') {
     return (
       <ReviewDetailsScreen
-        candidateName={userName}
+        onBack={() => setStep('intake')}
+        candidateName={resumeInfo.name || userName || undefined}
         candidateEmail={userEmail}
         manualData={intakePayload?.manualData}
         versionId={resumeVersionId}
@@ -228,13 +370,17 @@ export default function FoundationPreview() {
         onVersionUpdated={(verId, details) => {
           setResumeVersionId(verId);
           setResumeVersionDetails(details);
+          const extracted = extractCandidateResumeInfo(details);
+          if (extracted.name && !userName) {
+            setUserName(extracted.name);
+          }
         }}
         onConfirm={() => setStep('scoring')}
       />
     );
   }
 
-  // 11. Scoring — polls GET /candidate/score/me for a real number.
+  // 11. Scoring - polls GET /candidate/score/me for a real number.
   // Shows a pending state, never a stand-in score. See ScoringScreen.tsx for
   // the worker and Layer 1 configuration this needs to produce one.
   if (step === 'scoring') {
@@ -257,49 +403,6 @@ export default function FoundationPreview() {
         score={candidateScore?.value ?? undefined}
         band={candidateScore?.band}
         onSave={() => setStep('notifications')}
-        onRaiseScore={() => setStep('suggestions')}
-        onAllCategories={() => setStep('breakdown')}
-      />
-    );
-  }
-
-  // 13-15. Breakdown, suggestions and the recalculated reveal are DESIGN
-  // MOCK-UPS with no backend behind them, and they cannot be wired: the client
-  // removed score explanation (2026-08-27, re-confirmed 2026-09-11), so there
-  // is no breakdown, category or improvement endpoint, and
-  // `test_score_never_explained.py` fails the build on a schema that adds one.
-  // These steps should be dropped from the flow rather than integrated.
-  if (step === 'breakdown') {
-    return (
-      <ScoreBreakdownScreen
-        onBack={() => setStep('score')}
-        onActionPress={() => setStep('suggestions')}
-      />
-    );
-  }
-
-  // 14. Suggestions Screen
-  if (step === 'suggestions') {
-    return (
-      <SuggestionsScreen
-        onBack={() => setStep('score')}
-        onAddSkills={() => setStep('recalculated')}
-        onEditProject={() => setStep('recalculated')}
-        onFixSpellings={() => setStep('recalculated')}
-      />
-    );
-  }
-
-  // 15. Recalculated Score Screen
-  if (step === 'recalculated') {
-    return (
-      <ScoreRevealScreen
-        mode="recalculated"
-        score={706}
-        onNextFix={() => setStep('suggestions')}
-        onSave={() => setStep('notifications')}
-        onRaiseScore={() => setStep('suggestions')}
-        onAllCategories={() => setStep('breakdown')}
       />
     );
   }
@@ -321,11 +424,11 @@ export default function FoundationPreview() {
         score={candidateScore?.value ?? undefined}
         maxScore={990}
         bandName={bandLabel(candidateScore?.band) || undefined}
-        candidateName={userName}
-        candidateField="B.Sc Microbiology"
-        candidateCity="Pune"
-        scoreDate="AUG 2026"
-        onBack={() => setStep('notifications')}
+        candidateName={resumeInfo.name || userName || undefined}
+        candidateField={resumeInfo.field || undefined}
+        candidateCity={resumeInfo.city || undefined}
+        scoreDate={resumeInfo.scoreDate}
+        onBack={() => setStep('preview')}
         onSave={() => setStep('preview')}
         onShare={() => setStep('preview')}
       />
@@ -335,7 +438,7 @@ export default function FoundationPreview() {
   // 18. Authenticated Home Screen
   return (
     <HomeScreen
-      candidateName={candidateFullName || userName || undefined}
+      candidateName={resumeInfo.name || candidateFullName || userName || undefined}
       score={candidateScore?.value ?? undefined}
       maxScore={990}
       bandName={bandLabel(candidateScore?.band) || undefined}
@@ -354,11 +457,16 @@ export default function FoundationPreview() {
       }}
       onExploreJobs={() => router.push('/jobs')}
       onAllJobsPress={() => router.push('/jobs')}
-      onScorePress={() => setStep('score')}
+      onJobPress={(jobId) =>
+        router.push({ pathname: '/job-detail', params: { id: jobId } } as any)
+      }
+      onScorePress={() => setStep('share')}
       onAttributeCheckPress={() => router.push('/attribute-check' as any)}
       onMockInterviewPress={() => router.push('/mock-interview' as any)}
       onNotificationsPress={() => router.push('/notifications' as any)}
       onProfilePress={() => router.push('/you' as any)}
+      onStreakPress={() => router.push('/streak' as any)}
+      onCoursesPress={() => router.push('/courses' as any)}
     />
   );
 }

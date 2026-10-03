@@ -1,16 +1,16 @@
 /**
- * BharatPath — Jobs Service
+ * BharatPath - Jobs Service
  * Integrates with Backend /api/v1/candidate/jobs endpoints.
  *
  * The candidate job board. Both endpoints require CANDIDATE role + an active
  * subscription (R13/R15). A lapsed subscriber gets 402 `subscription_required`.
  *
- * The board is cursor-paginated and `total` is deliberately `null` — the
+ * The board is cursor-paginated and `total` is deliberately `null` - the
  * backend does not compute a total count for candidates. Use `next_cursor`
  * for infinite scroll; never render "Showing X of Y".
  *
  * `eligibility` is the only signal a candidate gets about whether they can
- * apply. The backend omits `min_score` from the response (R11 — the score is
+ * apply. The backend omits `min_score` from the response (R11 - the score is
  * never explained, and the threshold/gap must never be shown).
  */
 import { apiRequest, ApiError } from './client';
@@ -44,7 +44,7 @@ function buildJobQuery(opts?: JobBoardQuery): string {
  *
  * Pass a `cursor` from a previous response's `next_cursor` to load the next
  * page. `limit` caps a page (1–100, backend default 50). The response's
- * `total` is `null` — do not render a count.
+ * `total` is `null` - do not render a count.
  */
 export async function searchJobs(opts?: JobBoardQuery): Promise<JobPage> {
   const endpoint = buildJobQuery(opts);
@@ -62,21 +62,21 @@ export async function getJobDetail(jobId: string): Promise<BoardJobDetail> {
 }
 
 /**
- * Apply to a job — `POST /candidate/applications { job_id }`.
+ * Apply to a job - `POST /candidate/applications { job_id }`.
  *
  * The request body is just `{ job_id}`: no stage, no score, no tenant.
  * Eligibility is re-checked server-side against the stored score.
  *
  * Returns the created `ApplicationResponse`:
- *   - 201 — new application
- *   - 200 — already applied (returns the existing application)
+ *   - 201 - new application
+ *   - 200 - already applied (returns the existing application)
  *
  * Throws `ApiError` for:
- *   - 403 `eligibility_below_threshold` — re-render detail as not eligible
- *   - 409 `score_pending`              — score still calculating
- *   - 409 `application_unavailable`     — job no longer accepting applications
- *   - 404                              — job has closed
- *   - 402 `subscription_required`       — paywall
+ *   - 403 `eligibility_below_threshold` - re-render detail as not eligible
+ *   - 409 `score_pending`              - score still calculating
+ *   - 409 `application_unavailable`     - job no longer accepting applications
+ *   - 404                              - job has closed
+ *   - 402 `subscription_required`       - paywall
  */
 export async function applyToJob(jobId: string): Promise<{
   id: string;
