@@ -161,8 +161,10 @@ class Settings(BaseSettings):
     resume_textract_poll_seconds: float = 2.0
 
     # Refuse to OCR a document longer than this. Textract bills per page, so
-    # an unbounded page count is an unbounded bill.
-    resume_textract_max_pages: int = 20
+    # an unbounded page count is an unbounded bill. 10, the same as
+    # `resume.parser.MAX_PAGES` (2026-10-02): a document the local parser
+    # would refuse as too long for a CV must not be read by OCR instead.
+    resume_textract_max_pages: int = 10
 
     # Paste-text path (PRD 4.2). Large enough for a long CV, small enough that
     # it cannot be used as free object storage.

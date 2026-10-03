@@ -530,6 +530,39 @@ async def test_an_unreadable_document_polls_failed_with_a_reason(
     assert version is None, "a failed parse produced a version"
 
 
+async def test_a_document_too_long_for_a_cv_polls_failed_and_is_never_scored(
+    candidate: uuid.UUID, fake_s3: FakeS3, local_parser_only: None
+) -> None:
+    """A whole book was parsed, scored 700 and reached employers (2026-10-02).
+    Past `MAX_PAGES` it is refused before any text is read, so there is no
+    version, no model call and no score."""
+    import io
+
+    import pypdf
+
+    from app.modules.resume import service
+    from app.modules.resume.parser import MAX_PAGES
+    from app.tasks.parse_resume import _parse
+
+    writer = pypdf.PdfWriter()
+    for _ in range(MAX_PAGES + 1):
+        writer.add_blank_page(width=612, height=792)
+    book = io.BytesIO()
+    writer.write(book)
+
+    upload_id, _, _ = await service.issue_upload_ticket(user_id=candidate)
+    fake_s3.objects[upload_key(user_id=candidate, upload_id=upload_id)] = book.getvalue()
+    file_id, _ = await _complete(candidate, upload_id)
+
+    result = await _parse(str(file_id))
+    assert result == {"status": "unparseable", "code": "resume_too_long"}
+
+    row, version = await _status(candidate, file_id)
+    assert row.parse_status == "FAILED"
+    assert row.parse_error_code == "resume_too_long"
+    assert version is None, "a document too long for a CV produced a version"
+
+
 async def test_an_infected_file_polls_blocked_rather_than_failed(
     candidate: uuid.UUID, fake_s3: FakeS3
 ) -> None:

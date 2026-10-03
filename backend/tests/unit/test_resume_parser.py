@@ -18,6 +18,9 @@ import pytest
 from app.core.errors import AppError
 from app.modules.resume.domain import DOCX
 from app.modules.resume.parser import (
+    MAX_PAGES,
+    MAX_TEXT_CHARS,
+    DocumentTooLongError,
     EncryptedDocumentError,
     LegacyDocUnsupportedError,
     LocalResumeParser,
@@ -122,6 +125,48 @@ def test_a_corrupt_pdf_is_refused_not_crashed() -> None:
         parser.extract(content=b"%PDF-1.7\nnot really a pdf", mime="application/pdf")
 
 
+# --- too long for a CV (2026-10-02) -------------------------------------------
+def test_a_cv_at_the_page_limit_is_read_in_full() -> None:
+    pages = [f"Page {n} Marker" for n in range(MAX_PAGES)]
+    result = parser.extract(content=_pdf(pages), mime="application/pdf")
+    assert result.page_count == MAX_PAGES
+    assert f"Page {MAX_PAGES - 1} Marker" in result.text
+
+
+def test_a_pdf_past_the_page_limit_is_refused_not_truncated() -> None:
+    """A book used to be cut to 40 pages and scored. It is refused now, with
+    the limit in `params` so the app can say it in the candidate's language."""
+    pages = [f"Chapter {n}" for n in range(MAX_PAGES + 1)]
+    with pytest.raises(DocumentTooLongError) as exc:
+        parser.extract(content=_pdf(pages), mime="application/pdf")
+    assert exc.value.code == "resume_too_long"
+    assert exc.value.status_code == 422
+    assert exc.value.params == {"max_pages": MAX_PAGES}
+
+
+def test_a_docx_past_the_length_limit_is_refused() -> None:
+    """A .docx has no page count, so a book saved as one is caught by length."""
+    paragraph = "It was a bright cold day in April, and the clocks were striking. " * 20
+    paragraphs = [paragraph] * (MAX_TEXT_CHARS // len(paragraph) + 2)
+    with pytest.raises(DocumentTooLongError):
+        parser.extract(content=_docx_bytes(paragraphs), mime=DOCX)
+
+
+def test_a_long_cv_within_the_limit_is_accepted() -> None:
+    paragraph = "Led a team of eight engineers building payment systems. " * 10
+    paragraphs = [paragraph] * (MAX_TEXT_CHARS // len(paragraph) // 2)
+    result = parser.extract(content=_docx_bytes(paragraphs), mime=DOCX)
+    assert len(result.text) <= MAX_TEXT_CHARS
+
+
+def test_ocr_refuses_no_more_pages_than_the_local_parser() -> None:
+    """Otherwise a long scan the local parser would refuse could be read,
+    and billed per page, by Textract instead."""
+    from app.settings import Settings
+
+    assert Settings.model_fields["resume_textract_max_pages"].default == MAX_PAGES
+
+
 # --- docx -----------------------------------------------------------------
 def test_docx_paragraphs_are_extracted() -> None:
     result = parser.extract(content=_docx_bytes(["Rahul Verma", "Backend Engineer"]), mime=DOCX)
@@ -169,7 +214,7 @@ def test_an_unknown_mime_is_refused() -> None:
 def test_errors_carry_no_pre_rendered_english() -> None:
     """The candidate reads this in their own language (plan.md N9), so the
     error must carry a code and substitution params -- never a sentence."""
-    for exc_type in (LegacyDocUnsupportedError, EncryptedDocumentError):
+    for exc_type in (LegacyDocUnsupportedError, EncryptedDocumentError, DocumentTooLongError):
         err: AppError = exc_type()
         assert err.code and " " not in err.code
         assert isinstance(err.params, dict)

@@ -9,6 +9,40 @@ states. Newest entries first.
 
 ---
 
+## 2026-10-02 — a document too long for a CV is refused, not scored
+
+A tester uploaded a whole book. It was cut to its first 40 pages, sent to the
+model (20,292 input tokens, the 60,000-character cap), found to hold no roles,
+skills or education, and scored **700**. Then it sat in employer search as an
+ENTRY-band candidate.
+
+- **A PDF over 10 pages is refused** with `parse_error_code`
+  `resume_too_long` (`params.max_pages`), counted before any text is read.
+  No version, no model call, no score. `resume.parser.MAX_PAGES` 40 → 10, and
+  it now refuses rather than truncates.
+- **Any document over 30,000 characters is refused the same way**
+  (`MAX_TEXT_CHARS`). A .docx has no page count, so a book saved as .docx
+  would otherwise still pass.
+- **A too-long document is never sent to Textract.** The fallback used to
+  catch every parse error and OCR the file, billed per page.
+  `resume_textract_max_pages` 20 → 10, a test holds it equal to `MAX_PAGES`,
+  and Textract answers with the same code.
+- **Nothing already stored changes.** Every document within the limit was
+  always read in full, so its text is identical; no re-score, and
+  `EXTRACTOR_REVISION` is unchanged. Versions parsed from longer documents
+  before today keep their scores; re-checking them is a decision.
+- Not changed: the paste-text path still takes up to `resume_max_text_chars`
+  (60,000), the same setting that caps what scoring sends to the model.
+  Lowering it also changes the text of any re-extraction, so it was left.
+
+**Cost per score, measured** from the 8 extractions on the live database
+(`gpt-5.4-mini`, $0.75 / $4.50 per 1M tokens): a real CV is ~1,300–2,200
+input tokens but 2,000–9,300 output tokens, 80–90% of them reasoning
+(`REASONING_EFFORT = "medium"`). **About $0.022 a CV on average ($0.010–0.044),
+so roughly 45 CVs per dollar.** Output is ~93% of the cost.
+
+---
+
 ## 2026-10-02 — three merged backend APIs reach the frontend
 
 Frontend-only session: the brief was to touch nothing outside `frontend/`.

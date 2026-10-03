@@ -45,10 +45,21 @@ logger = get_logger(__name__)
 #: what lets a reader tell "analysed, clean" from "never analysed".
 EXTRACTOR_REVISION: Final = "2"
 
-#: A CV is a handful of pages. A document far past that is either not a CV or
-#: is an attempt to burn worker time, and either way it is not worth parsing
-#: in full.
-MAX_PAGES: Final = 40
+#: A CV is a handful of pages. A document past this is either not a CV (a
+#: book, a thesis) or an attempt to burn worker time and a model call, and it
+#: is **refused, not truncated** (2026-10-02). It used to be cut to its first
+#: 40 pages and scored, so a whole book reached employers as a 700.
+#:
+#: Refusing changes no accepted document's text -- anything within the limit
+#: was always read in full -- so this is not a re-score and
+#: `EXTRACTOR_REVISION` stays as it is.
+MAX_PAGES: Final = 10
+
+#: The same limit for a document with no page count. A .docx is paginated by
+#: whatever renders it, so its length is measured in characters instead:
+#: about ten dense pages. Applied to PDFs too, which catches ten pages of
+#: very small type.
+MAX_TEXT_CHARS: Final = 30_000
 
 
 # Distinct codes rather than English prose. The client renders the message in
@@ -77,6 +88,16 @@ class UnreadableDocumentError(AppError):
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     code = "resume_unreadable_document"
     title = "Document could not be read"
+
+
+class DocumentTooLongError(AppError):
+    """Longer than any CV (`MAX_PAGES`, `MAX_TEXT_CHARS`). A final answer:
+    OCR would read the same document and bill for every page of it, so the
+    fallback never retries this one."""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "resume_too_long"
+    title = "Document is too long for a CV"
 
 
 class EncryptedDocumentError(UnreadableDocumentError):
@@ -167,8 +188,11 @@ class LocalResumeParser:
         else:
             raise UnsupportedDocumentError(params={"mime": mime})
 
+        text = text.strip()
+        if len(text) > MAX_TEXT_CHARS:
+            raise DocumentTooLongError(params={"max_pages": MAX_PAGES})
         return ExtractedDocument(
-            text=text.strip(),
+            text=text,
             page_count=pages,
             parser=self.name,
             parser_version=self.version,
@@ -182,13 +206,16 @@ class LocalResumeParser:
                 # A password-protected CV is a user mistake, not an attack.
                 # It needs a message they can act on, not a 500.
                 raise EncryptedDocumentError()
-            pages = reader.pages[:MAX_PAGES]
+            # Counted before a single page is read, so a book costs nothing.
+            if len(reader.pages) > MAX_PAGES:
+                raise DocumentTooLongError(params={"max_pages": MAX_PAGES})
+            pages = reader.pages
             # **This line produces the scored text and must stay as it is.**
             # The hidden-text pass below is separate and additive; folding the
             # two into one traversal would risk changing `text` by a character
             # and silently moving every score (invariant 1).
             text = "\n".join(page.extract_text() or "" for page in pages)
-        except UnreadableDocumentError:
+        except AppError:
             raise
         except Exception as exc:  # pypdf raises a wide range on malformed input
             logger.warning("pdf_extract_failed", error=str(exc))
@@ -267,6 +294,9 @@ class FallbackResumeParser:
         reason: str
         try:
             result = self._primary.extract(content=content, mime=mime, bucket=bucket, key=key)
+        except DocumentTooLongError:
+            # Never OCR'd: Textract would read the same pages and bill each one.
+            raise
         except AppError as exc:
             if self._fallback is None:
                 raise

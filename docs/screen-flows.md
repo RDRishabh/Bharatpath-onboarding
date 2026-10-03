@@ -1249,6 +1249,7 @@ Translate band names through locale files, and never use value words like
 | `not_found`, `*_not_found` | 404 | all | Not found (may mean someone else's) |
 | `conflict`, `*_invalid_transition` | 409 | all | "This changed; refreshing" |
 | `resume_legacy_doc_unsupported`, `resume_unsupported_document`, `resume_unreadable_document`, `resume_document_encrypted` | 422 | student | File-specific message + other intake options |
+| `resume_too_long` (as `parse_error_code`, `params.max_pages` = 10) | — | student | "This looks longer than a CV. Upload a CV of up to 10 pages." No score is created |
 | `resume_version_superseded` | 409 | student | Reload newest version |
 | `score_pending` | 409 | student apply | Score still calculating |
 | `eligibility_below_threshold` | 403 | student apply | Not eligible, **no number** |
