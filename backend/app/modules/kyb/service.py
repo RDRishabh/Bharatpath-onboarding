@@ -39,7 +39,7 @@ from app.core.errors import (
     PermissionDeniedError,
     ValidationError,
 )
-from app.core.forms import validate_answers
+from app.core.forms import staff_fillable_sections, validate_answers, validate_staff_answers
 from app.core.logging import get_logger
 from app.core.outbox import emit
 from app.core.reference import INDIAN_STATES
@@ -217,11 +217,14 @@ def _issues(issues: tuple[Any, ...]) -> KybAnswersInvalidError:
 # ---------------------------------------------------------------------------
 # The form
 # ---------------------------------------------------------------------------
-def form_definition() -> KybFormResponse:
+def form_definition(*, staff: bool = False) -> KybFormResponse:
+    """The whole form, or with `staff` the part our staff may fill in for an
+    employer (`app.core.forms.staff_fillable_sections`)."""
+    sections = staff_fillable_sections(KYB_FORM) if staff else KYB_FORM.sections
     return KybFormResponse(
         code=KYB_FORM.code,
         version=KYB_FORM.version,
-        sections=[dataclasses.asdict(section) for section in KYB_FORM.sections],
+        sections=[dataclasses.asdict(section) for section in sections],
         options={
             "employer.EMPLOYER_TYPES": [
                 KybOption(code=t.code, label=t.label) for t in active_employer_types()
@@ -269,6 +272,33 @@ async def save_answers(
         session, submission=submission, answers=merged, form_version=FORM_VERSION
     )
     return await _response(session, submission)
+
+
+async def prefill_draft(
+    session: AsyncSession, *, tenant_id: uuid.UUID, answers: dict[str, Any]
+) -> None:
+    """Staff fill an organisation's KYB in for it, in the transaction that
+    created the organisation (2026-10-03). The owner finds the draft already
+    filled at first sign-in, ticks the undertakings, uploads the documents and
+    submits -- none of which staff can do (`validate_staff_answers`).
+
+    `tenant_id` is the organisation this transaction just created, never one
+    from a request, which is why binding it here is safe. A brand-new
+    organisation has no submission, so this is always a new DRAFT.
+    """
+    issues = validate_staff_answers(KYB_FORM, answers, options=KYB_OPTIONS)
+    if issues:
+        raise _issues(issues)
+    answers = {code: value for code, value in answers.items() if value is not None}
+    if not answers:
+        return
+    await set_transaction_tenant(session, tenant_id)
+    submission = await _open_or_new_draft(session, tenant_id)
+    if submission.state != "DRAFT":  # pragma: no cover - a new organisation
+        raise KybNotEditableError(params={"state": submission.state})
+    await repository.set_answers(
+        session, submission=submission, answers=answers, form_version=FORM_VERSION
+    )
 
 
 async def issue_document_ticket(

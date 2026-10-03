@@ -235,3 +235,55 @@ def _check_value(
     if spec.pattern is not None and re.fullmatch(spec.pattern, value) is None:
         return "invalid_format"
     return None
+
+
+# ---------------------------------------------------------------------------
+# Answers staff enter for someone (2026-10-03)
+# ---------------------------------------------------------------------------
+# Staff creating an employer or a college from the console may fill its form
+# in for it, as a draft the owner finds already filled at first sign-in. Two
+# kinds of field stay the person's own:
+#
+# - **CHECKBOX** is an acceptance. On both forms every one is an undertaking
+#   ("we will not sell candidate details", "I am authorised"), and a box our
+#   staff tick is not the organisation promising anything. A test holds every
+#   CHECKBOX inside an `undertakings` section, so a checkbox that is not an
+#   acceptance has to be argued for there.
+# - **FILE** never takes an inline answer at all (`validate_answers`).
+#
+# And staff never submit: submission is when the undertakings are read.
+
+STAFF_UNFILLABLE_TYPES: Final = frozenset({"CHECKBOX", "FILE"})
+
+
+def staff_fillable(spec: FormField) -> bool:
+    return spec.type not in STAFF_UNFILLABLE_TYPES
+
+
+def staff_fillable_sections(form: FormDefinition) -> tuple[FormSection, ...]:
+    """The form as staff see it: undertakings and documents left out, and a
+    section left with nothing to fill dropped."""
+    sections = (
+        FormSection(s.code, s.title, tuple(f for f in s.fields if staff_fillable(f)), s.help_text)
+        for s in form.sections
+    )
+    return tuple(s for s in sections if s.fields)
+
+
+def validate_staff_answers(
+    form: FormDefinition,
+    answers: Mapping[str, object],
+    *,
+    options: Mapping[str, frozenset[str]],
+) -> tuple[AnswerIssue, ...]:
+    """`validate_answers` for a partial save, plus `not_staff_fillable` for an
+    undertaking or a document -- refused even when blank, so a client that
+    sends `false` learns the field is not its to send."""
+    refused = tuple(
+        AnswerIssue(code, "not_staff_fillable")
+        for code in answers
+        if (spec := form.field_by_code(code)) is not None and not staff_fillable(spec)
+    )
+    if refused:
+        return refused
+    return validate_answers(form, answers, options=options, complete=False)
