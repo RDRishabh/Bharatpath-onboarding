@@ -402,23 +402,43 @@ _EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 
 class ProvisionCandidateRequest(_Base):
+    """The account, and optionally the name and location the app would ask
+    for at sign-up (2026-10-03). Checked by the candidate profile's own rules."""
+
     email: str = Field(min_length=3, max_length=320, pattern=_EMAIL_PATTERN)
+    full_name: str | None = None
+    city: str | None = None
+    state_code: str | None = None
+
+
+_PREFILL_NOTE = (
+    "Saved as a draft the person finds filled at first sign-in (2026-10-03). Field codes "
+    "come from GET /admin/accounts/forms. Undertakings and documents are refused "
+    "(`not_staff_fillable`): the person accepts and uploads them, and submits."
+)
 
 
 class ProvisionEmployerRequest(_Base):
     """The organisation and its first owner. The owner completes KYB and
-    pays like any other employer; this only saves them typing the form."""
+    pays like any other employer; this only saves them typing the form.
+    `legal_name`, `employer_type` and `industry` are KYB answers too, and win
+    over the same codes in `kyb_answers`."""
 
     owner_email: str = Field(min_length=3, max_length=320, pattern=_EMAIL_PATTERN)
     legal_name: str = Field(min_length=2, max_length=255)
     employer_type: str | None = None
     industry: str | None = None
+    kyb_answers: dict[str, Any] | None = Field(default=None, description=_PREFILL_NOTE)
 
 
 class ProvisionCollegeRequest(_Base):
+    """`name` and `institution_type` are onboarding answers too (`legal_name`,
+    `institution_type`), and win over the same codes in `onboarding_answers`."""
+
     admin_email: str = Field(min_length=3, max_length=320, pattern=_EMAIL_PATTERN)
     name: str = Field(min_length=2, max_length=255)
     institution_type: str
+    onboarding_answers: dict[str, Any] | None = Field(default=None, description=_PREFILL_NOTE)
 
 
 class AddOrganisationMemberRequest(_Base):
@@ -438,6 +458,30 @@ class ProvisionedAccountResponse(_Base):
         description="SENT: Cognito emailed a temporary password. ALREADY_REGISTERED: the "
         "person has a sign-in already, no email went out, and they should sign in as usual."
     )
+    prefilled: list[str] = Field(
+        default_factory=list,
+        description="Codes of the answers saved for the person to find at first sign-in.",
+    )
+
+
+class AccountFormOption(_Base):
+    code: str
+    label: str
+
+
+class AccountForm(_Base):
+    """An onboarding form as staff see it: its definition without the
+    undertakings and documents, which only the person can give."""
+
+    code: str
+    version: str
+    sections: list[dict[str, Any]]
+    options: dict[str, list[AccountFormOption]]
+
+
+class AccountFormsResponse(_Base):
+    employer: AccountForm = Field(description="The KYB form, keys for `kyb_answers`.")
+    college: AccountForm = Field(description="The onboarding form, keys for `onboarding_answers`.")
 
 
 class InvitationResentResponse(_Base):

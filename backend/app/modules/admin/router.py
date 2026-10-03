@@ -30,6 +30,7 @@ from app.core.deps import CurrentUser, DbSession, get_request_id, require_role
 from app.modules.admin import service
 from app.modules.admin.domain import CONSOLE_ROLES, DISPUTE_RAISER_ROLES, Capability
 from app.modules.admin.schemas import (
+    AccountFormsResponse,
     AddOrganisationMemberRequest,
     AdminCourseView,
     AdminDashboard,
@@ -681,6 +682,19 @@ async def search_audit(
 # ---------------------------------------------------------------------------
 # Accounts made on someone's behalf (2026-09-18)
 # ---------------------------------------------------------------------------
+@router.get(
+    "/accounts/forms",
+    response_model=AccountFormsResponse,
+    dependencies=can("accounts"),
+    summary="The employer and college onboarding forms, as staff may fill them",
+)
+async def account_forms() -> AccountFormsResponse:
+    """The field codes for `kyb_answers` and `onboarding_answers`, with their
+    options. Undertakings and documents are not in it: only the person can
+    accept or upload those (2026-10-03)."""
+    return service.account_forms()
+
+
 @router.post(
     "/accounts/candidates",
     response_model=ProvisionedAccountResponse,

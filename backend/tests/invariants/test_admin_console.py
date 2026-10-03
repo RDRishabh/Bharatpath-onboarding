@@ -145,6 +145,7 @@ ROUTE_CAPABILITY: dict[str, Any] = {
     "resolve_dispute": "disputes",
     "search_audit": "audit_search",
     # 2026-09-18: accounts made on someone's behalf, and discount codes.
+    "account_forms": "accounts",
     "provision_candidate": "accounts",
     "provision_employer": "accounts",
     "provision_college": "accounts",

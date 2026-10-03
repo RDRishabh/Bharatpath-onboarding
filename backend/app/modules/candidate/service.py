@@ -76,6 +76,27 @@ async def set_full_name(
     return CandidateProfileResponse.model_validate(profile)
 
 
+async def prefill_profile(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    name: NameRequest | None,
+    location: LocationRequest | None,
+) -> None:
+    """Staff enter a candidate's name and location when they create the
+    account (2026-10-03), so the app shows them at first sign-in. The
+    candidate can change either, as always. Never a CV, a questionnaire
+    answer or a college link: those are the candidate's own acts.
+
+    `user_id` is the account this transaction just created, not a caller."""
+    if name is not None:
+        await repository.set_full_name(session, user_id=user_id, full_name=name.full_name)
+    if location is not None and (location.city or location.state_code):
+        await repository.set_location(
+            session, user_id=user_id, city=location.city, state_code=location.state_code
+        )
+
+
 async def profile_views(
     session: AsyncSession,
     *,

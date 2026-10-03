@@ -218,6 +218,246 @@ async def test_if_cognito_refuses_nothing_is_created(
 
 
 # ===========================================================================
+# Staff fill the onboarding in for them (2026-10-03)
+# ===========================================================================
+# Saved as a draft: the person signs in with the emailed password and finds
+# it filled. Undertakings, documents and submitting stay theirs.
+KYB_PREFILL = {
+    "trade_name": "Prefill Works",
+    "employee_count_band": "11_50",
+    "pan": "AABCP1234Q",
+    "address_line1": "12 MG Road",
+    "city": "Pune",
+    "state": "MH",
+    "pincode": "411001",
+    "signatory_name": "Asha Rao",
+    "work_email": "hr@prefill.example.test",
+}
+COLLEGE_PREFILL = {
+    "aishe_code": "C-12345",
+    "city": "Nagpur",
+    "state": "MH",
+    "officer_name": "Ravi Kulkarni",
+    "officer_email": "placements@college.example.test",
+    "officer_phone": "9876543210",
+    "students_per_year": 600,
+}
+
+
+async def _audit_prefilled(user_id: str) -> list[str]:
+    async with sessions(_seed_url())() as session:
+        value = await session.scalar(
+            text(
+                "SELECT metadata->'prefilled' FROM audit_events"
+                " WHERE action = 'account_provisioned' AND target_id = :u"
+            ),
+            {"u": user_id},
+        )
+    return list(value)
+
+
+async def test_the_staff_view_of_the_forms_leaves_out_what_only_the_person_can_give(
+    client: Any, mint_token: Any
+) -> None:
+    admin = await _staff(mint_token)
+    forms = await client.get(f"{ADMIN}/accounts/forms", headers=admin["headers"])
+    assert forms.status_code == 200, forms.text
+    for kind in ("employer", "college"):
+        fields = [f for s in forms.json()[kind]["sections"] for f in s["fields"]]
+        codes = {f["code"] for f in fields}
+        assert "legal_name" in codes and not any(c.startswith("undertaking_") for c in codes)
+        assert {f["type"] for f in fields}.isdisjoint({"CHECKBOX", "FILE"})
+    assert "reference.INDIAN_STATES" in forms.json()["employer"]["options"]
+
+
+async def test_staff_fill_an_employers_kyb_which_the_owner_finds_as_a_draft(
+    client: Any, mint_token: Any
+) -> None:
+    admin = await _staff(mint_token)
+    email = _email()
+    name = f"Prefilled {uuid.uuid4().hex[:6]} Pvt Ltd"
+    created = await client.post(
+        f"{ADMIN}/accounts/employers",
+        json={
+            "owner_email": email,
+            "legal_name": name,
+            "employer_type": "PRIVATE_LIMITED",
+            "industry": "IT_SOFTWARE",
+            # The organisation's own field wins over the same code here.
+            "kyb_answers": {**KYB_PREFILL, "legal_name": "Something Else Ltd"},
+        },
+        headers=admin["headers"],
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    expected = sorted({*KYB_PREFILL, "legal_name", "employer_type", "industry"})
+    assert body["prefilled"] == expected and body["invitation"] == "SENT"
+    assert await _audit_prefilled(body["user_id"]) == expected
+
+    headers, _ = mint_token(pool="BUSINESS", email=email)
+    kyb = await client.get(f"{API}/employer/kyb", headers=headers)
+    assert kyb.status_code == 200, kyb.text
+    assert kyb.json()["state"] == "DRAFT" and kyb.json()["submitted_at"] is None
+    assert kyb.json()["answers"] == {
+        **KYB_PREFILL,
+        "legal_name": name,
+        "employer_type": "PRIVATE_LIMITED",
+        "industry": "IT_SOFTWARE",
+    }
+    organisation = await client.get(f"{API}/employer/organisation", headers=headers)
+    assert organisation.json()["kyb_status"] == "DRAFT"
+
+    # The owner carries on from the draft: their save merges into it.
+    saved = await client.put(
+        f"{API}/employer/kyb/answers",
+        json={"answers": {"undertaking_genuine_hiring": True}},
+        headers=headers,
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["answers"]["pan"] == KYB_PREFILL["pan"]
+    assert saved.json()["answers"]["undertaking_genuine_hiring"] is True
+
+
+async def test_without_answers_the_employers_own_fields_still_start_the_kyb(
+    client: Any, mint_token: Any
+) -> None:
+    """The owner used to type the legal name twice: once by staff for the
+    organisation, once by them on the KYB."""
+    admin = await _staff(mint_token)
+    email = _email()
+    name = f"Plain {uuid.uuid4().hex[:6]} Pvt Ltd"
+    created = await client.post(
+        f"{ADMIN}/accounts/employers",
+        json={"owner_email": email, "legal_name": name},
+        headers=admin["headers"],
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["prefilled"] == ["legal_name"]
+    headers, _ = mint_token(pool="BUSINESS", email=email)
+    kyb = await client.get(f"{API}/employer/kyb", headers=headers)
+    assert kyb.json()["answers"] == {"legal_name": name}
+
+
+@pytest.mark.parametrize(
+    "answers",
+    [
+        {"undertaking_genuine_hiring": True},
+        {"undertaking_authorised": False},
+        {"doc_pan": "anything"},
+    ],
+)
+async def test_staff_can_neither_accept_an_employers_undertakings_nor_attach_documents(
+    client: Any, mint_token: Any, answers: dict[str, Any]
+) -> None:
+    admin = await _staff(mint_token)
+    email = _email()
+    refused = await client.post(
+        f"{ADMIN}/accounts/employers",
+        json={"owner_email": email, "legal_name": "Undertaken Pvt Ltd", "kyb_answers": answers},
+        headers=admin["headers"],
+    )
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "kyb_answers_invalid"
+    assert refused.json()["params"]["issues"] == [
+        {"field": next(iter(answers)), "code": "not_staff_fillable"}
+    ]
+    assert await _user(email) is None and not _invited("BUSINESS", email)
+
+
+async def test_a_bad_answer_creates_nothing_and_emails_nobody(client: Any, mint_token: Any) -> None:
+    admin = await _staff(mint_token)
+    email = _email()
+    refused = await client.post(
+        f"{ADMIN}/accounts/employers",
+        json={"owner_email": email, "legal_name": "Bad Pan Pvt Ltd", "kyb_answers": {"pan": "1"}},
+        headers=admin["headers"],
+    )
+    assert refused.status_code == 422
+    assert {"field": "pan", "code": "invalid_format"} in refused.json()["params"]["issues"]
+    assert await _user(email) is None and not _invited("BUSINESS", email)
+
+
+async def test_staff_fill_a_colleges_onboarding_which_its_admin_finds_unsubmitted(
+    client: Any, mint_token: Any
+) -> None:
+    admin = await _staff(mint_token)
+    email = _email()
+    name = f"Prefilled College {uuid.uuid4().hex[:6]}"
+    created = await client.post(
+        f"{ADMIN}/accounts/colleges",
+        json={
+            "admin_email": email,
+            "name": name,
+            "institution_type": "AUTONOMOUS_COLLEGE",
+            "onboarding_answers": COLLEGE_PREFILL,
+        },
+        headers=admin["headers"],
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["prefilled"] == sorted(
+        {*COLLEGE_PREFILL, "legal_name", "institution_type"}
+    )
+
+    headers, _ = mint_token(pool="BUSINESS", email=email)
+    onboarding = await client.get(f"{API}/college/onboarding", headers=headers)
+    assert onboarding.status_code == 200, onboarding.text
+    assert onboarding.json()["submitted_at"] is None
+    assert onboarding.json()["answers"] == {
+        **COLLEGE_PREFILL,
+        "legal_name": name,
+        "institution_type": "AUTONOMOUS_COLLEGE",
+    }
+
+    refused = await client.post(
+        f"{ADMIN}/accounts/colleges",
+        json={
+            "admin_email": _email(),
+            "name": "Consenting College",
+            "institution_type": "AUTONOMOUS_COLLEGE",
+            "onboarding_answers": {"undertaking_student_consent": True},
+        },
+        headers=admin["headers"],
+    )
+    assert refused.status_code == 422
+    assert refused.json()["code"] == "college_onboarding_invalid"
+
+
+async def test_staff_give_a_candidates_name_and_location_which_the_app_shows(
+    client: Any, mint_token: Any
+) -> None:
+    admin = await _staff(mint_token)
+    email = _email()
+    created = await client.post(
+        f"{ADMIN}/accounts/candidates",
+        json={"email": email, "full_name": "Meera Iyer", "city": "Chennai", "state_code": "TN"},
+        headers=admin["headers"],
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["prefilled"] == ["full_name", "city", "state_code"]
+
+    headers, _ = mint_token(pool="CANDIDATE", email=email)
+    profile = await client.get(f"{API}/candidate/profile", headers=headers)
+    assert profile.status_code == 200, profile.text
+    assert profile.json()["full_name"] == "Meera Iyer"
+    assert (profile.json()["city"], profile.json()["state_code"]) == ("Chennai", "TN")
+
+
+async def test_a_candidate_name_the_app_would_refuse_creates_nothing(
+    client: Any, mint_token: Any
+) -> None:
+    admin = await _staff(mint_token)
+    email = _email()
+    refused = await client.post(
+        f"{ADMIN}/accounts/candidates",
+        json={"email": email, "full_name": "call me 9876543210"},
+        headers=admin["headers"],
+    )
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "admin_account_invalid"
+    assert await _user(email) is None and not _invited("CANDIDATE", email)
+
+
+# ===========================================================================
 # Resending the invitation
 # ===========================================================================
 async def test_an_invitation_can_be_resent_until_the_person_signs_in(
