@@ -4,3 +4,4 @@ export * from "./score-band-bar";
 export * from "./job-card";
 export * from "./application-card";
 export * from "./notification-card";
+export * from "./student-error-state";

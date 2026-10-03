@@ -19,10 +19,9 @@ import {
   toggleQualifiedOnly,
   useLazyGetStudentJobsQuery,
 } from "@/store/student";
-import { getApiErrorMessage } from "@/lib/api/error-message";
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
 import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
-import { EmptyState, JobCard } from "@/features/student/components";
+import { EmptyState, JobCard, StudentErrorState } from "@/features/student/components";
 import { StudentPage } from "@/features/student/shell";
 
 const WORK_MODES = ["ONSITE", "HYBRID", "REMOTE"] as const;
@@ -131,10 +130,11 @@ export function JobFeed() {
             </p>
           </div>
         ) : jobs.error && !jobs.items.length ? (
-          <EmptyState
+          <StudentErrorState
             icon={<Search size={22} />}
             title="Jobs unavailable"
-            message={getApiErrorMessage(jobs.error, "Could not load jobs.")}
+            error={jobs.error}
+            fallback="Could not load jobs."
           />
         ) : jobs.items.length ? (
           <>

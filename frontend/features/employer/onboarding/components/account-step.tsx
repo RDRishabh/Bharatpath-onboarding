@@ -17,18 +17,42 @@ import { StepCard } from "./signup-shell";
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-interface AccountStepProps {
-  onSignedUp: (result: SignupResponse, email: string) => void;
+interface AccountStepCopy {
+  title: string;
+  description: string;
+  successMessage: string;
+  emailLabel: string;
+  emailPlaceholder: string;
 }
 
-export function AccountStep({ onSignedUp }: Readonly<AccountStepProps>) {
+const EMPLOYER_COPY: AccountStepCopy = {
+  title: "Create your employer account",
+  description:
+    "Hire from BharatPath's verified candidate pool. Sign up with your work email, set up your organisation, then complete a short business verification (KYB).",
+  successMessage: "Your employer account is ready.",
+  emailLabel: "Work email",
+  emailPlaceholder: "you@yourcompany.in",
+};
+
+interface AccountStepProps {
+  onSignedUp: (result: SignupResponse, email: string) => void;
+  /** Wording for the page; defaults to the employer sign-up. */
+  copy?: AccountStepCopy;
+}
+
+export type { AccountStepCopy };
+
+export function AccountStep({
+  onSignedUp,
+  copy = EMPLOYER_COPY,
+}: Readonly<AccountStepProps>) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   const flow = useSignupFlow("BUSINESS", (session, signedUpEmail) => {
-    showSuccessFeedback("Your employer account is ready.");
+    showSuccessFeedback(copy.successMessage);
     onSignedUp(session, signedUpEmail);
   });
 
@@ -58,8 +82,8 @@ export function AccountStep({ onSignedUp }: Readonly<AccountStepProps>) {
   return (
     <StepCard
       eyebrow="Step 1 · Your account"
-      title="Create your employer account"
-      description="Hire from BharatPath's verified candidate pool. Sign up with your work email, set up your organisation, then complete a short business verification (KYB)."
+      title={copy.title}
+      description={copy.description}
     >
       {flow.phase === "DETAILS" && (
         <form onSubmit={submitDetails} noValidate className="max-w-md space-y-5">
@@ -80,7 +104,7 @@ export function AccountStep({ onSignedUp }: Readonly<AccountStepProps>) {
               htmlFor="signup-email"
               className="mb-1.5 block text-[13px] font-semibold text-[#303747]"
             >
-              Work email
+              {copy.emailLabel}
             </label>
             <div className="relative">
               <Mail
@@ -91,7 +115,7 @@ export function AccountStep({ onSignedUp }: Readonly<AccountStepProps>) {
                 id="signup-email"
                 type="email"
                 autoComplete="email"
-                placeholder="you@yourcompany.in"
+                placeholder={copy.emailPlaceholder}
                 value={email}
                 aria-invalid={Boolean(errors.email)}
                 aria-describedby={errors.email ? "signup-email-error" : undefined}

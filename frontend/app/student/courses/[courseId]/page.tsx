@@ -4,7 +4,6 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { BookOpen, Check, ChevronRight, CircleCheck, LockKeyhole, Play, Video } from "lucide-react";
 
-import { getApiErrorMessage } from "@/lib/api/error-message";
 import {
   useGetCourseDetailQuery,
   useCheckoutCourseMutation,
@@ -18,6 +17,7 @@ import {
   SectionEyebrow,
   StatusChip,
   StudentCard,
+  StudentErrorState,
 } from "@/features/student/components";
 import { CourseDetailSkeleton } from "@/features/student/courses/course-skeletons";
 import { StudentPage, StudentTopBar } from "@/features/student/shell";
@@ -36,7 +36,7 @@ export default function CoursePage() {
   const [error, setError] = useState("");
 
   if (course.isLoading) return <CourseDetailSkeleton />;
-  if (course.error || !course.data) return <StudentPage><StudentTopBar title="Back to courses" backHref="/student/courses" /><EmptyState icon={<BookOpen size={22} />} title="Course unavailable" message={getApiErrorMessage(course.error, "Could not load this course.")} /></StudentPage>;
+  if (course.error || !course.data) return <StudentPage><StudentTopBar title="Back to courses" backHref="/student/courses" /><StudentErrorState icon={<BookOpen size={22} />} title="Course unavailable" error={course.error} fallback="Could not load this course." /></StudentPage>;
 
   const data = course.data;
   const activeLesson = data.modules.flatMap((module) => module.lessons).find((lesson) => lesson.id === activeLessonId);

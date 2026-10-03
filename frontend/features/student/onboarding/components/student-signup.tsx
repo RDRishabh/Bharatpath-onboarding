@@ -35,14 +35,13 @@ import {
   PasteStep,
   resumeFileProblem,
 } from "./intake-steps";
-import { HowItWorksStep, LanguageStep, ResumeHero, WelcomeStep } from "./intro-steps";
+import { HowItWorksStep, LanguageStep } from "./intro-steps";
 import { ParsingStep, type UploadPhase } from "./parsing-step";
 import { ReviewStep } from "./review-step";
 import { SignupFrame, TrustAside, type SignupPhase } from "./ui";
 
 type Stage =
   | { name: "booting" }
-  | { name: "welcome" }
   | { name: "language" }
   | { name: "how" }
   | { name: "account" }
@@ -65,7 +64,6 @@ type Stage =
 
 const PHASE_OF: Record<Stage["name"], SignupPhase> = {
   booting: "start",
-  welcome: "start",
   language: "start",
   how: "start",
   account: "start",
@@ -87,7 +85,7 @@ interface Profile {
 const EMPTY_PROFILE: Profile = { fullName: "", city: "", stateCode: "" };
 
 /**
- * Candidate sign-up, as in the app design: welcome, language, how it works,
+ * Candidate sign-up, as in the app design: language, how it works,
  * account, about you, resume intake, reading, review and confirm, scoring -
  * then the existing score screen takes over.
  */
@@ -162,7 +160,7 @@ export function StudentSignup() {
       .then(async (identity) => {
         if (cancelled) return;
         if (identity.backendRole !== "CANDIDATE") {
-          setStage({ name: "welcome" });
+          setStage({ name: "language" });
           return;
         }
         remember(identity);
@@ -171,7 +169,7 @@ export function StudentSignup() {
         if (!cancelled) setStage(next);
       })
       .catch(() => {
-        if (!cancelled) setStage({ name: "welcome" });
+        if (!cancelled) setStage({ name: "language" });
       });
 
     return () => {
@@ -198,7 +196,7 @@ export function StudentSignup() {
     resetCaches();
     setSignedIn(false);
     setProfile(EMPTY_PROFILE);
-    go({ name: "welcome" });
+    go({ name: "language" });
   };
 
   const startUpload = async (file: File) => {
@@ -278,14 +276,10 @@ export function StudentSignup() {
     case "booting":
       return frame(<FormSkeleton fields={3} bordered={false} />);
 
-    case "welcome":
-      return frame(<WelcomeStep onStart={() => go({ name: "language" })} />, <ResumeHero />);
-
     case "language":
       return frame(
         <LanguageStep
           value={locale}
-          onBack={() => go({ name: "welcome" })}
           onPick={(code) => {
             setLocale(code);
             go({ name: "how" });

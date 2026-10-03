@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { BookOpen, ChevronRight, CircleCheck, LockKeyhole } from "lucide-react";
 
-import { getApiErrorMessage } from "@/lib/api/error-message";
 import { useGetStudentCoursesQuery } from "@/store/student";
-import { EmptyState, MeterBar, StatusChip, interactiveCardClass } from "@/features/student/components";
+import { EmptyState, MeterBar, StudentErrorState, StatusChip, interactiveCardClass } from "@/features/student/components";
 import { CourseListSkeleton } from "@/features/student/courses/course-skeletons";
 import { StudentPage } from "@/features/student/shell";
 
@@ -29,7 +28,7 @@ export default function CoursesPage() {
         <p className="mt-1 text-[14px] leading-5 text-[#5F6B80]">Explore courses, track lessons, and continue where you left off.</p>
       </div>
 
-      {courses.error ? <EmptyState icon={<BookOpen size={22} />} title="Courses unavailable" message={getApiErrorMessage(courses.error, "Could not load courses right now.")} />
+      {courses.error ? <StudentErrorState icon={<BookOpen size={22} />} title="Courses unavailable" error={courses.error} fallback="Could not load courses right now." />
         : courses.data?.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{courses.data.map((course) => <Link
           key={course.id}
           href={`/student/courses/${course.id}`}

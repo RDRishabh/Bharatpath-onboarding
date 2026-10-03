@@ -10,8 +10,7 @@ import {
   type BoardFilter,
   useGetStudentApplicationsQuery,
 } from "@/store/student";
-import { getApiErrorMessage } from "@/lib/api/error-message";
-import { ApplicationCard, EmptyState } from "@/features/student/components";
+import { ApplicationCard, EmptyState, StudentErrorState } from "@/features/student/components";
 import { Spinner } from "@/components/common/loading";
 import { StudentPage } from "@/features/student/shell";
 
@@ -86,13 +85,11 @@ export function ApplicationBoard() {
             </p>
           </div>
         ) : applications.error ? (
-          <EmptyState
+          <StudentErrorState
             icon={<ListChecks size={22} />}
             title="Applications unavailable"
-            message={getApiErrorMessage(
-              applications.error,
-              "Could not load applications.",
-            )}
+            error={applications.error}
+            fallback="Could not load applications."
           />
         ) : filtered.length ? (
           <div className="grid gap-3 sm:grid-cols-2">

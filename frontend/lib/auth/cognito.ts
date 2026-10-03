@@ -146,6 +146,12 @@ export async function signInWithCognito({
 }: CognitoSignInParams): Promise<CognitoSignInResult> {
   configureAmplify(pool);
 
+  // Amplify keeps its tokens in browser storage and refuses `signIn` with
+  // "There is already a signed in user" while any are there, even expired
+  // ones or another pool's. Our own session is the backend token, so a fresh
+  // sign-in always starts clean.
+  await signOutCognito();
+
   const trimmedEmail = email.trim();
   const response = await signIn({
     username: trimmedEmail,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCancelEmployerSubscriptionMutation, useCheckoutEmployerSubscriptionMutation, useCreateEmployerMandateMutation, useGetEmployerPlansQuery, useGetEmployerSubscriptionQuery } from "@/store/employer/billing";
+import { useConfirmDialog } from "@/features/employer/components/use-confirm-dialog";
 import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import { Skeleton } from "@/components/common/loading";
 
@@ -46,6 +47,7 @@ export function SubscriptionTab() {
   const [checkout, checkoutState] = useCheckoutEmployerSubscriptionMutation();
   const [cancel, cancelState] = useCancelEmployerSubscriptionMutation();
   const [createMandate, mandateState] = useCreateEmployerMandateMutation();
+  const { confirm, dialog } = useConfirmDialog();
 
   const buy = async (planCode: string) => {
     try {
@@ -78,8 +80,19 @@ export function SubscriptionTab() {
           {subscription?.current_period_end && <span className="text-[#718096]">Until {new Date(subscription.current_period_end).toLocaleDateString("en-IN")}</span>}
         </div>
         <div className="mt-4 flex gap-2">
-          {subscription?.has_access && !subscription.cancel_at && <button disabled={cancelState.isLoading} onClick={() => void cancel()} className="rounded-lg border px-3 py-2 text-xs font-semibold">Cancel renewal</button>}
-          {subscription?.has_access && !subscription.renews_automatically && <button disabled={mandateState.isLoading} onClick={() => void mandate()} className="rounded-lg bg-[#151b2b] px-3 py-2 text-xs font-semibold text-white">Enable UPI AutoPay</button>}
+          {subscription?.has_access && !subscription.cancel_at && <button disabled={cancelState.isLoading} onClick={() => confirm({
+            title: "Cancel auto-renewal?",
+            description: "Your plan stays active until the end of the current period and will not renew after that.",
+            confirmLabel: "Cancel renewal",
+            tone: "danger",
+            onConfirm: () => cancel().unwrap().catch(() => undefined),
+          })} className="rounded-lg border px-3 py-2 text-xs font-semibold">Cancel renewal</button>}
+          {subscription?.has_access && !subscription.renews_automatically && <button disabled={mandateState.isLoading} onClick={() => confirm({
+            title: "Enable UPI AutoPay?",
+            description: "You will be taken to your UPI app to authorise recurring payments. You are notified before every debit.",
+            confirmLabel: "Continue",
+            onConfirm: mandate,
+          })} className="rounded-lg bg-[#151b2b] px-3 py-2 text-xs font-semibold text-white">Enable UPI AutoPay</button>}
         </div>
       </section>
       {plans.length === 0 ? (
@@ -92,11 +105,17 @@ export function SubscriptionTab() {
           <h3 className="text-sm font-bold">{plan.period}</h3>
           <p className="mt-2 text-2xl font-bold">₹{(plan.price_minor / 100).toLocaleString("en-IN")}</p>
           <p className="mt-1 text-xs text-[#718096]">{plan.months} month{plan.months === 1 ? "" : "s"}{plan.seat_allowance ? ` · ${plan.seat_allowance} seats` : ""}</p>
-          <button disabled={checkoutState.isLoading} onClick={() => void buy(plan.code)} className="mt-4 w-full rounded-lg bg-[#5b4ed0] px-3 py-2 text-xs font-bold text-white">Choose plan</button>
+          <button disabled={checkoutState.isLoading} onClick={() => confirm({
+            title: `Choose the ${plan.period} plan?`,
+            description: `You will be taken to checkout to pay ₹${(plan.price_minor / 100).toLocaleString("en-IN")} for ${plan.months} month${plan.months === 1 ? "" : "s"} of employer access.`,
+            confirmLabel: "Go to checkout",
+            onConfirm: () => buy(plan.code),
+          })} className="mt-4 w-full rounded-lg bg-[#5b4ed0] px-3 py-2 text-xs font-bold text-white">Choose plan</button>
           </section>)}
         </div>
       )}
       {(checkoutState.isError || cancelState.isError || mandateState.isError) && <EmployerErrorState variant="inline" error={checkoutState.error || cancelState.error || mandateState.error} fallback="The billing request could not be completed." />}
+      {dialog}
     </div>
   );
 }

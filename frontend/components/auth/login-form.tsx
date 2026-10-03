@@ -496,6 +496,17 @@ export function LoginForm() {
                 </Link>
               </p>
             )}
+            {pool === "BUSINESS" && (
+              <p className="mt-2">
+                Registering a college or institute?{" "}
+                <Link
+                  href="/signup/college"
+                  className="font-semibold text-[#3566b8] hover:text-[#254f96]"
+                >
+                  Create a college account
+                </Link>
+              </p>
+            )}
           </div>
         </form>
       )}

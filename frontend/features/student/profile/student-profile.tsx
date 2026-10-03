@@ -27,7 +27,6 @@ import {
   useGetNotificationPreferencesQuery,
   useUpdateNotificationPreferencesMutation,
 } from "@/store/api/notification-api";
-import { getApiErrorMessage } from "@/lib/api/error-message";
 import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import { initials, formatDateTime } from "@/features/student/formatters";
 import type { StudentProfile as StudentProfileData } from "@/features/student/types";
@@ -37,6 +36,7 @@ import {
   PillButton,
   SectionEyebrow,
   StudentCard,
+  StudentErrorState,
 } from "@/features/student/components";
 import { Skeleton } from "@/components/common/loading";
 import { StudentProfileSkeleton } from "@/features/student/loading";
@@ -246,21 +246,12 @@ function ProfileViewsCard() {
           ))}
         </div>
       ) : views.isError ? (
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[12px] text-[#5F6B80]">
-            {getApiErrorMessage(
-              views.error,
-              "We could not load your profile views.",
-            )}
-          </p>
-          <button
-            type="button"
-            onClick={() => void views.refetch()}
-            className="shrink-0 rounded-full border border-[#DDD6C7] px-3 py-1.5 text-[12px] font-semibold text-[#0A1931] hover:bg-[#F7F4EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30"
-          >
-            Try again
-          </button>
-        </div>
+        <StudentErrorState
+          variant="inline"
+          error={views.error}
+          fallback="We could not load your profile views."
+          onRetry={() => void views.refetch()}
+        />
       ) : views.data?.items.length ? (
         <>
           <ul className="flex flex-col divide-y divide-[#F0EBDF]">
@@ -363,9 +354,11 @@ function ProfileForm({
           : "Save profile"}
       </PillButton>
       {profileError ? (
-        <NoteStrip tone="amber">
-          {getApiErrorMessage(profileError, "Could not save your profile.")}
-        </NoteStrip>
+        <StudentErrorState
+          variant="inline"
+          error={profileError}
+          fallback="Could not save your profile."
+        />
       ) : null}
     </StudentCard>
   );

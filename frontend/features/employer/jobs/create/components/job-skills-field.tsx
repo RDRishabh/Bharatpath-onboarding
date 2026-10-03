@@ -10,7 +10,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import { useDebouncedSearch } from "@/lib/hooks/use-debounced-value";
-import { useGetEmployerCandidateSkillSuggestionsQuery } from "@/store/employer/candidates";
+import {
+  useGetEmployerCandidateFiltersQuery,
+  useGetEmployerCandidateSkillSuggestionsQuery,
+} from "@/store/employer/candidates";
 
 import type { JobValidationErrors } from "../schemas/job.schema";
 
@@ -36,6 +39,15 @@ export function JobSkillsField({
   const inputRef = useRef<HTMLInputElement>(null);
   const typedQuery = query.trim();
   const debouncedQuery = useDebouncedSearch(query);
+  // The defaults come from the filter panel (featured catalogue options), so
+  // the list is there before anything is typed; the typeahead only answers
+  // once there is text to answer (empty `q` returns nothing by design).
+  const {
+    data: panel,
+    error: panelError,
+    isLoading: panelLoading,
+    refetch: refetchPanel,
+  } = useGetEmployerCandidateFiltersQuery(undefined, { skip: disabled });
   const {
     currentData,
     error: suggestionsError,
@@ -65,7 +77,9 @@ export function JobSkillsField({
 
   const suggestions = useMemo(() => {
     const selected = new Set(value.map((skill) => skill.toLocaleLowerCase()));
-    const choices = currentData?.items ?? [];
+    const choices = debouncedQuery
+      ? (currentData?.items ?? [])
+      : (panel?.skills ?? []);
     const visible =
       typedQuery && typedQuery !== debouncedQuery
         ? choices.filter((choice) =>
@@ -78,7 +92,7 @@ export function JobSkillsField({
     return visible.filter(
       (choice) => !selected.has(choice.label.toLocaleLowerCase()),
     );
-  }, [currentData?.items, debouncedQuery, typedQuery, value]);
+  }, [currentData?.items, debouncedQuery, panel?.skills, typedQuery, value]);
   const hasExactMatch = [...value, ...suggestions.map((item) => item.label)]
     .some(
       (skill) =>
@@ -92,6 +106,7 @@ export function JobSkillsField({
   const isSearching =
     typedQuery.length > 0 &&
     (typedQuery !== debouncedQuery || isFetching);
+  const isBrowsingDefaults = typedQuery.length === 0 && panelLoading;
 
   function addSkill(skill: string) {
     if (
@@ -155,7 +170,7 @@ export function JobSkillsField({
           ref={inputRef}
           type="text"
           role="combobox"
-          aria-expanded={open && typedQuery.length > 0}
+          aria-expanded={open}
           aria-controls="job-skill-suggestions"
           value={query}
           maxLength={MAX_SKILL_LENGTH}
@@ -175,13 +190,13 @@ export function JobSkillsField({
           className="h-10 w-full rounded-[9px] border border-[#e1e5ea] bg-white pl-9 pr-3 text-[12px] text-[#182132] outline-none placeholder:text-[#8a919d] focus:border-[#9bb4d4] focus:ring-2 focus:ring-[#315f9b]/10 disabled:cursor-not-allowed disabled:bg-[#f5f6f8]"
         />
 
-        {!disabled && open && typedQuery ? (
+        {!disabled && open ? (
           <div
             id="job-skill-suggestions"
             role="listbox"
             className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-[10px] border border-[#e1e5ea] bg-white p-1 shadow-[0_8px_24px_rgba(19,26,38,0.10)]"
           >
-            {isSearching ? (
+            {isSearching || isBrowsingDefaults ? (
               <p
                 role="status"
                 className="flex items-center gap-2 px-3 py-2 text-[12px] text-[#687386]"
@@ -191,7 +206,7 @@ export function JobSkillsField({
                   size={14}
                   className="animate-spin"
                 />
-                Searching skills...
+                {isSearching ? "Searching skills..." : "Loading skills..."}
               </p>
             ) : (
               <>
@@ -223,7 +238,7 @@ export function JobSkillsField({
 
                 {suggestions.length === 0 && !canAddTyped ? (
                   <p className="px-3 py-2 text-[12px] text-[#98a1b0]">
-                    No skills found
+                    {typedQuery ? "No skills found" : "No suggestions yet"}
                   </p>
                 ) : null}
               </>
@@ -238,6 +253,16 @@ export function JobSkillsField({
           error={suggestionsError}
           fallback="Skill suggestions could not be loaded."
           onRetry={() => void refetch()}
+          className="mt-2"
+        />
+      ) : null}
+
+      {!disabled && panelError && !debouncedQuery ? (
+        <EmployerErrorState
+          variant="inline"
+          error={panelError}
+          fallback="Skill suggestions could not be loaded."
+          onRetry={() => void refetchPanel()}
           className="mt-2"
         />
       ) : null}
