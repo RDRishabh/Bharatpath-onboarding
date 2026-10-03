@@ -1,8 +1,8 @@
 /**
- * BharatPath — ApplicationBoardScreen ("Board" tab)
+ * BharatPath - ApplicationBoardScreen ("Board" tab)
  *
  * The candidate's own applications, wired to `GET /candidate/applications`.
- * Reading the board is NOT paywalled (R13 — a lapsed subscriber loses access,
+ * Reading the board is NOT paywalled (R13 - a lapsed subscriber loses access,
  * not their data).
  *
  * The API has no stage filter and `total` is always `null`, so this screen
@@ -16,7 +16,7 @@
  *   3. Normal stage card with "Stage N of 5" bar
  * Closed tab: final chip + reason line, no bar, no special cards.
  *
- * No location or salary is shown — the job fetch is paywalled and 404s for
+ * No location or salary is shown - the job fetch is paywalled and 404s for
  * closed jobs, so it is not safely fetchable from the board.
  */
 import React, { useMemo, useState } from 'react';
@@ -104,7 +104,7 @@ export function ApplicationBoardScreen({
     reload,
   } = useApplications();
 
-  // Partition client-side — the API has no stage filter.
+  // Partition client-side - the API has no stage filter.
   const { active, closed } = useMemo(() => {
     const activeList: ApplicationResponse[] = [];
     const closedList: ApplicationResponse[] = [];
@@ -272,7 +272,7 @@ function EmptyState({
 }
 
 // ---------------------------------------------------------------------------
-// Application card — picks the right variant by stage + hire + interview
+// Application card - picks the right variant by stage + hire + interview
 // ---------------------------------------------------------------------------
 
 interface ApplicationCardProps {
@@ -291,12 +291,12 @@ function ApplicationCard({
     return <ClosedCard application={application} onPress={onPress} />;
   }
 
-  // Active — priority 1: PENDING hire → highlighted "Confirm hire?" banner.
+  // Active - priority 1: PENDING hire → highlighted "Confirm hire?" banner.
   if (application.hire_confirmation === 'PENDING') {
     return <PendingHireCard application={application} onPress={onPress} />;
   }
 
-  // Active — priority 2: INTERVIEW stage with interview present → interview card.
+  // Active - priority 2: INTERVIEW stage with interview present → interview card.
   if (
     application.stage === 'INTERVIEW' &&
     application.interview &&
@@ -305,7 +305,7 @@ function ApplicationCard({
     return <InterviewCard application={application} onPress={onPress} />;
   }
 
-  // Active — priority 3: normal stage card with "Stage N of 5" bar.
+  // Active - priority 3: normal stage card with "Stage N of 5" bar.
   return <StageCard application={application} onPress={onPress} />;
 }
 

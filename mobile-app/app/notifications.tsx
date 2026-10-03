@@ -1,5 +1,5 @@
 /**
- * BharatPath — Notifications Route
+ * BharatPath - Notifications Route
  * Notification communication permissions and settings matching Screen 15 in Handoff.
  */
 import React from 'react';

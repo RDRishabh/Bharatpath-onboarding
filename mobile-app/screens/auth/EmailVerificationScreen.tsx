@@ -7,6 +7,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -22,8 +23,8 @@ import { Colors, Radii, Spacing } from '@/theme/tokens';
 export interface EmailVerificationScreenProps {
   email: string;
   onBack?: () => void;
-  onVerify?: (code: string) => void;
-  onResendCode?: () => void;
+  onVerify?: (code: string) => Promise<void> | void;
+  onResendCode?: () => Promise<void> | void;
 }
 
 export function EmailVerificationScreen({
@@ -34,6 +35,9 @@ export function EmailVerificationScreen({
 }: EmailVerificationScreenProps) {
   const [code, setCode] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(30);
   const inputRef = useRef<TextInput>(null);
 
@@ -48,25 +52,42 @@ export function EmailVerificationScreen({
     }
   }, [resendCooldown]);
 
-  const handleVerify = () => {
-    const cleaned = code.trim();
+  const handleVerify = async (codeToVerify?: string) => {
+    const cleaned = (codeToVerify || code).trim();
     if (cleaned.length < 6) {
       setErrorMsg('Please enter the complete 6-digit verification code.');
       return;
     }
     setErrorMsg(null);
-    if (onVerify) {
-      onVerify(cleaned);
+    setSuccessMsg(null);
+    setIsVerifying(true);
+    try {
+      if (onVerify) {
+        await onVerify(cleaned);
+      }
+    } catch (err: any) {
+      console.error('[Verification Error]:', err);
+      setErrorMsg(err?.problem?.title || err?.message || 'Verification failed. Please check the code.');
+    } finally {
+      setIsVerifying(false);
     }
   };
 
-  const handleResend = () => {
-    if (resendCooldown === 0) {
-      setResendCooldown(30);
-      setCode('');
+  const handleResend = async () => {
+    if (resendCooldown === 0 && !isResending) {
+      setIsResending(true);
       setErrorMsg(null);
-      if (onResendCode) {
-        onResendCode();
+      try {
+        if (onResendCode) {
+          await onResendCode();
+        }
+        setSuccessMsg('New verification code sent to your email!');
+        setResendCooldown(30);
+        setCode('');
+      } catch (err: any) {
+        setErrorMsg(err?.problem?.title || err?.message || 'Could not resend code. Please try again.');
+      } finally {
+        setIsResending(false);
       }
     }
   };
@@ -112,6 +133,14 @@ export function EmailVerificationScreen({
               </Text>
             </View>
 
+            {/* Success Message */}
+            {successMsg ? (
+              <View style={styles.successContainer}>
+                <CheckCircle size={18} color="#2D8A4E" weight="fill" />
+                <Text style={styles.successText}>{successMsg}</Text>
+              </View>
+            ) : null}
+
             {/* Error Message */}
             {errorMsg ? (
               <View style={styles.errorContainer}>
@@ -152,33 +181,40 @@ export function EmailVerificationScreen({
                 const cleaned = text.replace(/\D/g, '').slice(0, 6);
                 setCode(cleaned);
                 if (errorMsg) setErrorMsg(null);
-                if (cleaned.length === 6 && onVerify) {
-                  onVerify(cleaned);
+                if (cleaned.length === 6 && !isVerifying) {
+                  handleVerify(cleaned);
                 }
               }}
               keyboardType="number-pad"
               maxLength={6}
               autoFocus
+              editable={!isVerifying}
             />
 
             {/* Verify Button */}
             <Pressable
               style={({ pressed }) => [
                 styles.primaryButton,
-                code.length < 6 && styles.primaryButtonDisabled,
-                pressed && code.length === 6 && styles.buttonPressed,
+                (code.length < 6 || isVerifying) && styles.primaryButtonDisabled,
+                pressed && code.length === 6 && !isVerifying && styles.buttonPressed,
               ]}
-              onPress={handleVerify}
-              disabled={code.length < 6}
+              onPress={() => handleVerify()}
+              disabled={code.length < 6 || isVerifying}
               accessibilityRole="button"
             >
-              <Text style={styles.primaryButtonText}>Verify & Continue</Text>
+              {isVerifying ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Verify & Continue</Text>
+              )}
             </Pressable>
 
             {/* Resend Row */}
             <View style={styles.resendRow}>
               <Text style={styles.resendText}>Didn't receive the email?</Text>
-              {resendCooldown > 0 ? (
+              {isResending ? (
+                <ActivityIndicator size="small" color={Colors.brandAccent} style={{ marginLeft: 6 }} />
+              ) : resendCooldown > 0 ? (
                 <Text style={styles.resendTimer}>Resend in {resendCooldown}s</Text>
               ) : (
                 <Pressable onPress={handleResend} hitSlop={8}>
@@ -282,6 +318,24 @@ const styles = StyleSheet.create({
   emailHighlight: {
     fontFamily: 'GeneralSans-Semibold',
     color: Colors.navy,
+  },
+  successContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: '#EBF8EE',
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.md,
+    borderRadius: Radii.tile,
+    borderWidth: 1,
+    borderColor: '#B7E4C7',
+  },
+  successText: {
+    flex: 1,
+    fontFamily: 'GeneralSans-Medium',
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#2D8A4E',
   },
   errorContainer: {
     flexDirection: 'row',

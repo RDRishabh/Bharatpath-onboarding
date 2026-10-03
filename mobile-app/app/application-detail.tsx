@@ -1,5 +1,5 @@
 /**
- * BharatPath — Application Detail Route
+ * BharatPath - Application Detail Route
  *
  * Reads the application id from the route params and renders the detail
  * screen, which fetches the application and wires withdraw / confirm /

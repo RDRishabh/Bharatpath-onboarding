@@ -6,6 +6,7 @@ import { injectWebFonts } from '@/theme/webFonts';
 import { AuthProvider } from '@/context/AuthContext';
 import { AppProvider } from '@/context/AppContext';
 import { configureNotificationPresentation } from '@/services/notifications/device';
+import { AppAlertRoot } from '@/components/feedback/AppAlert';
 
 export default function RootLayout() {
   const { fontsLoaded, fontError } = useBharatPathFonts();
@@ -32,6 +33,7 @@ export default function RootLayout() {
           <Stack.Screen name="mock-interview" />
           <Stack.Screen name="device-check" />
           <Stack.Screen name="interview-session" />
+          <Stack.Screen name="interview-sessions" />
           <Stack.Screen name="interview-report" />
           <Stack.Screen name="jobs" />
           <Stack.Screen name="job-detail" />
@@ -39,10 +41,17 @@ export default function RootLayout() {
           <Stack.Screen name="board" />
           <Stack.Screen name="application-detail" />
           <Stack.Screen name="you" />
+          <Stack.Screen name="resume-details" />
           <Stack.Screen name="who-has-seen-me" />
           <Stack.Screen name="notifications" />
+          <Stack.Screen name="streak" />
+          <Stack.Screen name="courses" />
+          <Stack.Screen name="course-detail" />
+          <Stack.Screen name="subscription" />
+          <Stack.Screen name="share-result" />
           <Stack.Screen name="+not-found" />
         </Stack>
+        <AppAlertRoot />
         <StatusBar style="dark" />
       </AppProvider>
     </AuthProvider>

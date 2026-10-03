@@ -17,9 +17,13 @@ import {
   Briefcase,
   CaretRight,
   CheckCircle,
+  GraduationCap,
+  Sparkle,
 } from 'phosphor-react-native';
 import { Colors, Radii, Spacing } from '@/theme/tokens';
 import { BottomTabBar, TabName } from '@/components/navigation/BottomTabBar';
+import { StreakCard } from '@/components/cards/StreakCard';
+import { useStreak } from '@/hooks/useStreak';
 import {
   formatHomeDate,
   greetingFirstName,
@@ -83,6 +87,8 @@ export interface HomeScreenProps {
   onJobPress?: (jobId: string) => void;
   onNotificationsPress?: () => void;
   onProfilePress?: () => void;
+  onStreakPress?: () => void;
+  onCoursesPress?: () => void;
 }
 
 export function HomeScreen({
@@ -90,7 +96,7 @@ export function HomeScreen({
   candidateInitials,
   currentDate,
   // No default score. It comes from `GET /candidate/score/me`, and the card
-  // shows a dash until there is a real one — see the note above.
+  // shows a dash until there is a real one - see the note above.
   score,
   maxScore = 990,
   bandName,
@@ -111,7 +117,13 @@ export function HomeScreen({
   onJobPress,
   onNotificationsPress,
   onProfilePress,
+  onStreakPress,
+  onCoursesPress,
 }: HomeScreenProps) {
+  // Streak + engagement points. Check-in happens in the hook on app open and
+  // on return to foreground; here we only read the result. Engagement points
+  // are a SEPARATE balance from the 700–990 candidate score (`docs/streaks.md` §2).
+  const { streak, loading: streakLoading } = useStreak();
   const { session, candidateFullName, setCandidateFullName } = useAuthContext();
   // Seed the name with the email's local part so the greeting is never blank
   // while the real profile name is still being fetched or filled in.
@@ -135,7 +147,7 @@ export function HomeScreen({
   useEffect(() => {
     let cancelled = false;
     // Reads the stored profile name, and saves one for an account that has
-    // none yet — see `services/profile/name.ts`. Falls back to the email's
+    // none yet - see `services/profile/name.ts`. Falls back to the email's
     // local part if no name can be resolved at all.
     resolveCandidateFullName(candidateFullName || candidateName)
       .then((name) => {
@@ -165,7 +177,7 @@ export function HomeScreen({
 
   useEffect(() => {
     let cancelled = false;
-    // Only ELIGIBLE jobs are shown here — the home dashboard never surfaces a
+    // Only ELIGIBLE jobs are shown here - the home dashboard never surfaces a
     // "short of the bar" card (R11: the score is never explained).
     searchJobs({ eligible_only: true, limit: 3 })
       .then((page) => {
@@ -192,8 +204,8 @@ export function HomeScreen({
           {/* Top Header Row */}
           <View style={styles.headerRow}>
             <View style={styles.greetingCol}>
-              <Text style={styles.dateText}>{dateLabel}</Text>
-              <Text style={styles.greetingText}>{`Hi, ${firstName}`}</Text>
+              <Text style={styles.dateText} numberOfLines={1}>{dateLabel}</Text>
+              <Text style={styles.greetingText} numberOfLines={1} ellipsizeMode="tail">{`Hi, ${firstName}`}</Text>
             </View>
 
             <View style={styles.headerActionsRow}>
@@ -274,9 +286,9 @@ export function HomeScreen({
           >
             {/* Score Top Row */}
             <View style={styles.scoreTopRow}>
-              <Text style={styles.scoreEyebrow}>RESUME SCORE</Text>
+              <Text style={styles.scoreEyebrow} numberOfLines={1}>RESUME SCORE</Text>
               <View style={styles.bandBadge}>
-                <Text style={styles.bandBadgeText}>
+                <Text style={styles.bandBadgeText} numberOfLines={1}>
                   {bandName || 'Emerging'}
                 </Text>
               </View>
@@ -284,11 +296,18 @@ export function HomeScreen({
 
             {/* Score Number Row */}
             <View style={styles.scoreNumberRow}>
-              <Text style={styles.bigScoreText}>{score ?? '706'}</Text>
-              <Text style={styles.maxScoreText}>/ {maxScore}</Text>
+              <Text
+                style={styles.bigScoreText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
+                {score != null ? String(score) : '—'}
+              </Text>
+              <Text style={styles.maxScoreText} numberOfLines={1}>/ {maxScore}</Text>
               <View style={styles.trendBadge}>
                 <TrendUp size={11} color="#FFFFFF" weight="bold" />
-                <Text style={styles.trendText}>+{scoreGain}</Text>
+                <Text style={styles.trendText} numberOfLines={1}>+{scoreGain}</Text>
               </View>
             </View>
 
@@ -323,12 +342,24 @@ export function HomeScreen({
 
             {/* Score Footer Meta Row */}
             <View style={styles.scoreFooterRow}>
-              <Text style={styles.nextBandText}>
+              <Text
+                style={styles.nextBandText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
                 {`${pointsToNextBand || 28} more to next band!`}
               </Text>
               <ArrowRight size={15} color="#FFFFFF" weight="bold" />
             </View>
           </Pressable>
+
+          {/* Daily Streak - engagement points, separate from the resume score */}
+          <StreakCard
+            streak={streak}
+            loading={streakLoading}
+            onPress={onStreakPress}
+          />
 
           {/* "GO FURTHER" Section */}
           <View style={styles.sectionContainer}>
@@ -390,6 +421,36 @@ export function HomeScreen({
                 </View>
               </Pressable>
             </View>
+
+            {/* Feature 3: Skill Courses Promo Banner */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.coursePromoCard,
+                pressed && styles.cardPressed,
+              ]}
+              onPress={onCoursesPress}
+              accessibilityRole="button"
+              accessibilityLabel="Explore skill courses"
+            >
+              <View style={styles.coursePromoLeft}>
+                <View style={styles.coursePromoHeader}>
+                  <View style={styles.coursePromoIconWrap}>
+                    <GraduationCap size={16} color="#FFFFFF" weight="fill" />
+                  </View>
+                  <View style={styles.courseBoostBadge}>
+                    <Sparkle size={10} color="#92400E" weight="fill" />
+                    <Text style={styles.courseBoostBadgeText}>+30 SCORE BOOST</Text>
+                  </View>
+                </View>
+                <Text style={styles.coursePromoTitle}>Certified Skill Courses</Text>
+                <Text style={styles.coursePromoBody}>
+                  Complete video modules to boost your score & stand out to employers
+                </Text>
+              </View>
+              <View style={styles.coursePromoCaret}>
+                <CaretRight size={16} color="#5F4DB2" weight="bold" />
+              </View>
+            </Pressable>
           </View>
 
           {/* "JOBS YOU QUALIFY FOR" Section */}
@@ -414,7 +475,7 @@ export function HomeScreen({
                   No eligible jobs right now
                 </Text>
                 <Text style={styles.jobsEmptyBody}>
-                  Keep your profile and resume up to date — new roles that fit
+                  Keep your profile and resume up to date - new roles that fit
                   you will show up here.
                 </Text>
               </View>
@@ -458,7 +519,7 @@ export function HomeScreen({
                       </Text>
                     </View>
 
-                    {/* "Eligible" tag — never "MATCH" with a number, never a
+                    {/* "Eligible" tag - never "MATCH" with a number, never a
                        "short by N" badge (R11). */}
                     <View style={styles.eligibleBadge}>
                       <CheckCircle size={12} color="#1F6B45" weight="fill" />
@@ -501,6 +562,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   greetingCol: {
+    flex: 1,
+    marginRight: Spacing.md,
     gap: 2,
   },
   dateText: {
@@ -520,6 +583,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    flexShrink: 0,
   },
   iconButton: {
     position: 'relative',
@@ -601,7 +665,7 @@ const styles = StyleSheet.create({
   },
   exploreButton: {
     // margin-top:auto pushes the button to the bottom of the column, matching
-    // the prototype (title + subtitle at top, button at bottom — not centered).
+    // the prototype (title + subtitle at top, button at bottom - not centered).
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
@@ -645,6 +709,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
+    flexWrap: 'nowrap',
   },
   scoreEyebrow: {
     fontFamily: 'GeneralSans-Bold',
@@ -659,6 +724,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 2,
     marginBottom: 2,
+    flexWrap: 'nowrap',
   },
   bigScoreText: {
     fontFamily: 'GeneralSans-Bold',
@@ -727,6 +793,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
     marginTop: 2,
+    flexWrap: 'nowrap',
+    gap: 8,
   },
   nextBandText: {
     flex: 1,
@@ -773,7 +841,7 @@ const styles = StyleSheet.create({
   },
   featureImageContainer: {
     // Fixed height (not aspectRatio) so the image area stays the same size
-    // regardless of card width — matches the prototype's 100px. With
+    // regardless of card width - matches the prototype's 100px. With
     // aspectRatio the box shrank on narrow cards, making the image tiny.
     width: '100%',
     height: 100,
@@ -967,5 +1035,73 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: '#5F6B80',
+  },
+  coursePromoCard: {
+    backgroundColor: '#F3EFFF',
+    borderWidth: 1,
+    borderColor: '#D8CEF8',
+    borderRadius: 20,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  coursePromoLeft: {
+    flex: 1,
+    gap: 4,
+  },
+  coursePromoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  coursePromoIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#5F4DB2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  courseBoostBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radii.pill,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  courseBoostBadgeText: {
+    fontFamily: 'GeneralSans-Bold',
+    fontSize: 10,
+    lineHeight: 12,
+    color: '#92400E',
+    letterSpacing: 0.5,
+  },
+  coursePromoTitle: {
+    fontFamily: 'GeneralSans-Bold',
+    fontSize: 15,
+    lineHeight: 20,
+    color: Colors.navy,
+  },
+  coursePromoBody: {
+    fontFamily: 'GeneralSans-Regular',
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#5F6B80',
+  },
+  coursePromoCaret: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2D9F8',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

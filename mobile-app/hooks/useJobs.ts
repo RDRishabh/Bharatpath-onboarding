@@ -1,9 +1,9 @@
 /**
- * BharatPath — useJobs hook
+ * BharatPath - useJobs hook
  *
  * Cursor-paginated loader for the candidate job board (`GET /candidate/jobs`).
  * Supports infinite scroll via `next_cursor`, debounced text search, and
- * filter changes. The board has no total count — callers render cards only.
+ * filter changes. The board has no total count - callers render cards only.
  *
  * `eligibility` is the only signal a candidate gets (R11). Never show the
  * threshold or the gap.
@@ -25,7 +25,7 @@ export interface UseJobsResult {
   loading: boolean;
   /** True while an additional page is loading (infinite scroll). */
   loadingMore: boolean;
-  /** True when `next_cursor` is null — no more pages. */
+  /** True when `next_cursor` is null - no more pages. */
   hasReachedEnd: boolean;
   /** Error message from the last failed load, or null. */
   error: string | null;

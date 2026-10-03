@@ -1,5 +1,5 @@
 /**
- * BharatPath — Jobs Hub Route
+ * BharatPath - Jobs Hub Route
  *
  * The Jobs feed. Wires `JobsFeedScreen` to the router and passes the candidate's
  * declared city (from the auth profile) into the header. Tapping a card pushes

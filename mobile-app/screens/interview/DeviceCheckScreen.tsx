@@ -148,7 +148,15 @@ export function DeviceCheckScreen({ onBack }: Props) {
         params: { sessionId: session.id },
       });
     } catch (caught) {
-      setError(interviewErrorMessage(caught, 'The check passed, but the interview could not start.'));
+      const msg = interviewErrorMessage(
+        caught,
+        'The check passed, but the interview could not start.'
+      );
+      if (msg.toLowerCase().includes('buy') || msg.toLowerCase().includes('purchase')) {
+        router.replace('/mock-interview');
+        return;
+      }
+      setError(msg);
     } finally {
       setSubmitting(false);
     }

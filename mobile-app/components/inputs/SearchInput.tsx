@@ -1,5 +1,5 @@
 /**
- * SearchInput — Rounded input with magnifying glass icon, 16px radius.
+ * SearchInput - Rounded input with magnifying glass icon, 16px radius.
  * Accessible label, minimum 44px height.
  */
 import { TextInput, View, StyleSheet, ViewStyle } from 'react-native';

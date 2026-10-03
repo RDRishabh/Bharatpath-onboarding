@@ -1,9 +1,9 @@
 /**
- * BharatPath — Payment sheet
+ * BharatPath - Payment sheet
  *
  * A checkout is only an intent: the payment stays PENDING until the gateway's
  * signed callback has been processed. This sheet therefore sends the payer to
- * the gateway and then polls `GET /billing/payments/{id}` — a redirect back
+ * the gateway and then polls `GET /billing/payments/{id}` - a redirect back
  * says nothing on its own. Access is re-read from the subscription afterwards.
  *
  * With the stub gateway there is nowhere to send the payer, so the sheet
@@ -27,6 +27,7 @@ import {
   WarningCircle,
   Wrench,
 } from 'phosphor-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Radii } from '@/theme/tokens';
 import {
   CheckoutResponse,
@@ -54,6 +55,17 @@ type SheetStatus = 'waiting' | 'settling' | 'paid' | 'failed';
 
 export function PaymentSheet({ checkout, planLabel, onPaid, onClose }: PaymentSheetProps) {
   const isStub = isStubCheckout(checkout.redirect_url);
+  const insets = useSafeAreaInsets();
+  
+  // Cache the bottom inset. On Android, insets.bottom can drop to 0 when the app is
+  // backgrounded and resumed while a Modal is open. This prevents the buttons from
+  // getting cut off again after a resume.
+  const bottomInsetRef = useRef(insets.bottom);
+  if (insets.bottom > bottomInsetRef.current) {
+    bottomInsetRef.current = insets.bottom;
+  }
+  const safeBottom = bottomInsetRef.current;
+
   const [status, setStatus] = useState<SheetStatus>('waiting');
   const [message, setMessage] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
@@ -151,7 +163,7 @@ export function PaymentSheet({ checkout, planLabel, onPaid, onClose }: PaymentSh
       <TouchableWithoutFeedback onPress={status === 'paid' ? undefined : onClose}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback>
-            <View style={styles.sheet}>
+            <View style={[styles.sheet, { paddingBottom: 36 + safeBottom }]}>
               <View style={styles.dragHandle} />
 
               <View style={styles.headerRow}>
@@ -267,7 +279,7 @@ export function PaymentSheet({ checkout, planLabel, onPaid, onClose }: PaymentSh
                     accessibilityRole="button"
                   >
                     <Text style={styles.ghostButtonText}>
-                      {isChecking ? 'Checking…' : 'I have paid — check now'}
+                      {isChecking ? 'Checking…' : 'I have paid - check now'}
                     </Text>
                   </Pressable>
 

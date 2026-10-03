@@ -1,5 +1,5 @@
 /**
- * IconButton — Icon-only circular button with accessible label.
+ * IconButton - Icon-only circular button with accessible label.
  * Scales to .96 on press. Minimum 44px touch target.
  */
 import { ReactNode } from 'react';

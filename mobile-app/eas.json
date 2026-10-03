@@ -1,0 +1,54 @@
+{
+  "cli": {
+    "version": ">= 12.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://bharatpath-api.duckdns.org/api/v1",
+        "EXPO_PUBLIC_COGNITO_REGION": "ap-south-1",
+        "EXPO_PUBLIC_COGNITO_USER_POOL_ID": "ap-south-1_W3LPdPnh4",
+        "EXPO_PUBLIC_COGNITO_CLIENT_ID": "7sm4qd9k4bitdseu05d1t9pt4u",
+        "EXPO_PUBLIC_AUTH_USE_DEV_TOKEN": "false"
+      }
+    },
+    "preview-simulator": {
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://bharatpath-api.duckdns.org/api/v1",
+        "EXPO_PUBLIC_COGNITO_REGION": "ap-south-1",
+        "EXPO_PUBLIC_COGNITO_USER_POOL_ID": "ap-south-1_W3LPdPnh4",
+        "EXPO_PUBLIC_COGNITO_CLIENT_ID": "7sm4qd9k4bitdseu05d1t9pt4u",
+        "EXPO_PUBLIC_AUTH_USE_DEV_TOKEN": "false"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://bharatpath-api.duckdns.org/api/v1",
+        "EXPO_PUBLIC_COGNITO_REGION": "ap-south-1",
+        "EXPO_PUBLIC_COGNITO_USER_POOL_ID": "ap-south-1_W3LPdPnh4",
+        "EXPO_PUBLIC_COGNITO_CLIENT_ID": "7sm4qd9k4bitdseu05d1t9pt4u",
+        "EXPO_PUBLIC_AUTH_USE_DEV_TOKEN": "false"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

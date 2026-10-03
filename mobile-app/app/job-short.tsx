@@ -1,5 +1,5 @@
 /**
- * BharatPath — Job Short Route (redirect)
+ * BharatPath - Job Short Route (redirect)
  *
  * The old "short of the bar" screen is merged into `JobDetailScreen` (S18).
  * This route redirects to `/job-detail?id=<id>` for any stale links.

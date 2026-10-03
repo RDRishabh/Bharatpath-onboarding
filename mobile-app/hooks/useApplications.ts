@@ -1,5 +1,5 @@
 /**
- * BharatPath — useApplications hook
+ * BharatPath - useApplications hook
  *
  * Cursor-paginated loader for the candidate's own Application Board
  * (`GET /candidate/applications`). The board has no stage filter on the API,
@@ -9,7 +9,7 @@
  * `total` is always `null` on the board list, so the screen's filter-pill
  * counts come from the loaded items, not from a server total.
  *
- * Reading the board is NOT paywalled (R13 — a lapsed subscriber loses access,
+ * Reading the board is NOT paywalled (R13 - a lapsed subscriber loses access,
  * not their data). A 402 here is therefore unexpected; we surface it as a
  * generic error rather than a membership prompt.
  */
@@ -25,7 +25,7 @@ export interface UseApplicationsResult {
   loading: boolean;
   /** True while an additional page is loading (infinite scroll). */
   loadingMore: boolean;
-  /** True when `next_cursor` is null — no more pages. */
+  /** True when `next_cursor` is null - no more pages. */
   hasReachedEnd: boolean;
   /** Error message from the last failed load, or null. */
   error: string | null;

@@ -1,19 +1,19 @@
 /**
- * BharatPath — ApplicationDetailScreen
+ * BharatPath - ApplicationDetailScreen
  *
  * One of the candidate's applications, wired to
  * `GET /candidate/applications/{id}`. Reading is NOT paywalled (R13).
  *
- * Header: job title + employer name only. No location or salary — the job
+ * Header: job title + employer name only. No location or salary - the job
  * fetch is paywalled and 404s for closed jobs, so it is not safely fetchable
  * from the detail screen.
  *
  * Interview card: shown when `interview` is present. Join opens the employer's
- * https meeting link externally. There is NO reschedule — the candidate
+ * https meeting link externally. There is NO reschedule - the candidate
  * cannot reschedule (screen-flows §2.10).
  *
  * Timeline: built from `history[]`. `by` is a party (CANDIDATE/EMPLOYER/
- * SYSTEM), never "which recruiter" — employer notes and recruiter ids are
+ * SYSTEM), never "which recruiter" - employer notes and recruiter ids are
  * employer-only.
  *
  * State-driven actions:
@@ -27,6 +27,7 @@
  * "This application has changed" + reload.
  */
 import React, { useCallback, useEffect, useState } from 'react';
+import { AppAlert } from "@/components/feedback/AppAlert";
 import {
   View,
   Text,
@@ -146,7 +147,7 @@ export function ApplicationDetailScreen({
     void load();
   }, [load]);
 
-  // Re-fetch on focus — the state may have changed while away.
+  // Re-fetch on focus - the state may have changed while away.
   useFocusEffect(
     useCallback(() => {
       if (!loading) void load();
@@ -161,13 +162,13 @@ export function ApplicationDetailScreen({
         return;
       }
       const msg = applicationActionErrorMessage(err);
-      Alert.alert('Could not complete', msg || 'Please try again.');
+      AppAlert.alert('Could not complete', msg || 'Please try again.');
     },
     [load],
   );
 
   const onWithdraw = useCallback(() => {
-    Alert.alert(WITHDRAW_TITLE, WITHDRAW_BODY, [
+    AppAlert.alert(WITHDRAW_TITLE, WITHDRAW_BODY, [
       { text: WITHDRAW_CANCEL, style: 'cancel' },
       {
         text: WITHDRAW_CONFIRM,
@@ -200,7 +201,7 @@ export function ApplicationDetailScreen({
   }, [applicationId, load, handleActionError]);
 
   const onDispute = useCallback(() => {
-    Alert.alert(DISPUTE_TITLE, DISPUTE_BODY, [
+    AppAlert.alert(DISPUTE_TITLE, DISPUTE_BODY, [
       { text: DISPUTE_CANCEL, style: 'cancel' },
       {
         text: DISPUTE_CONFIRM,

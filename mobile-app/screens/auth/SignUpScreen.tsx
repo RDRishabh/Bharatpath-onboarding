@@ -96,14 +96,16 @@ export function SignUpScreen({
       return false;
     }
 
-    if (password.length < 8) {
-      setErrorMsg('Password must be at least 8 characters long.');
+    if (password.length < 12) {
+      setErrorMsg('Password must be at least 12 characters long.');
       return false;
     }
-    const hasLetter = /[a-zA-Z]/.test(password);
+    const hasUpper = /[A-Z]/.test(password);
+    const hasLower = /[a-z]/.test(password);
     const hasNumber = /[0-9]/.test(password);
-    if (!hasLetter || !hasNumber) {
-      setErrorMsg('Password must contain both letters and numbers.');
+    const hasSpecial = /[^A-Za-z0-9]/.test(password);
+    if (!hasUpper || !hasLower || !hasNumber || !hasSpecial) {
+      setErrorMsg('Password must include uppercase, lowercase, numbers, and special characters (!@#$%^&*).');
       return false;
     }
 
@@ -115,6 +117,21 @@ export function SignUpScreen({
     return true;
   };
 
+  const getPasswordInlineError = (pass: string) => {
+    if (pass.length === 0) return null;
+    if (pass.length < 12) return 'Password must be at least 12 characters long.';
+    const hasUpper = /[A-Z]/.test(pass);
+    const hasLower = /[a-z]/.test(pass);
+    const hasNumber = /[0-9]/.test(pass);
+    const hasSpecial = /[^A-Za-z0-9]/.test(pass);
+    if (!hasUpper || !hasLower || !hasNumber || !hasSpecial) {
+      return 'Password must include uppercase, lowercase, numbers, and special characters (!@#$%^&*).';
+    }
+    return null;
+  };
+
+  const passwordInlineError = getPasswordInlineError(password);
+
   const handleSubmit = async () => {
     if (!validate()) return;
 
@@ -122,12 +139,25 @@ export function SignUpScreen({
     setErrorMsg(null);
 
     try {
-      const session = await signUpWithEmail({
+      const result = await signUpWithEmail({
         fullName: fullName.trim(),
         email: email.trim().toLowerCase(),
         password,
       });
-      rememberCandidate(session, { full_name: fullName.trim(), city: null, state_code: null, updated_at: null }, fullName.trim());
+
+      if ('unconfirmed' in result && result.unconfirmed) {
+        if (onSubmit) {
+          onSubmit({
+            fullName: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            password,
+            confirmPassword,
+          });
+        }
+        return;
+      }
+
+      rememberCandidate(result as any, { full_name: fullName.trim(), city: null, state_code: null, updated_at: null }, fullName.trim());
 
       if (onSubmit) {
         onSubmit({
@@ -138,12 +168,23 @@ export function SignUpScreen({
         });
       }
     } catch (err: any) {
+      if (err instanceof ApiError && err.code === 'user_not_confirmed') {
+        if (onSubmit) {
+          onSubmit({
+            fullName: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            password,
+            confirmPassword,
+          });
+          return;
+        }
+      }
       console.error('[SignUp Error]:', err);
       if (err instanceof ApiError) {
         if (err.code === 'account_contact_in_use') {
           setErrorMsg('An account with this email already exists. Please sign in instead.');
         } else if (err.code === 'network_error') {
-          setErrorMsg('Cannot reach backend server. Please verify the backend API is running.');
+          setErrorMsg('Cannot reach backend server. Please verify your internet connection.');
         } else {
           setErrorMsg(err.problem?.title || err.message || 'Failed to create account.');
         }
@@ -158,8 +199,8 @@ export function SignUpScreen({
   const isFormFilled =
     fullName.trim().length > 0 &&
     email.trim().length > 0 &&
-    password.length >= 8 &&
-    confirmPassword.length >= 8;
+    password.length >= 12 &&
+    confirmPassword.length >= 12;
 
   return (
     <View style={styles.root}>
@@ -345,9 +386,15 @@ export function SignUpScreen({
                     )}
                   </Pressable>
                 </View>
-                <Text style={styles.inputHint}>
-                  Must include at least one letter and one number.
-                </Text>
+                {password.length > 0 && passwordInlineError ? (
+                  <Text style={[styles.inputHint, { color: Colors.red.fg }]}>
+                    {passwordInlineError}
+                  </Text>
+                ) : (
+                  <Text style={styles.inputHint}>
+                    Must be at least 12 characters with uppercase, lowercase, number & symbol.
+                  </Text>
+                )}
               </View>
 
               {/* Confirm Password */}
@@ -397,6 +444,11 @@ export function SignUpScreen({
                     )}
                   </Pressable>
                 </View>
+                {confirmPassword.length > 0 && confirmPassword !== password && (
+                  <Text style={[styles.inputHint, { color: Colors.red.fg }]}>
+                    Passwords do not match.
+                  </Text>
+                )}
               </View>
             </View>
 

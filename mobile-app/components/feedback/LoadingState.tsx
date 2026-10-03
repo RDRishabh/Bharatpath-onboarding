@@ -1,5 +1,5 @@
 /**
- * LoadingState — Centered spinner with optional message.
+ * LoadingState - Centered spinner with optional message.
  * Uses indigo accent for the activity indicator.
  */
 import { View, Text, StyleSheet, ActivityIndicator, StyleProp, ViewStyle } from 'react-native';

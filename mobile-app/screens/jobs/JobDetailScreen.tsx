@@ -1,5 +1,5 @@
 /**
- * BharatPath — JobDetailScreen
+ * BharatPath - JobDetailScreen
  *
  * Implements S18 (Job detail) from `docs/screen-flows.md`, wired to the real
  * backend `GET /candidate/jobs/{id}` and `POST /candidate/applications`.
@@ -23,6 +23,7 @@
  *      402 → paywall (subscription required)
  */
 import React, { useState, useCallback } from 'react';
+import { AppAlert } from "@/components/feedback/AppAlert";
 import {
   View,
   Text,
@@ -75,7 +76,7 @@ const TXT_APPLIED_SUB =
   "The employer will see your profile. You'll hear back on the Application Board.";
 const TXT_ELIGIBLE_TITLE = 'You can apply to this job';
 const TXT_ELIGIBLE_SUB =
-  'One tap with your profile — no forms, no cover letter.';
+  'One tap with your profile - no forms, no cover letter.';
 const TXT_BELOW_TITLE = 'Not eligible for this job yet';
 const TXT_BELOW_SUB =
   'Keep building your profile and check back. You can still see the details.';
@@ -99,7 +100,7 @@ export interface JobDetailScreenProps {
   onApplied?: (employerName: string) => void;
   onBookmark?: () => void;
   onShare?: () => void;
-  /** Called when the job is gone (404) — usually navigate back. */
+  /** Called when the job is gone (404) - usually navigate back. */
   onJobGone?: () => void;
   /** Called when subscription is required (402). */
   onSubscriptionRequired?: () => void;
@@ -180,12 +181,12 @@ export function JobDetailScreen({
 
   const handleBookmark = () => {
     onBookmark?.();
-    Alert.alert('Job Saved', `${job.title} saved to your bookmarks.`);
+    AppAlert.alert('Job Saved', `${job.title} saved to your bookmarks.`);
   };
 
   const handleShare = () => {
     onShare?.();
-    Alert.alert('Share Job', `Sharing ${job.title} at ${employerName}.`);
+    AppAlert.alert('Share Job', `Sharing ${job.title} at ${employerName}.`);
   };
 
   return (
@@ -254,7 +255,7 @@ export function JobDetailScreen({
               </View>
             </View>
 
-            {/* Eligibility panel — varies by eligibility */}
+            {/* Eligibility panel - varies by eligibility */}
             <EligibilityPanel eligibility={eligibility} applied={applied} />
           </SafeAreaView>
         </View>
@@ -336,7 +337,7 @@ export function JobDetailScreen({
             <Text style={styles.privacyNoticeText}>{TXT_PRIVACY}</Text>
           </View>
 
-          {/* Sticky Bottom CTA — varies by eligibility + applied */}
+          {/* Sticky Bottom CTA - varies by eligibility + applied */}
           <View style={styles.bottomCtaContainer}>
             <BottomCTA
               eligibility={eligibility}
@@ -391,7 +392,7 @@ function EligibilityPanel({ eligibility, applied }: EligibilityPanelProps) {
         </View>
       );
     case 'BELOW_THRESHOLD':
-      // Neutral, not red (R11 — never shame the score).
+      // Neutral, not red (R11 - never shame the score).
       return (
         <View style={styles.scoreClearanceCard}>
           <View style={styles.clearanceHeaderRow}>

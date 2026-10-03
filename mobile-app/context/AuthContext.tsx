@@ -1,22 +1,37 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   AuthSession,
   CandidateProfileResponse,
+  getCandidateProfile,
   getCurrentSession,
   signOut as apiSignOut,
 } from '@/services/api/auth';
+import { bandIndex, CandidateScoreResponse, getMyScore, SCORE_BANDS } from '@/services/api/scoring';
 import { UserProfile } from '@/types/user';
+import {
+  saveStoredSession,
+  saveStoredCandidateName,
+  getStoredCandidateName,
+  saveStoredCandidateScore,
+  getStoredCandidateScore,
+  clearAllAuthData,
+} from '@/services/storage/authStorage';
 
 interface AuthContextType {
   session: AuthSession | null;
   profile: UserProfile | null;
   /** `candidate_profiles.full_name`, asked at sign-up. Never a CV guess. */
   candidateFullName: string | null;
+  /** Current verified candidate score from GET /candidate/score/me */
+  candidateScore: CandidateScoreResponse | null;
   isLoading: boolean;
   setSession: React.Dispatch<React.SetStateAction<AuthSession | null>>;
   setProfile: React.Dispatch<React.SetStateAction<UserProfile | null>>;
   setCandidateFullName: React.Dispatch<React.SetStateAction<string | null>>;
+  setCandidateScore: React.Dispatch<React.SetStateAction<CandidateScoreResponse | null>>;
   rememberCandidate: (session: AuthSession, profile?: CandidateProfileResponse | null, fullName?: string | null) => void;
+  updateCandidateScore: (score: number, band?: string | number | null, computedAt?: string | null) => void;
+  refreshScore: () => Promise<CandidateScoreResponse | null>;
   signOut: () => Promise<void>;
 }
 
@@ -26,16 +41,109 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [candidateFullName, setCandidateFullName] = useState<string | null>(null);
+  const [candidateScore, setCandidateScore] = useState<CandidateScoreResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  useEffect(() => {
-    getCurrentSession().then((sess) => {
-      setSession(sess);
-      setIsLoading(false);
-    });
+  const refreshScore = useCallback(async (): Promise<CandidateScoreResponse | null> => {
+    try {
+      const res = await getMyScore();
+      setCandidateScore((prev) => {
+        if (
+          prev &&
+          prev.status === res.status &&
+          prev.value === res.value &&
+          prev.band === res.band &&
+          prev.computed_at === res.computed_at
+        ) {
+          return prev;
+        }
+        return res;
+      });
+      if (res.status === 'READY' && res.value != null) {
+        saveStoredCandidateScore(res);
+        const numericBand = res.band ? bandIndex(res.band) : 1;
+        setProfile((current) => {
+          if (!current) return current;
+          if (current.readinessScore === res.value && current.readinessBand === numericBand) {
+            return current;
+          }
+          return {
+            ...current,
+            readinessScore: res.value!,
+            readinessBand: numericBand,
+          };
+        });
+      }
+      return res;
+    } catch {
+      return null;
+    }
   }, []);
 
-  const rememberCandidate = (
+  useEffect(() => {
+    let isMounted = true;
+    async function initAuth() {
+      try {
+        const [sess, storedName, storedScore] = await Promise.all([
+          getCurrentSession(),
+          getStoredCandidateName(),
+          getStoredCandidateScore(),
+        ]);
+        if (!isMounted) return;
+
+        if (storedName) {
+          setCandidateFullName(storedName);
+        }
+        if (storedScore) {
+          setCandidateScore(storedScore);
+        }
+        if (sess) {
+          setSession(sess);
+          setProfile((current) => ({
+            id: sess.userId,
+            fullName: storedName || 'Candidate',
+            email: sess.email,
+            city: current?.city,
+            state: current?.state,
+            preferredLanguage: current?.preferredLanguage || 'en',
+            education: current?.education || [],
+            skills: current?.skills || [],
+            experience: current?.experience || [],
+            readinessScore: storedScore?.value ?? current?.readinessScore ?? 0,
+            readinessBand: storedScore?.band ? bandIndex(storedScore.band) : current?.readinessBand ?? 1,
+          }));
+
+          // Background sync candidate profile name if not yet cached
+          getCandidateProfile()
+            .then((cand) => {
+              if (!isMounted || !cand) return;
+              if (cand.full_name?.trim()) {
+                const freshName = cand.full_name.trim();
+                setCandidateFullName(freshName);
+                saveStoredCandidateName(freshName);
+                setProfile((curr) => (curr ? { ...curr, fullName: freshName } : curr));
+              }
+            })
+            .catch(() => undefined);
+
+          refreshScore();
+        }
+      } catch (err) {
+        console.warn('[AuthContext] initAuth failed:', err);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    initAuth();
+    return () => {
+      isMounted = false;
+    };
+  }, [refreshScore]);
+
+  const rememberCandidate = useCallback((
     nextSession: AuthSession,
     candidateProfile?: CandidateProfileResponse | null,
     fullName?: string | null
@@ -45,8 +153,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       (candidateProfile?.full_name && candidateProfile.full_name.trim()) ||
       null;
     setSession(nextSession);
+    saveStoredSession(nextSession);
     if (resolved) {
       setCandidateFullName(resolved);
+      saveStoredCandidateName(resolved);
       setProfile((current) => ({
         id: nextSession.userId,
         fullName: resolved,
@@ -61,14 +171,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         readinessBand: current?.readinessBand ?? 1,
       }));
     }
-  };
+  }, []);
 
-  const handleSignOut = async () => {
+  const updateCandidateScore = useCallback((score: number, band?: string | number | null, computedAt?: string | null) => {
+    let numericBand = 1;
+    let bandStr = 'ENTRY';
+    if (typeof band === 'number') {
+      numericBand = band;
+      bandStr = SCORE_BANDS[band - 1]?.code || 'ENTRY';
+    } else if (band) {
+      numericBand = bandIndex(band);
+      bandStr = String(band);
+    }
+    const scoreObj: CandidateScoreResponse = {
+      status: 'READY',
+      value: score,
+      band: bandStr,
+      computed_at: computedAt || new Date().toISOString(),
+    };
+    saveStoredCandidateScore(scoreObj);
+    setCandidateScore((prev) => {
+      if (
+        prev &&
+        prev.status === 'READY' &&
+        prev.value === score &&
+        prev.band === bandStr &&
+        prev.computed_at === computedAt
+      ) {
+        return prev;
+      }
+      return scoreObj;
+    });
+    setProfile((current) => {
+      if (!current) {
+        return {
+          id: session?.userId || '',
+          fullName: candidateFullName || 'Candidate',
+          email: session?.email || '',
+          preferredLanguage: 'en',
+          education: [],
+          skills: [],
+          experience: [],
+          readinessScore: score,
+          readinessBand: numericBand,
+        };
+      }
+      if (current.readinessScore === score && current.readinessBand === numericBand) {
+        return current;
+      }
+      return {
+        ...current,
+        readinessScore: score,
+        readinessBand: numericBand,
+      };
+    });
+  }, [candidateFullName, session]);
+
+  const handleSignOut = useCallback(async () => {
     await apiSignOut();
     setSession(null);
     setProfile(null);
     setCandidateFullName(null);
-  };
+    setCandidateScore(null);
+    await clearAllAuthData();
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -76,11 +242,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         profile,
         candidateFullName,
+        candidateScore,
         isLoading,
         setSession,
         setProfile,
         setCandidateFullName,
+        setCandidateScore,
         rememberCandidate,
+        updateCandidateScore,
+        refreshScore,
         signOut: handleSignOut,
       }}
     >

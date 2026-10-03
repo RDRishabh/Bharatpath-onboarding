@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -32,20 +32,24 @@ export interface LoginFormData {
 }
 
 export interface LoginScreenProps {
+  initialEmail?: string;
   onBack?: () => void;
   onNavigateToSignUp?: () => void;
-  onForgotPassword?: () => void;
+  onNavigateToVerification?: (email: string, password?: string) => void;
+  onForgotPassword?: (email?: string) => void;
   onSubmit?: (data: { session: AuthSession; profile: CandidateProfileResponse | null }) => void;
 }
 
 export function LoginScreen({
+  initialEmail = '',
   onBack,
   onNavigateToSignUp,
+  onNavigateToVerification,
   onForgotPassword,
   onSubmit,
 }: LoginScreenProps) {
   const { rememberCandidate } = useAuthContext();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -55,6 +59,12 @@ export function LoginScreen({
 
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (initialEmail && !email) {
+      setEmail(initialEmail);
+    }
+  }, [initialEmail]);
 
   const validate = (): boolean => {
     setErrorMsg(null);
@@ -99,10 +109,16 @@ export function LoginScreen({
       if (err instanceof ApiError) {
         if (err.code === 'account_inactive') {
           setErrorMsg('This account is suspended or has been deleted.');
+        } else if (err.code === 'user_not_confirmed') {
+          if (onNavigateToVerification) {
+            onNavigateToVerification(email.trim().toLowerCase(), password);
+            return;
+          }
+          setErrorMsg('Account not verified yet. Please check your email for the verification code.');
         } else if (err.code === 'unauthenticated') {
           setErrorMsg('Invalid credentials. Please check your email and password.');
         } else if (err.code === 'network_error') {
-          setErrorMsg('Cannot connect to backend. Please verify backend is running on port 8099.');
+          setErrorMsg('Cannot connect to backend. Please check your internet connection.');
         } else if (err.code === 'account_contact_in_use') {
           setErrorMsg('An identity conflict occurred for this email. Please check your credentials or register with your email.');
         } else {
@@ -176,11 +192,13 @@ export function LoginScreen({
               {/* Email Address */}
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Email Address</Text>
-                <View
+                <Pressable
                   style={[
                     styles.inputWrapper,
                     focusedField === 'email' && styles.inputWrapperFocused,
                   ]}
+                  onPress={() => emailRef.current?.focus()}
+                  accessible={false}
                 >
                   <EnvelopeSimple
                     size={20}
@@ -208,22 +226,28 @@ export function LoginScreen({
                     textContentType="emailAddress"
                     autoComplete="email"
                   />
-                </View>
+                </Pressable>
               </View>
 
               {/* Password */}
               <View style={styles.inputGroup}>
                 <View style={styles.passwordLabelRow}>
                   <Text style={styles.inputLabel}>Password</Text>
-                  <Pressable onPress={onForgotPassword} hitSlop={8} disabled={isLoading}>
+                  <Pressable
+                    onPress={() => onForgotPassword?.(email.trim().toLowerCase())}
+                    hitSlop={8}
+                    disabled={isLoading}
+                  >
                     <Text style={styles.forgotPasswordText}>Forgot password?</Text>
                   </Pressable>
                 </View>
-                <View
+                <Pressable
                   style={[
                     styles.inputWrapper,
                     focusedField === 'password' && styles.inputWrapperFocused,
                   ]}
+                  onPress={() => passwordRef.current?.focus()}
+                  accessible={false}
                 >
                   <Lock
                     size={20}
@@ -262,7 +286,7 @@ export function LoginScreen({
                       <Eye size={20} color={Colors.text.muted} />
                     )}
                   </Pressable>
-                </View>
+                </Pressable>
               </View>
             </View>
 
@@ -449,7 +473,7 @@ const styles = StyleSheet.create({
     fontFamily: 'GeneralSans-Regular',
     fontSize: 15,
     color: Colors.navy,
-    height: '100%',
+    paddingVertical: Platform.OS === 'ios' ? 0 : 8,
   },
   eyeButton: {
     padding: Spacing.xs,

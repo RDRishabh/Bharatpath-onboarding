@@ -106,8 +106,15 @@ export function CreateAccountScreen({
             <View style={styles.scoreCard}>
               {/* Left Score Column */}
               <View style={styles.scoreCol}>
-                <Text style={styles.scoreText}>{score}</Text>
-                <Text style={styles.outOfText}>OUT OF 999</Text>
+                <Text
+                  style={styles.scoreText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                >
+                  {score}
+                </Text>
+                <Text style={styles.outOfText} numberOfLines={1}>OUT OF 999</Text>
               </View>
 
               {/* Vertical Divider */}
@@ -116,14 +123,28 @@ export function CreateAccountScreen({
               {/* Right Band Status Column */}
               <View style={styles.bandCol}>
                 <View style={styles.bandBadgeRow}>
-                  <Text style={styles.bandTitle}>{bandName}</Text>
+                  <Text
+                    style={styles.bandTitle}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                  >
+                    {bandName}
+                  </Text>
                   <View style={styles.bandBadge}>
-                    <Text style={styles.bandBadgeText}>
+                    <Text style={styles.bandBadgeText} numberOfLines={1}>
                       BAND {bandNumber} OF {bandTotal}
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.bandSubtitle}>Verify to keep this score.</Text>
+                <Text
+                  style={styles.bandSubtitle}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                >
+                  Verify to keep this score.
+                </Text>
               </View>
             </View>
 
@@ -315,7 +336,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
   },
   bandTitle: {
     fontFamily: 'GeneralSans-Bold',

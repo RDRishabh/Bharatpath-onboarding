@@ -1,31 +1,32 @@
 /**
- * BharatPath — Home Screen Route
+ * BharatPath - Home Screen Route
  * Main application landing dashboard.
  */
-import { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { HomeScreen } from '@/screens/home/HomeScreen';
 import { TabName } from '@/components/navigation/BottomTabBar';
 import { useAuthContext } from '@/context/AuthContext';
-import { getMyScore, CandidateScoreResponse, bandIndex, bandLabel, nextBandLabel, pointsToNextBand } from '@/services/api/scoring';
+import {
+  getMyScore,
+  CandidateScoreResponse,
+  bandIndex,
+  bandLabel,
+  nextBandLabel,
+  pointsToNextBand,
+} from '@/services/api/scoring';
 
 export default function HomeRoute() {
   const router = useRouter();
-  const { candidateFullName } = useAuthContext();
+  const { candidateFullName, candidateScore, refreshScore } = useAuthContext();
   const [activeTab, setActiveTab] = useState<TabName>('home');
-  const [candidateScore, setCandidateScore] = useState<CandidateScoreResponse | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    getMyScore()
-      .then((score) => {
-        if (!cancelled) setCandidateScore(score);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Re-fetch score on screen focus so newly confirmed resumes immediately reflect
+  useFocusEffect(
+    useCallback(() => {
+      refreshScore();
+    }, [refreshScore])
+  );
 
   const handleTabPress = (tab: TabName, href: string) => {
     setActiveTab(tab);
@@ -37,22 +38,47 @@ export default function HomeRoute() {
   return (
     <HomeScreen
       candidateName={candidateFullName || undefined}
-      score={candidateScore?.status === 'READY' ? candidateScore.value ?? undefined : undefined}
+      score={
+        candidateScore?.status === 'READY'
+          ? (candidateScore.value ?? undefined)
+          : undefined
+      }
       maxScore={999}
       bandName={bandLabel(candidateScore?.band) || undefined}
       bandNumber={bandIndex(candidateScore?.band)}
       bandTotal={4}
-      pointsToNextBand={pointsToNextBand(candidateScore?.value ?? null, candidateScore?.band ?? null) ?? 28}
+      pointsToNextBand={
+        pointsToNextBand(
+          candidateScore?.value ?? null,
+          candidateScore?.band ?? null,
+        ) ?? 28
+      }
       nextBandName={nextBandLabel(candidateScore?.band ?? null) || undefined}
       activeTab={activeTab}
       onTabPress={handleTabPress}
       onExploreJobs={() => router.push('/jobs')}
       onAllJobsPress={() => router.push('/jobs')}
-      onScorePress={() => router.push('/' as any)}
+      onJobPress={(jobId) =>
+        router.push({ pathname: '/job-detail', params: { id: jobId } } as any)
+      }
+      onScorePress={() =>
+        router.push({
+          pathname: '/share-result',
+          params: {
+            score:
+              candidateScore?.status === 'READY' && candidateScore?.value != null
+                ? String(candidateScore.value)
+                : '',
+            bandName: bandLabel(candidateScore?.band) || '',
+          },
+        } as any)
+      }
       onAttributeCheckPress={() => router.push('/attribute-check' as any)}
       onMockInterviewPress={() => router.push('/mock-interview' as any)}
       onNotificationsPress={() => router.push('/notifications' as any)}
       onProfilePress={() => router.push('/you' as any)}
+      onStreakPress={() => router.push('/streak' as any)}
+      onCoursesPress={() => router.push('/courses' as any)}
     />
   );
 }

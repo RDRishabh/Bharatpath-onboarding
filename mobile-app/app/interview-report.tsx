@@ -1,5 +1,5 @@
 /**
- * BharatPath — Final Mock Interview Report Route
+ * BharatPath - Final Mock Interview Report Route
  * Marked on 4 dimensions, rubric analysis, and advice.
  */
 import { Redirect, useLocalSearchParams } from 'expo-router';

@@ -1,16 +1,16 @@
 /**
- * BharatPath — Job types
+ * BharatPath - Job types
  *
  * Mirrors the backend candidate-facing job board contract:
  *   - `BoardJobSummary`  → `GET /candidate/jobs`        (list)
  *   - `BoardJobDetail`   → `GET /candidate/jobs/{id}`  (detail)
  *
- * Money is integer paise (minor units), never a float — columns are named
+ * Money is integer paise (minor units), never a float - columns are named
  * `*_minor`. Convert for display only.
  *
  * `eligibility` is the ONLY signal a candidate gets about whether they can
  * apply. The backend deliberately omits `min_score` from the board response
- * (R11 — the score is never explained, and the threshold/gap must never be
+ * (R11 - the score is never explained, and the threshold/gap must never be
  * shown). Do not add a `min_score` field here.
  */
 
@@ -21,10 +21,10 @@ export type WorkMode = 'ONSITE' | 'HYBRID' | 'REMOTE';
  * Eligibility of the signed-in candidate for a job, computed server-side
  * against the candidate's stored score.
  *
- * - `ELIGIBLE`        — candidate's score meets the job's `min_score`.
- * - `BELOW_THRESHOLD` — score is below the job's `min_score`. Never show the
+ * - `ELIGIBLE`        - candidate's score meets the job's `min_score`.
+ * - `BELOW_THRESHOLD` - score is below the job's `min_score`. Never show the
  *                       threshold number or the gap (R11).
- * - `SCORE_PENDING`   — the candidate's score is still being calculated.
+ * - `SCORE_PENDING`   - the candidate's score is still being calculated.
  *                       `SCORE_PENDING` wins over `ELIGIBLE`/`BELOW_THRESHOLD`.
  */
 export type EligibilityStatus =
@@ -73,7 +73,7 @@ export interface BoardJobDetail extends BoardJobSummary {
 /**
  * Cursor-paginated page of jobs (`Page[BoardJobSummary]`).
  *
- * `total` is deliberately `null` on the board — the backend does not compute
+ * `total` is deliberately `null` on the board - the backend does not compute
  * a total count for candidates. Do not render "Showing X of Y". Use
  * `next_cursor` for infinite scroll.
  */

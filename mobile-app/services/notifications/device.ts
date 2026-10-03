@@ -8,7 +8,7 @@
  *
  * **`expo-notifications` is required lazily, never at module load.** Expo Go
  * dropped push support in SDK 53, and importing the module there throws at
- * import time — which took down the whole app from `app/_layout.tsx`, since
+ * import time - which took down the whole app from `app/_layout.tsx`, since
  * that is where presentation is configured. Requiring it inside a try/catch
  * keeps Expo Go usable and turns a missing capability into a message.
  */

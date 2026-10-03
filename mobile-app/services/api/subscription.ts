@@ -1,5 +1,5 @@
 /**
- * BharatPath — Subscription & Payments Service
+ * BharatPath - Subscription & Payments Service
  * Integrates with Backend endpoints:
  * - GET  /candidate/subscription/plans                  (what is for sale)
  * - GET  /candidate/subscription                        (state + has_access)
@@ -11,7 +11,7 @@
  *
  * Checkout grants nothing. A payment is PENDING until the gateway's signed
  * callback has been processed, so the app polls the payment and then re-reads
- * the subscription — `has_access` is the only field that decides what opens.
+ * the subscription - `has_access` is the only field that decides what opens.
  */
 import { apiRequest, ApiError } from './client';
 
@@ -180,7 +180,7 @@ const STATE_COPY: Record<SubscriptionState, string> = {
   ACTIVE: 'Membership active',
   GRACE: 'Renewal being retried',
   LAPSED: 'Membership ended',
-  CANCELLED: 'Cancelled — runs to the end of the paid period',
+  CANCELLED: 'Cancelled - runs to the end of the paid period',
 };
 
 export function subscriptionStateCopy(state: SubscriptionState): string {

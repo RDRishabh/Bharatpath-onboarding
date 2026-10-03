@@ -1,5 +1,5 @@
 /**
- * BharatPath — ApplicationSentScreen
+ * BharatPath - ApplicationSentScreen
  * Exactly matches Screen 37 from BharatPath Handoff and Screenshot 5.
  * Features:
  * - Animated paper plane green badge with launch trail

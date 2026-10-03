@@ -24,6 +24,7 @@ import {
   getInterviewReport,
   interviewErrorMessage,
 } from '@/services/api/interview';
+import { formatQuestionPrompt } from './InterviewSessionScreen';
 
 interface Props {
   sessionId: string;
@@ -52,7 +53,7 @@ export function InterviewReportScreen({ sessionId }: Props) {
 
   useEffect(() => {
     if (report?.status !== 'PENDING') return;
-    const timer = setTimeout(load, 5000);
+    const timer = setTimeout(load, 1000);
     return () => clearTimeout(timer);
   }, [load, report?.status]);
 
@@ -77,11 +78,9 @@ export function InterviewReportScreen({ sessionId }: Props) {
           <State icon={<WarningCircle size={42} color="#993A22" weight="fill" />} title="Report unavailable" body={error} action={load} actionLabel="Try again" />
         ) : report?.status === 'PENDING' ? (
           <State
-            icon={<Clock size={44} color="#5F4DB2" weight="duotone" />}
-            title="Your answers are stored"
-            body="Feedback has not finished yet. You can leave this screen; we will keep checking when you return."
-            action={home}
-            actionLabel="Go home"
+            icon={<ActivityIndicator size="large" color="#5F4DB2" />}
+            title="Analyzing your interview"
+            body="Our AI evaluator is preparing your performance report and dimension scores…"
           />
         ) : report?.status === 'FAILED' ? (
           <State
@@ -138,7 +137,7 @@ export function InterviewReportScreen({ sessionId }: Props) {
                 <View key={question.code} style={styles.answer}>
                   <Text style={styles.answerNumber}>Q{question.index + 1}</Text>
                   <View style={styles.answerCopy}>
-                    <Text style={styles.answerPrompt}>{question.prompt}</Text>
+                    <Text style={styles.answerPrompt}>{formatQuestionPrompt(question.prompt)}</Text>
                     <Text style={styles.answerMeta}>
                       {question.spoken ? 'Speech detected' : 'No speech detected'}
                     </Text>

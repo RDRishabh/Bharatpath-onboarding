@@ -1,5 +1,5 @@
 /**
- * BharatPath — Application Sent Route
+ * BharatPath - Application Sent Route
  *
  * Confirmation screen after a successful apply. Receives the employer name via
  * route params (from the apply flow) and falls back to a generic label.

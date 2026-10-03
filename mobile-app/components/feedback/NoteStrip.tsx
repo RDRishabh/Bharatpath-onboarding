@@ -1,5 +1,5 @@
 /**
- * NoteStrip — Compact info/advice strip with icon.
+ * NoteStrip - Compact info/advice strip with icon.
  * Variants: info (indigo), success (green), warning (amber), error (red).
  */
 import { ReactNode } from 'react';

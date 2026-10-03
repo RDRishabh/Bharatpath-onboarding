@@ -10,7 +10,7 @@ import { bandIndex, bandLabel, nextBandLabel, pointsToNextBand } from '@/service
 /**
  * NOT YET FUNCTIONAL END TO END. `score` and `band` come from
  * `GET /candidate/score/me`, and that endpoint answers PENDING until a score
- * row exists. When it is PENDING this screen shows a dash — never a stand-in
+ * row exists. When it is PENDING this screen shows a dash - never a stand-in
  * number, because a plausible wrong score is unfixable once a candidate has
  * seen it (`docs/scoring-approach.md` §11).
  *
@@ -31,7 +31,7 @@ import { bandIndex, bandLabel, nextBandLabel, pointsToNextBand } from '@/service
  * The `recalculated` mode and the breakdown sheet below are still design
  * mock-ups. They cannot be wired: the client removed score explanation
  * (2026-08-27, re-confirmed 2026-09-11), so the backend serves the number and
- * the band and has no breakdown endpoint at all — `test_score_never_explained`
+ * the band and has no breakdown endpoint at all - `test_score_never_explained`
  * fails the build on a field that would add one.
  */
 
@@ -60,7 +60,7 @@ export function ScoreRevealScreen({
   const isPending = score == null && !isRecalculated;
   const targetScore = score ?? (isRecalculated ? 706 : 0);
   const initialScore = isLive ? Math.max(700, targetScore - 40) : isRecalculated ? 680 : 0;
-  const shownBand = bandLabel(band) || (isRecalculated ? 'Developing' : '—');
+  const shownBand = bandLabel(band) || (isRecalculated ? 'Developing' : '-');
   const shownBandIndex = band ? bandIndex(band) : 0;
   const remaining = pointsToNextBand(targetScore, band || null);
   const followingBand = nextBandLabel(band || null);
@@ -155,7 +155,7 @@ export function ScoreRevealScreen({
               </Svg>
 
               <View style={styles.gaugeCenterContent}>
-                <Text style={styles.scoreNumberText}>{isPending ? '—' : scoreNow}</Text>
+                <Text style={styles.scoreNumberText}>{isPending ? '-' : scoreNow}</Text>
                 {isRecalculated ? (
                   <View style={styles.pointsBadge}>
                     <TrendUp size={12} color="#F4D685" weight="bold" />
@@ -260,7 +260,7 @@ export function ScoreRevealScreen({
               <View style={styles.liveNoteCard}>
                 <Text style={styles.liveNoteText}>
                   This is the number employers see, with your band. There is no
-                  category breakdown — the score is shown as a single value.
+                  category breakdown - the score is shown as a single value.
                 </Text>
               </View>
             ) : isPending ? (
@@ -348,51 +348,16 @@ export function ScoreRevealScreen({
 
             {/* Bottom Actions Row */}
             <View style={styles.actionsRow}>
-              {isRecalculated ? (
-                <>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.saveButton,
-                      pressed && styles.buttonPressed,
-                    ]}
-                    onPress={onNextFix}
-                  >
-                    <Text style={styles.saveButtonText}>Next fix</Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.raiseScoreButton,
-                      pressed && styles.raisePressed,
-                    ]}
-                    onPress={onSave}
-                  >
-                    <Text style={styles.raiseScoreButtonText}>Save my score</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.saveButton,
-                      pressed && styles.buttonPressed,
-                    ]}
-                    onPress={onSave}
-                  >
-                    <Text style={styles.saveButtonText}>Save</Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.raiseScoreButton,
-                      pressed && styles.raisePressed,
-                    ]}
-                    onPress={onRaiseScore}
-                  >
-                    <Text style={styles.raiseScoreButtonText}>Raise my score</Text>
-                  </Pressable>
-                </>
-              )}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.raiseScoreButton,
+                  pressed && styles.raisePressed,
+                  { width: '100%', flex: undefined }
+                ]}
+                onPress={onSave}
+              >
+                <Text style={styles.raiseScoreButtonText}>Save</Text>
+              </Pressable>
             </View>
           </View>
         </ScrollView>

@@ -1,5 +1,5 @@
 /**
- * TertiaryButton — Lightweight action, may use icon circles.
+ * TertiaryButton - Lightweight action, may use icon circles.
  * No border, subtle press feedback. Scales to .98 on press.
  */
 import { ReactNode } from 'react';

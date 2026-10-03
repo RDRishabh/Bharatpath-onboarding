@@ -1,5 +1,5 @@
 /**
- * BharatPath — Job Detail Route
+ * BharatPath - Job Detail Route
  *
  * Fetches `GET /candidate/jobs/{id}` and renders the merged `JobDetailScreen`
  * (S18). One screen handles all eligibility states; the old `job-short` route

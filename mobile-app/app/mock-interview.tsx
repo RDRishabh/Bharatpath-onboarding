@@ -1,5 +1,5 @@
 /**
- * BharatPath — Mock Interview Intro Route
+ * BharatPath - Mock Interview Intro Route
  * "Practise before it counts" - AI Mock interview preview & specifications.
  */
 import { useRouter } from 'expo-router';

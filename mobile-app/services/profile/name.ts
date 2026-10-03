@@ -2,7 +2,7 @@
  * Resolving the candidate's own name, and repairing it when it is missing.
  *
  * `candidate_profiles.full_name` is the source of truth. It is written by
- * `PUT /candidate/profile/name` at sign-up — but that call used to be
+ * `PUT /candidate/profile/name` at sign-up - but that call used to be
  * best-effort, so accounts exist whose profile row was never created and
  * whose Home header therefore had no name to show.
  *
@@ -22,12 +22,19 @@
 import { getCandidateProfile, updateCandidateName } from '@/services/api/auth';
 import { getResumeVersionDetails, listResumeVersions } from '@/services/api/resume';
 import { clearUnsavedName, rememberUnsavedName, takeUnsavedName } from './pendingName';
+import { getStoredCandidateName, saveStoredCandidateName } from '@/services/storage/authStorage';
 
 export async function resolveCandidateFullName(seed?: string | null): Promise<string | null> {
   const stored = (await getCandidateProfile().catch(() => null))?.full_name?.trim();
   if (stored) {
     clearUnsavedName();
+    saveStoredCandidateName(stored);
     return stored;
+  }
+
+  const cached = await getStoredCandidateName();
+  if (cached && cached.trim()) {
+    return cached.trim();
   }
 
   const recovered = seed?.trim() || takeUnsavedName() || (await formName());
@@ -39,6 +46,7 @@ export async function resolveCandidateFullName(seed?: string | null): Promise<st
   });
   if (saved) {
     clearUnsavedName();
+    saveStoredCandidateName(saved.full_name?.trim() || recovered);
   } else {
     rememberUnsavedName(recovered);
   }

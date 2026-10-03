@@ -1,6 +1,11 @@
-import { apiRequest, setAccessToken, getAccessToken, ApiError } from './client';
+import { apiRequest, setAccessToken, getAccessToken, ApiError, getBaseUrl } from './client';
 import { UserProfile } from '@/types/user';
 import { rememberUnsavedName } from '@/services/profile/pendingName';
+import {
+  saveStoredSession,
+  getStoredSession,
+  clearAllAuthData,
+} from '@/services/storage/authStorage';
 
 export interface AuthSession {
   accessToken: string;
@@ -44,7 +49,7 @@ export interface SignInParams {
   password: string;
 }
 
-// Known pre-existing dev subjects
+// Known pre-existing dev subjects for local fallback
 const devSubjectCache: Record<string, string> = {
   'test@gmail.com': 'f7cf75b0-bc28-41c9-a87c-728ec7fc9b00',
   'onlyritik10@gmail.com': '8a6403bc-e0fb-4c46-92ce-47bd7e66ae40',
@@ -58,8 +63,6 @@ const devSubjectCache: Record<string, string> = {
 
 /**
  * Deterministically derives a consistent UUID for a given email address during local dev.
- * This guarantees that an account created on your phone app can be logged into
- * on your web browser or any other testing device without "Permission Denied" conflicts!
  */
 export function emailToDevSubject(email: string): string {
   const normalized = email.trim().toLowerCase();
@@ -67,7 +70,6 @@ export function emailToDevSubject(email: string): string {
     return devSubjectCache[normalized];
   }
 
-  // FNV-1a based 128-bit hash formatted as a valid UUID
   let h1 = 0x811c9dc5;
   let h2 = 0x811c9dc5;
   let h3 = 0x811c9dc5;
@@ -92,107 +94,278 @@ export function emailToDevSubject(email: string): string {
   return uuid;
 }
 
+const COGNITO_REGION = process.env.EXPO_PUBLIC_COGNITO_REGION || 'ap-south-1';
+const COGNITO_CLIENT_ID = process.env.EXPO_PUBLIC_COGNITO_CLIENT_ID || '7sm4qd9k4bitdseu05d1t9pt4u';
+
+function shouldUseDevToken(): boolean {
+  const baseUrl = getBaseUrl();
+  const isLocalhost =
+    baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1') || baseUrl.includes('192.168.');
+  return process.env.EXPO_PUBLIC_AUTH_USE_DEV_TOKEN === 'true' && isLocalhost;
+}
+
+async function cognitoRequest<T>(action: string, payload: Record<string, any>): Promise<T> {
+  const url = `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-Amz-Target': `AWSCognitoIdentityProviderService.${action}`,
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (err: any) {
+    throw new ApiError({
+      type: 'https://bharatpath.example/problems/network_error',
+      title: 'Cannot connect to authentication service. Please check your internet connection.',
+      status: 0,
+      code: 'network_error',
+    });
+  }
+
+  const data = await response.json();
+  if (!response.ok) {
+    const errorType = (data.__type || data.code || '').split('#').pop() || 'CognitoError';
+    const message = data.message || 'Authentication request failed';
+
+    if (errorType === 'NotAuthorizedException' || errorType === 'UserNotFoundException') {
+      throw new ApiError({
+        type: 'https://bharatpath.example/problems/unauthenticated',
+        title: 'Incorrect email or password.',
+        status: 401,
+        code: 'unauthenticated',
+      });
+    }
+    if (errorType === 'UserNotConfirmedException') {
+      throw new ApiError({
+        type: 'https://bharatpath.example/problems/user_not_confirmed',
+        title: 'Account not verified. Please verify your email with the confirmation code.',
+        status: 403,
+        code: 'user_not_confirmed',
+      });
+    }
+    if (errorType === 'UsernameExistsException') {
+      throw new ApiError({
+        type: 'https://bharatpath.example/problems/conflict',
+        title: 'An account with this email already exists. Please sign in instead.',
+        status: 409,
+        code: 'account_contact_in_use',
+      });
+    }
+    if (errorType === 'InvalidPasswordException') {
+      throw new ApiError({
+        type: 'https://bharatpath.example/problems/invalid_password',
+        title: message,
+        status: 400,
+        code: 'invalid_password',
+      });
+    }
+    if (errorType === 'CodeMismatchException') {
+      throw new ApiError({
+        type: 'https://bharatpath.example/problems/invalid_code',
+        title: 'Invalid verification code. Please check your email and try again.',
+        status: 400,
+        code: 'invalid_code',
+      });
+    }
+    if (errorType === 'ExpiredCodeException') {
+      throw new ApiError({
+        type: 'https://bharatpath.example/problems/expired_code',
+        title: 'Verification code has expired. Please request a new code.',
+        status: 400,
+        code: 'expired_code',
+      });
+    }
+    if (errorType === 'LimitExceededException') {
+      throw new ApiError({
+        type: 'https://bharatpath.example/problems/limit_exceeded',
+        title: 'Too many attempts. Please wait a few minutes before trying again.',
+        status: 429,
+        code: 'limit_exceeded',
+      });
+    }
+    if (errorType === 'InvalidParameterException' && message.includes('no registered/verified email')) {
+      throw new ApiError({
+        type: 'https://bharatpath.example/problems/email_not_verified',
+        title: 'This account email has not been verified yet. Please verify your email before resetting your password.',
+        status: 400,
+        code: 'email_not_verified',
+      });
+    }
+
+    throw new ApiError({
+      type: 'https://bharatpath.example/problems/cognito_error',
+      title: message,
+      status: response.status,
+      code: errorType,
+    });
+  }
+
+  return data as T;
+}
+
 let currentSession: AuthSession | null = null;
+
+export type SignUpResult = AuthSession | { unconfirmed: true; email: string };
 
 /**
  * Sign up a new candidate:
- * 1. Mints a JWT access token for CANDIDATE pool with deterministic subject.
- * 2. Calls GET /auth/me to automatically register user in the backend PostgreSQL table.
- * 3. Calls PUT /candidate/profile/name to save candidate full name.
+ * - In local dev mode: calls /auth/dev/token
+ * - In production / hosted backend: calls AWS Cognito Candidate User Pool SignUp
  */
-export async function signUpWithEmail(params: SignUpParams): Promise<AuthSession> {
+export async function signUpWithEmail(params: SignUpParams): Promise<SignUpResult> {
   const normalizedEmail = params.email.trim().toLowerCase();
-  const devSubject = emailToDevSubject(normalizedEmail);
 
-  // Mint local dev token
-  const tokenResponse = await apiRequest<DevTokenResponse>('/auth/dev/token', {
-    method: 'POST',
-    body: {
-      pool: 'CANDIDATE',
-      email: normalizedEmail,
-      subject: devSubject,
-    },
-  });
+  if (shouldUseDevToken()) {
+    const devSubject = emailToDevSubject(normalizedEmail);
 
-  const accessToken = tokenResponse.access_token;
-  setAccessToken(accessToken);
+    const tokenResponse = await apiRequest<DevTokenResponse>('/auth/dev/token', {
+      method: 'POST',
+      body: {
+        pool: 'CANDIDATE',
+        email: normalizedEmail,
+        subject: devSubject,
+      },
+    });
 
-  // 1. Verify identity and initialize user row in backend DB
-  const me = await apiRequest<MeResponse>('/auth/me', {
-    token: accessToken,
-  });
+    const accessToken = tokenResponse.access_token;
+    setAccessToken(accessToken);
 
-  // 2. Store the candidate's name. This is the only place it is captured, so
-  // a failure here leaves the account with no name anywhere — it is retried
-  // once and then handed to `rememberUnsavedName` so the next profile read
-  // can save it, rather than being logged and lost.
-  const fullName = params.fullName.trim();
-  if (fullName) {
-    const saveName = () =>
-      apiRequest<CandidateProfileResponse>('/candidate/profile/name', {
-        method: 'PUT',
-        token: accessToken,
-        body: { full_name: fullName },
-      });
-    try {
-      await saveName();
-    } catch (first) {
-      console.warn('Retrying candidate name save after failure:', first);
+    const me = await apiRequest<MeResponse>('/auth/me', {
+      token: accessToken,
+    });
+
+    const fullName = params.fullName.trim();
+    if (fullName) {
+      const saveName = () =>
+        apiRequest<CandidateProfileResponse>('/candidate/profile/name', {
+          method: 'PUT',
+          token: accessToken,
+          body: { full_name: fullName },
+        });
       try {
         await saveName();
-      } catch (second) {
-        console.error('Could not save candidate name during signup:', second);
+      } catch (first) {
+        console.warn('Retrying candidate name save after failure:', first);
+        try {
+          await saveName();
+        } catch (second) {
+          console.error('Could not save candidate name during signup:', second);
+          rememberUnsavedName(fullName);
+        }
+      }
+    }
+
+    const session: AuthSession = {
+      accessToken,
+      userId: me.user_id,
+      email: normalizedEmail,
+      role: me.role,
+      pool: me.pool,
+      tenantId: me.tenant_id,
+      subject: tokenResponse.subject,
+    };
+
+    currentSession = session;
+    await saveStoredSession(session);
+    return session;
+  }
+
+  // AWS Cognito SignUp Flow
+  await cognitoRequest<any>('SignUp', {
+    ClientId: COGNITO_CLIENT_ID,
+    Username: normalizedEmail,
+    Password: params.password,
+    UserAttributes: [
+      { Name: 'email', Value: normalizedEmail },
+      { Name: 'name', Value: params.fullName.trim() },
+    ],
+  });
+
+  // Attempt sign in (if account was confirmed immediately)
+  try {
+    const { session } = await signInWithEmail({
+      email: normalizedEmail,
+      password: params.password,
+    });
+
+    const fullName = params.fullName.trim();
+    if (fullName) {
+      try {
+        await updateCandidateName(fullName);
+      } catch (err) {
         rememberUnsavedName(fullName);
       }
     }
+
+    return session;
+  } catch (err: any) {
+    if (err?.code === 'user_not_confirmed') {
+      return { unconfirmed: true, email: normalizedEmail };
+    }
+    throw err;
   }
-
-  const session: AuthSession = {
-    accessToken,
-    userId: me.user_id,
-    email: normalizedEmail,
-    role: me.role,
-    pool: me.pool,
-    tenantId: me.tenant_id,
-    subject: tokenResponse.subject,
-  };
-
-  currentSession = session;
-  return session;
 }
 
 /**
  * Sign in existing candidate:
- * 1. Uses deterministic subject so the identity matches across Phone, Web & Simulator.
- * 2. Obtains verified access token from /auth/dev/token.
- * 3. Verifies identity via GET /auth/me.
- * 4. Fetches candidate profile from GET /candidate/profile.
+ * - In local dev mode: calls /auth/dev/token
+ * - In hosted mode: authenticates against AWS Cognito Candidate Pool via USER_PASSWORD_AUTH
+ * - Then verifies identity on backend via GET /auth/me and fetches candidate profile.
  */
 export async function signInWithEmail(params: SignInParams): Promise<{
   session: AuthSession;
   profile: CandidateProfileResponse | null;
 }> {
   const normalizedEmail = params.email.trim().toLowerCase();
-  const devSubject = emailToDevSubject(normalizedEmail);
+  let accessToken: string;
+  let subject: string | undefined;
 
-  const tokenResponse = await apiRequest<DevTokenResponse>('/auth/dev/token', {
-    method: 'POST',
-    body: {
-      pool: 'CANDIDATE',
-      email: normalizedEmail,
-      subject: devSubject,
-    },
-  });
+  if (shouldUseDevToken()) {
+    const devSubject = emailToDevSubject(normalizedEmail);
+    const tokenResponse = await apiRequest<DevTokenResponse>('/auth/dev/token', {
+      method: 'POST',
+      body: {
+        pool: 'CANDIDATE',
+        email: normalizedEmail,
+        subject: devSubject,
+      },
+    });
+    accessToken = tokenResponse.access_token;
+    subject = tokenResponse.subject;
+  } else {
+    // AWS Cognito USER_PASSWORD_AUTH
+    const authResult = await cognitoRequest<any>('InitiateAuth', {
+      AuthFlow: 'USER_PASSWORD_AUTH',
+      ClientId: COGNITO_CLIENT_ID,
+      AuthParameters: {
+        USERNAME: normalizedEmail,
+        PASSWORD: params.password,
+      },
+    });
 
-  const accessToken = tokenResponse.access_token;
+    if (!authResult.AuthenticationResult?.AccessToken) {
+      throw new ApiError({
+        type: 'https://bharatpath.example/problems/unauthenticated',
+        title: 'Authentication did not return a valid session token.',
+        status: 401,
+        code: 'unauthenticated',
+      });
+    }
+
+    accessToken = authResult.AuthenticationResult.AccessToken;
+  }
+
   setAccessToken(accessToken);
 
-  // Verify identity
+  // Verify identity on backend
   const me = await apiRequest<MeResponse>('/auth/me', {
     token: accessToken,
   });
 
-  // Fetch candidate profile
+  // Fetch candidate profile from backend
   let profile: CandidateProfileResponse | null = null;
   try {
     profile = await apiRequest<CandidateProfileResponse>('/candidate/profile', {
@@ -209,17 +382,78 @@ export async function signInWithEmail(params: SignInParams): Promise<{
     role: me.role,
     pool: me.pool,
     tenantId: me.tenant_id,
-    subject: tokenResponse.subject,
+    subject: subject || me.user_id,
   };
 
   currentSession = session;
+  await saveStoredSession(session);
   return { session, profile };
 }
 
 /**
  * Confirm Sign-up with 6-digit code (Cognito flow).
  */
-export async function confirmSignUpWithCode(_email: string, _code: string): Promise<boolean> {
+export async function confirmSignUpWithCode(email: string, code: string): Promise<boolean> {
+  if (shouldUseDevToken()) {
+    return true;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  await cognitoRequest<any>('ConfirmSignUp', {
+    ClientId: COGNITO_CLIENT_ID,
+    Username: normalizedEmail,
+    ConfirmationCode: code.trim(),
+  });
+  return true;
+}
+
+/**
+ * Resend confirmation code for unconfirmed user.
+ */
+export async function resendConfirmationCode(email: string): Promise<boolean> {
+  if (shouldUseDevToken()) {
+    return true;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  await cognitoRequest<any>('ResendConfirmationCode', {
+    ClientId: COGNITO_CLIENT_ID,
+    Username: normalizedEmail,
+  });
+  return true;
+}
+
+/**
+ * Request password reset code via AWS Cognito.
+ */
+export async function forgotPassword(email: string): Promise<boolean> {
+  if (shouldUseDevToken()) {
+    return true;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  await cognitoRequest<any>('ForgotPassword', {
+    ClientId: COGNITO_CLIENT_ID,
+    Username: normalizedEmail,
+  });
+  return true;
+}
+
+/**
+ * Confirm password reset with 6-digit code and set new password.
+ */
+export async function confirmForgotPassword(
+  email: string,
+  code: string,
+  newPassword: string
+): Promise<boolean> {
+  if (shouldUseDevToken()) {
+    return true;
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  await cognitoRequest<any>('ConfirmForgotPassword', {
+    ClientId: COGNITO_CLIENT_ID,
+    Username: normalizedEmail,
+    ConfirmationCode: code.trim(),
+    Password: newPassword,
+  });
   return true;
 }
 
@@ -271,13 +505,23 @@ export async function getCandidateProfile(): Promise<CandidateProfileResponse> {
   return await apiRequest<CandidateProfileResponse>('/candidate/profile');
 }
 
+export { getProfileViews } from './profile';
+
 export async function signOut(): Promise<void> {
   setAccessToken(null);
   currentSession = null;
+  await clearAllAuthData();
 }
 
 export async function getCurrentSession(): Promise<AuthSession | null> {
-  return currentSession;
+  if (currentSession) return currentSession;
+  const stored = await getStoredSession();
+  if (stored) {
+    currentSession = stored;
+    setAccessToken(stored.accessToken);
+    return stored;
+  }
+  return null;
 }
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {

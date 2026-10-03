@@ -1,5 +1,5 @@
 /**
- * SkillChip — Pill-shaped tag for skills/technologies.
+ * SkillChip - Pill-shaped tag for skills/technologies.
  * Light surface with border, sentence case, General Sans.
  */
 import { View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';

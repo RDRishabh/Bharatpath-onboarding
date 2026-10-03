@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { AppAlert } from "@/components/feedback/AppAlert";
 import {
   Modal,
   View,
@@ -188,7 +189,7 @@ export function SectionEditModal({
   };
 
   const handleDeletePress = () => {
-    Alert.alert(
+    AppAlert.alert(
       'Delete Section',
       `Are you sure you want to remove the "${section.heading || section.kind}" section?`,
       [

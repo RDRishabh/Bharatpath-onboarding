@@ -1,10 +1,10 @@
 /**
- * BharatPath — Candidate score
+ * BharatPath - Candidate score
  * GET /candidate/score/me
  *
  * Confirming a resume only emits `resume.version_confirmed`. The number is
  * computed by a worker and this endpoint is how the app learns it. PENDING
- * is a normal 200, not a 404 — keep polling until READY.
+ * is a normal 200, not a 404 - keep polling until READY.
  *
  * The response is the number and the band. Nothing here explains the score.
  */

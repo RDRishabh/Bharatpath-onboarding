@@ -1,5 +1,5 @@
 /**
- * CompanyMonogram — Circular brand monogram with initials.
+ * CompanyMonogram - Circular brand monogram with initials.
  * Uses deterministic navy/indigo background selection.
  */
 import { View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';

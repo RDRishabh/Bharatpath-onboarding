@@ -1,14 +1,14 @@
 /**
  * BharatPath Design Tokens
  * Centralized source of truth for all colors, typography, spacing, radii, and shadows.
- * No component should hardcode colors or spacing — everything flows from here.
+ * No component should hardcode colors or spacing - everything flows from here.
  */
 
 // ─── BRAND COLORS ──────────────────────────────────────────────
 export const Colors = {
   // Primary surfaces
-  offWhite: '#FFFCF7', // 60% — primary application background
-  navy: '#0A1931', // 25% — primary trust / headline / text
+  offWhite: '#FFFCF7', // 60% - primary application background
+  navy: '#0A1931', // 25% - primary trust / headline / text
   brandAccent: '#5F4DB2', // primary brand action / progress / interactive accent
   purple: '#5F4DB2', // primary brand accent purple
   indigo: '#5E4DB2', // rich purple hero surface
@@ -36,25 +36,25 @@ export const Colors = {
     overlay: 'rgba(10, 25, 49, 0.22)', // shadow color
   },
 
-  // Semantic — green (success / match)
+  // Semantic - green (success / match)
   green: {
     fg: '#1F6B45',
     bg: '#E6F1EA',
   },
 
-  // Semantic — amber (warning / expiring)
+  // Semantic - amber (warning / expiring)
   amber: {
     fg: '#7A5C0E',
     bg: '#F7EFD6',
   },
 
-  // Semantic — indigo (progress / info)
+  // Semantic - indigo (progress / info)
   indigoSemantic: {
     fg: '#4A3E8F',
     bg: '#F1EAF7',
   },
 
-  // Semantic — red (error / expired)
+  // Semantic - red (error / expired)
   red: {
     fg: '#993A22',
     bg: '#F8E6E0',
@@ -91,7 +91,7 @@ export type FontFamily =
   | 'NotoSansDevanagari-Medium';
 
 export const Typography = {
-  // Display — large computed scores
+  // Display - large computed scores
   displayScore: {
     fontFamily: 'SpaceMono-Bold' as FontFamily,
     fontSize: 48,
@@ -136,7 +136,7 @@ export const Typography = {
     lineHeight: 20,
   },
 
-  // Mono eyebrow — uppercase labels above sections
+  // Mono eyebrow - uppercase labels above sections
   monoEyebrow: {
     fontFamily: 'SpaceMono-Bold' as FontFamily,
     fontSize: 11,
@@ -144,14 +144,14 @@ export const Typography = {
     letterSpacing: 0.8,
   },
 
-  // Mono metadata — counters, IDs, timestamps
+  // Mono metadata - counters, IDs, timestamps
   monoMeta: {
     fontFamily: 'SpaceMono-Regular' as FontFamily,
     fontSize: 11,
     lineHeight: 16,
   },
 
-  // Mono numbers — scores, monetary values
+  // Mono numbers - scores, monetary values
   monoNumber: {
     fontFamily: 'SpaceMono-Bold' as FontFamily,
     fontSize: 16,
@@ -212,7 +212,7 @@ export const Radii = {
 } as const;
 
 // ─── SHADOWS ───────────────────────────────────────────────────
-// Only one major shadow — reserved for the floating bottom navigation.
+// Only one major shadow - reserved for the floating bottom navigation.
 export const Shadows = {
   bottomNav: {
     shadowColor: '#0A1931',

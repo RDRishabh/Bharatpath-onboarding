@@ -43,12 +43,18 @@ function generateRequestId(): string {
 
 // Get the base API URL based on platform and environment
 export function getBaseUrl(): string {
-  // 1. On Web: always talk to localhost directly (browser is on the host Mac)
+  // 1. If EXPO_PUBLIC_API_BASE_URL is set in .env, honor explicit configuration
+  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+  if (envUrl && envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+
+  // 2. On Web: default to localhost directly (browser is on the host Mac)
   if (Platform.OS === 'web') {
     return 'http://localhost:8099/api/v1';
   }
 
-  // 2. If running via Expo Go on a physical phone, Metro hostUri gives the Mac's IP (e.g. 192.168.1.34:8081)
+  // 3. If running via Expo Go on a physical phone, Metro hostUri gives the Mac's IP (e.g. 192.168.1.34:8081)
   const hostUri = Constants.expoConfig?.hostUri || (Constants as any).manifest2?.extra?.expoClient?.hostUri;
   if (hostUri) {
     const hostIp = hostUri.split(':')[0];
@@ -57,15 +63,9 @@ export function getBaseUrl(): string {
     }
   }
 
-  // 3. Android emulator uses 10.0.2.2 to reach host machine
+  // 4. Android emulator uses 10.0.2.2 to reach host machine
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:8099/api/v1';
-  }
-
-  // 4. If EXPO_PUBLIC_API_BASE_URL is set in .env
-  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
-  if (envUrl && envUrl.trim().length > 0) {
-    return envUrl.trim().replace(/\/+$/, '');
   }
 
   // 5. Default fallback (iOS simulator or local host)

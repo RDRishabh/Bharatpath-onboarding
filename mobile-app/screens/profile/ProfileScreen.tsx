@@ -1,5 +1,5 @@
 /**
- * BharatPath — ProfileScreen ("You" Screen)
+ * BharatPath - ProfileScreen ("You" Screen)
  *
  * Shows the candidate's real profile data from the backend:
  *   - Name and location (city, state) from `GET /candidate/profile`
@@ -8,7 +8,7 @@
  *   - Add-ons count (completed courses + completed interview sessions)
  *
  * The profile response carries no phone number, so the subtitle is the
- * location only. The score is never invented — a dash means "still
+ * location only. The score is never invented - a dash means "still
  * computing" and is the honest state while the scoring worker runs.
  *
  * Sections:
@@ -26,7 +26,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
   UserCircle,
@@ -38,7 +38,8 @@ import {
   Translate,
   Eye,
   DownloadSimple,
-  Trash,
+  SignOut,
+  GraduationCap,
 } from 'phosphor-react-native';
 import { Colors, Spacing } from '@/theme/tokens';
 import { BottomTabBar, TabName } from '@/components/navigation/BottomTabBar';
@@ -50,11 +51,11 @@ export interface ProfileScreenProps {
   initials?: string;
   /** "City, ST" subtitle from `GET /candidate/profile`. No phone number. */
   locationLabel?: string;
-  /** Score band label (e.g. "Solid"). Currently unused on this card — the
+  /** Score band label (e.g. "Solid"). Currently unused on this card - the
    *  score card shows only the number, not the band. Kept on the props for
    *  callers that still pass it. */
   bandName?: string;
-  /** Real score value. Undefined while PENDING or on error — show a dash. */
+  /** Real score value. Undefined while PENDING or on error - show a dash. */
   score?: number;
   /** True while the score is still being computed (PENDING) or loading. */
   scorePending?: boolean;
@@ -70,9 +71,12 @@ export interface ProfileScreenProps {
   onResumeDetailsPress?: () => void;
   onAttributeReportPress?: () => void;
   onInterviewReportPress?: () => void;
+  onCoursesPress?: () => void;
   onLanguagePress?: () => void;
   onWhoHasSeenMePress?: () => void;
   onDownloadDataPress?: () => void;
+  onLogoutPress?: () => void;
+  /** @deprecated Use onLogoutPress */
   onDeleteAccountPress?: () => void;
 }
 
@@ -93,22 +97,29 @@ export function ProfileScreen({
   onResumeDetailsPress,
   onAttributeReportPress,
   onInterviewReportPress,
+  onCoursesPress,
   onLanguagePress,
   onWhoHasSeenMePress,
   onDownloadDataPress,
+  onLogoutPress,
   onDeleteAccountPress,
 }: ProfileScreenProps) {
+  const handleLogout = onLogoutPress || onDeleteAccountPress;
+  const insets = useSafeAreaInsets();
   const displayName = name?.trim() || 'Candidate';
   const displayInitials = initials?.trim() || '?';
-  const scoreDisplay = score != null ? String(score) : '—';
-  const appliedDisplay = appliedCount != null ? String(appliedCount) : '—';
-  const addonsDisplay = addonsCount != null ? String(addonsCount) : '—';
+  const scoreDisplay = score != null ? String(score) : '-';
+  const appliedDisplay = appliedCount != null ? String(appliedCount) : '-';
+  const addonsDisplay = addonsCount != null ? String(addonsCount) : '-';
   return (
     <View style={styles.root}>
       <StatusBar style="dark" animated />
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 130 + Math.max(insets.bottom, 24) },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           {/* Header with avatar badge and candidate info */}
@@ -126,7 +137,7 @@ export function ProfileScreen({
 
           {/* 3 Stat Cards: Score, Applied, Add-ons */}
           <View style={styles.statsRow}>
-            {/* Dark Score Card — real value when READY, dash while PENDING */}
+            {/* Dark Score Card - real value when READY, dash while PENDING */}
             <Pressable
               style={({ pressed }) => [
                 styles.statCardDark,
@@ -232,6 +243,20 @@ export function ProfileScreen({
               <CaretRight size={16} color="#5F6B80" weight="bold" />
             </Pressable>
 
+            {/* Skill courses */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.menuItem,
+                pressed && styles.cardPressed,
+              ]}
+              onPress={onCoursesPress}
+              accessibilityRole="button"
+            >
+              <GraduationCap size={20} color={Colors.navy} weight="duotone" />
+              <Text style={styles.menuItemTitle}>Skill courses</Text>
+              <CaretRight size={16} color="#5F6B80" weight="bold" />
+            </Pressable>
+
             {/* Language */}
             <Pressable
               style={({ pressed }) => [
@@ -266,9 +291,6 @@ export function ProfileScreen({
             >
               <Eye size={20} color={Colors.indigo} weight="duotone" />
               <Text style={styles.menuItemTitle}>Who has seen me</Text>
-              <View style={styles.badgePill}>
-                <Text style={styles.badgePillText}>3</Text>
-              </View>
               <CaretRight size={16} color="#5F6B80" weight="bold" />
             </Pressable>
 
@@ -293,17 +315,17 @@ export function ProfileScreen({
               </View>
             </Pressable>
 
-            {/* Delete my account */}
+            {/* Logout my account */}
             <Pressable
               style={({ pressed }) => [
                 styles.menuItem,
                 pressed && styles.cardPressed,
               ]}
-              onPress={onDeleteAccountPress}
+              onPress={handleLogout}
               accessibilityRole="button"
             >
-              <Trash size={20} color="#3A4761" weight="duotone" />
-              <Text style={styles.menuItemTitle}>Delete my account</Text>
+              <SignOut size={20} color="#D9383A" weight="bold" />
+              <Text style={[styles.menuItemTitle, styles.logoutText]}>Logout my account</Text>
               <CaretRight size={16} color="#5F6B80" weight="bold" />
             </Pressable>
           </View>
@@ -328,7 +350,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: Spacing.xl,
-    paddingBottom: 110, // Space for floating bottom tab bar
+    paddingBottom: 154, // Space for floating bottom tab bar so logout button is never cut
     gap: 20,
   },
   header: {
@@ -500,5 +522,8 @@ const styles = StyleSheet.create({
   cardPressed: {
     transform: [{ scale: 0.98 }],
     opacity: 0.9,
+  },
+  logoutText: {
+    color: '#D9383A',
   },
 });
