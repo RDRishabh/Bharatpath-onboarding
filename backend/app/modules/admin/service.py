@@ -65,6 +65,9 @@ from app.modules.admin.events import (
 )
 from app.modules.admin.models import Dispute
 from app.modules.admin.schemas import (
+    AccountForm,
+    AccountFormOption,
+    AccountFormsResponse,
     AddOrganisationMemberRequest,
     AdminCourseView,
     AdminDashboard,
@@ -143,6 +146,8 @@ from app.modules.admin.schemas import (
 from app.modules.applications.domain import stage_summary
 from app.modules.billing import service as billing_service
 from app.modules.billing.domain import DISCOUNT_POLICY_VERSION
+from app.modules.candidate import service as candidate_service
+from app.modules.candidate.schemas import LocationRequest, NameRequest
 from app.modules.college import service as college_service
 from app.modules.college.schemas import CreateCollegeRequest
 from app.modules.courses import service as courses_service
@@ -1198,9 +1203,13 @@ async def _account_audit(
     user_id: uuid.UUID,
     kind: str,
     invitation: str,
+    prefilled: list[str],
     tenant_id: uuid.UUID | None = None,
     request_id: str | None,
 ) -> None:
+    """`prefilled` names the answers staff gave, never their values: which
+    answers on a form were ours rather than the person's is what a later
+    dispute needs, and the values are on the form itself."""
     await audit_event(
         session,
         action=AuditAction.ACCOUNT_PROVISIONED,
@@ -1210,7 +1219,41 @@ async def _account_audit(
         target_id=user_id,
         tenant_id=tenant_id,
         request_id=request_id,
-        metadata={"kind": kind, "invitation": invitation},
+        metadata={"kind": kind, "invitation": invitation, "prefilled": prefilled},
+    )
+
+
+def _prefill(answers: dict[str, Any] | None, **own: Any) -> dict[str, Any]:
+    """Staff's answers, with the organisation's own fields over the same
+    codes so the form and the organisation cannot start out disagreeing."""
+    merged = {**(answers or {}), **{code: v for code, v in own.items() if v is not None}}
+    return {code: value for code, value in merged.items() if value is not None}
+
+
+def account_forms() -> AccountFormsResponse:
+    """The two onboarding forms as staff may fill them, for the console's
+    invitation screen. Undertakings and documents are left out."""
+    kyb = kyb_service.form_definition(staff=True)
+    college = college_service.form_definition(staff=True)
+    return AccountFormsResponse(
+        employer=AccountForm(
+            code=kyb.code,
+            version=kyb.version,
+            sections=kyb.sections,
+            options={
+                source: [AccountFormOption(code=o.code, label=o.label) for o in items]
+                for source, items in kyb.options.items()
+            },
+        ),
+        college=AccountForm(
+            code=college["code"],
+            version=college["version"],
+            sections=college["sections"],
+            options={
+                source: [AccountFormOption(**option) for option in items]
+                for source, items in college_service.form_options().items()
+            },
+        ),
     )
 
 
@@ -1221,20 +1264,40 @@ async def provision_candidate(
     payload: ProvisionCandidateRequest,
     request_id: str | None = None,
 ) -> ProvisionedAccountResponse:
-    """A candidate account, claimed at first sign-in. The candidate names
-    themselves, uploads a CV and subscribes as any candidate does -- and links
-    to a college themselves, because that link is their consent."""
-    account = await identity_service.provision_candidate(session, email=payload.email)
+    """A candidate account, claimed at first sign-in. Staff may give the name
+    and location the app asks at sign-up (2026-10-03); the candidate uploads
+    a CV and subscribes as any candidate does -- and links to a college
+    themselves, because that link is their consent."""
+    name = (
+        _payload(NameRequest, full_name=payload.full_name)
+        if payload.full_name is not None
+        else None
+    )
+    location = (
+        _payload(LocationRequest, city=payload.city, state_code=payload.state_code)
+        if payload.city is not None or payload.state_code is not None
+        else None
+    )
+    user_id = await identity_service.create_candidate_account(session, email=payload.email)
+    await candidate_service.prefill_profile(session, user_id=user_id, name=name, location=location)
+    given = {
+        "full_name": name.full_name if name else None,
+        "city": location.city if location else None,
+        "state_code": location.state_code if location else None,
+    }
+    prefilled = [code for code, value in given.items() if value]
+    invitation = await identity_service.invitation_outcome_for(session, user_id=user_id)
     await _account_audit(
         session,
         ctx,
-        user_id=account.user_id,
+        user_id=user_id,
         kind="CANDIDATE",
-        invitation=account.invitation,
+        invitation=invitation,
+        prefilled=prefilled,
         request_id=request_id,
     )
     return ProvisionedAccountResponse(
-        user_id=account.user_id, kind="CANDIDATE", invitation=account.invitation
+        user_id=user_id, kind="CANDIDATE", invitation=invitation, prefilled=prefilled
     )
 
 
@@ -1245,16 +1308,26 @@ async def provision_employer(
     payload: ProvisionEmployerRequest,
     request_id: str | None = None,
 ) -> ProvisionedAccountResponse:
+    """The organisation, its owner, and a KYB draft of what staff know about
+    it. The owner accepts the undertakings, uploads documents and submits --
+    with approval off, submitting *is* approval, so it is never ours to do."""
     organisation = _payload(
         CreateOrganisationRequest,
         legal_name=payload.legal_name,
         employer_type=payload.employer_type,
         industry=payload.industry,
     )
+    answers = _prefill(
+        payload.kyb_answers,
+        legal_name=organisation.legal_name,
+        employer_type=organisation.employer_type,
+        industry=organisation.industry,
+    )
     owner_id = await identity_service.provision_business_user(session, email=payload.owner_email)
     row = await employer_service.create_organisation(
         session, user_id=owner_id, payload=organisation, actor_id=ctx.user_id, actor_role=ctx.role
     )
+    await kyb_service.prefill_draft(session, tenant_id=row.tenant_id, answers=answers)
     invitation = await identity_service.invitation_outcome_for(session, user_id=owner_id)
     await _account_audit(
         session,
@@ -1262,6 +1335,7 @@ async def provision_employer(
         user_id=owner_id,
         kind="EMPLOYER",
         invitation=invitation,
+        prefilled=sorted(answers),
         tenant_id=row.tenant_id,
         request_id=request_id,
     )
@@ -1271,6 +1345,7 @@ async def provision_employer(
         tenant_id=row.tenant_id,
         role=identity_service.EMPLOYER_OWNER_ROLE,
         invitation=invitation,
+        prefilled=sorted(answers),
     )
 
 
@@ -1281,13 +1356,21 @@ async def provision_college(
     payload: ProvisionCollegeRequest,
     request_id: str | None = None,
 ) -> ProvisionedAccountResponse:
+    """The college, its admin, and an onboarding draft of what staff know
+    about it. The admin accepts the undertakings and submits."""
     college = _payload(
         CreateCollegeRequest, name=payload.name, institution_type=payload.institution_type
+    )
+    answers = _prefill(
+        payload.onboarding_answers,
+        legal_name=college.name,
+        institution_type=college.institution_type,
     )
     admin_id = await identity_service.provision_business_user(session, email=payload.admin_email)
     row = await college_service.create_college(
         session, user_id=admin_id, payload=college, actor_id=ctx.user_id, actor_role=ctx.role
     )
+    await college_service.prefill_onboarding(session, tenant_id=row.tenant_id, answers=answers)
     invitation = await identity_service.invitation_outcome_for(session, user_id=admin_id)
     await _account_audit(
         session,
@@ -1295,6 +1378,7 @@ async def provision_college(
         user_id=admin_id,
         kind="COLLEGE",
         invitation=invitation,
+        prefilled=sorted(answers),
         tenant_id=row.tenant_id,
         request_id=request_id,
     )
@@ -1304,6 +1388,7 @@ async def provision_college(
         tenant_id=row.tenant_id,
         role=identity_service.COLLEGE_ADMIN_ROLE,
         invitation=invitation,
+        prefilled=sorted(answers),
     )
 
 

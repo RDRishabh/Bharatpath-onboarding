@@ -119,6 +119,22 @@ export const collegeSettingsApi = baseApi.injectEndpoints({
       ],
     }),
 
+    createCollegeOrganisation: builder.mutation<
+      CollegeOrganisation,
+      { name: string; institutionType: string }
+    >({
+      query: ({ name, institutionType }) => ({
+        url: "/college/organisation",
+        method: "POST",
+        body: { name, institution_type: institutionType },
+      }),
+      transformResponse: mapCollegeOrganisation,
+      invalidatesTags: [
+        { type: "College", id: "ORGANISATION" },
+        { type: "College", id: "ONBOARDING" },
+      ],
+    }),
+
     updateCollegeOrganisation: builder.mutation<
       CollegeOrganisation,
       { name: string; institutionType: string | null }
@@ -252,6 +268,7 @@ export const collegeSettingsApi = baseApi.injectEndpoints({
 
 export const {
   useGetCollegeOrganisationQuery,
+  useCreateCollegeOrganisationMutation,
   useUpdateCollegeOrganisationMutation,
   useGetCollegeTeamQuery,
   useAddCollegeTeamMemberMutation,

@@ -3,7 +3,7 @@
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dropdown } from "@/components/ui/dropdown";
-import { ErrorState } from "@/components/ui";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import { usePageHeader } from "@/components/layout/header-context";
 
 import { JobsTable } from "./jobs-table";
@@ -205,7 +205,7 @@ export function JobsPage() {
 
                 {isError ? (
                     <div className="px-5 py-14">
-                        <ErrorState
+                        <EmployerErrorState
                             variant="block"
                             error={error}
                             title="Couldn't load jobs"

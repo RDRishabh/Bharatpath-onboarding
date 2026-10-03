@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { ConfirmModal } from "@/components/ui";
 import { usePageHeader } from "@/components/layout/header-context";
 import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -71,42 +72,22 @@ export function EmployerSettingsPage() {
       {settings.paymentModalOpen && <AddPaymentMethodModal />}
       {settings.checkoutModalOpen && <BuyCreditsModal />}
 
-      {settings.removeMemberId && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/35 p-5">
-          <div className="w-full max-w-[440px] rounded-[13px] border border-[#dfe4ea] bg-white p-5 shadow-[0_20px_50px_rgba(15,23,42,0.18)]">
-            <h3 className="m-0 text-[15px] font-bold">
-              Remove team member?
-            </h3>
-
-            <p className="mt-2 text-xs leading-[18px] text-[#718096]">
-              This member will immediately lose access to the employer account.
-            </p>
-
-            <div className="mt-[18px] flex justify-end gap-2">
-              <button
-                type="button"
-                className="min-h-9 cursor-pointer rounded-lg border border-[#d6dbe2] bg-white px-3.5 text-xs font-bold text-[#172033]"
-                onClick={() => dispatch(cancelRemoveMember())}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                className="min-h-9 cursor-pointer rounded-lg border border-[#c0392b] bg-[#c0392b] px-3.5 text-xs font-bold text-white"
-                disabled={isRemoving}
-                onClick={() => {
-                  if (!settings.removeMemberId) return;
-                  void removeMember(settings.removeMemberId).unwrap().then(() => dispatch(confirmRemoveMember())).catch(() => undefined);
-                }}
-              >
-                Remove member
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <ConfirmModal
+        open={Boolean(settings.removeMemberId)}
+        title="Remove team member?"
+        description="This member will immediately lose access to the employer account."
+        confirmLabel="Remove member"
+        tone="danger"
+        confirmLoading={isRemoving}
+        onClose={() => dispatch(cancelRemoveMember())}
+        onConfirm={() => {
+          if (!settings.removeMemberId) return;
+          void removeMember(settings.removeMemberId)
+            .unwrap()
+            .then(() => dispatch(confirmRemoveMember()))
+            .catch(() => undefined);
+        }}
+      />
     </div>
   );
 }

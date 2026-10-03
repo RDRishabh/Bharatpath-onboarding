@@ -74,9 +74,10 @@ Console routes (`/admin`, PLATFORM_ADMIN):
 
 | Route | Creates |
 |---|---|
-| `POST /admin/accounts/candidates` `{email}` | A candidate account |
-| `POST /admin/accounts/employers` `{owner_email, legal_name, employer_type?, industry?}` | An employer and its owner |
-| `POST /admin/accounts/colleges` `{admin_email, name, institution_type}` | A college and its admin |
+| `GET /admin/accounts/forms` | The employer (KYB) and college onboarding forms as staff may fill them |
+| `POST /admin/accounts/candidates` `{email, full_name?, city?, state_code?}` | A candidate account |
+| `POST /admin/accounts/employers` `{owner_email, legal_name, employer_type?, industry?, kyb_answers?}` | An employer and its owner |
+| `POST /admin/accounts/colleges` `{admin_email, name, institution_type, onboarding_answers?}` | A college and its admin |
 | `POST /admin/tenants/{tenant_id}/members` `{email, role}` | A member of an existing employer or college |
 | `POST /admin/accounts/{user_id}/resend-invitation` | The email again; support can do this too |
 
@@ -91,6 +92,21 @@ Response `invitation` is `SENT`, or `ALREADY_REGISTERED` if the person already h
 
 - **If Cognito refuses, nothing is created** (502 `account_directory_unavailable`).
 - **Staff cannot link a student to a college.** Linking is the student's consent, so they do it themselves after signing in, with a code or by accepting the college's invitation.
+
+#### Staff fill the onboarding in for them (2026-10-03)
+
+Staff creating an account can send what they already know with it. (No console screen for this yet; it is backend only.) It is saved as a **draft, never submitted**. The person signs in with the emailed password and finds the form already filled.
+
+| Invited | Staff may fill | Stays with the person |
+|---|---|---|
+| Employer | Every KYB answer: organisation, identifiers, address, contact (`kyb_answers`) | The undertakings, the documents, and **submitting**. With approval off, submitting *is* approval |
+| College | Every onboarding answer: institution, address, placement office, cohort (`onboarding_answers`) | The undertakings and submitting |
+| Candidate | Name, city, state | CV upload and confirmation, the questionnaire, any college link |
+
+- **The field codes come from `GET /admin/accounts/forms`**, the published form definitions minus every `CHECKBOX` (on these forms always an undertaking) and `FILE`. Sending one anyway is 422 `kyb_answers_invalid` / `college_onboarding_invalid` with issue `not_staff_fillable`, even as `false`.
+- Answers are validated like the person's own partial save. **Any refusal creates nothing and emails nobody**: the rows are written first and the invitation last, in one transaction.
+- `legal_name`, `employer_type`, `industry` (and a college's `name`, `institution_type`) are copied into the draft even without `kyb_answers`, so nobody types the organisation's name twice. They win over the same codes in the answers.
+- The response's `prefilled` lists the codes saved. The `account_provisioned` audit row records the same codes, **not the values**, so it is always clear which answers were ours rather than the person's.
 
 ### 4. Organisation email invitation
 

@@ -297,15 +297,6 @@ async def add_team_member(
 InvitationPool = Literal["CANDIDATE", "BUSINESS"]
 
 
-@dataclass(frozen=True, slots=True)
-class ProvisionedAccount:
-    user_id: uuid.UUID
-    pool: str
-    #: SENT, or ALREADY_REGISTERED when the person had a sign-in already --
-    #: no email went out and they should sign in as they normally do.
-    invitation: InviteOutcome
-
-
 async def send_invitation(*, pool: InvitationPool, email: str) -> InviteOutcome:
     """Ask Cognito for a sign-in for `email`. Raises
     `AccountDirectoryUnavailableError`, which rolls the caller's rows back."""
@@ -318,10 +309,14 @@ async def send_invitation(*, pool: InvitationPool, email: str) -> InviteOutcome:
     return outcome
 
 
-async def provision_candidate(session: AsyncSession, *, email: str) -> ProvisionedAccount:
+async def create_candidate_account(session: AsyncSession, *, email: str) -> uuid.UUID:
     """A candidate account for `email`, waiting to be claimed. Refused if the
     address has any account already -- staff should tell that person to sign
-    in, not make them a second one."""
+    in, not make them a second one.
+
+    **Sends nothing**, like `provision_business_user`: the caller writes
+    whatever else it has, then invites last (`invitation_outcome_for`), so a
+    refusal in between emails nobody."""
     address = normalise_email(email)
     if await repository.user_by_email(session, email=address) is not None:
         raise AccountExistsError()
@@ -329,8 +324,7 @@ async def provision_candidate(session: AsyncSession, *, email: str) -> Provision
     if user.pool != "CANDIDATE" or user.cognito_sub is not None:
         # Lost a race with another request for the same address.
         raise AccountExistsError()
-    outcome = await send_invitation(pool="CANDIDATE", email=address)
-    return ProvisionedAccount(user_id=user.id, pool="CANDIDATE", invitation=outcome)
+    return user.id
 
 
 async def provision_business_user(session: AsyncSession, *, email: str) -> uuid.UUID:

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Skeleton } from "@/components/common/loading";
 import { AppSelect } from "@/components/ui/app-select";
-import { ErrorState, TablePagination } from "@/components/ui";
+import { TablePagination } from "@/components/ui";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   askRemoveMember,
@@ -198,7 +199,7 @@ export function TeamTab() {
           </div>
         ) : isError ? (
           <div className="px-[18px] py-5">
-            <ErrorState fallback="Unable to load team members. Please try again." />
+            <EmployerErrorState fallback="Unable to load team members. Please try again." />
           </div>
         ) : filteredMembers.length === 0 ? (
           <div className="px-[18px] py-5 text-xs text-[#718096]">

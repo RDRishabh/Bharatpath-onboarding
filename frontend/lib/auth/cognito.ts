@@ -6,6 +6,7 @@ import {
   resendSignUpCode,
   signIn,
   signOut,
+  signUp,
 } from "aws-amplify/auth";
 
 export type CognitoPoolType = "CANDIDATE" | "BUSINESS";
@@ -96,15 +97,18 @@ export function formatCognitoError(error: unknown): string {
     return "Authentication failed. Please check your credentials.";
   }
 
-  const err = error as { name?: string; message?: string };
+  const err = error as { name?: string };
   const name = err.name ?? "";
-  const msg = err.message ?? "";
 
   switch (name) {
     case "UserNotFoundException":
-      return "No account found with this email in the selected pool. Please check your account type or sign up.";
+      return "No account was found for this email and account type. Please check your selection or sign up.";
     case "NotAuthorizedException":
       return "Incorrect email or password. Please verify your credentials.";
+    case "UsernameExistsException":
+      return "An account with this email already exists. Sign in instead.";
+    case "InvalidPasswordException":
+      return "Password does not meet the requirements.";
     case "UserNotConfirmedException":
       return "Your account email is not yet confirmed. Please verify your code.";
     case "PasswordResetRequiredException":
@@ -113,7 +117,7 @@ export function formatCognitoError(error: unknown): string {
     case "TooManyRequestsException":
       return "Too many attempts. Please wait a moment and try again.";
     case "InvalidParameterException":
-      return msg || "Invalid email or password format.";
+      return "Invalid email or password format.";
     case "CodeMismatchException":
       return "Invalid verification code. Please check and try again.";
     case "ExpiredCodeException":
@@ -121,7 +125,7 @@ export function formatCognitoError(error: unknown): string {
     case "EnableSoftwareTokenMFAException":
       return "Could not enable authenticator app MFA. Please try again.";
     default:
-      return msg || "Sign-in failed. Please try again.";
+      return "Sign-in failed. Please try again.";
   }
 }
 
@@ -140,6 +144,12 @@ export async function signInWithCognito({
   pool,
 }: CognitoSignInParams): Promise<CognitoSignInResult> {
   configureAmplify(pool);
+
+  // Amplify keeps its tokens in browser storage and refuses `signIn` with
+  // "There is already a signed in user" while any are there, even expired
+  // ones or another pool's. Our own session is the backend token, so a fresh
+  // sign-in always starts clean.
+  await signOutCognito();
 
   const trimmedEmail = email.trim();
   const response = await signIn({
@@ -252,6 +262,21 @@ export async function verifyTotpSetupCognito(
   throw new Error(
     `Unsupported step after TOTP setup: ${response.nextStep.signInStep}`,
   );
+}
+
+export async function signUpWithCognito({
+  email,
+  password,
+  pool,
+}: CognitoSignInParams): Promise<void> {
+  configureAmplify(pool);
+
+  const trimmedEmail = email.trim();
+  await signUp({
+    username: trimmedEmail,
+    password,
+    options: { userAttributes: { email: trimmedEmail } },
+  });
 }
 
 export async function confirmSignUpCognito(

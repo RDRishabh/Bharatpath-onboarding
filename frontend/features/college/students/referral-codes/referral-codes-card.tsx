@@ -12,11 +12,13 @@ import type {
   ReferralCodeState,
 } from "@/store/college/referral-codes";
 import { InfiniteScrollArea } from "../shared";
+import { CollegeErrorState } from "@/features/college/components/college-error-state";
 
 export interface ReferralCodesCardProps {
   codes: ReferralCode[];
   isLoading: boolean;
   isError: boolean;
+  error?: unknown;
   hasMore: boolean;
   isLoadingMore: boolean;
   loadMoreError: boolean;
@@ -57,6 +59,7 @@ export function ReferralCodesCard({
   codes,
   isLoading,
   isError,
+  error,
   hasMore,
   isLoadingMore,
   loadMoreError,
@@ -111,21 +114,12 @@ export function ReferralCodesCard({
           <Skeleton className="h-14 w-full" radius={12} />
         </div>
       ) : isError ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-[#f3d6d6] bg-[#fdf2f2] px-4 py-5 text-center"
-        >
-          <p className="text-[13px] text-[#9d2d2d]">
-            Referral codes could not be loaded.
-          </p>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-2 text-[12px] font-semibold text-[#3566b8] hover:underline"
-          >
-            Retry
-          </button>
-        </div>
+        <CollegeErrorState
+          error={error}
+          title="Referral codes unavailable"
+          fallback="Referral codes could not be loaded."
+          onRetry={onRetry}
+        />
       ) : codes.length === 0 ? (
         <p className="rounded-xl border border-dashed border-[#dfe2e8] bg-[#fcfdfe] px-4 py-6 text-center text-[13px] text-[#777f90]">
           No referral codes yet. Use “Invite students” to issue one.

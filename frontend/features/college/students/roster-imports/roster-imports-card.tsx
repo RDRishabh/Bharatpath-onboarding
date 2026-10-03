@@ -18,11 +18,13 @@ import type {
   RosterImportState,
 } from "@/store/college/roster-imports";
 import { InfiniteScrollArea } from "../shared";
+import { CollegeErrorState } from "@/features/college/components/college-error-state";
 
 export interface RosterImportsCardProps {
   imports: RosterImport[];
   isLoading: boolean;
   isError: boolean;
+  error?: unknown;
   hasMore: boolean;
   isLoadingMore: boolean;
   loadMoreError: boolean;
@@ -57,6 +59,7 @@ export function RosterImportsCard({
   imports,
   isLoading,
   isError,
+  error,
   hasMore,
   isLoadingMore,
   loadMoreError,
@@ -119,21 +122,12 @@ export function RosterImportsCard({
           <Skeleton className="h-20 w-full" radius={12} />
         </div>
       ) : isError ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-[#f3d6d6] bg-[#fdf2f2] px-4 py-5 text-center"
-        >
-          <p className="text-[13px] text-[#9d2d2d]">
-            Roster imports could not be loaded.
-          </p>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-2 text-[12px] font-semibold text-[#3566b8] hover:underline"
-          >
-            Retry
-          </button>
-        </div>
+        <CollegeErrorState
+          error={error}
+          title="Roster imports unavailable"
+          fallback="Roster imports could not be loaded."
+          onRetry={onRetry}
+        />
       ) : imports.length === 0 ? (
         <p className="rounded-xl border border-dashed border-[#dfe2e8] bg-[#fcfdfe] px-4 py-6 text-center text-[13px] text-[#777f90]">
           No roster imports yet. Upload a CSV to preview and invite students.

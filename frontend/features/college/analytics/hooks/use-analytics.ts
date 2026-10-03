@@ -164,6 +164,10 @@ export function useAnalytics() {
 
   return {
     data,
+    seats: seatsQuery.data ?? null,
+    // The first failed report, so a missing subscription is shown as that.
+    reportError:
+      overviewQuery.error ?? placementsQuery.error ?? funnelQuery.error,
     isLoading:
       overviewQuery.isLoading ||
       placementsQuery.isLoading ||

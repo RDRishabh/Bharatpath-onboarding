@@ -15,8 +15,11 @@ from app.core.forms import (
     FormDefinition,
     FormField,
     FormSection,
+    staff_fillable_sections,
     validate_answers,
+    validate_staff_answers,
 )
+from app.modules.college.forms import COLLEGE_FORM
 from app.modules.kyb.forms import KYB_FORM
 
 FORM = FormDefinition(
@@ -135,3 +138,47 @@ def test_the_real_kyb_form_names_only_sources_the_service_can_supply() -> None:
 def test_issues_are_data_not_sentences() -> None:
     [issue] = validate_answers(FORM, {"kind": "C"}, options=OPTIONS, complete=False)
     assert issue == AnswerIssue("kind", "not_an_option")
+
+
+# ---------------------------------------------------------------------------
+# Answers staff enter for someone (2026-10-03)
+# ---------------------------------------------------------------------------
+def test_staff_may_save_a_partial_draft_of_plain_answers() -> None:
+    answers = {"name": "Acme", "pan": "AABCU9603R"}
+    assert validate_staff_answers(FORM, answers, options=OPTIONS) == ()
+
+
+@pytest.mark.parametrize("answers", [{"agree": True}, {"agree": False}, {"doc": "x"}])
+def test_staff_can_neither_accept_an_undertaking_nor_attach_a_document(answers: dict) -> None:
+    """Refused even as `false`: the field is not staff's to send at all."""
+    [issue] = validate_staff_answers(FORM, {**answers, "name": "Acme"}, options=OPTIONS)
+    assert issue == AnswerIssue(next(iter(answers)), "not_staff_fillable")
+
+
+def test_staff_answers_are_otherwise_validated_like_anyone_s() -> None:
+    issues = validate_staff_answers(FORM, {"pan": "nope", "zzz": 1}, options=OPTIONS)
+    assert {(i.field, i.code) for i in issues} == {
+        ("pan", "invalid_format"),
+        ("zzz", "unknown_field"),
+    }
+
+
+def test_the_staff_form_leaves_out_undertakings_documents_and_emptied_sections() -> None:
+    for form in (KYB_FORM, COLLEGE_FORM):
+        sections = staff_fillable_sections(form)
+        fields = [f for s in sections for f in s.fields]
+        assert fields and all(f.type not in ("CHECKBOX", "FILE") for f in fields)
+        assert all(s.fields for s in sections)
+        assert "undertakings" not in {s.code for s in sections}
+
+
+@pytest.mark.parametrize("form", [KYB_FORM, COLLEGE_FORM], ids=lambda f: f.code)
+def test_every_checkbox_on_a_real_form_is_an_undertaking(form: FormDefinition) -> None:
+    """Staff may fill anything but a CHECKBOX or a FILE, because on these
+    forms a checkbox is an acceptance and staff accepting for an organisation
+    is no acceptance. A checkbox that is not one is a decision to make in
+    `app.core.forms`, not a field to slip in."""
+    for section in form.sections:
+        for spec in section.fields:
+            if spec.type == "CHECKBOX":
+                assert section.code == "undertakings", spec.code

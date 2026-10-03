@@ -21,10 +21,10 @@ import {
 import {
   EmptyState,
   MonogramTile,
-  NoteStrip,
   PillButton,
   StatusChip,
   StudentCard,
+  StudentErrorState,
 } from "@/features/student/components";
 import { StudentApplicationDetailSkeleton } from "@/features/student/loading";
 import { StudentPage, StudentTopBar } from "@/features/student/shell";
@@ -196,9 +196,11 @@ export function ApplicationDetail() {
           ) : null}
 
           {actionError ? (
-            <NoteStrip tone="amber">
-              {getApiErrorMessage(actionError, "Could not update the application.")}
-            </NoteStrip>
+            <StudentErrorState
+              variant="inline"
+              error={actionError}
+              fallback="Could not update the application."
+            />
           ) : null}
         </div>
       </div>

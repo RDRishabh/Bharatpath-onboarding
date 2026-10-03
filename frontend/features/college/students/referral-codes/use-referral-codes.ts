@@ -23,6 +23,7 @@ export function useReferralCodes() {
     referralCodes,
     isLoadingReferralCodes: query.isLoading,
     referralCodesError: query.isError && query.data === undefined,
+    referralCodesErrorValue: query.error,
     isLoadingMoreReferralCodes: query.isFetchingNextPage,
     hasMoreReferralCodes: query.hasNextPage,
     referralCodesLoadMoreError:

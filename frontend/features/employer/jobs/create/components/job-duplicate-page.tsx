@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import { useGetEmployerJobQuery } from "@/store/employer/jobs";
 
 import { JobFormSkeleton } from "../../components/job-form-skeleton";
@@ -28,7 +28,7 @@ export function JobDuplicatePage({
   if (isError || !sourceJob) {
     return (
       <main className="grid min-h-full place-items-center bg-[#f7f8fa] p-6">
-        <ErrorState
+        <EmployerErrorState
           variant="block"
           error={error}
           fallback="Couldn't load the job to duplicate."

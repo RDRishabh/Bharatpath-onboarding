@@ -331,6 +331,77 @@ export type AdminCandidateListParams = AdminListParams & {
   email?: string;
 };
 
+export type DiscountAudience = "CANDIDATE" | "EMPLOYER" | "COLLEGE";
+export type DiscountStatus = "ACTIVE" | "SCHEDULED" | "EXPIRED" | "EXHAUSTED" | "DISABLED";
+
+export type DiscountCode = {
+  id: string;
+  code: string;
+  audience: DiscountAudience;
+  percent_off: number | null;
+  amount_off_minor: number | null;
+  valid_from: string;
+  valid_until: string | null;
+  usage_limit: number | null;
+  usage_count: number;
+  status: DiscountStatus;
+  label: string | null;
+  created_by: string;
+  created_at: string;
+  disabled_at: string | null;
+  disabled_by: string | null;
+};
+
+export type CreateDiscountCodeRequest = {
+  code?: string;
+  audience: DiscountAudience;
+  percent_off?: number;
+  amount_off_minor?: number;
+  valid_from?: string;
+  valid_until?: string;
+  usage_limit?: number;
+  label?: string;
+};
+
+export type DiscountCodesPage = CursorPage<DiscountCode> & { policy_version: string };
+export type DiscountRedemption = {
+  id: string;
+  payment_id: string;
+  user_id: string;
+  subscriber_type: string;
+  subscriber_id: string;
+  organisation: string | null;
+  list_amount_minor: number;
+  discount_minor: number;
+  amount_minor: number;
+  redeemed_at: string;
+};
+
+export type ProvisionedAccountResponse = {
+  user_id: string;
+  kind: "CANDIDATE" | "EMPLOYER" | "COLLEGE" | "MEMBER";
+  tenant_id: string | null;
+  role: string | null;
+  invitation: "SENT" | "ALREADY_REGISTERED";
+};
+
+export type ProvisionCandidateRequest = {
+  email: string;
+};
+
+export type ProvisionEmployerRequest = {
+  owner_email: string;
+  legal_name: string;
+  employer_type?: string;
+  industry?: string;
+};
+
+export type ProvisionCollegeRequest = {
+  admin_email: string;
+  name: string;
+  institution_type: string;
+};
+
 export type AdminDashboardResponse = {
   generated_at: string;
   kyb: {
@@ -478,6 +549,41 @@ export const adminApi = baseApi.injectEndpoints({
       query: (params) => ({ url: "/admin/candidates", params: params ?? undefined }),
       providesTags: ["Admin"],
     }),
+    getAdminDiscountCodes: builder.query<DiscountCodesPage, AdminListParams & { audience?: DiscountAudience }>({
+      query: (params) => ({ url: "/admin/discount-codes", params }),
+      providesTags: [{ type: "Admin", id: "DISCOUNT_CODES" }],
+    }),
+    getAdminDiscountCode: builder.query<DiscountCode, string>({
+      query: (id) => `/admin/discount-codes/${id}`,
+      providesTags: (_result, _error, id) => [{ type: "Admin", id: `DISCOUNT_CODE_${id}` }],
+    }),
+    createAdminDiscountCode: builder.mutation<DiscountCode, CreateDiscountCodeRequest>({
+      query: (body) => ({ url: "/admin/discount-codes", method: "POST", body }),
+      invalidatesTags: [{ type: "Admin", id: "DISCOUNT_CODES" }],
+    }),
+    disableAdminDiscountCode: builder.mutation<DiscountCode, string>({
+      query: (id) => ({ url: `/admin/discount-codes/${id}/disable`, method: "POST" }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: "Admin", id: "DISCOUNT_CODES" },
+        { type: "Admin", id: `DISCOUNT_CODE_${id}` },
+      ],
+    }),
+    getAdminDiscountRedemptions: builder.query<CursorPage<DiscountRedemption>, AdminListParams & { id: string }>({
+      query: ({ id, ...params }) => ({ url: `/admin/discount-codes/${id}/redemptions`, params }),
+      providesTags: (_result, _error, { id }) => [{ type: "Admin", id: `DISCOUNT_REDEMPTIONS_${id}` }],
+    }),
+    provisionAdminCandidate: builder.mutation<ProvisionedAccountResponse, ProvisionCandidateRequest>({
+      query: (body) => ({ url: "/admin/accounts/candidates", method: "POST", body }),
+      invalidatesTags: ["Admin"],
+    }),
+    provisionAdminEmployer: builder.mutation<ProvisionedAccountResponse, ProvisionEmployerRequest>({
+      query: (body) => ({ url: "/admin/accounts/employers", method: "POST", body }),
+      invalidatesTags: ["Admin"],
+    }),
+    provisionAdminCollege: builder.mutation<ProvisionedAccountResponse, ProvisionCollegeRequest>({
+      query: (body) => ({ url: "/admin/accounts/colleges", method: "POST", body }),
+      invalidatesTags: ["Admin"],
+    }),
     suspendAdminTenant: builder.mutation<SuspensionResponse, { tenantId: string; reason: string }>({
       query: ({ tenantId, reason }) => ({ url: `/admin/tenants/${tenantId}/suspend`, method: "POST", body: { reason } }),
       invalidatesTags: ["Admin"],
@@ -544,6 +650,11 @@ export const {
   useGetAdminIdentityQuery,
   useLazyGetAdminIdentityQuery,
   useGetAdminDashboardQuery,
+  useGetAdminDiscountCodesQuery,
+  useGetAdminDiscountCodeQuery,
+  useCreateAdminDiscountCodeMutation,
+  useDisableAdminDiscountCodeMutation,
+  useGetAdminDiscountRedemptionsQuery,
   useGetAdminSearchFiltersQuery,
   useGetAdminSearchFilterQuery,
   useCreateAdminSearchFilterMutation,
@@ -557,6 +668,9 @@ export const {
   useResolveAdminIntegritySignalMutation,
   useGetAdminTenantsQuery,
   useGetAdminCandidatesQuery,
+  useProvisionAdminCandidateMutation,
+  useProvisionAdminEmployerMutation,
+  useProvisionAdminCollegeMutation,
   useSuspendAdminTenantMutation,
   useReinstateAdminTenantMutation,
   useGetAdminTenantSuspensionsQuery,

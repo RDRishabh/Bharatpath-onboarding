@@ -100,6 +100,8 @@ export function useDashboard() {
       overviewQuery.isLoading ||
       seatsQuery.isLoading ||
       referralCodeQuery.isLoading,
+    seats: seatsQuery.data ?? null,
+    overviewError: overviewQuery.error,
     isLoadingOverview: overviewQuery.isLoading,
     isLoadingSeats: seatsQuery.isLoading || seatsQuery.isFetching,
     isLoadingReferralCodes: referralCodeQuery.isLoading,

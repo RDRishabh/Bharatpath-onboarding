@@ -869,6 +869,11 @@ for app teams is `docs/signup-and-accounts.md`.
   `LocalAccountDirectory.sent`. An owner adding a never-signed-in colleague
   sends the same email. Staff never link a student to a college: that link is
   the student's consent.
+- **Staff may fill the onboarding, never finish it** (2026-10-03). The
+  invites take `kyb_answers` / `onboarding_answers` / name and location,
+  saved as an unsubmitted draft. `app.core.forms.validate_staff_answers`
+  refuses every CHECKBOX (an undertaking) and FILE. Never let staff submit:
+  with approval off, a KYB submit is an approval nobody at the employer gave.
 - **First sign-in adopts a pre-made row by email _and pool_** (`_adopt_unlinked`).
   A contact already held by the other pool is 403 `account_contact_in_use`,
   not a 500.

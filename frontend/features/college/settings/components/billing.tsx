@@ -1,12 +1,19 @@
 "use client";
 
+import { useState, type ReactNode } from "react";
+
 import type {
+  CheckoutResult,
   CollegePlan,
   CollegeSeats,
   CollegeSubscription,
 } from "@/store/college/types";
 
 import { useSettings } from "../hooks/use-settings";
+import { DiscountCodeField, type DiscountPreview } from "@/components/billing/discount-code-field";
+import { SimulatedPaymentDialog } from "@/components/billing/simulated-payment-dialog";
+import { isStubPaymentUrl } from "@/store/api/payment.api";
+import { usePreviewCollegeDiscountMutation } from "@/store/college/billing/billing.api";
 
 function formatCurrency(amountMinor: number, currency: string) {
   return new Intl.NumberFormat("en-IN", {
@@ -38,11 +45,15 @@ const SUBSCRIPTION_LABELS: Record<CollegeSubscription["state"], string> = {
 };
 
 export function Billing() {
+  const [previewDiscount] = usePreviewCollegeDiscountMutation();
+  const [discounts, setDiscounts] = useState<Record<string, { code: string | null; price: DiscountPreview | null }>>({});
+  const [simulatedCheckout, setSimulatedCheckout] = useState<CheckoutResult | null>(null);
   const {
     seats,
     subscription,
     plans,
     isLoadingBilling,
+    refetchBilling,
     checkout,
     isCheckingOut,
     cancelSubscription,
@@ -52,9 +63,11 @@ export function Billing() {
   const collegePlans = plans.filter((plan) => plan.audience === "COLLEGE");
 
   const handleCheckout = async (planCode: string) => {
-    const result = await checkout(planCode);
-    if (result.redirectUrl) {
-      window.location.href = result.redirectUrl;
+    const result = await checkout(planCode, discounts[planCode]?.code ?? undefined);
+    if (isStubPaymentUrl(result.redirectUrl)) {
+      setSimulatedCheckout(result);
+    } else if (result.redirectUrl) {
+      window.location.assign(result.redirectUrl);
     }
   };
 
@@ -97,14 +110,41 @@ export function Billing() {
             isCheckingOut={isCheckingOut}
             onSubscribe={() => handleCheckout(plan.code)}
             divided={index > 0}
+            discount={<DiscountCodeField planCode={plan.code} preview={(args) => previewDiscount(args).unwrap()} onChange={(code, price) => setDiscounts((current) => ({ ...current, [plan.code]: { code, price } }))} />}
           />
         ))}
       </section>
+      {simulatedCheckout ? <SimulatedPaymentDialog paymentId={simulatedCheckout.paymentId} amountMinor={simulatedCheckout.amountMinor} currency={simulatedCheckout.currency} title="College subscription" onComplete={refetchBilling} onClose={() => setSimulatedCheckout(null)} /> : null}
     </div>
   );
 }
 
 function SeatBlock({ seats }: Readonly<{ seats: CollegeSeats | null }>) {
+  // No plan means no seats: say so rather than "0 / 0" and an empty bar.
+  if (seats && !seats.subscriptionActive) {
+    return (
+      <section className="flex flex-col gap-[14px] rounded-[12px] border border-[#f2d3a0] bg-[#fff8ec] p-5 shadow-[0_4px_12px_rgba(19,26,38,0.024)]">
+        <div className="flex items-center gap-[10px]">
+          <span className="flex-1 text-[14px] font-semibold leading-[18px] text-[#131A26]">
+            Seat block
+          </span>
+          <span className="whitespace-nowrap rounded-full bg-[#ffecc8] px-[10px] py-1 text-[11px] font-semibold leading-[14px] text-[#8a5a00]">
+            No subscription
+          </span>
+        </div>
+
+        <span className="text-[20px] font-bold leading-7 tracking-[-0.01em] text-[#8a5a00]">
+          No subscription bought
+        </span>
+
+        <p className="text-[12px] font-normal leading-[17px] text-[#131A26]">
+          Seats come with a plan. Choose one below to give your students access;
+          until then no seats can be used or assigned.
+        </p>
+      </section>
+    );
+  }
+
   const used = seats?.used ?? 0;
   const allocated = seats?.allocated ?? 0;
   const percentage =
@@ -227,17 +267,19 @@ function PlanRow({
   isCheckingOut,
   onSubscribe,
   divided,
+  discount,
 }: Readonly<{
   plan: CollegePlan;
   isCurrent: boolean;
   isCheckingOut: boolean;
   onSubscribe: () => void;
   divided: boolean;
+  discount: ReactNode;
 }>) {
   return (
     <div
       className={[
-        "flex items-center gap-3 px-5 py-4",
+        "grid items-center gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_auto_auto]",
         divided ? "border-t border-[#eef0f3]" : "",
       ].join(" ")}
     >
@@ -265,6 +307,7 @@ function PlanRow({
       >
         {isCurrent ? "Current" : "Choose"}
       </button>
+      <div className="md:col-span-3">{discount}</div>
     </div>
   );
 }

@@ -7,7 +7,6 @@ import {
   Circle,
   Flame,
   History,
-  RefreshCw,
   Sparkles,
   Trophy,
   Zap,
@@ -15,7 +14,6 @@ import {
 
 import { Skeleton } from "@/components/common/loading";
 import { AppSelect } from "@/components/ui/app-select";
-import { getApiErrorMessage } from "@/lib/api/error-message";
 import {
   useGetStudentStreakCalendarQuery,
   useGetStudentStreakPointsQuery,
@@ -26,8 +24,8 @@ import type {
   StudentStreak,
 } from "@/features/student/types";
 import {
-  EmptyState,
   SectionEyebrow,
+  StudentErrorState,
 } from "@/features/student/components";
 import { StudentPage, StudentTopBar } from "@/features/student/shell";
 
@@ -62,24 +60,13 @@ export function StudentStreakPage() {
       {streak.isLoading ? (
         <StreakPageSkeleton />
       ) : streak.error || !streak.data ? (
-        <div className="flex flex-col gap-4">
-          <EmptyState
-            icon={<Flame size={22} />}
-            title="Streak unavailable"
-            message={getApiErrorMessage(
-              streak.error,
-              "We could not load your daily streak.",
-            )}
-          />
-          <button
-            type="button"
-            onClick={() => void streak.refetch()}
-            className="inline-flex self-center items-center gap-2 rounded-full border border-[#DDD6C7] bg-white px-5 py-3 text-[14px] font-semibold text-[#0A1931] transition-colors hover:bg-[#F7F4EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30"
-          >
-            <RefreshCw size={15} aria-hidden="true" />
-            Try again
-          </button>
-        </div>
+        <StudentErrorState
+          icon={<Flame size={22} />}
+          title="Streak unavailable"
+          error={streak.error}
+          fallback="We could not load your daily streak."
+          onRetry={() => void streak.refetch()}
+        />
       ) : (
         <div className="grid gap-5 xl:grid-cols-12">
           <StreakHero streak={streak.data} />
@@ -679,19 +666,12 @@ function PointsActivity({
             ))}
           </div>
         ) : error ? (
-          <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center">
-            <p className="text-[13px] text-[#5F6B80]">
-              {getApiErrorMessage(error, "We could not load points activity.")}
-            </p>
-            <button
-              type="button"
-              onClick={onRetry}
-              className="inline-flex items-center gap-2 rounded-full border border-[#DDD6C7] px-4 py-2 text-[12px] font-semibold text-[#0A1931] hover:bg-[#F7F4EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30"
-            >
-              <RefreshCw size={13} aria-hidden="true" />
-              Try again
-            </button>
-          </div>
+          <StudentErrorState
+            variant="inline"
+            error={error}
+            fallback="We could not load points activity."
+            onRetry={onRetry}
+          />
         ) : rows?.length ? (
           // On xl the list is taken out of flow so the card matches the
           // Milestones card beside it, and scrolls inside that height.

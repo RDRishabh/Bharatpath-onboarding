@@ -7,6 +7,7 @@ export * from "./student.slice";
 export * from "./student.api";
 export * from "./resume.api";
 export * from "./learning.api";
+export * from "./billing.api";
 
 export const selectSavedJobIds = (state: RootState) =>
   state.student.savedJobIds;

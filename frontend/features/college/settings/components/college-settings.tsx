@@ -7,6 +7,7 @@ import { useSettings } from "../hooks/use-settings";
 import { Billing } from "./billing";
 import { CollegeOnboarding } from "./college-onboarding";
 import { CollegeProfile } from "./college-profile";
+import { seatStat } from "../../seat-stat";
 import { CollegeUsers } from "./college-users";
 
 const tabs = [
@@ -39,16 +40,7 @@ export function CollegeSettings() {
   usePageHeader(
     "Settings & Billing",
     "College profile, users, seats and payment",
-    {
-      stat: {
-        label: `${seats?.used ?? 0} of ${seats?.allocated ?? 0} seats used`,
-        progress:
-          seats && seats.allocated > 0
-            ? (seats.used / seats.allocated) * 100
-            : 0,
-        isLoading: isLoadingSeats,
-      },
-    },
+    { stat: seatStat(seats, isLoadingSeats) },
   );
 
   return (

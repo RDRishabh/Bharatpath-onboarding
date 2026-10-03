@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { AlertCircle } from "lucide-react";
 
 import { getApiErrorMessage } from "@/lib/api/error-message";
@@ -24,6 +25,8 @@ export interface ErrorStateProps {
   variant?: "inline" | "block";
   /** When provided, a "Try again" button is shown. */
   onRetry?: () => void;
+  /** Extra call to action shown beside "Try again" in the `block` variant. */
+  action?: ReactNode;
   className?: string;
 }
 
@@ -39,6 +42,7 @@ export function ErrorState({
   title,
   variant = "inline",
   onRetry,
+  action,
   className,
 }: Readonly<ErrorStateProps>) {
   const text =
@@ -69,14 +73,19 @@ export function ErrorState({
           {text}
         </p>
 
-        {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-1 cursor-pointer rounded-lg border border-[#e0aeb4] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#9f2432] transition-colors hover:bg-[#fdeef0]"
-          >
-            Try again
-          </button>
+        {(onRetry || action) && (
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="cursor-pointer rounded-lg border border-[#e0aeb4] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#9f2432] transition-colors hover:bg-[#fdeef0]"
+              >
+                Try again
+              </button>
+            )}
+            {action}
+          </div>
         )}
       </div>
     );

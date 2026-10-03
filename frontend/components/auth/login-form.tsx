@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   Briefcase,
+  Building2,
   CheckCircle2,
   Copy,
   Eye,
@@ -15,7 +16,6 @@ import {
   Loader2,
   Lock,
   Mail,
-  QrCode,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -41,6 +41,7 @@ import {
   verifyTotpSetupCognito,
 } from "@/lib/auth/cognito";
 import { setStoredToken } from "@/lib/auth/token";
+import { baseApi } from "@/store/api/base-api";
 import { setUser } from "@/store/common/slices/auth.slice";
 import { setTenant } from "@/store/common/slices/tenant.slice";
 import { useAppDispatch } from "@/store/hooks";
@@ -59,12 +60,15 @@ type AuthStep =
   | "TOTP_SETUP"
   | "CONFIRM_SIGN_UP";
 
+type AccountType = "CANDIDATE" | "EMPLOYER" | "INSTITUTION" | "ADMIN";
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
 
   const [pool, setPool] = useState<CognitoPoolType>("CANDIDATE");
+  const [accountType, setAccountType] = useState<AccountType>("CANDIDATE");
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [serverError, setServerError] = useState("");
@@ -121,7 +125,10 @@ export function LoginForm() {
 
   const enteredEmail = watch("email");
 
-  const handlePoolChange = (nextPool: CognitoPoolType) => {
+  const handleAccountTypeChange = (nextAccountType: AccountType) => {
+    const nextPool: CognitoPoolType =
+      nextAccountType === "CANDIDATE" ? "CANDIDATE" : "BUSINESS";
+    setAccountType(nextAccountType);
     setPool(nextPool);
     setValue("pool", nextPool);
     setServerError("");
@@ -143,6 +150,9 @@ export function LoginForm() {
       pool,
     );
 
+    // A different person may have used this browser; drop their cached
+    // responses (a stale `has_access` would fire paywalled calls -> 402).
+    dispatch(baseApi.util.resetApiState());
     dispatch(
       setUser({
         ...result.user,
@@ -327,45 +337,60 @@ export function LoginForm() {
 
   return (
     <div className="space-y-5">
-      {/* Pool Selector Tabs */}
-      <div className="flex rounded-xl bg-[#f0f2f6] p-1 text-sm font-medium text-[#4b5563]">
+      {/* Account type selector */}
+      <div className="grid grid-cols-4 rounded-xl bg-[#f0f2f6] p-1 text-[11px] font-medium text-[#4b5563]">
         <button
           type="button"
-          onClick={() => handlePoolChange("CANDIDATE")}
-          className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 transition ${
-            pool === "CANDIDATE"
+          aria-pressed={accountType === "CANDIDATE"}
+          onClick={() => handleAccountTypeChange("CANDIDATE")}
+          className={`flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 transition ${
+            accountType === "CANDIDATE"
               ? "bg-white font-semibold text-[#17233a] shadow-sm"
               : "hover:text-[#111827]"
           }`}
         >
           <GraduationCap className="h-4 w-4" />
-          <span>Candidate Pool</span>
+          <span>Candidate</span>
         </button>
         <button
           type="button"
-          onClick={() => handlePoolChange("BUSINESS")}
-          className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 transition ${
-            pool === "BUSINESS"
+          aria-pressed={accountType === "EMPLOYER"}
+          onClick={() => handleAccountTypeChange("EMPLOYER")}
+          className={`flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 py-2.5 transition ${
+            accountType === "EMPLOYER"
               ? "bg-white font-semibold text-[#17233a] shadow-sm"
               : "hover:text-[#111827]"
           }`}
         >
-          <Briefcase className="h-4 w-4" />
-          <span>Business Pool</span>
+          <Briefcase className="h-3.5 w-3.5 shrink-0" />
+          <span>Employer</span>
         </button>
-      </div>
-
-      {/* Pool Context Badge */}
-      <div className="flex items-center justify-between rounded-lg border border-[#e5e7eb] bg-[#f9fafb] px-3.5 py-2 text-[12px] text-[#4b5563]">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="h-3.5 w-3.5 text-[#3566b8]" />
-          <span>
-            {pool === "CANDIDATE"
-              ? "Students & Job Seekers (Cognito Pool)"
-              : "Employers, Colleges & Admins (Cognito Pool · MFA)"}
-          </span>
-        </div>
-        <span className="font-mono text-[11px] text-[#6b7280]">ap-south-1</span>
+        <button
+          type="button"
+          aria-pressed={accountType === "INSTITUTION"}
+          onClick={() => handleAccountTypeChange("INSTITUTION")}
+          className={`flex min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 py-2.5 transition ${
+            accountType === "INSTITUTION"
+              ? "bg-white font-semibold text-[#17233a] shadow-sm"
+              : "hover:text-[#111827]"
+          }`}
+        >
+          <Building2 className="h-3.5 w-3.5 shrink-0" />
+          <span>Institution</span>
+        </button>
+        <button
+          type="button"
+          aria-pressed={accountType === "ADMIN"}
+          onClick={() => handleAccountTypeChange("ADMIN")}
+          className={`flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 transition ${
+            accountType === "ADMIN"
+              ? "bg-white font-semibold text-[#17233a] shadow-sm"
+              : "hover:text-[#111827]"
+          }`}
+        >
+          <ShieldCheck className="h-4 w-4" />
+          <span>Admin</span>
+        </button>
       </div>
 
       {serverError && <ErrorState message={serverError} />}
@@ -394,9 +419,13 @@ export function LoginForm() {
                 type="email"
                 autoComplete="email"
                 placeholder={
-                  pool === "CANDIDATE"
+                  accountType === "CANDIDATE"
                     ? "candidate@example.com"
-                    : "employer@example.com"
+                    : accountType === "ADMIN"
+                      ? "admin@example.com"
+                      : accountType === "INSTITUTION"
+                        ? "institution@example.com"
+                        : "employer@example.com"
                 }
                 aria-invalid={Boolean(errors.email)}
                 {...register("email")}
@@ -459,19 +488,11 @@ export function LoginForm() {
             {isSubmitting && (
               <Loader2 className="h-4 w-4 animate-spin" />
             )}
-            {isSubmitting ? "Authenticating with Cognito..." : "Sign in"}
+            {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
 
-          <p className="text-center text-[12px] leading-5 text-[#8790a0]">
-            Protected by AWS Cognito. Uses{" "}
-            <span className="font-medium text-[#4b5563]">
-              {pool === "CANDIDATE" ? "Candidate Pool" : "Business Pool"}
-            </span>{" "}
-            credentials.
-          </p>
-
           <div className="pt-2 text-center text-[13px] text-[#687386]">
-            {pool === "CANDIDATE" ? (
+            {accountType === "CANDIDATE" ? (
               <p>
                 New candidate?{" "}
                 <Link
@@ -481,7 +502,7 @@ export function LoginForm() {
                   Create a candidate account
                 </Link>
               </p>
-            ) : (
+            ) : accountType === "EMPLOYER" ? (
               <p>
                 Need an employer account?{" "}
                 <Link
@@ -491,6 +512,18 @@ export function LoginForm() {
                   Register your organisation
                 </Link>
               </p>
+            ) : accountType === "INSTITUTION" ? (
+              <p>
+                Registering an institution?{" "}
+                <Link
+                  href="/signup/college"
+                  className="font-semibold text-[#3566b8] hover:text-[#254f96]"
+                >
+                  Create an institution account
+                </Link>
+              </p>
+            ) : (
+              <p>Admin access is provided by BharatPath.</p>
             )}
           </div>
         </form>
@@ -708,7 +741,7 @@ export function LoginForm() {
           <div className="rounded-lg border border-[#fef3c7] bg-[#fffbeb] p-3 text-sm text-[#92400e]">
             <p className="font-semibold">Confirm Your Email Address</p>
             <p className="mt-1 text-xs">
-              Cognito sent a confirmation code to {enteredEmail}. Enter it below
+              We sent a confirmation code to {enteredEmail}. Enter it below
               to activate your account.
             </p>
           </div>

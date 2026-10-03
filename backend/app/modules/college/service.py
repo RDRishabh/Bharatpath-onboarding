@@ -46,7 +46,7 @@ from app.core.db import set_transaction_tenant, set_transaction_user
 from app.core.deps import CANDIDATE, COLLEGE_ADMIN, PLATFORM_ADMIN
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError
 from app.core.errors import ValidationError as AppValidationError
-from app.core.forms import validate_answers
+from app.core.forms import staff_fillable_sections, validate_answers, validate_staff_answers
 from app.core.logging import get_logger
 from app.core.outbox import emit
 from app.core.pagination import clamp_limit, decode_cursor, encode_cursor
@@ -390,11 +390,14 @@ async def remove_team_member(
 # ---------------------------------------------------------------------------
 # Onboarding
 # ---------------------------------------------------------------------------
-def form_definition() -> dict[str, Any]:
+def form_definition(*, staff: bool = False) -> dict[str, Any]:
+    """The whole form, or with `staff` the part our staff may fill in for a
+    college (`app.core.forms.staff_fillable_sections`)."""
+    sections = staff_fillable_sections(COLLEGE_FORM) if staff else COLLEGE_FORM.sections
     return {
         "code": COLLEGE_FORM.code,
         "version": COLLEGE_FORM.version,
-        "sections": [dataclasses.asdict(section) for section in COLLEGE_FORM.sections],
+        "sections": [dataclasses.asdict(section) for section in sections],
     }
 
 
@@ -431,6 +434,32 @@ async def save_onboarding(
     row.form_version = FORM_VERSION
     await session.flush()
     return row
+
+
+async def prefill_onboarding(
+    session: AsyncSession, *, tenant_id: uuid.UUID, answers: dict[str, Any]
+) -> None:
+    """Staff fill a college's onboarding in for it, in the transaction that
+    created the college (2026-10-03). Saved, never submitted: the college's
+    admin finds it filled at first sign-in, accepts the undertakings and
+    submits, which staff cannot do (`validate_staff_answers`).
+
+    `tenant_id` is the college this transaction just created, never one from
+    a request, which is why binding it here is safe.
+    """
+    issues = validate_staff_answers(COLLEGE_FORM, answers, options=COLLEGE_OPTIONS)
+    if issues:
+        raise _issues(issues)
+    answers = {code: value for code, value in answers.items() if value is not None}
+    if not answers:
+        return
+    await set_transaction_tenant(session, tenant_id)
+    row = await repository.get_college(session, tenant_id=tenant_id, lock=True)
+    if row is None:  # pragma: no cover - created in this transaction
+        raise CollegeNotFoundError()
+    row.onboarding_answers = {**(row.onboarding_answers or {}), **answers}
+    row.form_version = FORM_VERSION
+    await session.flush()
 
 
 async def submit_onboarding(

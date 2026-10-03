@@ -13,6 +13,10 @@ interface ConfirmModalProps {
   readonly cancelLabel?: string;
   /** Shows a spinner on the confirm button and blocks the dialog while true. */
   readonly confirmLoading?: boolean;
+  /** `danger` styles the confirm button red, for irreversible actions. */
+  readonly tone?: "default" | "danger";
+  /** Replaces the default icon in the header. */
+  readonly icon?: ReactNode;
   readonly children?: ReactNode;
   readonly onClose: () => void;
   readonly onConfirm: () => void;
@@ -25,6 +29,8 @@ export function ConfirmModal({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   confirmLoading = false,
+  tone = "default",
+  icon,
   children,
   onClose,
   onConfirm,
@@ -62,8 +68,14 @@ export function ConfirmModal({
       >
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-[#edf2fa] text-[#3566b8]">
-              <LogOut size={18} strokeWidth={1.8} />
+            <span
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-[10px] ${
+                tone === "danger"
+                  ? "bg-[#fff0f1] text-[#c92f3f]"
+                  : "bg-[#edf2fa] text-[#3566b8]"
+              }`}
+            >
+              {icon ?? <LogOut size={18} strokeWidth={1.8} />}
             </span>
             <div>
               <h2
@@ -104,15 +116,26 @@ export function ConfirmModal({
           >
             {cancelLabel}
           </Button>
-          <Button
-            type="button"
-            variant="dark"
-            size="sm"
-            onClick={onConfirm}
-            isLoading={confirmLoading}
-          >
-            {confirmLabel}
-          </Button>
+          {tone === "danger" ? (
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={confirmLoading}
+              className="inline-flex h-9 cursor-pointer items-center justify-center rounded-lg bg-[#c92f3f] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#a82331] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {confirmLoading ? "Working…" : confirmLabel}
+            </button>
+          ) : (
+            <Button
+              type="button"
+              variant="dark"
+              size="sm"
+              onClick={onConfirm}
+              isLoading={confirmLoading}
+            >
+              {confirmLabel}
+            </Button>
+          )}
         </div>
       </div>
     </dialog>

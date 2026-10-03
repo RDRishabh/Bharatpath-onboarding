@@ -1,3 +1,4 @@
+import { signOutCognito } from "@/lib/auth/cognito";
 import { clearStoredToken } from "@/lib/auth/token";
 
 export function handleSessionExpired(): void {
@@ -6,5 +7,8 @@ export function handleSessionExpired(): void {
   }
 
   clearStoredToken();
-  window.location.replace("/login?session=timeout");
+  // Clear Cognito's own stored tokens too, or the next sign-in is refused.
+  void signOutCognito().finally(() => {
+    window.location.replace("/login?session=timeout");
+  });
 }

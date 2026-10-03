@@ -29,6 +29,10 @@ export interface HeaderStat {
   /** 0-100. Omit to hide the progress bar. */
   progress?: number;
   isLoading?: boolean;
+  /** Amber styling, for a state that needs attention (e.g. no subscription). */
+  warning?: boolean;
+  /** Where the chip goes when clicked. */
+  href?: string;
 }
 
 interface HeaderContent {
@@ -109,6 +113,8 @@ export function usePageHeader(
         stat.sublabel,
         stat.progress,
         stat.isLoading,
+        stat.warning,
+        stat.href,
       ])
     : "";
   const breadcrumbsKey = breadcrumbs

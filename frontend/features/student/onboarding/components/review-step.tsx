@@ -74,6 +74,10 @@ interface ReviewStepProps {
   onConfirmed: (confirmedAt: string) => void;
   onEditStructured: (resume: ManualResume, resumeVersionId: string) => void;
   onStartOver: () => void;
+  title?: string;
+  subtitle?: string;
+  confirmLabel?: string;
+  startOverLabel?: string;
 }
 
 /* -------------------------------------------------------------------------
@@ -84,6 +88,10 @@ export function ReviewStep({
   onConfirmed,
   onEditStructured,
   onStartOver,
+  title = "Review details",
+  subtitle = "Nothing is scored until you confirm. Tap anything that looks wrong.",
+  confirmLabel = "Confirm",
+  startOverLabel = "Use a different resume",
 }: Readonly<ReviewStepProps>) {
   const version = useGetResumeVersionQuery(resumeVersionId);
 
@@ -122,6 +130,10 @@ export function ReviewStep({
       sections={version.data.sections}
       onConfirmed={onConfirmed}
       onStartOver={onStartOver}
+      title={title}
+      subtitle={subtitle}
+      confirmLabel={confirmLabel}
+      startOverLabel={startOverLabel}
     />
   ) : (
     <StructuredReview
@@ -129,6 +141,10 @@ export function ReviewStep({
       onConfirmed={onConfirmed}
       onEdit={onEditStructured}
       onStartOver={onStartOver}
+      title={title}
+      subtitle={subtitle}
+      confirmLabel={confirmLabel}
+      startOverLabel={startOverLabel}
     />
   );
 }
@@ -203,11 +219,19 @@ function SectionsReview({
   sections,
   onConfirmed,
   onStartOver,
+  title,
+  subtitle,
+  confirmLabel,
+  startOverLabel,
 }: {
   version: ResumeVersionDetail;
   sections: ResumeSection[];
   onConfirmed: (confirmedAt: string) => void;
   onStartOver: () => void;
+  title: string;
+  subtitle: string;
+  confirmLabel: string;
+  startOverLabel: string;
 }) {
   const [drafts, setDrafts] = useState<DraftSection[]>(() =>
     sections.map((section, index) => ({ ...section, key: `${section.kind}-${index}` })),
@@ -278,8 +302,8 @@ function SectionsReview({
   return (
     <div className="flex flex-col gap-5">
       <StepHeader
-        title="Review details"
-        subtitle="Nothing is scored until you confirm. Tap anything that looks wrong."
+        title={title}
+        subtitle={subtitle}
         badge={
           unclear > 0 ? (
             <span className="flex items-center gap-1.5 rounded-full border border-[#7A5C0E] bg-white px-2 py-1 text-[12px] font-bold leading-4 text-[#7A5C0E]">
@@ -330,7 +354,7 @@ function SectionsReview({
 
       <div className="sticky bottom-0 -mx-1 flex flex-col gap-3 bg-[#FFFCF7] px-1 pb-3.5 pt-4">
         <PillButton onClick={() => void confirm()} isLoading={busy} className="w-full py-[18px]">
-          {busy ? "Saving…" : "Confirm"}
+          {busy ? "Saving…" : confirmLabel}
         </PillButton>
         <div className="flex items-center justify-between gap-3 text-[12px] leading-4 text-[#5F6B80]">
           <span>You can edit any of this later.</span>
@@ -339,7 +363,7 @@ function SectionsReview({
             onClick={onStartOver}
             className="cursor-pointer font-semibold text-[#3A4761] hover:text-[#0A1931]"
           >
-            Use a different resume
+            {startOverLabel}
           </button>
         </div>
       </div>
@@ -514,11 +538,19 @@ function StructuredReview({
   onConfirmed,
   onEdit,
   onStartOver,
+  title,
+  subtitle,
+  confirmLabel,
+  startOverLabel,
 }: {
   version: ResumeVersionDetail;
   onConfirmed: (confirmedAt: string) => void;
   onEdit: (resume: ManualResume, resumeVersionId: string) => void;
   onStartOver: () => void;
+  title: string;
+  subtitle: string;
+  confirmLabel: string;
+  startOverLabel: string;
 }) {
   const resume = useMemo(() => asManual(version.parsed), [version.parsed]);
   const [confirmVersion, { isLoading }] = useConfirmResumeVersionMutation();
@@ -548,7 +580,7 @@ function StructuredReview({
 
   return (
     <div className="flex flex-col gap-5">
-      <StepHeader title="Review details" subtitle="Nothing is scored until you confirm." />
+      <StepHeader title={title} subtitle={subtitle} />
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
@@ -647,7 +679,7 @@ function StructuredReview({
 
       <div className="sticky bottom-0 -mx-1 flex flex-col gap-3 bg-[#FFFCF7] px-1 pb-3.5 pt-4">
         <PillButton onClick={() => void confirm()} isLoading={isLoading} className="w-full py-[18px]">
-          Confirm
+          {confirmLabel}
         </PillButton>
         <div className="flex items-center justify-between gap-3 text-[12px] leading-4 text-[#5F6B80]">
           <span>You can edit any of this later.</span>
@@ -656,7 +688,7 @@ function StructuredReview({
             onClick={onStartOver}
             className="cursor-pointer font-semibold text-[#3A4761] hover:text-[#0A1931]"
           >
-            Use a different resume
+            {startOverLabel}
           </button>
         </div>
       </div>

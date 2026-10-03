@@ -278,7 +278,7 @@ export function AppSelect({
 
           <div
             onScroll={handleOptionsScroll}
-            className={searchable ? "max-h-55 overflow-y-auto" : ""}
+            className="bp-scrollbar max-h-[min(14rem,45vh)] overflow-y-auto overscroll-contain"
           >
             {isSearching ? (
               <p

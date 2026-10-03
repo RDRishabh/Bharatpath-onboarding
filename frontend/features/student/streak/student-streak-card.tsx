@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Flame, RefreshCw } from "lucide-react";
+import { Flame } from "lucide-react";
 
 import { Skeleton } from "@/components/common/loading";
-import { getApiErrorMessage } from "@/lib/api/error-message";
 import { useGetStudentStreakSessionQuery } from "@/store/student";
 
 import { statusClasses, statusLabel } from "./streak-utils";
+import { StudentErrorState } from "@/features/student/components/student-error-state";
 
 export function StudentStreakCard() {
   const streak = useGetStudentStreakSessionQuery();
@@ -25,25 +25,12 @@ export function StudentStreakCard() {
             Daily streak
           </span>
         </div>
-        <div>
-          <p className="text-[16px] font-bold text-[#0A1931]">
-            Streak unavailable
-          </p>
-          <p className="mt-1 text-[13px] leading-5 text-[#5F6B80]">
-            {getApiErrorMessage(
-              streak.error,
-              "We could not load your daily streak.",
-            )}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void streak.refetch()}
-          className="inline-flex w-fit items-center gap-2 rounded-full border border-[#DDD6C7] px-4 py-2 text-[13px] font-semibold text-[#0A1931] transition-colors hover:bg-[#F7F4EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30"
-        >
-          <RefreshCw size={14} aria-hidden="true" />
-          Try again
-        </button>
+        <StudentErrorState
+          variant="inline"
+          error={streak.error}
+          fallback="We could not load your daily streak."
+          onRetry={() => void streak.refetch()}
+        />
       </div>
     );
   }

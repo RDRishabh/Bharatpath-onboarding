@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import { ErrorState } from "@/components/ui/error-state";
+import { StudentAudioPlayer, StudentErrorState } from "@/features/student/components";
 import { StudentPage } from "@/features/student/shell";
 import { useGetInterviewOfferQuery } from "@/store/student";
 import {
@@ -237,7 +237,7 @@ export default function StudentInterviewPage() {
                   aria-label="Loading interview availability"
                 />
               ) : offer.isError ? (
-                <ErrorState
+                <StudentErrorState
                   error={offer.error}
                   title="Interview details could not be loaded"
                   onRetry={() => void offer.refetch()}
@@ -402,9 +402,9 @@ export default function StudentInterviewPage() {
                     )}
 
                   {error !== null && (
-                    <ErrorState
+                    <StudentErrorState
+                      variant="inline"
                       error={error}
-                      title="We couldn’t complete that step"
                       className="mt-4"
                     />
                   )}
@@ -528,7 +528,7 @@ export default function StudentInterviewPage() {
             </div>
           </div>
           {history.isError ? (
-            <ErrorState
+            <StudentErrorState
               error={history.error}
               title="Interview history could not be loaded"
               onRetry={() => void history.refetch()}
@@ -578,7 +578,7 @@ export default function StudentInterviewPage() {
                 Session review
               </h3>
               {recordings.isError ? (
-                <ErrorState
+                <StudentErrorState
                   error={recordings.error}
                   title="Recordings could not be loaded"
                 />
@@ -593,11 +593,7 @@ export default function StudentInterviewPage() {
                     <p className="text-[12px] font-semibold text-[#3A4761]">
                       {recording.prompt}
                     </p>
-                    <audio
-                      controls
-                      src={recording.url}
-                      className="mt-3 w-full"
-                    />
+                    <StudentAudioPlayer src={recording.url} label={`Answer ${recording.question_index + 1}`} className="mt-3" />
                     {recording.transcript && (
                       <p className="mt-3 text-[11px] leading-5 text-[#5F6B80]">
                         {recording.transcript}
@@ -612,7 +608,7 @@ export default function StudentInterviewPage() {
               )}
 
               {report.isError ? (
-                <ErrorState
+                <StudentErrorState
                   error={report.error}
                   title="Session feedback could not be loaded"
                 />

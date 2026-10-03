@@ -64,6 +64,20 @@ const CODE_MESSAGES: Record<string, string> = {
     "This email belongs to a candidate account. Use a business email instead.",
   identity_already_in_organisation:
     "Your account already belongs to an organisation.",
+  identity_account_exists:
+    "An account already exists for this email address.",
+  admin_account_invalid:
+    "Some invitation details are not valid. Please check the form.",
+  discount_code_invalid: "This discount code is invalid or is not available for this plan.",
+  discount_code_expired: "This discount code has expired.",
+  discount_code_exhausted: "This discount code has reached its usage limit.",
+  discount_code_already_used: "This discount code has already been used for this account.",
+  discount_exceeds_price: "This discount cannot be applied to this plan.",
+  discount_code_taken: "That discount code already exists. Choose another code.",
+  discount_code_terms_invalid: "Check the discount value and validity dates.",
+  discount_code_not_found: "That discount code could not be found.",
+  referral_code_invalid: "This college referral code is invalid, expired, revoked, or has reached its usage limit.",
+  consent_version_outdated: "The college consent terms changed. Review them and try again.",
   internal_error:
     "Something went wrong on our end. Please try again.",
 };

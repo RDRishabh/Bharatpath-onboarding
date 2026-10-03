@@ -389,9 +389,18 @@ export function PortalHeader({
         {!isEmployer && !isAdmin && stat && !stat.isLoading ? (
           <button
             type="button"
-            aria-label="Seats used — open billing"
-            title={`${stat.label} — open Seats & payment to add more before you run out`}
-            className="
+            aria-label={
+              stat.warning ? `${stat.label} — open billing` : "Seats used — open billing"
+            }
+            title={
+              stat.warning
+                ? `${stat.label} — open Seats & payment to buy a plan`
+                : `${stat.label} — open Seats & payment to add more before you run out`
+            }
+            onClick={() => {
+              if (stat.href) router.push(stat.href);
+            }}
+            className={`
               flex
               h-[40px]
               shrink-0
@@ -400,30 +409,31 @@ export function PortalHeader({
               gap-[10px]
               rounded-xl
               border
-              border-[#e5e7ec]
-              bg-white
               px-[10px]
               pl-[6px]
               transition-colors
-              hover:border-[#cfd3dc]
-              hover:bg-[#f8fafc]
-            "
+              ${
+                stat.warning
+                  ? "border-[#f2d3a0] bg-[#fff8ec] hover:bg-[#fff1d9]"
+                  : "border-[#e5e7ec] bg-white hover:border-[#cfd3dc] hover:bg-[#f8fafc]"
+              }
+            `}
           >
             <span
-              className="
+              className={`
                 grid
                 h-[28px]
                 w-[28px]
                 shrink-0
                 place-items-center
                 rounded-[8px]
-                bg-[#edf2fa]
-              "
+                ${stat.warning ? "bg-[#ffecc8]" : "bg-[#edf2fa]"}
+              `}
             >
               <Armchair
                 size={15}
                 strokeWidth={2.2}
-                className="text-[#2c62c4]"
+                className={stat.warning ? "text-[#ad6b0b]" : "text-[#2c62c4]"}
               />
             </span>
 
@@ -436,13 +446,13 @@ export function PortalHeader({
               "
             >
               <span
-                className="
+                className={`
                   whitespace-nowrap
                   text-[13px]
                   font-[700]
                   leading-[16px]
-                  text-[#151b2b]
-                "
+                  ${stat.warning ? "text-[#8a5a00]" : "text-[#151b2b]"}
+                `}
               >
                 {stat.label}
               </span>

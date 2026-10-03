@@ -9,6 +9,39 @@ states. Newest entries first.
 
 ---
 
+## 2026-10-03 — staff fill the onboarding in when they invite
+
+Asked for: an admin inviting an employer, college or student can fill in the
+onboarding details at the same time. The person gets the usual email with a
+temporary password, verifies, and finds everything already filled in.
+
+**Saved as a draft, never submitted.** Undertakings, documents and pressing
+submit stay with the person. A box our staff tick is not an employer
+promising not to resell candidate data, and with `kyb.require_approval` off,
+submitting a KYB *is* approval.
+
+- Backend: `kyb_answers` / `onboarding_answers` on the employer and college
+  invites, `full_name` / `city` / `state_code` on the candidate invite.
+  `GET /admin/accounts/forms` serves both forms minus CHECKBOX and FILE
+  fields (`app.core.forms.staff_fillable_sections`). Validated in the same
+  transaction, before the Cognito invitation, so a refusal emails nobody.
+- The organisation's name, type and industry now start the KYB draft and the
+  college form even without extra answers. The owner used to type them twice.
+- Audit metadata `prefilled` names the codes staff gave, never the values.
+- `identity.service.provision_candidate` became `create_candidate_account`
+  (no email). The admin service writes the profile and then invites last, as
+  the business invites already did.
+- **Backend only.** No console screen calls it yet: the admin portal's invite
+  form is the frontend team's (render `GET /admin/accounts/forms` the way the
+  employer KYB wizard renders `/employer/kyb/form`).
+- A test holds every CHECKBOX on both forms inside an `undertakings` section,
+  because "staff may fill anything but a checkbox" depends on it.
+
+Validated: CI's static checks, `test_admin_accounts.py` and
+`test_form_validation.py` (52 passed), the full backend suite (2945 passed).
+
+---
+
 ## 2026-10-03 — `/auth/me` returns the caller's email and name
 
 `GET /auth/me` carried only `user_id, role, pool, tenant_id`; a web client

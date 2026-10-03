@@ -76,6 +76,7 @@ export function useStudentRoster(
     students,
     isLoadingStudents: query.isLoading || query.isFetching,
     studentsError: query.isError,
+    studentsErrorValue: query.error,
     studentsPagination: {
       currentPage: pagination.currentPage,
       hasNextPage: Boolean(nextCursor),

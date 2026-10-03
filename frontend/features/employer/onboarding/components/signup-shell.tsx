@@ -16,6 +16,8 @@ interface SignupShellProps {
   signedIn?: boolean;
   /** The signed-in email, when known. */
   email?: string | null;
+  /** The line under the wordmark, e.g. "Employer sign-up". */
+  subtitle?: string;
   onSignOut?: () => void;
   children: React.ReactNode;
 }
@@ -24,6 +26,7 @@ export function SignupShell({
   steps,
   signedIn = false,
   email,
+  subtitle = "Employer sign-up",
   onSignOut,
   children,
 }: Readonly<SignupShellProps>) {
@@ -49,7 +52,7 @@ export function SignupShell({
                 BharatPath
               </span>
               <span className="block text-[11px] text-[#687386]">
-                Employer sign-up
+                {subtitle}
               </span>
             </span>
           </Link>
