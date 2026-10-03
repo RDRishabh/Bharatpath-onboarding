@@ -163,6 +163,9 @@ output "host_env_file" {
     ${local.host_env_database}
     REDIS_URL=redis://redis:6379/0
 
+    # Browser origins allowed to call the API (var.cors_allowed_origins).
+    CORS_ALLOWED_ORIGINS='${jsonencode(var.cors_allowed_origins)}'
+
     # ---- AWS ----
     AWS_REGION=${var.aws_region}
     AWS_ENDPOINT_URL=
