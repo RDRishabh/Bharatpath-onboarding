@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { ArrowRight, GraduationCap } from "lucide-react";
 
-import { Button, ErrorState } from "@/components/ui";
+import { Button } from "@/components/ui";
+import { CollegeErrorState } from "@/features/college/components/college-error-state";
 import { AppSelect } from "@/components/ui/app-select";
 import { problemCode } from "@/features/employer/onboarding/kyb-form";
 import {
@@ -78,7 +79,8 @@ export function InstitutionStep({ onCreated }: Readonly<InstitutionStepProps>) {
     >
       <form onSubmit={submit} noValidate className="space-y-5">
         {serverError ? (
-          <ErrorState
+          <CollegeErrorState
+            variant="inline"
             error={serverError}
             fallback="We could not create your institution. Please try again."
           />

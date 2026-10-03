@@ -105,6 +105,31 @@ export function Billing() {
 }
 
 function SeatBlock({ seats }: Readonly<{ seats: CollegeSeats | null }>) {
+  // No plan means no seats: say so rather than "0 / 0" and an empty bar.
+  if (seats && !seats.subscriptionActive) {
+    return (
+      <section className="flex flex-col gap-[14px] rounded-[12px] border border-[#f2d3a0] bg-[#fff8ec] p-5 shadow-[0_4px_12px_rgba(19,26,38,0.024)]">
+        <div className="flex items-center gap-[10px]">
+          <span className="flex-1 text-[14px] font-semibold leading-[18px] text-[#131A26]">
+            Seat block
+          </span>
+          <span className="whitespace-nowrap rounded-full bg-[#ffecc8] px-[10px] py-1 text-[11px] font-semibold leading-[14px] text-[#8a5a00]">
+            No subscription
+          </span>
+        </div>
+
+        <span className="text-[20px] font-bold leading-7 tracking-[-0.01em] text-[#8a5a00]">
+          No subscription bought
+        </span>
+
+        <p className="text-[12px] font-normal leading-[17px] text-[#131A26]">
+          Seats come with a plan. Choose one below to give your students access;
+          until then no seats can be used or assigned.
+        </p>
+      </section>
+    );
+  }
+
   const used = seats?.used ?? 0;
   const allocated = seats?.allocated ?? 0;
   const percentage =

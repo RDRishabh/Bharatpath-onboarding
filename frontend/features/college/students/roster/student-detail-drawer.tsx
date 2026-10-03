@@ -16,6 +16,10 @@ import { Skeleton } from "@/components/common/loading";
 import { useGetCollegeStudentQuery } from "@/store/college/students";
 
 import { mapScoreBand } from "./model";
+import {
+  CollegeErrorState,
+  isSubscriptionRequired,
+} from "@/features/college/components/college-error-state";
 
 export interface StudentDetailDrawerProps {
   /** The candidate to open, or null when the drawer is closed. */
@@ -47,7 +51,7 @@ export function StudentDetailDrawer({
 }: StudentDetailDrawerProps) {
   const isOpen = candidateId !== null;
 
-  const { data, isLoading, isError } = useGetCollegeStudentQuery(
+  const { data, isLoading, isError, error } = useGetCollegeStudentQuery(
     candidateId ?? "",
     { skip: !isOpen },
   );
@@ -121,6 +125,8 @@ export function StudentDetailDrawer({
               </div>
               <Skeleton className="h-24 w-full rounded-xl" />
             </div>
+          ) : isError && isSubscriptionRequired(error) ? (
+            <CollegeErrorState error={error} />
           ) : isError || !data ? (
             <div className="flex flex-col items-center py-8 text-center">
               <div className="grid h-11 w-11 place-items-center rounded-full bg-[#fdf2f2] text-[#e02424] mb-3">

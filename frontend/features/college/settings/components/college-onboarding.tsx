@@ -4,7 +4,7 @@ import { CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dropdown } from "@/components/ui/dropdown";
-import { ErrorState } from "@/components/ui";
+import { CollegeErrorState } from "@/features/college/components/college-error-state";
 import { FormSkeleton } from "@/components/common/loading";
 import type {
   OnboardingField,
@@ -219,7 +219,7 @@ export function CollegeOnboarding() {
   if (isError || !form) {
     return (
       <div className="w-full max-w-[640px]">
-        <ErrorState
+        <CollegeErrorState
           variant="block"
           title="Could not load the onboarding form"
           message="Please refresh and try again."
@@ -289,7 +289,7 @@ export function CollegeOnboarding() {
       {!isSubmitted && (
         <div className="flex flex-col gap-3">
           {formError && (
-            <ErrorState message={formError} />
+            <CollegeErrorState variant="inline" message={formError} />
           )}
           {savedAt !== null && !formError && (
             <p className="text-[13px] font-medium leading-[17px] text-[#23805d]">

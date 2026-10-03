@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import {
   useAddCollegeTeamMemberMutation,
@@ -77,7 +78,13 @@ function toUser(member: CollegeTeamMember): CollegeUser {
  * network requests.
  */
 export function useSettings(scope: SettingsDataScope) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  // `?tab=billing` opens a tab directly (e.g. from "View plans").
+  const requestedTab = useSearchParams().get("tab");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    requestedTab === "billing" || requestedTab === "users" || requestedTab === "onboarding"
+      ? requestedTab
+      : "profile",
+  );
 
   /* Profile */
   const organisationQuery = useGetCollegeOrganisationQuery(undefined, {

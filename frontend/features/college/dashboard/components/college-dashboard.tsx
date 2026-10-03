@@ -20,6 +20,8 @@ import { CardSkeletonGrid, Skeleton } from "@/components/common/loading";
 import { MetricCard } from "../../../../components/common/dashboard/metric-card";
 import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 import { useDashboard } from "../hooks/use-dashboard";
+import { CollegeErrorState } from "../../components/college-error-state";
+import { seatStat } from "../../seat-stat";
 import { ScoreDistribution } from "./score-distribution";
 
 function formatMetric(value: number | null): string | number {
@@ -30,6 +32,8 @@ export function CollegeDashboard() {
   const router = useRouter();
   const {
     data,
+    seats,
+    overviewError,
     isLoadingOverview,
     isLoadingSeats,
     isLoadingReferralCodes,
@@ -38,19 +42,27 @@ export function CollegeDashboard() {
   usePageHeader(
     "Dashboard",
     "Cohort overview, linking code and recent activity",
-    {
-      stat: {
-        icon: Users,
-        label: `${data.seatsUsed} / ${data.seatsTotal} seats used`,
-        sublabel: `${Math.max(data.seatsAvailable, 0)} seats remaining`,
-        progress:
-          data.seatsTotal > 0
-            ? (data.seatsUsed / data.seatsTotal) * 100
-            : 0,
-        isLoading: isLoadingSeats,
-      },
-    },
+    { stat: seatStat(seats, isLoadingSeats) },
   );
+
+  // A college with no plan, or any other failure, gets one clear panel in
+  // place of the figures; the linking code below it is still shown.
+  if (overviewError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <CollegeErrorState
+          error={overviewError}
+          title="Dashboard unavailable"
+          fallback="The dashboard figures could not be loaded."
+        />
+        {isLoadingReferralCodes ? (
+          <Skeleton height={132} radius={12} />
+        ) : (
+          <ReferralCode code={data.referralCode} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">

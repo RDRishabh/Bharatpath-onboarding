@@ -5,7 +5,8 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
 
 import { FormSkeleton } from "@/components/common/loading";
-import { Button, ErrorState } from "@/components/ui";
+import { Button } from "@/components/ui";
+import { CollegeErrorState } from "@/features/college/components/college-error-state";
 import { KybSectionFields } from "@/features/employer/onboarding/components/kyb-section-fields";
 import {
   SignupShell,
@@ -191,7 +192,7 @@ export function CollegeDetailsWizard({
   if (onboarding.isError || !data) {
     return (
       <SignupShell steps={leadingSteps} signedIn email={email} subtitle="College sign-up" onSignOut={onSignOut}>
-        <ErrorState
+        <CollegeErrorState
           variant="block"
           error={onboarding.error}
           title="Couldn't load the onboarding form"
@@ -274,7 +275,7 @@ export function CollegeDetailsWizard({
           </>
         }
       >
-        {banner ? <ErrorState className="mb-5" message={banner} /> : null}
+        {banner ? <CollegeErrorState variant="inline" className="mb-5" message={banner} /> : null}
         <KybSectionFields
           form={form}
           section={section}

@@ -17,6 +17,7 @@ import {
   type RosterRow,
   type RosterRowState,
 } from "@/store/college/roster-imports";
+import { CollegeErrorState } from "@/features/college/components/college-error-state";
 
 export interface RosterPreviewProps {
   importId: string;
@@ -45,6 +46,7 @@ export function RosterPreview({ importId }: Readonly<RosterPreviewProps>) {
     isLoading,
     isFetching,
     isError,
+    error,
     refetch,
   } = useGetRosterImportRowsQuery({
     importId,
@@ -157,24 +159,15 @@ export function RosterPreview({ importId }: Readonly<RosterPreviewProps>) {
           </div>
 
           {importQuery.isError || isError ? (
-            <div
-              role="alert"
-              className="rounded-xl border border-[#f3d6d6] bg-[#fdf2f2] px-5 py-8 text-center"
-            >
-              <p className="text-[13px] text-[#9d2d2d]">
-                This roster preview could not be loaded.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  void importQuery.refetch();
-                  void refetch();
-                }}
-                className="mt-2 text-[12px] font-semibold text-[#3566b8] hover:underline"
-              >
-                Retry
-              </button>
-            </div>
+            <CollegeErrorState
+              error={importQuery.error ?? error}
+              title="Roster preview unavailable"
+              fallback="This roster preview could not be loaded."
+              onRetry={() => {
+                void importQuery.refetch();
+                void refetch();
+              }}
+            />
           ) : (
             <DataTable
               columns={columns}

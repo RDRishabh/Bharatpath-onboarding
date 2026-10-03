@@ -8,12 +8,16 @@ import { useScrollToHash } from "@/lib/hooks/use-scroll-to-hash";
 import {
   BarChart,
   Button,
-  ErrorState,
   Panel,
   ProgressList,
   StatCard,
 } from "@/components/ui";
 
+import {
+  CollegeErrorState,
+  isSubscriptionRequired,
+} from "../../components/college-error-state";
+import { seatStat } from "../../seat-stat";
 import { useAnalytics } from "../hooks/use-analytics";
 import { CollegeAnalyticsView, FunnelCount } from "../types";
 import { AnalyticsSkeleton } from "./analytics-skeleton";
@@ -36,7 +40,7 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 export function AnalyticsDashboard() {
-  const { data, isLoading, isError } = useAnalytics();
+  const { data, seats, reportError, isLoading, isError } = useAnalytics();
 
   useScrollToHash(!isLoading);
 
@@ -48,33 +52,39 @@ export function AnalyticsDashboard() {
         size="md"
         icon={<Download size={15} strokeWidth={2.2} />}
         onClick={() => exportPlacements(data)}
-        disabled={isLoading}
+        disabled={isLoading || isSubscriptionRequired(reportError)}
         className="shadow-sm"
       >
         Export report
       </Button>
     ),
-    [data, isLoading],
+    [data, isLoading, reportError],
   );
 
   usePageHeader(
     "Analytics & Outcomes",
     "Cohort score analytics and platform-sourced outcomes",
     {
-      stat: {
-        label: `${data.seatsUsed} of ${data.seatsTotal} seats used`,
-        progress:
-          data.seatsTotal > 0
-            ? (data.seatsUsed / data.seatsTotal) * 100
-            : 0,
-        isLoading,
-      },
+      stat: seatStat(seats, isLoading),
       action: headerAction,
     },
   );
 
   if (isLoading) {
     return <AnalyticsSkeleton />;
+  }
+
+  // No plan, or the reports failed outright: one clear panel, not a page of
+  // zeros and dashes.
+  if (reportError && isSubscriptionRequired(reportError)) {
+    return (
+      <div className="mx-auto max-w-[1280px]">
+        <CollegeErrorState
+          error={reportError}
+          title="Analytics unavailable"
+        />
+      </div>
+    );
   }
 
   const maxLocationHires = Math.max(
@@ -88,7 +98,10 @@ export function AnalyticsDashboard() {
       style={{ fontFamily: "'General Sans', sans-serif" }}
     >
       {isError ? (
-        <ErrorState fallback="Some analytics data could not be loaded. Please refresh and try again." />
+        <CollegeErrorState
+          error={reportError}
+          fallback="Some analytics data could not be loaded. Please refresh and try again."
+        />
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
