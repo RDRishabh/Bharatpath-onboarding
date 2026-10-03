@@ -171,14 +171,24 @@ export const collegeBillingApi = baseApi.injectEndpoints({
 
     createCollegeCheckout: builder.mutation<
       CheckoutResult,
-      { planCode: string }
+      { planCode: string; discountCode?: string }
     >({
       query: (payload) => ({
         url: "/college/subscription/checkout",
         method: "POST",
-        body: { plan_code: payload.planCode },
+        body: { plan_code: payload.planCode, ...(payload.discountCode ? { discount_code: payload.discountCode } : {}) },
       }),
       transformResponse: mapCheckout,
+    }),
+    previewCollegeDiscount: builder.mutation<
+      { list_amount_minor: number; discount_minor: number; amount_minor: number },
+      { planCode: string; discountCode: string }
+    >({
+      query: ({ planCode, discountCode }) => ({
+        url: "/college/subscription/checkout/discount-preview",
+        method: "POST",
+        body: { plan_code: planCode, discount_code: discountCode },
+      }),
     }),
 
     cancelCollegeSubscription: builder.mutation<
@@ -221,6 +231,7 @@ export const {
   useGetCollegePlansQuery,
   useGetCollegeSubscriptionQuery,
   useCreateCollegeCheckoutMutation,
+  usePreviewCollegeDiscountMutation,
   useCancelCollegeSubscriptionMutation,
   useCreateCollegeMandateMutation,
   useGetPaymentQuery,

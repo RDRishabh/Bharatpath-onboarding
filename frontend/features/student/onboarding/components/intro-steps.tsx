@@ -157,7 +157,7 @@ export function ResumeHero() {
 interface LanguageStepProps {
   value: SignupLocale["code"] | null;
   onPick: (code: SignupLocale["code"]) => void;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 export function LanguageStep({ value, onPick, onBack }: Readonly<LanguageStepProps>) {
@@ -223,11 +223,13 @@ export function LanguageStep({ value, onPick, onBack }: Readonly<LanguageStepPro
         )}
       </div>
 
-      <div className="flex gap-2">
-        <PillButton variant="secondary" onClick={onBack} className="flex-1 sm:max-w-[180px]">
-          Back
-        </PillButton>
-      </div>
+      {onBack ? (
+        <div className="flex gap-2">
+          <PillButton variant="secondary" onClick={onBack} className="flex-1 sm:max-w-[180px]">
+            Back
+          </PillButton>
+        </div>
+      ) : null}
     </div>
   );
 }

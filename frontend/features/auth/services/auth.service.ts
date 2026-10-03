@@ -1,6 +1,16 @@
 import { ApiError } from "@/lib/api/errors";
 import { backendBaseUrl, portalForRole } from "@/lib/auth/backend-auth";
 import { handleSessionExpired } from "@/lib/auth/handle-session-expired";
+import {
+  configureAmplify,
+  confirmSignUpCognito,
+  formatCognitoError,
+  resendSignUpCodeCognito,
+  signInWithCognito,
+  signOutCognito,
+  signUpWithCognito,
+  verifyTotpSetupCognito,
+} from "@/lib/auth/cognito";
 import { clearStoredToken, getStoredToken, setStoredToken } from "@/lib/auth/token";
 import { LoginResponse, SignupRequest, SignupResponse } from "../types";
 
@@ -10,42 +20,6 @@ import { LoginResponse, SignupRequest, SignupResponse } from "../types";
  * what authenticates subsequent requests (kept in `lib/auth/token`, attached
  * as `Authorization` by the API clients); nothing here sets a cookie.
  */
-
-async function backendRequest<T>(
-  path: string,
-  init: RequestInit,
-): Promise<T> {
-  const response = await fetch(`${backendBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...init.headers,
-    },
-  });
-
-  const contentType = response.headers.get("content-type") ?? "";
-  const result: unknown = contentType.includes("application/json")
-    ? await response.json()
-    : await response.text();
-
-  if (!response.ok) {
-    const detail =
-      result && typeof result === "object" && "detail" in result &&
-      typeof result.detail === "string"
-        ? result.detail
-        : "Authentication request failed.";
-    const code =
-      result && typeof result === "object" && "code" in result &&
-      typeof result.code === "string"
-        ? result.code
-        : undefined;
-
-    throw new ApiError(detail, response.status, code ?? "AUTH_ERROR");
-  }
-
-  return result as T;
-}
 
 function extractEmailFromJwt(token: string): string {
   try {
@@ -63,21 +37,6 @@ function extractEmailFromJwt(token: string): string {
   } catch {
     return "";
   }
-}
-
-async function devSubject(email: string, pool: "CANDIDATE" | "BUSINESS") {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(email.trim().toLowerCase()),
-  );
-  const hex = Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 32);
-
-  return pool === "CANDIDATE"
-    ? `local-signup-candidate-${hex}`
-    : `local-signup-${hex}`;
 }
 
 /** Resolve the signed-in identity from a backend access token, and store it. */
@@ -192,6 +151,48 @@ async function resolveSession(
   };
 }
 
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+export type CompleteSignupResult =
+  | { status: "COMPLETE"; session: SignupResponse }
+  | { status: "TOTP_SETUP_REQUIRED"; sharedSecret: string; setupUri: string }
+  | { status: "SIGN_IN_REQUIRED" };
+
+function toApiError(error: unknown): ApiError {
+  if (error instanceof ApiError) return error;
+
+  const name = (error as { name?: string } | null)?.name;
+  return new ApiError(
+    formatCognitoError(error),
+    name === "UsernameExistsException" ? 409 : 400,
+    "AUTH_ERROR",
+  );
+}
+
+async function signedUpSession(
+  accessToken: string,
+  email: string,
+  pool: "CANDIDATE" | "BUSINESS",
+): Promise<SignupResponse> {
+  try {
+    return await resolveSession(accessToken, email, { pool }, { signup: true });
+  } catch (error) {
+    if (error instanceof ApiError) {
+      const detail =
+        error.code === "account_contact_in_use"
+          ? pool === "BUSINESS"
+            ? "This email is already used by a candidate account. Use a different email for your business."
+            : "This email is already used by an employer or college account. Use a different email."
+          : error.code === "account_inactive"
+            ? "This account is no longer active."
+            : error.message;
+
+      throw new ApiError(detail, error.status, error.code);
+    }
+    throw error;
+  }
+}
+
 export const authService = {
   /**
    * Resolve identity from a Cognito access token obtained directly in the
@@ -206,28 +207,97 @@ export const authService = {
   },
 
   /**
-   * Employer self-registration. Creates (or resumes) a business account for
-   * the email and signs it in, exactly as `login` does.
+   * Self-registration in a Cognito pool. Cognito emails a confirmation code;
+   * the account is usable only after `completeSignup` confirms it.
    */
-  async signupEmployer(payload: SignupRequest): Promise<SignupResponse> {
-    return devSignup(payload.email, payload.pool ?? "BUSINESS");
+  async signup(payload: SignupRequest): Promise<void> {
+    const email = payload.email.trim();
+
+    if (!email || email.length > 255 || !EMAIL_PATTERN.test(email)) {
+      throw new ApiError("Enter a valid email address.", 400, "AUTH_ERROR");
+    }
+
+    try {
+      await signUpWithCognito({
+        email,
+        password: payload.password,
+        pool: payload.pool,
+      });
+    } catch (error) {
+      throw toApiError(error);
+    }
   },
 
   /**
-   * Candidate self-registration. Creates (or resumes) a candidate account
-   * for the email and signs it in.
+   * Confirm the emailed code, then sign in with the password just chosen.
+   * A business account must set up its authenticator app first, so that
+   * answer is returned for the caller to finish rather than hidden here.
    */
-  async signupCandidate(email: string): Promise<SignupResponse> {
-    return devSignup(email, "CANDIDATE");
+  async completeSignup(payload: {
+    email: string;
+    password: string;
+    code: string;
+    pool: "CANDIDATE" | "BUSINESS";
+  }): Promise<CompleteSignupResult> {
+    const email = payload.email.trim();
+
+    try {
+      await confirmSignUpCognito(email, payload.code);
+      await signOutCognito();
+      const result = await signInWithCognito({
+        email,
+        password: payload.password,
+        pool: payload.pool,
+      });
+
+      if (result.status === "COMPLETE") {
+        return {
+          status: "COMPLETE",
+          session: await signedUpSession(result.accessToken, email, payload.pool),
+        };
+      }
+
+      if (result.status === "TOTP_SETUP_REQUIRED") {
+        return {
+          status: "TOTP_SETUP_REQUIRED",
+          sharedSecret: result.sharedSecret,
+          setupUri: result.setupUri,
+        };
+      }
+
+      return { status: "SIGN_IN_REQUIRED" };
+    } catch (error) {
+      throw toApiError(error);
+    }
+  },
+
+  /** Answer the authenticator-app setup challenge that follows a business sign-up. */
+  async completeTotpSetup(
+    code: string,
+    email: string,
+  ): Promise<SignupResponse> {
+    try {
+      const result = await verifyTotpSetupCognito(code);
+      if (result.status !== "COMPLETE") {
+        throw new ApiError("Could not finish sign-in. Please sign in again.", 401, "AUTH_ERROR");
+      }
+      return await signedUpSession(result.accessToken, email, "BUSINESS");
+    } catch (error) {
+      throw toApiError(error);
+    }
+  },
+
+  async resendSignupCode(email: string, pool: "CANDIDATE" | "BUSINESS"): Promise<void> {
+    try {
+      configureAmplify(pool);
+      await resendSignUpCodeCognito(email);
+    } catch (error) {
+      throw toApiError(error);
+    }
   },
 
   async logout(): Promise<void> {
-    try {
-      const { signOutCognito } = await import("@/lib/auth/cognito");
-      await signOutCognito();
-    } catch {
-      // Ignore client cognito signout failure
-    }
+    await signOutCognito();
 
     clearStoredToken();
   },
@@ -248,71 +318,3 @@ export const authService = {
     }
   },
 };
-
-const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
-async function devSignup(
-  rawEmail: string,
-  pool: "CANDIDATE" | "BUSINESS",
-): Promise<SignupResponse> {
-  const email = rawEmail.trim();
-
-  if (!email || email.length > 255 || !EMAIL_PATTERN.test(email)) {
-    throw new ApiError("Enter a valid email address.", 400, "AUTH_ERROR");
-  }
-
-  const subject = await devSubject(email, pool);
-
-  let tokenBody: { access_token?: string };
-  try {
-    tokenBody = await backendRequest<{ access_token?: string }>(
-      "/auth/dev/token",
-      {
-        method: "POST",
-        cache: "no-store",
-        body: JSON.stringify({ subject, pool, email }),
-      },
-    );
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
-      throw new ApiError(
-        "Sign-up is disabled on the backend. Set AUTH_ALLOW_LOCAL_TOKENS=true and restart it.",
-        503,
-        "AUTH_ERROR",
-      );
-    }
-    throw error;
-  }
-
-  if (!tokenBody.access_token) {
-    throw new ApiError(
-      "The authentication service returned an invalid token.",
-      502,
-      "AUTH_ERROR",
-    );
-  }
-
-  try {
-    const session = await resolveSession(
-      tokenBody.access_token,
-      email,
-      { pool },
-      { signup: true },
-    );
-    return session;
-  } catch (error) {
-    if (error instanceof ApiError) {
-      const detail =
-        error.code === "account_contact_in_use"
-          ? pool === "BUSINESS"
-            ? "This email is already used by a candidate account. Use a different email for your business."
-            : "This email is already used by an employer or college account. Use a different email."
-          : error.code === "account_inactive"
-            ? "This account is no longer active."
-            : error.message;
-
-      throw new ApiError(detail, error.status, error.code);
-    }
-    throw error;
-  }
-}

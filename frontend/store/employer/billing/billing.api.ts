@@ -28,7 +28,10 @@ export interface CheckoutResponse {
   amount_minor: number;
   currency: string;
   redirect_url: string | null;
+  list_amount_minor?: number | null;
 }
+
+export interface DiscountPreviewResponse { list_amount_minor: number; discount_minor: number; amount_minor: number }
 
 export const employerBillingApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
@@ -40,9 +43,12 @@ export const employerBillingApi = baseApi.injectEndpoints({
       query: () => "/employer/subscription",
       providesTags: [{ type: "Billing", id: "EMPLOYER_SUBSCRIPTION" }],
     }),
-    checkoutEmployerSubscription: builder.mutation<CheckoutResponse, string>({
-      query: (planCode) => ({ url: "/employer/subscription/checkout", method: "POST", body: { plan_code: planCode } }),
+    checkoutEmployerSubscription: builder.mutation<CheckoutResponse, { planCode: string; discountCode?: string }>({
+      query: ({ planCode, discountCode }) => ({ url: "/employer/subscription/checkout", method: "POST", body: { plan_code: planCode, ...(discountCode ? { discount_code: discountCode } : {}) } }),
       invalidatesTags: [{ type: "Billing", id: "EMPLOYER_SUBSCRIPTION" }],
+    }),
+    previewEmployerDiscount: builder.mutation<DiscountPreviewResponse, { planCode: string; discountCode: string }>({
+      query: ({ planCode, discountCode }) => ({ url: "/employer/subscription/checkout/discount-preview", method: "POST", body: { plan_code: planCode, discount_code: discountCode } }),
     }),
     cancelEmployerSubscription: builder.mutation<EmployerSubscription, void>({
       query: () => ({ url: "/employer/subscription/cancel", method: "POST" }),
@@ -69,6 +75,7 @@ export const {
   useGetEmployerPlansQuery,
   useGetEmployerSubscriptionQuery,
   useCheckoutEmployerSubscriptionMutation,
+  usePreviewEmployerDiscountMutation,
   useCancelEmployerSubscriptionMutation,
   useCreateEmployerMandateMutation,
   useGetEmployerPaymentQuery,

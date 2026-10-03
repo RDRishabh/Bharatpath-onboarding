@@ -15,7 +15,7 @@ import {
 import { ConfigurableForm } from "@/components/forms/configurable-form";
 import type { FormFieldConfig } from "@/components/forms/configurable-form.types";
 import { usePageHeader } from "@/components/layout/header-context";
-import { ConfirmModal } from "@/components/ui";
+import { useConfirmDialog } from "@/features/employer/components/use-confirm-dialog";
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
 
@@ -73,8 +73,7 @@ export function JobCreatePage({
   const [statusOverride, setStatusOverride] =
     useState<ApiJobStatus | undefined>();
   const currentStatus = statusOverride ?? jobStatus;
-  const [closeConfirmationOpen, setCloseConfirmationOpen] =
-    useState(false);
+  const { confirm, dialog } = useConfirmDialog();
   const isEditing = Boolean(jobId);
   const isDraft = currentStatus === "DRAFT";
   const isPublished = currentStatus === "PUBLISHED";
@@ -228,12 +227,51 @@ export function JobCreatePage({
     try {
       const closed = await closeJob(jobId).unwrap();
       setStatusOverride(closed.status);
-      setCloseConfirmationOpen(false);
     } catch (error) {
-      setCloseConfirmationOpen(false);
       showToast(getApiErrorMessage(error, "Could not close the job"));
     }
   };
+
+  const askPublish = () => {
+    // Validate first so the dialog is never shown for a form that cannot go live.
+    if (!canPublish || !validate()) return;
+
+    confirm({
+      title: "Publish this job?",
+      description:
+        "Matching candidates will be able to see and apply to this job straight away.",
+      confirmLabel: "Publish job",
+      onConfirm: publishJob,
+    });
+  };
+
+  const askPause = () =>
+    confirm({
+      title: "Pause this job?",
+      description:
+        "Candidates will no longer see the job or be able to apply while it is paused. Applications you already have are kept.",
+      confirmLabel: "Pause job",
+      onConfirm: pauseCurrentJob,
+    });
+
+  const askClose = () =>
+    confirm({
+      title: "Close this job?",
+      description:
+        "Closing is permanent. Candidates will no longer see the job, and it cannot be reopened. You can duplicate it later to create a new posting.",
+      confirmLabel: "Close job",
+      tone: "danger",
+      onConfirm: closeCurrentJob,
+    });
+
+  const askDuplicate = () =>
+    confirm({
+      title: "Duplicate this job?",
+      description:
+        "A new draft will be created with the same details. The closed job stays as it is.",
+      confirmLabel: "Duplicate job",
+      onConfirm: duplicateJob,
+    });
 
   const duplicateJob = () => {
     if (!jobId) return;
@@ -498,7 +536,7 @@ export function JobCreatePage({
 
                 <button
                   type="button"
-                  onClick={publishJob}
+                  onClick={askPublish}
                   disabled={!canPublish || isSaving}
                   className="flex-[1.5] cursor-pointer rounded-[8px] bg-[#151b2b] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#222b3e] disabled:cursor-not-allowed disabled:opacity-45"
                 >
@@ -521,7 +559,7 @@ export function JobCreatePage({
             {isEditing && canChangeToPublished ? (
               <button
                 type="button"
-                onClick={publishJob}
+                onClick={askPublish}
                 disabled={!canPublish || isSaving}
                 className="min-w-[150px] flex-1 cursor-pointer rounded-[8px] bg-[#151b2b] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#222b3e] disabled:cursor-not-allowed disabled:opacity-45"
               >
@@ -532,7 +570,7 @@ export function JobCreatePage({
             {isEditing && isPublished ? (
               <button
                 type="button"
-                onClick={pauseCurrentJob}
+                onClick={askPause}
                 disabled={isSaving}
                 className="min-w-[150px] flex-1 cursor-pointer rounded-[8px] border border-[#e8d7b5] bg-[#fffaf0] px-4 py-3 text-sm font-semibold text-[#8a5a00] transition hover:bg-[#fff4dc] disabled:cursor-not-allowed disabled:opacity-45"
               >
@@ -543,7 +581,7 @@ export function JobCreatePage({
             {isEditing && !isClosed ? (
               <button
                 type="button"
-                onClick={() => setCloseConfirmationOpen(true)}
+                onClick={askClose}
                 disabled={isSaving}
                 className="min-w-[150px] flex-1 cursor-pointer rounded-[8px] border border-[#efc8c4] bg-white px-4 py-3 text-sm font-semibold text-[#b42318] transition hover:bg-[#fff4f2] disabled:cursor-not-allowed disabled:opacity-45"
               >
@@ -554,7 +592,7 @@ export function JobCreatePage({
             {isEditing && isClosed ? (
               <button
                 type="button"
-                onClick={duplicateJob}
+                onClick={askDuplicate}
                 className="inline-flex min-w-[180px] flex-1 cursor-pointer items-center justify-center gap-2 rounded-[8px] bg-[#151b2b] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#222b3e]"
               >
                 <Copy aria-hidden="true" size={16} />
@@ -573,15 +611,7 @@ export function JobCreatePage({
           </div>
         ) : null}
 
-        <ConfirmModal
-          open={closeConfirmationOpen}
-          title="Close this job?"
-          description="Closing is permanent. Candidates will no longer see the job, and it cannot be reopened. You can duplicate it later to create a new posting."
-          confirmLabel="Close job"
-          confirmLoading={isClosing}
-          onClose={() => setCloseConfirmationOpen(false)}
-          onConfirm={() => void closeCurrentJob()}
-        />
+        {dialog}
       </div>
     </main>
   );

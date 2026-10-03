@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Armchair, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
 import { Skeleton } from "@/components/common/loading";
 import { usePageHeader } from "@/components/layout/header-context";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ import {
   RosterImportsCard,
 } from "./roster-imports";
 import { useStudents } from "./use-students";
+import { CollegeErrorState } from "@/features/college/components/college-error-state";
+import { seatStat } from "@/features/college/seat-stat";
 
 function StudentRosterSkeleton() {
   return (
@@ -69,12 +71,15 @@ export function StudentRoster() {
   const {
     students,
     isLoadingStudents,
+    studentsError,
+    studentsErrorValue,
     studentsPagination,
     seats,
     isLoadingSeats,
     referralCodes,
     isLoadingReferralCodes,
     referralCodesError,
+    referralCodesErrorValue,
     isLoadingMoreReferralCodes,
     hasMoreReferralCodes,
     referralCodesLoadMoreError,
@@ -84,6 +89,7 @@ export function StudentRoster() {
     rosterInvitationTotals,
     isLoadingRosterImports,
     rosterImportsError,
+    rosterImportsErrorValue,
     isLoadingMoreRosterImports,
     hasMoreRosterImports,
     rosterImportsLoadMoreError,
@@ -148,25 +154,11 @@ export function StudentRoster() {
     [showInitialSkeleton],
   );
 
-  const seatLabel = seats
-    ? `${seats.used} of ${seats.allocated} seats used`
-    : "Seats";
-
-  const seatProgress =
-    seats && seats.allocated > 0
-      ? (seats.used / seats.allocated) * 100
-      : 0;
-
   usePageHeader(
     "Students",
     "Roster, invites, bulk upload and consent...",
     {
-      stat: {
-        icon: Armchair,
-        label: seatLabel,
-        progress: seatProgress,
-        isLoading: isLoadingSeats,
-      },
+      stat: seatStat(seats, isLoadingSeats),
       action: headerAction,
     },
   );
@@ -189,6 +181,13 @@ export function StudentRoster() {
       />
 
       {/* 2. STUDENT ROSTER TABLE CARD */}
+      {studentsError ? (
+        <CollegeErrorState
+          error={studentsErrorValue}
+          title="Students unavailable"
+          fallback="The student roster could not be loaded."
+        />
+      ) : (
       <StudentTable
         students={students}
         currentPage={studentsPagination.currentPage}
@@ -200,6 +199,7 @@ export function StudentRoster() {
           if (student.candidateId) router.push(`/college/students/${student.candidateId}`);
         }}
       />
+      )}
 
       {/* 3. BOTTOM CARDS: BULK UPLOAD & LINK STATES */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1">
@@ -220,6 +220,7 @@ export function StudentRoster() {
           imports={rosterImports}
           isLoading={isLoadingRosterImports}
           isError={rosterImportsError}
+          error={rosterImportsErrorValue}
           hasMore={hasMoreRosterImports}
           isLoadingMore={isLoadingMoreRosterImports}
           loadMoreError={rosterImportsLoadMoreError}
@@ -241,6 +242,7 @@ export function StudentRoster() {
           codes={referralCodes}
           isLoading={isLoadingReferralCodes}
           isError={referralCodesError}
+          error={referralCodesErrorValue}
           hasMore={hasMoreReferralCodes}
           isLoadingMore={isLoadingMoreReferralCodes}
           loadMoreError={referralCodesLoadMoreError}

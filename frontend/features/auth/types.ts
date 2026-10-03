@@ -33,8 +33,9 @@ export interface LoginResponse {
 
 export interface SignupRequest {
   email: string;
-  /** Which Cognito pool the account belongs to. Defaults to BUSINESS. */
-  pool?: "CANDIDATE" | "BUSINESS";
+  password: string;
+  /** Which Cognito pool the account belongs to. */
+  pool: "CANDIDATE" | "BUSINESS";
 }
 
 export interface SignupResponse extends LoginResponse {

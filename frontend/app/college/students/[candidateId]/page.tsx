@@ -6,7 +6,7 @@ import { ArrowLeft, BookOpen, BriefcaseBusiness, FileText, Mic2, TrendingUp } fr
 
 import { Skeleton } from "@/components/common/loading";
 import { usePageHeader } from "@/components/layout/header-context";
-import { ErrorState } from "@/components/ui";
+import { CollegeErrorState } from "@/features/college/components/college-error-state";
 import { CollegeStudentPageSkeleton } from "@/features/college/students/college-student-page-skeleton";
 import {
   useGetCollegeStudentQuery,
@@ -57,7 +57,7 @@ export default function CollegeStudentPage() {
   usePageHeader("Students", "Roster, invites, bulk upload and consent...");
 
   if (student.isLoading) return <CollegeStudentPageSkeleton />;
-  if (student.error || !student.data) return <div className="mx-auto max-w-7xl"><Link href="/college/students" className="mb-4 inline-flex items-center gap-1 text-[12px] font-semibold text-[#315c9f]"><ArrowLeft size={14} /> Students</Link><ErrorState error={student.error} fallback="This student is unavailable or has withdrawn visibility." /></div>;
+  if (student.error || !student.data) return <div className="mx-auto max-w-7xl"><Link href="/college/students" className="mb-4 inline-flex items-center gap-1 text-[12px] font-semibold text-[#315c9f]"><ArrowLeft size={14} /> Students</Link><CollegeErrorState error={student.error} fallback="This student is unavailable or has withdrawn visibility." /></div>;
 
   const profile = student.data;
   const initials = (profile.fullName ?? "Student").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();

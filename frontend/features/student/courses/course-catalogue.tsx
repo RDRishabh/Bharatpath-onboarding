@@ -2,7 +2,6 @@
 
 import { BookOpen, CheckCircle2, LockKeyhole, ShoppingCart } from "lucide-react";
 
-import { getApiErrorMessage } from "@/lib/api/error-message";
 import {
   useCheckoutCourseMutation,
   useGetStudentCoursesQuery,
@@ -13,6 +12,7 @@ import {
   PillButton,
   StatusChip,
   StudentCard,
+  StudentErrorState,
 } from "@/features/student/components";
 import { StudentPage, StudentTopBar } from "@/features/student/shell";
 
@@ -44,9 +44,11 @@ export function CourseCatalogue() {
         {courses.isLoading ? (
           <StudentCard>Loading courses…</StudentCard>
         ) : courses.error ? (
-          <EmptyState
+          <StudentErrorState
             title="Courses unavailable"
-            message={getApiErrorMessage(courses.error, "Could not load courses.")}
+            error={courses.error}
+            fallback="Could not load courses."
+            onRetry={() => void courses.refetch()}
           />
         ) : courses.data?.length ? (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -94,9 +96,10 @@ export function CourseCatalogue() {
         )}
 
         {checkoutState.error ? (
-          <EmptyState
-            title="Checkout could not start"
-            message={getApiErrorMessage(checkoutState.error, "Please try again.")}
+          <StudentErrorState
+            variant="inline"
+            error={checkoutState.error}
+            fallback="Checkout could not start. Please try again."
           />
         ) : null}
       </div>

@@ -455,14 +455,16 @@ export function QueueDrawer() {
         <div className="flex shrink-0 gap-2 border-t border-[#e5e7eb] px-2 py-3">
           {/* Request info */}
 
-          <button
-            type="button"
-            disabled={actionLoading || !isKyb || !note.trim()}
-            onClick={() => void submitDecision("MORE_INFO_REQUIRED")}
-            className="flex-1 cursor-pointer rounded-lg border border-[#e5e7eb] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#172033] transition-colors hover:bg-[#f8f9fb]"
-          >
-            {isKyb ? "Request info" : "Clear"}
-          </button>
+          {isKyb ? (
+            <button
+              type="button"
+              disabled={actionLoading || !note.trim()}
+              onClick={() => void submitDecision("MORE_INFO_REQUIRED")}
+              className="flex-1 cursor-pointer rounded-lg border border-[#e5e7eb] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#172033] transition-colors hover:bg-[#f8f9fb] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Request info
+            </button>
+          ) : null}
 
           {/* Reject */}
 

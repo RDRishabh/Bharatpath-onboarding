@@ -8,17 +8,15 @@ import {
   useSaveQuestionnaireAnswersMutation,
   useSubmitQuestionnaireMutation,
 } from "@/store/student";
-import { getApiErrorMessage } from "@/lib/api/error-message";
 import type {
   QuestionnaireQuestion,
   QuestionnaireView,
 } from "@/features/student/types";
 import {
   CommerceBadge,
-  EmptyState,
-  NoteStrip,
   PillButton,
   StudentCard,
+  StudentErrorState,
 } from "@/features/student/components";
 import { StudentPage, StudentTopBar } from "@/features/student/shell";
 
@@ -35,12 +33,10 @@ export function AttributeIntro() {
         {questionnaire.isLoading ? (
           <StudentCard>Loading questionnaire…</StudentCard>
         ) : questionnaire.error ? (
-          <EmptyState
+          <StudentErrorState
             title="Questionnaire unavailable"
-            message={getApiErrorMessage(
-              questionnaire.error,
-              "Could not load the questionnaire.",
-            )}
+            error={questionnaire.error}
+            fallback="Could not load the questionnaire."
           />
         ) : questionnaire.data ? (
           <QuestionnaireForm
@@ -155,12 +151,11 @@ function QuestionnaireForm({
             </div>
 
             {actionError ? (
-              <NoteStrip tone="amber">
-                {getApiErrorMessage(
-                  actionError,
-                  "Could not save your answers.",
-                )}
-              </NoteStrip>
+              <StudentErrorState
+                variant="inline"
+                error={actionError}
+                fallback="Could not save your answers."
+              />
             ) : null}
             <div className="flex flex-col gap-2 sm:flex-row">
               <PillButton

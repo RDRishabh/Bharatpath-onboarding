@@ -60,6 +60,9 @@ export const SUCCESS_MESSAGES: Record<string, SuccessMessage> = {
   assignAdminDispute: null,
   resolveAdminDispute: null,
   suppressAdminNotifications: "Notifications suppressed for this user.",
+  provisionAdminCandidate: "Candidate invitation sent.",
+  provisionAdminEmployer: "Employer invitation sent.",
+  provisionAdminCollege: "Institution invitation sent.",
 
   /* Notifications — reading is not an action worth announcing. */
   markNotificationRead: null,
@@ -119,6 +122,7 @@ export const SUCCESS_MESSAGES: Record<string, SuccessMessage> = {
 
   /* Employer settings — company save and member removal toast from the slice. */
   createEmployerOrganisation: "Organisation created.",
+  createCollegeOrganisation: "Institution created.",
   addEmployerTeamMember: "Invite sent.",
   updateEmployerTeamMember: (args) => {
     const role = argField(args, "role");

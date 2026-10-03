@@ -15,6 +15,7 @@ import {
   PillButton,
   ScoreBandBar,
   ScoreScaleUnavailable,
+  StudentErrorState,
 } from "@/features/student/components";
 import { ScoreRing } from "@/features/student/components/score-ring";
 import { bandLabel } from "@/features/student/formatters";
@@ -33,9 +34,11 @@ export function ScoreReveal() {
           Loading score…
         </div>
       ) : score.error ? (
-        <EmptyState
+        <StudentErrorState
           title="Score unavailable"
-          message={getApiErrorMessage(score.error, "Could not load your score.")}
+          error={score.error}
+          fallback="Could not load your score."
+          onRetry={() => void score.refetch()}
         />
       ) : score.data?.status === "READY" && score.data.value != null ? (
         <div className="grid gap-4 lg:grid-cols-2">

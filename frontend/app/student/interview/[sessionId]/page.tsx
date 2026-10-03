@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGetInterviewSessionQuery, useGetInterviewUploadMutation, useCompleteInterviewAnswerMutation, useNextInterviewQuestionMutation, useCompleteInterviewMutation } from "@/store/student/learning.api";
 import { StudentPage } from "@/features/student/shell";
+import { Clock, Mic, Square } from "lucide-react";
+import { MeterBar, PillButton, SectionEyebrow, StatusChip, StudentAudioPlayer, StudentCard, StudentErrorState } from "@/features/student/components";
 
 export default function InterviewSessionPage() {
   const id = useParams<{ sessionId: string }>().sessionId;
@@ -53,15 +55,58 @@ export default function InterviewSessionPage() {
     finally { setBusy(false); }
   }
   async function finish() { setError(""); try { await complete(id).unwrap(); await session.refetch(); } catch { setError("Could not finish the interview. Please retry."); } }
-  return <StudentPage><div className="rounded-xl border bg-white p-5">
-    {session.isLoading && <p>Loading your interview…</p>}{session.error && <p>Interview unavailable.</p>}
-    {session.data && <><p className="text-sm">{session.data.questions.filter((q) => session.data?.answers.find((a) => a.question_index === q.index)?.upload_state === "STORED").length} of {session.data.questions_total} answers saved</p>
-      {current ? <><h2 className="mt-4 text-xl font-bold">Question {current.index + 1}</h2><p className="mt-2">{current.prompt}</p>
-        <p className="mt-2 text-sm">You have {current.preparation_seconds} seconds to prepare and up to {current.answer_seconds} seconds to answer.</p>
-        {recording ? <button onClick={stop} className="mt-4 rounded bg-red-700 px-4 py-2 text-white">Stop recording</button> : <button onClick={record} disabled={busy} className="mt-4 rounded bg-purple-700 px-4 py-2 text-white">Record answer</button>}
-        {clip && <div className="mt-4">{clipUrl && <audio controls src={clipUrl} />}<button onClick={send} disabled={busy} className="mt-2 block rounded bg-purple-700 px-4 py-2 text-white">Save answer and continue</button></div>}
-      </> : session.data.state === "COMPLETED" || session.data.state === "EVALUATED" ? <p className="mt-3">Interview completed.</p> : session.data.answers.every((a) => a.upload_state === "STORED") ? <><p className="mt-3">All answers saved.</p><button onClick={finish} disabled={completeState.isLoading} className="mt-3 rounded bg-purple-700 px-4 py-2 text-white">Finish interview</button></> : <div className="mt-3"><p>{nextState.isLoading ? "Interviewer is thinking…" : "Your next question is ready to request."}</p><button onClick={async () => { try { await nextQuestion(id).unwrap(); await session.refetch(); } catch { setError("Could not prepare the next question. Please retry."); } }} disabled={nextState.isLoading} className="mt-2 rounded border px-4 py-2">Get next question</button></div>}
-      {session.data.state === "COMPLETED" || session.data.state === "EVALUATED" ? <Link href="/student/interview" className="mt-4 block text-blue-700">View interview history</Link> : null}
-    </>}{error && <p role="alert" className="mt-3 text-red-700">{error}</p>}
+  const saved = session.data?.questions.filter((q) => session.data?.answers.find((a) => a.question_index === q.index)?.upload_state === "STORED").length ?? 0;
+  const total = session.data?.questions_total ?? 0;
+  const done = session.data?.state === "COMPLETED" || session.data?.state === "EVALUATED";
+  const allStored = session.data?.answers.every((a) => a.upload_state === "STORED");
+  return <StudentPage><div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+    {session.isLoading && <StudentCard><p className="text-sm text-[#5F6B80]">Loading your interview…</p></StudentCard>}
+    {session.error && <StudentErrorState title="Interview unavailable" error={session.error} fallback="We could not load this interview." onRetry={() => void session.refetch()} />}
+    {session.data && <>
+      <StudentCard className="!p-5">
+        <div className="flex items-center justify-between gap-3">
+          <SectionEyebrow>{current ? `Question ${current.index + 1} of ${total}` : "Mock interview"}</SectionEyebrow>
+          <span className="shrink-0 text-[12px] font-semibold text-[#5F6B80]">{saved} of {total} answers saved</span>
+        </div>
+        <div className="mt-3"><MeterBar value={total ? (saved / total) * 100 : 0} height={6} /></div>
+      </StudentCard>
+
+      {current ? <StudentCard className="!p-5 sm:!p-6">
+        <h2 className="text-[20px] font-bold leading-[28px] text-[#0A1931] sm:text-[22px] sm:leading-[30px]">{current.prompt}</h2>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <StatusChip tone="neutral" icon={<Clock size={12} />}>{current.preparation_seconds}s to prepare</StatusChip>
+          <StatusChip tone="waiting" icon={<Mic size={12} />}>Up to {current.answer_seconds}s to answer</StatusChip>
+        </div>
+
+        <div className="mt-6 flex flex-col items-center gap-3 rounded-2xl bg-[#F7F4EC] px-4 py-6 text-center">
+          {recording ? <>
+            <span className="relative grid h-14 w-14 place-items-center"><span className="absolute inset-0 animate-ping rounded-full bg-red-500/25" /><span className="relative grid h-14 w-14 place-items-center rounded-full bg-red-600 text-white"><Mic size={22} /></span></span>
+            <p className="text-[13px] font-semibold text-[#0A1931]">Recording… speak clearly</p>
+            <PillButton variant="secondary" onClick={stop} icon={<Square size={14} fill="currentColor" />} className="!px-6 !py-3 !text-[14px]">Stop recording</PillButton>
+          </> : <>
+            <span className="grid h-14 w-14 place-items-center rounded-full bg-white text-[#5F4DB2] shadow-sm"><Mic size={22} /></span>
+            <p className="text-[13px] text-[#5F6B80]">{clip ? "Happy with it? Save, or record again." : "Press record when you are ready."}</p>
+            <PillButton onClick={record} disabled={busy} icon={<Mic size={16} />} className="!px-6 !py-3 !text-[14px]">{clip ? "Record again" : "Record answer"}</PillButton>
+          </>}
+        </div>
+
+        {clip && clipUrl && !recording ? <div className="mt-4 space-y-4">
+          <StudentAudioPlayer src={clipUrl} knownDurationMs={duration} label="your answer" />
+          <PillButton onClick={send} disabled={busy} className="w-full !py-3.5 !text-[14px]">{busy ? "Saving…" : "Save answer and continue"}</PillButton>
+        </div> : null}
+      </StudentCard> : done ? <StudentCard className="!p-6 text-center">
+        <h2 className="text-[20px] font-bold text-[#0A1931]">Interview completed</h2>
+        <p className="mt-1 text-[13px] text-[#5F6B80]">Nice work. Your report appears in your interview history.</p>
+        <Link href="/student/interview" className="mt-4 inline-block text-[13px] font-semibold text-[#5F4DB2] hover:underline">View interview history</Link>
+      </StudentCard> : allStored ? <StudentCard className="!p-6 text-center">
+        <h2 className="text-[20px] font-bold text-[#0A1931]">All answers saved</h2>
+        <p className="mt-1 text-[13px] text-[#5F6B80]">Finish to complete the session.</p>
+        <PillButton onClick={finish} disabled={completeState.isLoading} className="mt-4 !px-8 !py-3 !text-[14px]">{completeState.isLoading ? "Finishing…" : "Finish interview"}</PillButton>
+      </StudentCard> : <StudentCard className="!p-6 text-center">
+        <p className="text-[14px] font-semibold text-[#0A1931]">{nextState.isLoading ? "Interviewer is thinking…" : "Your next question is ready to request."}</p>
+        <PillButton variant="secondary" disabled={nextState.isLoading} onClick={async () => { try { await nextQuestion(id).unwrap(); await session.refetch(); } catch { setError("Could not prepare the next question. Please retry."); } }} className="mt-4 !px-6 !py-3 !text-[14px]">Get next question</PillButton>
+      </StudentCard>}
+    </>}
+    {error && <StudentErrorState variant="inline" message={error} />}
   </div></StudentPage>;
 }

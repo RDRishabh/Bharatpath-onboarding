@@ -8,7 +8,8 @@ import {
   ApplicationDrawer,
   ApplicationsPipelineSkeleton,
 } from "@/features/employer/applications";
-import { ErrorState } from "@/components/ui";
+import { useConfirmDialog } from "@/features/employer/components/use-confirm-dialog";
+import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import {
   usePageHeader,
   type Breadcrumb,
@@ -47,6 +48,37 @@ export function ApplicationsPageContent() {
     handleMeetingLinkChange,
     handleConfirmHire,
   } = useApplicationsPage();
+  const { confirm, dialog } = useConfirmDialog();
+
+  // Rejecting (a drop on the Rejected column) and marking a hire involve the
+  // candidate and cannot be taken back, so each is confirmed first.
+  const handleDropWithConfirm: typeof handleMoveToColumn = (
+    applicationId,
+    column,
+  ) => {
+    if (column.outcome !== "rejected") {
+      handleMoveToColumn(applicationId, column);
+      return;
+    }
+
+    confirm({
+      title: "Reject this application?",
+      description:
+        "The candidate will be told their application was not taken forward. This cannot be undone.",
+      confirmLabel: "Reject application",
+      tone: "danger",
+      onConfirm: () => handleMoveToColumn(applicationId, column),
+    });
+  };
+
+  const askConfirmHire = () =>
+    confirm({
+      title: "Mark this candidate as hired?",
+      description:
+        "This confirms the hire from your side. The candidate then confirms separately before it counts as a billable hire.",
+      confirmLabel: "Mark as hired",
+      onConfirm: handleConfirmHire,
+    });
 
   // When a specific job is in focus (a stage number was clicked on the jobs
   // table), show `Jobs > {job} > Applications`, matching the approved design.
@@ -112,7 +144,7 @@ export function ApplicationsPageContent() {
         />
 
         {error ? (
-          <ErrorState
+          <EmployerErrorState
             error={error}
             fallback="Something went wrong with that action. Please try again."
             className="mt-3"
@@ -143,7 +175,7 @@ export function ApplicationsPageContent() {
             onApplicationClick={
               handleOpenApplication
             }
-            onApplicationDrop={handleMoveToColumn}
+            onApplicationDrop={handleDropWithConfirm}
           />
         )}
       </div>
@@ -159,8 +191,10 @@ export function ApplicationsPageContent() {
         onMeetingLinkChange={
           handleMeetingLinkChange
         }
-        onConfirmHire={handleConfirmHire}
+        onConfirmHire={askConfirmHire}
       />
+
+      {dialog}
     </div>
   );
 }

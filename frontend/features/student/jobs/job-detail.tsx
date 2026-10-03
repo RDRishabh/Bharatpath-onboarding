@@ -18,7 +18,6 @@ import {
   useGetStudentApplicationsQuery,
   useGetStudentJobQuery,
 } from "@/store/student";
-import { getApiErrorMessage } from "@/lib/api/error-message";
 import {
   employerMonogram,
   formatDate,
@@ -26,13 +25,12 @@ import {
   workModeLabel,
 } from "@/features/student/formatters";
 import {
-  EmptyState,
   IconCircleButton,
-  NoteStrip,
   PillButton,
   SkillChip,
   StatusChip,
   StudentCard,
+  StudentErrorState,
 } from "@/features/student/components";
 import { StudentJobDetailSkeleton } from "@/features/student/loading";
 import { StudentPage, StudentTopBar } from "@/features/student/shell";
@@ -58,12 +56,10 @@ export function JobDetail() {
   if (!job.data || job.error) {
     return (
       <StudentPage>
-        <EmptyState
+        <StudentErrorState
           title="Job unavailable"
-          message={getApiErrorMessage(
-            job.error,
-            "This job may have been closed.",
-          )}
+          error={job.error}
+          fallback="This job may have been closed."
         />
         <PillButton
           className="mt-4 w-full"
@@ -204,12 +200,11 @@ export function JobDetail() {
             </PillButton>
           )}
           {applyState.error ? (
-            <NoteStrip tone="amber">
-              {getApiErrorMessage(
-                applyState.error,
-                "Could not submit your application.",
-              )}
-            </NoteStrip>
+            <StudentErrorState
+              variant="inline"
+              error={applyState.error}
+              fallback="Could not submit your application."
+            />
           ) : null}
         </div>
       </div>

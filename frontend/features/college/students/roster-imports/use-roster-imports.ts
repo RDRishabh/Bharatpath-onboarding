@@ -151,6 +151,7 @@ export function useRosterImports() {
       rosterImports.length === 0 &&
       query.isError &&
       query.data === undefined,
+    rosterImportsErrorValue: query.error,
     isLoadingMoreRosterImports: query.isFetchingNextPage,
     hasMoreRosterImports: query.hasNextPage,
     rosterImportsLoadMoreError:
