@@ -13,6 +13,7 @@ import pytest
 
 from app.modules.resume.parser import (
     MIN_USEFUL_CHARS,
+    DocumentTooLongError,
     ExtractedDocument,
     FallbackResumeParser,
     UnreadableDocumentError,
@@ -128,3 +129,12 @@ def test_the_version_names_both_engines() -> None:
     chain = _chain(FakeParser("local"), FakeParser("textract"))
     assert chain.version == "local-v1|textract-v1"
     assert _chain(FakeParser("local"), None).version == "local-v1|off"
+
+
+def test_a_document_too_long_for_a_cv_is_never_ocrd() -> None:
+    """Textract would read the same pages and bill every one of them."""
+    local = FakeParser("local", raises=DocumentTooLongError(params={"max_pages": 10}))
+    ocr = FakeParser("textract", text=REAL_CV)
+    with pytest.raises(DocumentTooLongError):
+        _chain(local, ocr).extract(content=b"x", mime="application/pdf", **S3)
+    assert ocr.calls == []
