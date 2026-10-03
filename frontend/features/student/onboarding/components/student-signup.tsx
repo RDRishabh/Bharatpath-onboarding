@@ -22,6 +22,8 @@ import {
   useCompleteResumeUploadMutation,
   useCreateResumeUploadMutation,
   useLazyGetResumeVersionsQuery,
+  useGetCollegeConsentTermsQuery,
+  useLinkStudentCollegeByReferralMutation,
   useUploadResumeFileMutation,
   type ManualResume,
 } from "@/store/student";
@@ -45,6 +47,7 @@ type Stage =
   | { name: "language" }
   | { name: "how" }
   | { name: "account" }
+  | { name: "referral"; code: string }
   | { name: "about" }
   | { name: "intake"; error?: string }
   | { name: "paste" }
@@ -67,6 +70,7 @@ const PHASE_OF: Record<Stage["name"], SignupPhase> = {
   language: "start",
   how: "start",
   account: "start",
+  referral: "start",
   about: "start",
   intake: "resume",
   paste: "resume",
@@ -104,6 +108,7 @@ export function StudentSignup() {
   const [createUpload] = useCreateResumeUploadMutation();
   const [uploadFile] = useUploadResumeFileMutation();
   const [completeUpload] = useCompleteResumeUploadMutation();
+  const [linkCollege] = useLinkStudentCollegeByReferralMutation();
 
   const go = (next: Stage) => {
     setStage(next);
@@ -300,7 +305,7 @@ export function StudentSignup() {
       return frame(
         <AccountStep
           onBack={() => go({ name: "how" })}
-          onSignedUp={async (result, email) => {
+          onSignedUp={async (result, email, referralCode) => {
             if (result.token) setStoredToken(result.token);
             // A different person may have been signed in on this browser.
             resetCaches();
@@ -313,8 +318,23 @@ export function StudentSignup() {
               await updatePreferences({ locale }).unwrap().catch(() => undefined);
             }
 
-            go(await resume());
+            if (referralCode) {
+              go({ name: "referral", code: referralCode });
+            } else {
+              go(await resume());
+            }
           }}
+        />,
+      );
+
+    case "referral":
+      return frame(
+        <ReferralConsentStep
+          code={stage.code}
+          linkCollege={(code, consentVersion) =>
+            linkCollege({ code, consentVersion }).unwrap()
+          }
+          onDone={() => void resume().then(go)}
         />,
       );
 
@@ -419,4 +439,33 @@ export function StudentSignup() {
         />,
       );
   }
+}
+
+function ReferralConsentStep({ code, linkCollege, onDone }: {
+  code: string;
+  linkCollege: (code: string, consentVersion: string) => Promise<unknown>;
+  onDone: () => void;
+}) {
+  const terms = useGetCollegeConsentTermsQuery("ROSTER");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function accept() {
+    if (!terms.data) return;
+    setBusy(true); setError(null);
+    try {
+      await linkCollege(code, terms.data.consent_version);
+      onDone();
+    } catch (linkError) {
+      setError(getApiErrorMessage(linkError, "The college referral code could not be applied."));
+      if (getApiErrorCode(linkError) === "consent_version_outdated") void terms.refetch();
+    } finally { setBusy(false); }
+  }
+
+  return <div className="flex flex-col gap-6">
+    <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#5F4DB2]">College referral</p><h1 className="mt-2 text-2xl font-bold text-[#0A1931]">Link your college?</h1><p className="mt-2 text-sm leading-6 text-[#5F6B80]">You entered <strong className="font-mono text-[#0A1931]">{code}</strong>. Referral codes link your student account to a college; they do not change payment prices.</p></div>
+    <section className="rounded-2xl border border-[#E7E0D4] bg-[#FFFCF7] p-4 text-sm leading-6 text-[#3A4761]">{terms.isLoading ? "Loading consent terms…" : terms.data?.text ?? "The consent terms could not be loaded."}</section>
+    {(error || terms.error) && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error ?? getApiErrorMessage(terms.error, "The consent terms could not be loaded.")}</div>}
+    <div className="flex gap-3"><button type="button" onClick={onDone} className="flex-1 rounded-full border border-[#E7E0D4] px-4 py-3 text-sm font-semibold text-[#0A1931]">Skip for now</button><button type="button" disabled={!terms.data || busy} onClick={() => void accept()} className="flex-[2] rounded-full bg-[#5F4DB2] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? "Linking…" : "Agree and link college"}</button></div>
+  </div>;
 }

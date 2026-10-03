@@ -12,6 +12,7 @@ const navigation = [
   ["Disputes", "/admin/disputes"],
   ["Audit trail", "/admin/audit"],
   ["Attributes", "/admin/search-filters"],
+  ["Discount codes", "/admin/discount-codes"],
   ["Settings", "/admin/settings"],
 ] as const;
 

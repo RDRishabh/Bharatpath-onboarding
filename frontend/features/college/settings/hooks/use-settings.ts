@@ -163,7 +163,7 @@ export function useSettings(scope: SettingsDataScope) {
     useCancelCollegeSubscriptionMutation();
 
   const checkout = useCallback(
-    (planCode: string) => createCheckout({ planCode }).unwrap(),
+    (planCode: string, discountCode?: string) => createCheckout({ planCode, discountCode }).unwrap(),
     [createCheckout],
   );
 
@@ -197,6 +197,9 @@ export function useSettings(scope: SettingsDataScope) {
     subscription: subscriptionQuery.data ?? null,
     plans: plansQuery.data ?? [],
     isLoadingBilling: subscriptionQuery.isLoading || plansQuery.isLoading,
+    refetchBilling: async () => {
+      await Promise.all([subscriptionQuery.refetch(), seatsQuery.refetch()]);
+    },
     checkout,
     isCheckingOut: checkoutState.isLoading,
     cancelSubscription: () => cancelSubscription().unwrap(),

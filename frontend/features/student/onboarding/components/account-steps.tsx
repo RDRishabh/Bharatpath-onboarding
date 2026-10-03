@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { KeyRound, Lock, Mail, MapPin, User } from "lucide-react";
+import { GraduationCap, KeyRound, Lock, Mail, MapPin, User } from "lucide-react";
 
 import { AppSelect } from "@/components/ui/app-select";
 import { getApiErrorMessage } from "@/lib/api/error-message";
@@ -36,18 +36,19 @@ const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * ---------------------------------------------------------------------- */
 interface AccountStepProps {
   onBack: () => void;
-  onSignedUp: (result: SignupResponse, email: string) => Promise<void>;
+  onSignedUp: (result: SignupResponse, email: string, referralCode: string) => Promise<void>;
 }
 
 export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   const flow = useSignupFlow("CANDIDATE", async (session, signedUpEmail) => {
     showSuccessFeedback("Your account is ready.");
-    await onSignedUp(session, signedUpEmail);
+    await onSignedUp(session, signedUpEmail, referralCode.trim().toUpperCase());
   });
 
   const submitDetails = (event: React.FormEvent<HTMLFormElement>) => {
@@ -196,6 +197,25 @@ export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) 
               setErrors((current) => ({ ...current, password: undefined }));
             }}
             className={`${fieldClass} ${fieldBorder(Boolean(errors.password))} pl-12`}
+          />
+        </div>
+      </Field>
+
+      <Field
+        id="signup-referral-code"
+        label="College referral code (optional)"
+        hint="If your college gave you a code, enter it here. This is separate from a payment discount code."
+      >
+        <div className="relative">
+          <GraduationCap className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#3A4761]" aria-hidden="true" />
+          <input
+            id="signup-referral-code"
+            autoComplete="off"
+            placeholder="ABCD-EFGH-JKMN"
+            value={referralCode}
+            maxLength={32}
+            onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
+            className={`${fieldClass} ${fieldBorder(false)} pl-12 font-mono uppercase`}
           />
         </div>
       </Field>

@@ -4,7 +4,7 @@ export type CourseDetail = {
   id: string; title: string; price_minor: number; currency: string; purchased: boolean; locked: boolean; completed: boolean; lessons_total: number; lessons_completed: number; percent_complete: number;
   modules: Array<{ id: string; title: string; lessons: Array<{ id: string; title: string; description: string | null; media_kind: "YOUTUBE" | "UPLOAD"; media_url: string | null; position_seconds: number; duration_seconds: number; completed: boolean }> }>;
 };
-export type PaymentCheckout = { payment_id: string; redirect_url: string | null; status: string };
+export type PaymentCheckout = { payment_id: string; redirect_url: string | null; status: string; amount_minor: number; list_amount_minor: number | null; currency: string };
 export type PaymentSimulation = { id: string; status: "PENDING" | "SUCCEEDED" | "FAILED" | "REFUNDED"; purpose: string };
 export type InterviewHistory = { id: string; session_number: number; state: string; created_at: string; completed_at: string | null; question_set_title: string; questions_asked: number; answers_stored: number; report_status: string };
 export type InterviewSession = { id: string; state: string; questions_total: number; questions: Array<{ index: number; prompt: string; preparation_seconds: number; answer_seconds: number }>; answers: Array<{ question_index: number; upload_state: string }> };

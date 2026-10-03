@@ -6,11 +6,17 @@ import {
   Bell,
   BookOpen,
   Building2,
+  ChevronRight,
   CircleUser,
+  ClipboardCheck,
   Eye,
+  FileText,
   GraduationCap,
+  Languages,
   Lock,
   MapPin,
+  Mic2,
+  type LucideIcon,
 } from "lucide-react";
 
 import {
@@ -115,6 +121,14 @@ export function StudentProfile() {
             <SectionEyebrow icon={<CircleUser size={12} />}>
               My information
             </SectionEyebrow>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <ProfileAction icon={FileText} title="Resume details" detail="Review and edit extracted information" tone="violet" onClick={() => router.push("/student/profile/resume")} />
+              <ProfileAction icon={ClipboardCheck} title="Attribute report" detail="View your completed assessment" tone="green" onClick={() => router.push("/student/attribute")} />
+              <ProfileAction icon={Mic2} title="Interview report" detail="Practice history and feedback" tone="orange" onClick={() => router.push("/student/interview")} />
+              <ProfileAction icon={BookOpen} title="Skill courses" detail={`${courses.data?.length ?? 0} available · ${courses.data?.filter((course) => course.completed).length ?? 0} completed`} tone="blue" onClick={() => router.push("/student/courses")} />
+              <ProfileAction icon={Languages} title="Language" detail="English" tone="gold" />
+              <ProfileAction icon={GraduationCap} title="College links" detail={`${activeCollegeLinks} active`} tone="slate" />
+            </div>
             {profile.data ? (
               <ProfileForm
                 profile={profile.data}
@@ -122,34 +136,6 @@ export function StudentProfile() {
             ) : (
               <StudentCard>Loading profile…</StudentCard>
             )}
-
-            <StudentCard>
-              <div className="flex items-center gap-3">
-                <BookOpen size={20} className="text-[#5F4DB2]" />
-                <span className="flex flex-1 flex-col">
-                  <span className="text-[15px] font-medium text-[#0A1931]">
-                    Courses
-                  </span>
-                  <span className="text-[12px] text-[#5F6B80]">
-                    {courses.data?.length ?? 0} available ·{" "}
-                    {courses.data?.filter((course) => course.completed).length ?? 0} completed
-                  </span>
-                </span>
-              </div>
-            </StudentCard>
-            <StudentCard>
-              <div className="flex items-center gap-3">
-                <GraduationCap size={20} className="text-[#5F4DB2]" />
-                <span className="flex flex-1 flex-col">
-                  <span className="text-[15px] font-medium text-[#0A1931]">
-                    College links
-                  </span>
-                  <span className="text-[12px] text-[#5F6B80]">
-                    {activeCollegeLinks} active
-                  </span>
-                </span>
-              </div>
-            </StudentCard>
 
             <ProfileViewsCard />
           </div>
@@ -209,6 +195,43 @@ export function StudentProfile() {
         </div>
       </div>
     </StudentPage>
+  );
+}
+
+function ProfileAction({ icon: Icon, title, detail, tone, onClick }: {
+  icon: LucideIcon;
+  title: string;
+  detail: string;
+  tone: "violet" | "green" | "orange" | "blue" | "gold" | "slate";
+  onClick?: () => void;
+}) {
+  const toneClass = {
+    violet: "bg-[#F1EAF7] text-[#5F4DB2]",
+    green: "bg-[#E6F1EA] text-[#1F6B45]",
+    orange: "bg-[#FFF0E7] text-[#A65325]",
+    blue: "bg-[#E8F0FA] text-[#3566B8]",
+    gold: "bg-[#F7EFD6] text-[#85650F]",
+    slate: "bg-[#EEF1F5] text-[#475569]",
+  }[tone];
+  const content = (
+    <>
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${toneClass}`}>
+        <Icon size={19} aria-hidden="true" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-[14px] font-semibold text-[#0A1931]">{title}</span>
+        <span className="line-clamp-2 text-[11px] leading-4 text-[#5F6B80]">{detail}</span>
+      </span>
+      {onClick ? <ChevronRight size={17} className="shrink-0 text-[#7B8495]" aria-hidden="true" /> : null}
+    </>
+  );
+
+  return onClick ? (
+    <button type="button" onClick={onClick} className={`group flex min-h-20 items-center gap-3 rounded-2xl border border-[#E7E0D4] bg-white p-3.5 text-left ${interactiveCardClass}`}>
+      {content}
+    </button>
+  ) : (
+    <div className="flex min-h-20 items-center gap-3 rounded-2xl border border-[#E7E0D4] bg-white p-3.5">{content}</div>
   );
 }
 

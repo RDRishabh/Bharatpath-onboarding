@@ -8,7 +8,10 @@ import {
   useGetCourseDetailQuery,
   useCheckoutCourseMutation,
   useUpdateLessonProgressMutation,
+  type PaymentCheckout,
 } from "@/store/student/learning.api";
+import { SimulatedPaymentDialog } from "@/components/billing/simulated-payment-dialog";
+import { isStubPaymentUrl } from "@/store/api/payment.api";
 import {
   EmptyState,
   MeterBar,
@@ -34,6 +37,7 @@ export default function CoursePage() {
   const [saveProgress] = useUpdateLessonProgressMutation();
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [simulatedCheckout, setSimulatedCheckout] = useState<PaymentCheckout | null>(null);
 
   if (course.isLoading) return <CourseDetailSkeleton />;
   if (course.error || !course.data) return <StudentPage><StudentTopBar title="Back to courses" backHref="/student/courses" /><StudentErrorState icon={<BookOpen size={22} />} title="Course unavailable" error={course.error} fallback="Could not load this course." /></StudentPage>;
@@ -46,7 +50,8 @@ export default function CoursePage() {
     setError("");
     try {
       const result = await checkout(id).unwrap();
-      if (result.redirect_url) window.location.assign(result.redirect_url);
+      if (isStubPaymentUrl(result.redirect_url)) setSimulatedCheckout(result);
+      else if (result.redirect_url) window.location.assign(result.redirect_url);
       else setError("Payment is pending. Refresh this page after it completes.");
     } catch {
       setError("Checkout is unavailable. Please try again.");
@@ -89,6 +94,7 @@ export default function CoursePage() {
       {!data.locked && activeLesson && <StudentCard className="p-5"><div className="mb-3 flex items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#F1EAF7] text-[#5F4DB2]"><Play size={16} /></span><div><h2 className="text-[17px] font-bold text-[#0A1931]">{activeLesson.title}</h2>{activeLesson.description && <p className="mt-1 text-[13px] leading-5 text-[#5F6B80]">{activeLesson.description}</p>}</div></div>
         {activeLesson.media_url ? activeLesson.media_kind === "YOUTUBE" ? <iframe title={activeLesson.title} src={activeLesson.media_url} className="aspect-video w-full rounded-xl border border-[#E7E0D4]" allowFullScreen /> : <video controls src={activeLesson.media_url} className="w-full rounded-xl" onPause={(event) => progress(activeLesson.id, Math.floor(event.currentTarget.currentTime))} onEnded={() => progress(activeLesson.id, activeLesson.duration_seconds)} /> : <NoteStrip tone="cream">This lesson&apos;s video is not available right now. Try opening it again later.</NoteStrip>}
       </StudentCard>}
+      {simulatedCheckout ? <SimulatedPaymentDialog paymentId={simulatedCheckout.payment_id} amountMinor={simulatedCheckout.amount_minor} currency={simulatedCheckout.currency} title={data.title} onComplete={() => course.refetch()} onClose={() => setSimulatedCheckout(null)} /> : null}
     </div>
   </StudentPage>;
 }

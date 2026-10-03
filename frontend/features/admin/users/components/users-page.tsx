@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 
 import { usePageHeader } from "@/components/layout/header-context";
 import { useAppDispatch } from "@/store/hooks";
@@ -16,8 +16,10 @@ import { CandidatesTab } from "./candidates-tab";
 import { EmployersTab } from "./employers-tab";
 import { InstitutionsTab } from "./institutions-tab";
 import { UserDrawer } from "./user-drawer";
+import { CreateUserDrawer } from "./create-user-drawer";
 
 export function UsersPage() {
+  const [createOpen, setCreateOpen] = useState(false);
   usePageHeader(
     "Users",
     "Candidates, employers and institutions on the platform",
@@ -110,7 +112,7 @@ export function UsersPage() {
       {/* SEARCH                                                            */}
       {/* ================================================================ */}
 
-      <div className="py-4">
+      <div className="flex items-center justify-between gap-3 py-4">
         <label className="flex h-[38px] w-[246px] items-center gap-2 rounded-lg border border-[#e2e5eb] bg-white px-3 transition-colors focus-within:border-[#315c9f]">
           <Search className="h-4 w-4 shrink-0 text-[#667085]" />
 
@@ -124,6 +126,15 @@ export function UsersPage() {
             className="w-full bg-transparent text-[12px] text-[#172033] outline-none placeholder:text-[#7b8494]"
           />
         </label>
+
+        <button
+          type="button"
+          onClick={() => setCreateOpen(true)}
+          className="inline-flex h-[38px] shrink-0 cursor-pointer items-center gap-2 rounded-lg bg-[#151b2b] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#20283d]"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Invite {segment === "candidates" ? "candidate" : segment === "employers" ? "employer" : "institution"}
+        </button>
       </div>
 
       {/* ================================================================ */}
@@ -159,6 +170,12 @@ export function UsersPage() {
         />
       )}
       <UserDrawer />
+      {createOpen ? (
+        <CreateUserDrawer
+          segment={segment}
+          onClose={() => setCreateOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

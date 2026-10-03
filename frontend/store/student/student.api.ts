@@ -192,6 +192,13 @@ interface CollegeLinkResponse {
   seat_held: boolean;
 }
 
+interface CollegeConsentTermsResponse {
+  consent_version: string;
+  scope: "ROSTER" | "INDIVIDUAL";
+  key: string;
+  text: string;
+}
+
 function mapProfile(response: StudentProfileResponse): StudentProfile {
   return {
     fullName: response.full_name,
@@ -602,6 +609,26 @@ export const studentApi = baseApi.injectEndpoints({
         })),
       providesTags: [{ type: "Student", id: "COLLEGES" }],
     }),
+    getCollegeConsentTerms: builder.query<CollegeConsentTermsResponse, "ROSTER" | "INDIVIDUAL">({
+      query: (scope) => ({ url: "/candidate/colleges/consent-terms", params: { scope } }),
+    }),
+    linkStudentCollegeByReferral: builder.mutation<CollegeLink, { code: string; consentVersion: string }>({
+      query: ({ code, consentVersion }) => ({
+        url: "/candidate/colleges/link",
+        method: "POST",
+        body: { code, consent_version: consentVersion },
+      }),
+      transformResponse: (link: CollegeLinkResponse) => ({
+        collegeId: link.college_id,
+        collegeName: link.college_name,
+        scope: link.scope,
+        grantedVia: link.granted_via,
+        grantedAt: link.granted_at,
+        revokedAt: link.revoked_at,
+        seatHeld: link.seat_held,
+      }),
+      invalidatesTags: [{ type: "Student", id: "COLLEGES" }],
+    }),
   }),
   overrideExisting: false,
 });
@@ -631,4 +658,6 @@ export const {
   useGetInterviewOfferQuery,
   useGetStudentCoursesQuery,
   useGetStudentCollegeLinksQuery,
+  useGetCollegeConsentTermsQuery,
+  useLinkStudentCollegeByReferralMutation,
 } = studentApi;

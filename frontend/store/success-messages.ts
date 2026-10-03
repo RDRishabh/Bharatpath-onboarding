@@ -60,6 +60,9 @@ export const SUCCESS_MESSAGES: Record<string, SuccessMessage> = {
   assignAdminDispute: null,
   resolveAdminDispute: null,
   suppressAdminNotifications: "Notifications suppressed for this user.",
+  provisionAdminCandidate: "Candidate invitation sent.",
+  provisionAdminEmployer: "Employer invitation sent.",
+  provisionAdminCollege: "Institution invitation sent.",
 
   /* Notifications — reading is not an action worth announcing. */
   markNotificationRead: null,

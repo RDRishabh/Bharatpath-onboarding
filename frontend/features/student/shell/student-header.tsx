@@ -41,6 +41,9 @@ function sectionFor(pathname: string): Section {
   if (pathname.startsWith("/student/streak")) {
     return { title: "Daily streak", subtitle: "Your consistency and engagement points" };
   }
+  if (pathname.startsWith("/student/profile/resume")) {
+    return { title: "Resume details", subtitle: "Review and update your resume information" };
+  }
   if (pathname.startsWith("/student/profile")) {
     return { title: "Profile", subtitle: "Your account and privacy" };
   }
@@ -52,6 +55,9 @@ function sectionFor(pathname: string): Section {
   }
   if (pathname.startsWith("/student/courses")) {
     return { title: "Courses", subtitle: "Learn at your own pace" };
+  }
+  if (pathname.startsWith("/student/subscription")) {
+    return { title: "Subscription", subtitle: "Manage your plan and billing" };
   }
   if (pathname.startsWith("/student/interview")) {
     return { title: "Mock interview", subtitle: "Practise before it counts" };

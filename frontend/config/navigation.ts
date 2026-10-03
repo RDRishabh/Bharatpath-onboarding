@@ -12,6 +12,7 @@ import {
   Gavel,
   ScrollText,
   Tags,
+  BadgePercent,
 } from "lucide-react";
 
 export const employerNavigation = [
@@ -112,6 +113,12 @@ export const adminNavigation = [
     label: "Attributes",
     href: "/admin/search-filters",
     icon: Tags,
+  },
+  {
+    key: "discount-codes",
+    label: "Discount codes",
+    href: "/admin/discount-codes",
+    icon: BadgePercent,
   },
   {
     key: "settings",
