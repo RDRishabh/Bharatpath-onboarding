@@ -1,6 +1,7 @@
 import { baseApi } from "@/store/api/base-api";
 
 import type {
+  ApplicationFunnel,
   CohortOverview,
   LocationHires,
   MonthHires,
@@ -113,6 +114,15 @@ function mapPlacementReport(
   };
 }
 
+interface ApplicationFunnelResponse {
+  min_cohort_size: number;
+  below_floor: boolean;
+  total_applications: number | null;
+  /** Every stage, small cells withheld as `null` (never as 0). */
+  by_stage: Record<string, number | null>;
+  reached: Record<string, number | null>;
+}
+
 export const collegeAnalyticsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getCohortOverview: builder.query<
@@ -125,6 +135,21 @@ export const collegeAnalyticsApi = baseApi.injectEndpoints({
       }),
       transformResponse: mapCohortOverview,
       providesTags: [{ type: "Analytics", id: "OVERVIEW" }],
+    }),
+
+    getApplicationFunnel: builder.query<ApplicationFunnel, void>({
+      query: () => ({
+        url: "/college/analytics/applications",
+        method: "GET",
+      }),
+      transformResponse: (funnel: ApplicationFunnelResponse): ApplicationFunnel => ({
+        minCohortSize: funnel.min_cohort_size,
+        belowFloor: funnel.below_floor,
+        totalApplications: funnel.total_applications,
+        byStage: { ...funnel.by_stage },
+        reached: { ...funnel.reached },
+      }),
+      providesTags: [{ type: "Analytics", id: "APPLICATIONS" }],
     }),
 
     getPlacementReport: builder.query<
@@ -146,5 +171,6 @@ export const collegeAnalyticsApi = baseApi.injectEndpoints({
 
 export const {
   useGetCohortOverviewQuery,
+  useGetApplicationFunnelQuery,
   useGetPlacementReportQuery,
 } = collegeAnalyticsApi;

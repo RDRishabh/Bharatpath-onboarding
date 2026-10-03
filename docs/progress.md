@@ -43,6 +43,62 @@ so roughly 45 CVs per dollar.** Output is ~93% of the cost.
 
 ---
 
+## 2026-10-02 — three merged backend APIs reach the frontend
+
+Frontend-only session: the brief was to touch nothing outside `frontend/`.
+Every route in `docs/APIs.md` was audited against every call the web app
+actually makes, and the three that recent backend PRs added which no screen
+called were wired up.
+
+- **`GET /candidate/profile/views`** (PR #30) — `getStudentProfileViews` in
+  `store/student/student.api.ts`, and a **Profile views** card on
+  `/student/profile`: the organisation's name and its last open, latest
+  first, first ten, with loading, error-retry and empty states. Only the two
+  fields the API holds — never the recruiter, never a count of opens. The
+  card sits outside the page's blocking skeleton, so a slow view log does
+  not hold up the profile.
+- **`GET /candidate/streak/me/calendar`** (PR #27) — the activity strip on
+  `/student/streak` now reads the server's days instead of deriving them.
+  `streak-utils.ts` said *"The API does not return a day-by-day calendar"*:
+  true when written, false since PR #27. The comment is fixed, and
+  `activeDateKeys` is now only the fallback used while the request is in
+  flight or has failed — still exactly right for the current run, and it
+  never guesses older activity.
+  - **Week and month pass `period` anchored on the server's IST `today`; the
+    year view passes `from`/`to` for 1 January – 31 December.** `period=year`
+    is the *rolling* 366 days ending today, not the calendar year the
+    heatmap draws. A whole calendar year is at most 366 days
+    (`domain.MAX_CALENDAR_DAYS`), so a leap year still fits in one call.
+  - The header now shows `opened · missed · best run`, and day labels say
+    "opened" rather than "current streak", because the set is no longer only
+    the current run.
+- **`GET /college/analytics/applications`** (PR #23) — a **"Where
+  applications stand"** panel on `/college/analytics`: current stage and
+  ever-reached milestones side by side, the total in the panel's meta. Stage
+  order lives in `use-analytics.ts` rather than being read off the response,
+  so the panel never depends on JSON key order. A withheld cell is an em
+  dash over a zero-width bar, **never `0`** — a zero would let the total
+  give back exactly what the floors withhold — and under the cohort floor
+  the whole panel is one note.
+
+**Audited and still not integrated** (left out deliberately: the scope was
+the recent PRs): `/disputes` raise and list; the seven unused
+`/candidate/colleges/*` routes (link, consent-terms, invitations, accept,
+decline, individual-visibility, revoke — only the list is called);
+`GET /candidate/questionnaire/report`; `POST /notifications/unsubscribe`; all
+six `/candidate/subscription/*` routes, because the student portal has no
+billing screen at all; `checkout/discount-preview` for employer and college;
+`/admin/accounts/*` with tenant members and resend-invitation; the five
+`/admin/discount-codes/*` routes; and the eight `/admin/courses/*`
+course-builder routes. None of them has a screen waiting, so they are
+features rather than wiring.
+
+**Verified:** `npx tsc --noEmit`, `npx eslint` clean on all ten touched files
+(the repo's four lint errors are pre-existing, in `student-app-shell.tsx`
+and `features/college/settings/*`), `npx next build` green.
+
+---
+
 ## 2026-10-02 — who viewed my profile (candidate)
 
 `GET /candidate/profile/views`. The privacy screen's "Who has seen me" had no

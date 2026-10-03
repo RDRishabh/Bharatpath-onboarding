@@ -42,10 +42,11 @@ export function activeDateKeys(streak: StudentStreak): Set<string> {
   }
 
   /*
-   * The API does not return a day-by-day calendar. A current streak is, by
-   * definition, one uninterrupted run ending on last_active_on, so those
-   * dates can be derived exactly. Older activity before the current run is
-   * deliberately not guessed.
+   * Fallback only. The day-by-day calendar is `GET /candidate/streak/me/calendar`;
+   * this is what the strip shows while that request is in flight or has failed.
+   * A current streak is, by definition, one uninterrupted run ending on
+   * last_active_on, so those dates can be derived exactly. Older activity
+   * before the current run is deliberately not guessed.
    */
   const lastActive = parseDateKey(streak.lastActiveOn);
   return new Set(

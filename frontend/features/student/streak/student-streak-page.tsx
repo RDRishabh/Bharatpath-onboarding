@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Check,
@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/common/loading";
 import { AppSelect } from "@/components/ui/app-select";
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import {
+  useGetStudentStreakCalendarQuery,
   useGetStudentStreakPointsQuery,
   useGetStudentStreakSessionQuery,
 } from "@/store/student";
@@ -190,17 +191,69 @@ function StatTile({
   );
 }
 
+/**
+ * Which days a view draws. `today` is the server's IST day, so neither the
+ * browser's clock nor its time zone ever picks the range.
+ *
+ * The year view asks for the calendar year explicitly: `period=year` is the
+ * rolling 366 days ending today, while this heatmap is drawn January to
+ * December.
+ */
+function calendarArgsFor(
+  view: "week" | "month" | "year",
+  today: string,
+): {
+  period?: "week" | "month" | "year";
+  date?: string;
+  from?: string;
+  to?: string;
+} {
+  if (view === "year") {
+    const year = today.slice(0, 4);
+    return { from: `${year}-01-01`, to: `${year}-12-31` };
+  }
+  return { period: view, date: today };
+}
+
 function WeeklyActivity({ streak }: { streak: StudentStreak }) {
   const [view, setView] = useState<"week" | "month" | "year">("week");
   // `today` is the server's IST date. Never use the browser's calendar here.
+  const calendar = useGetStudentStreakCalendarQuery(
+    calendarArgsFor(view, streak.today),
+  );
   const week = weekFor(streak.today);
-  const active = activeDateKeys(streak);
+
+  /*
+   * `GET /candidate/streak/me/calendar` decides which days were opened. Until
+   * it answers (first paint, or a failed request) we fall back to the current
+   * run, which is exactly derivable from the streak — older activity is never
+   * guessed at.
+   */
+  const active = useMemo(() => {
+    const days = calendar.data?.days;
+    if (days) {
+      return new Set(
+        days
+          .filter((day) => day.status === "ACTIVE")
+          .map((day) => day.date),
+      );
+    }
+    return activeDateKeys(streak);
+  }, [calendar.data, streak]);
 
   return (
     <section className="flex flex-col gap-3 xl:col-span-7">
-      <SectionEyebrow icon={<Flame size={13} />}>
-        {view === "week" ? "This week's activity" : view === "month" ? "This month's activity" : "This year's activity"}
-      </SectionEyebrow>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SectionEyebrow icon={<Flame size={13} />}>
+          {view === "week" ? "This week's activity" : view === "month" ? "This month's activity" : "This year's activity"}
+        </SectionEyebrow>
+        {calendar.data ? (
+          <span className="text-[11px] font-semibold text-[#5F6B80]">
+            {calendar.data.activeDays} opened · {calendar.data.missedDays}{" "}
+            missed · best run {calendar.data.longestRun}
+          </span>
+        ) : null}
+      </div>
       <div className="flex h-[222px] min-w-0 flex-col rounded-[24px] border border-[#E7E0D4] bg-white p-4 shadow-[0_4px_14px_rgba(10,25,49,0.05)] sm:p-5">
         <div className="min-h-0 flex-1">
         {view === "week" ? (
@@ -232,7 +285,7 @@ function WeeklyActivity({ streak }: { streak: StudentStreak }) {
                       ? "border-[#F3D6B4] bg-[#F97316] text-white shadow-[0_4px_10px_rgba(249,115,22,0.22)]"
                       : "border-[#E7E0D4] bg-[#FFFCF7] text-[#D8D3C8]",
                   ].join(" ")}
-                  aria-label={isActive ? `${key} completed` : `${key} not in current streak`}
+                  aria-label={isActive ? `${key} opened` : `${key} not opened`}
                 >
                   {isActive ? (
                     <Flame
@@ -278,7 +331,7 @@ function WeeklyActivity({ streak }: { streak: StudentStreak }) {
               aria-hidden="true"
             />
           )}
-          <span className="line-clamp-2">{view === "week" ? weeklyStatusMessage(streak) : "Colored days show your current streak."}</span>
+          <span className="line-clamp-2">{view === "week" ? weeklyStatusMessage(streak) : "Colored days are days you opened the app."}</span>
           </div>
           <AppSelect
             value={view}
@@ -319,7 +372,7 @@ function MonthActivity({ today, active }: { today: string; active: Set<string> }
         <span className="font-semibold text-[#0A1931]">
           {new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric", timeZone: "UTC" }).format(date)}
         </span>
-        <span className="text-[#5F6B80]">{completedCount} in current streak</span>
+        <span className="text-[#5F6B80]">{completedCount} opened</span>
       </div>
       <div className="mb-0.5 grid grid-cols-7 gap-1 text-center text-[9px] font-semibold text-[#5F6B80]">
         {WEEKDAY_LABELS.map((label) => <span key={label}>{label}</span>)}
@@ -333,8 +386,8 @@ function MonthActivity({ today, active }: { today: string; active: Set<string> }
           return (
             <span
               key={key}
-              title={inMonth ? `${key}${completed ? " · current streak" : ""}` : undefined}
-              aria-label={inMonth ? `${key}${completed ? " completed" : key > today ? " upcoming" : " activity unavailable"}` : undefined}
+              title={inMonth ? `${key}${completed ? " · opened" : ""}` : undefined}
+              aria-label={inMonth ? `${key}${completed ? " opened" : key > today ? " upcoming" : " not opened"}` : undefined}
               className={[
                 "grid place-items-center rounded-md border text-[10px] font-semibold tabular-nums",
                 days.length > 35 ? "h-[15px]" : "h-[18px]",
@@ -419,8 +472,8 @@ function ActivityHeatmap({
                   return (
                     <span
                       key={key}
-                      title={`${key}${completed ? " · current streak" : ""}`}
-                      aria-label={`${key}${completed ? " completed" : isFuture ? " upcoming" : " activity unavailable"}`}
+                      title={`${key}${completed ? " · opened" : ""}`}
+                      aria-label={`${key}${completed ? " opened" : isFuture ? " upcoming" : " not opened"}`}
                       className={[
                         "block rounded-[3px] border",
                         "h-[12px] w-[12px]",

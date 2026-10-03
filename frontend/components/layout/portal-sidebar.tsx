@@ -27,7 +27,7 @@ import {
   clearUser,
 } from "@/store/common/slices/auth.slice";
 
-import { clearStoredToken } from "@/lib/auth/token";
+import { authService } from "@/features/auth/services/auth.service";
 import {
   identityInitials,
   roleLabel,
@@ -173,11 +173,11 @@ export function PortalSidebar({
    */
 
   const handleLogout = () => {
-    clearStoredToken();
+    void authService.logout();
     dispatch(clearUser());
     dispatch(clearTenant());
 
-    router.push("/api/auth/logout");
+    router.push("/login");
   };
 
   return (

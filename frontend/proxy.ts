@@ -2,9 +2,6 @@ import {
   NextRequest,
   NextResponse,
 } from "next/server";
-import { SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session-cookie";
-import { isPublicAuthPath } from "@/lib/auth/session-routes";
-import { getTokenExpiration } from "@/lib/auth/token-expiration";
 
 const PORTAL_HOSTS = {
   admin: "admin",
@@ -18,11 +15,6 @@ type PortalType =
   | "employer"
   | "college"
   | "student";
-
-function isExpiredOrInvalidToken(token: string): boolean {
-  const expiration = getTokenExpiration(token);
-  return expiration === null || expiration <= Date.now() / 1000;
-}
 
 function getHostname(request: NextRequest) {
   const host =
@@ -240,7 +232,6 @@ export function proxy(
    * This is especially important for:
    *
    * /api/v1/notifications
-   * /api/auth/*
    * /_next/*
    */
   if (
@@ -295,36 +286,12 @@ export function proxy(
     hostname
   );
 
-  if (!isPublicAuthPath(pathname)) {
-    const token = request.cookies.get(SESSION_COOKIE)?.value;
-
-    if (!token) {
-      const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = "/login";
-      loginUrl.search = "";
-
-      const response = NextResponse.redirect(loginUrl);
-      response.cookies.set(SESSION_COOKIE, "", {
-        ...sessionCookieOptions(),
-        maxAge: 0,
-      });
-      return response;
-    }
-
-    if (isExpiredOrInvalidToken(token)) {
-      const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = "/login";
-      loginUrl.search = "";
-      loginUrl.searchParams.set("session", "timeout");
-
-      const response = NextResponse.redirect(loginUrl);
-      response.cookies.set(SESSION_COOKIE, "", {
-        ...sessionCookieOptions(),
-        maxAge: 0,
-      });
-      return response;
-    }
-  }
+  /*
+   * Route protection is client-side now: the backend bearer token lives in
+   * localStorage, which the browser never sends to this server-side
+   * middleware. `SessionGuard` (mounted in the root layout) and
+   * `useSessionIdentity` redirect to /login when it is missing or expired.
+   */
 
   /*
    * Continue the request.

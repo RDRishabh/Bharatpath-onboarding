@@ -6,5 +6,5 @@ export function handleSessionExpired(): void {
   }
 
   clearStoredToken();
-  window.location.replace("/api/auth/logout?session=timeout");
+  window.location.replace("/login?session=timeout");
 }

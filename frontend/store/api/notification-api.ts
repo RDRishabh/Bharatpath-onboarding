@@ -13,7 +13,7 @@ import type {
 } from "@/features/notifications/types/notification.types";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "/api/v1";
+  process.env.NEXT_PUBLIC_API_URL ?? "https://bharatpath-api.duckdns.org/api/v1";
 
 function notificationType(templateCode: string): NotificationType {
   if (templateCode.includes("APPLICATION")) return "HIRING";

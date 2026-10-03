@@ -218,3 +218,17 @@ export interface PlacementReport {
   byMonth: MonthHires[];
   byLocation: LocationHires[];
 }
+
+/**
+ * `GET /college/analytics/applications`: where the cohort's applications
+ * stand, and how many ever reached each milestone. Aggregate only — no
+ * student is named — and a `null` figure is withheld by the privacy floors,
+ * never a zero.
+ */
+export interface ApplicationFunnel {
+  minCohortSize: number;
+  belowFloor: boolean;
+  totalApplications: number | null;
+  byStage: Record<string, number | null>;
+  reached: Record<string, number | null>;
+}

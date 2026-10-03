@@ -6,8 +6,11 @@ import type {
   JobApplication,
   JobListing,
   Page,
+  ProfileView,
   QuestionnaireView,
   ScoreScale,
+  StreakCalendar,
+  StreakCalendarDayStatus,
   StudentProfile,
   StudentScore,
   StudentStreak,
@@ -66,6 +69,28 @@ interface StreakCheckInResponse {
   counted: boolean;
   streak: StreakResponse;
   changes: StreakPointsChangeResponse[];
+}
+
+/** `GET /candidate/profile/views`: one entry per organisation, latest first. */
+interface ProfileViewResponse {
+  employer_name: string;
+  last_viewed_at: string;
+}
+
+interface StreakCalendarDayResponse {
+  date: string;
+  status: StreakCalendarDayStatus;
+  milestone_days: number | null;
+}
+
+interface StreakCalendarResponse {
+  start: string;
+  end: string;
+  today: string;
+  days: StreakCalendarDayResponse[];
+  active_days: number;
+  missed_days: number;
+  longest_run: number;
 }
 
 interface JobResponse {
@@ -309,6 +334,28 @@ export const studentApi = baseApi.injectEndpoints({
       transformResponse: mapProfile,
       invalidatesTags: [{ type: "Student", id: "PROFILE" }],
     }),
+    getStudentProfileViews: builder.query<
+      Page<ProfileView>,
+      { cursor?: string; limit?: number } | void
+    >({
+      query: (args) => ({
+        url: "/candidate/profile/views",
+        params: args
+          ? { cursor: args.cursor, limit: args.limit }
+          : undefined,
+      }),
+      transformResponse: (
+        response: ApiPage<ProfileViewResponse>,
+      ): Page<ProfileView> => ({
+        items: response.items.map((view) => ({
+          employerName: view.employer_name,
+          lastViewedAt: view.last_viewed_at,
+        })),
+        nextCursor: response.next_cursor,
+        total: response.total,
+      }),
+      providesTags: [{ type: "Student", id: "PROFILE_VIEWS" }],
+    }),
     getStudentScore: builder.query<StudentScore, void>({
       query: () => "/candidate/score/me",
       transformResponse: mapScore,
@@ -343,6 +390,41 @@ export const studentApi = baseApi.injectEndpoints({
       transformResponse: (response: StreakPointsChangeResponse[]) =>
         response.map(mapStreakPointsChange),
       providesTags: [{ type: "Student", id: "STREAK_POINTS" }],
+    }),
+    getStudentStreakCalendar: builder.query<
+      StreakCalendar,
+      {
+        period?: "week" | "month" | "year";
+        /** The server's IST day the period is around. Never the browser's. */
+        date?: string;
+        /** With `to`, an explicit range instead of a period (the year view). */
+        from?: string;
+        to?: string;
+      }
+    >({
+      query: (args) => ({
+        url: "/candidate/streak/me/calendar",
+        params: {
+          period: args.period,
+          date: args.date,
+          from: args.from,
+          to: args.to,
+        },
+      }),
+      transformResponse: (response: StreakCalendarResponse): StreakCalendar => ({
+        start: response.start,
+        end: response.end,
+        today: response.today,
+        days: response.days.map((day) => ({
+          date: day.date,
+          status: day.status,
+          milestoneDays: day.milestone_days,
+        })),
+        activeDays: response.active_days,
+        missedDays: response.missed_days,
+        longestRun: response.longest_run,
+      }),
+      providesTags: [{ type: "Student", id: "STREAK_CALENDAR" }],
     }),
     getStudentJobs: builder.query<
       Page<JobListing>,
@@ -532,6 +614,8 @@ export const {
   useGetStudentScoreScaleQuery,
   useGetStudentStreakSessionQuery,
   useGetStudentStreakPointsQuery,
+  useGetStudentStreakCalendarQuery,
+  useGetStudentProfileViewsQuery,
   useGetStudentJobsQuery,
   useLazyGetStudentJobsQuery,
   useGetStudentJobQuery,
