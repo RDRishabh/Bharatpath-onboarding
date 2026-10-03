@@ -31,6 +31,25 @@ variable "logout_urls" {
   default = ["http://localhost:19006/", "bharatpath://auth/logout"]
 }
 
+variable "cors_allowed_origins" {
+  description = "Browser origins the API answers CORS for: scheme and host, no trailing slash. Written into the host's .env as CORS_ALLOWED_ORIGINS. Never \"*\"."
+  type        = list(string)
+  default = [
+    "https://bharatpath-chi.vercel.app", # web app on Vercel (2026-10-03)
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:5173",
+  ]
+
+  validation {
+    condition = alltrue([
+      for o in var.cors_allowed_origins : can(regex("^https?://[^/*]+$", o))
+    ])
+    error_message = "Each origin is scheme://host[:port] with no path, no trailing slash and no wildcard."
+  }
+}
+
 variable "scoring_model_ids" {
   description = "Bedrock inference-profile ids the backend may invoke to read CVs. The four offered to the client on 2026-09-13; narrow to the one chosen."
   type        = list(string)

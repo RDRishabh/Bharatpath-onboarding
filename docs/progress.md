@@ -9,6 +9,26 @@ states. Newest entries first.
 
 ---
 
+## 2026-10-03 — the Vercel web app may call the API (CORS)
+
+PR #33 moved the web frontend's sign-in to Cognito in the browser and removed
+its Next.js proxy routes, so the browser now calls the API directly from
+`https://bharatpath-chi.vercel.app`, and the API answered for localhost only.
+
+- **Live:** `CORS_ALLOWED_ORIGINS` added to the host's `/opt/bharatpath/.env`
+  (backup beside it, `.env.bak-20261003-025043`), the Vercel origin plus the
+  four localhost origins that were the default; only `api` recreated.
+  Verified from outside: preflight 200 with
+  `Access-Control-Allow-Origin` for Vercel, an unknown origin still 400.
+- **Durable:** `var.cors_allowed_origins` in Terraform, written into
+  `host_env_file`, validated to scheme and host with no path or wildcard. A
+  rebuilt host gets the same list. No `terraform apply` is needed for the
+  running host.
+- The frontend signs in with Amplify's `signIn`, not the hosted UI, so no
+  Cognito callback URL was needed.
+
+---
+
 ## 2026-10-02 — a document too long for a CV is refused, not scored
 
 A tester uploaded a whole book. It was cut to its first 40 pages, sent to the
