@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import { StudentErrorState } from "@/features/student/components";
+import { StudentAudioPlayer, StudentErrorState } from "@/features/student/components";
 import { StudentPage } from "@/features/student/shell";
 import { useGetInterviewOfferQuery } from "@/store/student";
 import {
@@ -593,11 +593,7 @@ export default function StudentInterviewPage() {
                     <p className="text-[12px] font-semibold text-[#3A4761]">
                       {recording.prompt}
                     </p>
-                    <audio
-                      controls
-                      src={recording.url}
-                      className="mt-3 w-full"
-                    />
+                    <StudentAudioPlayer src={recording.url} label={`Answer ${recording.question_index + 1}`} className="mt-3" />
                     {recording.transcript && (
                       <p className="mt-3 text-[11px] leading-5 text-[#5F6B80]">
                         {recording.transcript}

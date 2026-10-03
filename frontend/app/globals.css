@@ -159,11 +159,13 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/*
+ * Light only. No portal has a dark design, so following the OS preference
+ * turned unstyled text near-white on light cards (invisible) and drew native
+ * controls dark. Do not reintroduce a dark palette without designing for it.
+ */
+:root {
+  color-scheme: light;
 }
 
 html,

@@ -5,3 +5,4 @@ export * from "./job-card";
 export * from "./application-card";
 export * from "./notification-card";
 export * from "./student-error-state";
+export * from "./audio-player";
