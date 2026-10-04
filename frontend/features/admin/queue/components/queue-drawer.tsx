@@ -12,6 +12,7 @@ import {
 
 import { DetailSkeleton } from "@/components/common/loading";
 import { ErrorState } from "@/components/ui";
+import { FieldError } from "../../shared/form";
 import { showAdminFeedback } from "@/store/admin";
 import { useAppDispatch } from "@/store/hooks";
 import {
@@ -34,6 +35,7 @@ export function QueueDrawer() {
   const dispatch = useAppDispatch();
   const { openReviewId, items, closeReview } = useQueue();
   const [note, setNote] = useState("");
+  const [noteError, setNoteError] = useState<string | undefined>();
 
   /*
    * ================================================================
@@ -96,7 +98,23 @@ export function QueueDrawer() {
   const submitDecision = async (
     decision: "APPROVED" | "REJECTED" | "MORE_INFO_REQUIRED" | "CLEARED" | "CONFIRMED",
   ) => {
-    if ((decision === "REJECTED" || decision === "MORE_INFO_REQUIRED") && !note.trim()) return;
+    // KYB reasons are read back by the organisation; the backend caps them at 1000
+    // characters (integrity notes at 2000).
+    const needsReason = isKyb && (decision === "REJECTED" || decision === "MORE_INFO_REQUIRED");
+    const limit = isKyb ? 1000 : 2000;
+    if (needsReason && !note.trim()) {
+      setNoteError(
+        decision === "REJECTED"
+          ? "Add the reason for rejecting. The organisation reads it on its KYB page."
+          : "Say what information you need. The organisation reads it on its KYB page.",
+      );
+      return;
+    }
+    if (note.trim().length > limit) {
+      setNoteError(`Use ${limit} characters or fewer. This is ${note.trim().length}.`);
+      return;
+    }
+    setNoteError(undefined);
     try {
       if (isKyb) {
         await decideKyb({ submissionId: item.id, decision: decision as "APPROVED" | "REJECTED" | "MORE_INFO_REQUIRED", reason: note.trim() || undefined }).unwrap();
@@ -438,11 +456,14 @@ export function QueueDrawer() {
               <textarea
                 rows={3}
                 value={note}
-                onChange={(event) => setNote(event.target.value)}
+                onChange={(event) => { setNote(event.target.value); setNoteError(undefined); }}
                 placeholder="Recorded in the audit trail against your operator ID"
                 aria-label="Decision note"
-                className="w-full resize-y rounded-[10px] border border-[#e5e7eb] px-4 py-3 text-[13px] font-medium leading-[18px] text-[#172033] outline-none transition-colors placeholder:text-[#7b8494] focus:border-[#315c9f]"
+                aria-invalid={noteError ? true : undefined}
+                aria-describedby={noteError ? "decision-note-error" : undefined}
+                className={`w-full resize-y rounded-[10px] border px-4 py-3 text-[13px] font-medium leading-[18px] text-[#172033] outline-none transition-colors placeholder:text-[#7b8494] ${noteError ? "border-[#d92d20] focus:border-[#d92d20]" : "border-[#e5e7eb] focus:border-[#315c9f]"}`}
               />
+              <FieldError id="decision-note-error" message={noteError} />
               {actionError ? <ErrorState error={actionError} fallback="The decision could not be saved. Try again." /> : null}
             </label>
           </div>
@@ -458,7 +479,7 @@ export function QueueDrawer() {
           {isKyb ? (
             <button
               type="button"
-              disabled={actionLoading || !note.trim()}
+              disabled={actionLoading}
               onClick={() => void submitDecision("MORE_INFO_REQUIRED")}
               className="flex-1 cursor-pointer rounded-lg border border-[#e5e7eb] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#172033] transition-colors hover:bg-[#f8f9fb] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -470,7 +491,7 @@ export function QueueDrawer() {
 
           <button
             type="button"
-            disabled={actionLoading || (isKyb && !note.trim())}
+            disabled={actionLoading}
             onClick={() => void submitDecision(isKyb ? "REJECTED" : "CONFIRMED")}
             className="flex-1 cursor-pointer rounded-lg border border-[#c92f3f] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#c92f3f] transition-colors hover:bg-[#fff7f7]"
           >

@@ -19,11 +19,13 @@ import {
 } from "@/store/api/admin-api";
 
 import { useUsers } from "../hooks/use-users";
+import { FieldError, a11y, validateRequiredText } from "../../shared/form";
 
 export function UserDrawer() {
   const dispatch = useAppDispatch();
   const { segment, selectedId, closeUser } = useUsers();
   const [reason, setReason] = useState("");
+  const [reasonError, setReasonError] = useState<string | undefined>();
   const isCandidate = segment === "candidates";
   const isEmployer = segment === "employers";
   const candidateQuery = useGetAdminCandidateQuery(selectedId ?? "", {
@@ -70,7 +72,14 @@ export function UserDrawer() {
       if (status === "SUSPENDED") {
         await reinstateTenant(selectedId).unwrap();
         dispatch(showAdminFeedback("Organisation reinstated."));
-      } else if (reason.trim().length >= 3) {
+      } else {
+        // Kept on the suspension row for whoever lifts it; the backend takes 3-500 characters.
+        const problem = validateRequiredText(reason, "the reason for suspending", 3, 500);
+        if (problem) {
+          setReasonError(problem);
+          return;
+        }
+        setReasonError(undefined);
         await suspendTenant({ tenantId: selectedId, reason: reason.trim() }).unwrap();
         dispatch(showAdminFeedback("Organisation suspended."));
         setReason("");
@@ -155,9 +164,18 @@ export function UserDrawer() {
               ) : null}
 
               {!isCandidate && status !== "SUSPENDED" ? (
-                <label className="block text-[12px] font-semibold text-[#172033]">Suspension reason
-                  <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-[#e5e7eb] px-3 py-2 font-normal" placeholder="Required, at least 3 characters" />
-                </label>
+                <div>
+                  <label htmlFor="suspension-reason" className="block text-[12px] font-semibold text-[#172033]">Suspension reason</label>
+                  <textarea
+                    {...a11y("suspension-reason", reasonError)}
+                    value={reason}
+                    onChange={(event) => { setReason(event.target.value); setReasonError(undefined); }}
+                    rows={3}
+                    className={`mt-2 w-full rounded-lg border px-3 py-2 text-[13px] font-normal text-[#172033] outline-none ${reasonError ? "border-[#d92d20] focus:border-[#d92d20]" : "border-[#e5e7eb] focus:border-[#315c9f]"}`}
+                    placeholder="Required, 3 to 500 characters"
+                  />
+                  <FieldError id="suspension-reason-error" message={reasonError} />
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -165,7 +183,7 @@ export function UserDrawer() {
 
         {organisationDetail ? (
           <footer className="border-t border-[#e5e7eb] p-4">
-            <button type="button" disabled={isActing || (status !== "SUSPENDED" && reason.trim().length < 3)} onClick={() => void updateStatus()} className="w-full rounded-lg border border-[#c92f3f] px-4 py-3 text-[13px] font-semibold text-[#c92f3f] disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="button" disabled={isActing} onClick={() => void updateStatus()} className="w-full rounded-lg border border-[#c92f3f] px-4 py-3 text-[13px] font-semibold text-[#c92f3f] disabled:cursor-not-allowed disabled:opacity-50">
               {isActing ? "Saving..." : status === "SUSPENDED" ? "Reinstate organisation" : "Suspend organisation"}
             </button>
           </footer>

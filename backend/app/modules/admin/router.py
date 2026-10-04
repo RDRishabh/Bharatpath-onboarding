@@ -61,6 +61,8 @@ from app.modules.admin.schemas import (
     InterviewRecordingRow,
     InterviewSessionRow,
     InvitationResentResponse,
+    InviteAccountRequest,
+    InviteAccountResponse,
     KybDecisionRequest,
     KybSubmissionsPage,
     LessonUploadResponse,
@@ -693,6 +695,21 @@ async def account_forms() -> AccountFormsResponse:
     options. Undertakings and documents are not in it: only the person can
     accept or upload those (2026-10-03)."""
     return service.account_forms()
+
+
+@router.post(
+    "/accounts/invitations",
+    response_model=InviteAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=can("accounts"),
+    summary="Send an email-only invitation; the recipient enters their own details",
+)
+async def invite_account(
+    payload: InviteAccountRequest, request: Request, user: CurrentUser, session: DbSession
+) -> InviteAccountResponse:
+    return await service.invite_account(
+        session, ctx=user, payload=payload, request_id=get_request_id(request)
+    )
 
 
 @router.post(

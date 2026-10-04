@@ -29,7 +29,7 @@ export function ResumeDetails() {
     view ?? (current ? { name: "review", versionId: current.resumeVersionId } : null);
 
   return (
-    <StudentPage className="max-w-none">
+    <StudentPage className="!max-w-none !p-3">
       <div className="w-full">
         <button
           type="button"

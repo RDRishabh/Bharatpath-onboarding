@@ -56,10 +56,12 @@ function formFor(option: SearchFilterOption): FilterFormState {
   };
 }
 
+type FilterErrors = Partial<Record<"label" | "stateCode" | "aliases", string>>;
+
 function formPayload(
   kind: SearchFilterKind,
   form: FilterFormState,
-): { value?: CreateSearchFilterOption; error?: string } {
+): { value?: CreateSearchFilterOption; errors?: FilterErrors } {
   const label = form.label.trim();
   const aliases = Array.from(
     new Set(
@@ -71,14 +73,22 @@ function formPayload(
   );
   const stateCode = form.stateCode.trim().toUpperCase();
 
+  const errors: FilterErrors = {};
   if (!label) {
-    return { error: "Enter a label." };
+    errors.label = kind === "SKILL" ? "Enter the skill's name." : "Enter the city's name.";
+  } else if (label.length > 100) {
+    errors.label = "Use 100 characters or fewer.";
   }
   if (aliases.length > 10) {
-    return { error: "An option can have at most 10 aliases." };
+    errors.aliases = `An option can have at most 10 aliases. You entered ${aliases.length}.`;
+  } else if (aliases.some((alias) => alias.length > 100)) {
+    errors.aliases = "Each alias must be 100 characters or fewer.";
   }
   if (kind === "CITY" && !/^[A-Z]{2}$/.test(stateCode)) {
-    return { error: "A city needs a two-letter state code." };
+    errors.stateCode = "Enter the two-letter state code, like KA.";
+  }
+  if (Object.keys(errors).length) {
+    return { errors };
   }
 
   return {
@@ -119,6 +129,7 @@ export function SearchFiltersPage() {
     parsed: ParsedImport;
   } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FilterErrors>({});
   const [requestError, setRequestError] = useState<unknown>(null);
 
   const {
@@ -151,6 +162,7 @@ export function SearchFiltersPage() {
       setSearch("");
     }
     setEditor(null);
+    setFieldErrors({});
     setImportOpen(false);
     setImportFile(null);
     setPendingToggle(null);
@@ -165,10 +177,11 @@ export function SearchFiltersPage() {
 
     const parsed = formPayload(kind, editor.form);
     if (!parsed.value) {
-      setFormError(parsed.error ?? "Check the form values.");
+      setFieldErrors(parsed.errors ?? {});
       return;
     }
 
+    setFieldErrors({});
     setFormError(null);
     setRequestError(null);
     try {
@@ -271,6 +284,7 @@ export function SearchFiltersPage() {
       return;
     }
     setEditor(null);
+    setFieldErrors({});
     setImportOpen(false);
     setImportFile(null);
     setPendingToggle(null);
@@ -499,11 +513,13 @@ export function SearchFiltersPage() {
             kind={kind}
             form={editor.form}
             isSaving={isSaving}
-            onChange={(form) =>
+            errors={fieldErrors}
+            onChange={(form) => {
+              setFieldErrors({});
               setEditor((current) =>
                 current ? { ...current, form } : current,
-              )
-            }
+              );
+            }}
             onCancel={closeActionDialog}
             onSave={() => void saveEditor()}
           />
@@ -631,6 +647,7 @@ function FilterEditor({
   kind,
   form,
   isSaving,
+  errors,
   onChange,
   onCancel,
   onSave,
@@ -638,6 +655,7 @@ function FilterEditor({
   kind: SearchFilterKind;
   form: FilterFormState;
   isSaving: boolean;
+  errors: FilterErrors;
   onChange: (form: FilterFormState) => void;
   onCancel: () => void;
   onSave: () => void;
@@ -645,8 +663,9 @@ function FilterEditor({
   return (
     <div>
       <div className="grid gap-3">
-        <Field label="Label">
+        <Field label="Label" error={errors.label}>
           <input
+            aria-invalid={errors.label ? true : undefined}
             value={form.label}
             maxLength={100}
             placeholder={
@@ -655,12 +674,13 @@ function FilterEditor({
             onChange={(event) =>
               onChange({ ...form, label: event.target.value })
             }
-            className="h-9 w-full rounded-lg border border-[#dfe4ec] px-3 text-[12px] outline-none placeholder:text-[#a0a7b4] focus:border-[#315c9f]"
+            className={fieldClass(errors.label)}
           />
         </Field>
         {kind === "CITY" ? (
-          <Field label="State code">
+          <Field label="State code" error={errors.stateCode}>
             <input
+              aria-invalid={errors.stateCode ? true : undefined}
               value={form.stateCode}
               maxLength={2}
               placeholder="e.g. KA"
@@ -670,12 +690,13 @@ function FilterEditor({
                   stateCode: event.target.value.toUpperCase(),
                 })
               }
-              className="h-9 w-full rounded-lg border border-[#dfe4ec] px-3 text-[12px] uppercase outline-none placeholder:text-[#a0a7b4] focus:border-[#315c9f]"
+              className={`${fieldClass(errors.stateCode)} uppercase`}
             />
           </Field>
         ) : null}
-        <Field label="Aliases (comma separated)">
+        <Field label="Aliases (comma separated)" error={errors.aliases}>
           <input
+            aria-invalid={errors.aliases ? true : undefined}
             value={form.aliases}
             placeholder={
               kind === "SKILL"
@@ -685,7 +706,7 @@ function FilterEditor({
             onChange={(event) =>
               onChange({ ...form, aliases: event.target.value })
             }
-            className="h-9 w-full rounded-lg border border-[#dfe4ec] px-3 text-[12px] outline-none placeholder:text-[#a0a7b4] focus:border-[#315c9f]"
+            className={fieldClass(errors.aliases)}
           />
         </Field>
       </div>
@@ -720,17 +741,30 @@ function FilterEditor({
   );
 }
 
+function fieldClass(error?: string) {
+  return `h-9 w-full rounded-lg border px-3 text-[12px] text-[#172033] outline-none placeholder:text-[#a0a7b4] ${
+    error ? "border-[#d92d20] focus:border-[#d92d20]" : "border-[#dfe4ec] focus:border-[#315c9f]"
+  }`;
+}
+
 function Field({
   label,
+  error,
   children,
 }: {
   label: string;
+  error?: string;
   children: React.ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1 text-[11px] font-semibold text-[#687182]">
       {label}
       {children}
+      {error ? (
+        <span role="alert" className="text-[12px] font-medium text-[#b42318]">
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }

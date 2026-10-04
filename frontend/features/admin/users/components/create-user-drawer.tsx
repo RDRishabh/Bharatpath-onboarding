@@ -1,44 +1,67 @@
 "use client";
 
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 
 import { Button, SelectDropdown } from "@/components/ui";
 import { INSTITUTION_TYPES } from "@/features/college/onboarding/institution-types";
-import { getApiErrorMessage } from "@/lib/api/error-message";
+import { INDIAN_STATES } from "@/features/student/onboarding/constants";
+import { KybFieldInput } from "@/features/employer/onboarding/components/kyb-field";
+import { problemParam, validateField, wireValue } from "@/features/employer/onboarding/kyb-form";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/api/error-message";
 import { showAdminFeedback } from "@/store/admin";
 import {
   useProvisionAdminCandidateMutation,
   useProvisionAdminCollegeMutation,
   useProvisionAdminEmployerMutation,
+  useGetAdminAccountFormsQuery,
+  useInviteAdminAccountMutation,
 } from "@/store/api/admin-api";
+import type { AdminAccountForm, AdminAccountFormField } from "@/store/api/admin-api";
 import { useGetEmployerReferenceQuery } from "@/store/employer/settings/settings.api";
 import { useAppDispatch } from "@/store/hooks";
 
+import {
+  FieldError,
+  FormField,
+  INPUT_HEIGHT,
+  a11y,
+  hasErrors,
+  inputClass,
+  validateEmail,
+  validateName,
+  validateOptionalText,
+} from "../../shared/form";
 import type { UserSegment } from "../types";
 
 interface CreateUserDrawerProps {
   /** Fixes which kind of account this drawer creates. */
   segment: UserSegment;
+  mode: "create" | "invite";
   onClose: () => void;
 }
 
-const INPUT_CLASS =
-  "h-10 w-full rounded-lg border border-[#dfe2e8] bg-white px-3 text-[13px] text-[#172033] outline-none transition-colors placeholder:text-[#98a0ae] focus:border-[#315c9f]";
+const DROPDOWN_CLASS = "rounded-lg focus:border-[#315c9f] focus:ring-[#315c9f]/20";
 
-const COPY = {
+const PREFILL_EXCLUDED: Record<UserSegment, ReadonlySet<string>> = {
+  candidates: new Set(),
+  employers: new Set(["legal_name", "employer_type", "industry"]),
+  institutions: new Set(["legal_name", "institution_type"]),
+};
+
+const CREATE_COPY = {
   candidates: {
-    title: "Invite candidate",
+    title: "Create candidate",
     description:
       "Creates the candidate's account and emails them a temporary password, valid for 7 days.",
   },
   employers: {
-    title: "Invite employer",
+    title: "Create employer",
     description:
       "Creates the organisation and its owner. The owner still completes KYB and subscribes.",
   },
   institutions: {
-    title: "Invite institution",
+    title: "Create institution",
     description:
       "Creates the institution and its administrator. They complete onboarding and subscribe themselves.",
   },
@@ -50,24 +73,76 @@ const EMAIL_LABEL = {
   institutions: "Administrator email",
 } satisfies Record<UserSegment, string>;
 
-export function CreateUserDrawer({ segment, onClose }: CreateUserDrawerProps) {
+export function CreateUserDrawer({ segment, mode, onClose }: CreateUserDrawerProps) {
   const dispatch = useAppDispatch();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [employerType, setEmployerType] = useState("");
   const [industry, setIndustry] = useState("");
   const [institutionType, setInstitutionType] = useState("");
+  const [city, setCity] = useState("");
+  const [stateCode, setStateCode] = useState("");
+  const [draftAnswers, setDraftAnswers] = useState<Record<string, unknown>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
+  // Refusals from the server, keyed like `errors`; cleared when the field changes.
+  const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
 
   const [provisionCandidate, candidateState] = useProvisionAdminCandidateMutation();
   const [provisionEmployer, employerState] = useProvisionAdminEmployerMutation();
   const [provisionCollege, collegeState] = useProvisionAdminCollegeMutation();
+  const [inviteAccount, inviteState] = useInviteAdminAccountMutation();
   const reference = useGetEmployerReferenceQuery(undefined, {
-    skip: segment !== "employers",
+    skip: mode === "invite" || segment !== "employers",
+  });
+  const accountForms = useGetAdminAccountFormsQuery(undefined, {
+    skip: mode === "invite" || segment === "candidates",
   });
   const isLoading =
-    candidateState.isLoading || employerState.isLoading || collegeState.isLoading;
-  const copy = COPY[segment];
+    candidateState.isLoading || employerState.isLoading || collegeState.isLoading || inviteState.isLoading;
+  const noun = segment === "candidates" ? "candidate" : segment === "employers" ? "employer" : "institution";
+  const copy = mode === "invite"
+    ? { title: `Invite ${noun}`, description: `Enter their email address and we’ll send an invitation to join BharatPath.` }
+    : CREATE_COPY[segment];
+
+  const prefillForm = segment === "employers" ? accountForms.data?.employer : accountForms.data?.college;
+  const errors = useMemo(() => {
+    const found: Record<string, string | undefined> = {};
+    found.email = validateEmail(email, EMAIL_LABEL[segment]);
+    if (mode === "create") {
+      if (segment === "candidates") {
+        if (name.trim()) found.name = validateName(name, "full name");
+        if (name.trim().length > 120) found.name = "Use 120 characters or fewer.";
+        if (Boolean(city.trim()) !== Boolean(stateCode)) {
+          if (!city.trim()) found.city = "Enter the city, or clear the state.";
+          else found.state = "Select the state, or clear the city.";
+        }
+        found.city ??= validateOptionalText(city, 100);
+      } else {
+        found.name = validateName(name, segment === "employers" ? "Legal name" : "Institution name");
+      }
+      if (segment === "institutions" && !institutionType) found.institutionType = "Select the institution type.";
+      for (const section of prefillForm?.sections ?? []) {
+        for (const field of section.fields) {
+          if (PREFILL_EXCLUDED[segment].has(field.code)) continue;
+          const message = validateField({ ...field, required: false } as never, draftAnswers[field.code]);
+          if (message) found[`answer:${field.code}`] = message;
+        }
+      }
+    }
+    return found;
+  }, [email, name, city, stateCode, institutionType, draftAnswers, prefillForm, mode, segment]);
+  const shown = (key: string) =>
+    serverErrors[key] ?? (submitted || touched.has(key) ? errors[key] : undefined);
+  const touch = (key: string) => setTouched((current) => new Set(current).add(key));
+  const edited = (key: string) =>
+    setServerErrors((current) => {
+      if (!(key in current)) return current;
+      const rest = { ...current };
+      delete rest[key];
+      return rest;
+    });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -80,28 +155,51 @@ export function CreateUserDrawer({ segment, onClose }: CreateUserDrawerProps) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitError(null);
+    setSubmitted(true);
 
-    if (segment === "institutions" && !institutionType) {
-      setSubmitError("Select an institution type.");
+    if (hasErrors(errors)) {
+      setSubmitError("Fix the highlighted fields to continue.");
       return;
     }
 
+    const prefillAnswers = cleanAnswers(
+      draftAnswers,
+      segment === "employers" ? accountForms.data?.employer : accountForms.data?.college,
+    );
+
     try {
+      if (mode === "invite") {
+        await inviteAccount({
+          email: email.trim(),
+          kind: segment === "candidates" ? "CANDIDATE" : segment === "employers" ? "EMPLOYER" : "COLLEGE",
+        }).unwrap();
+        dispatch(showAdminFeedback("Invitation email sent."));
+        onClose();
+        return;
+      }
       let invitation: "SENT" | "ALREADY_REGISTERED";
       if (segment === "candidates") {
-        ({ invitation } = await provisionCandidate({ email: email.trim() }).unwrap());
+        ({ invitation } = await provisionCandidate({
+          email: email.trim(),
+          ...(name.trim() ? { full_name: name.trim() } : {}),
+          ...(city.trim() ? { city: city.trim(), state_code: stateCode } : {}),
+        }).unwrap());
       } else if (segment === "employers") {
         ({ invitation } = await provisionEmployer({
           owner_email: email.trim(),
           legal_name: name.trim(),
           ...(employerType ? { employer_type: employerType } : {}),
           ...(industry ? { industry } : {}),
+          ...(Object.keys(prefillAnswers).length ? { kyb_answers: prefillAnswers } : {}),
         }).unwrap());
       } else {
         ({ invitation } = await provisionCollege({
           admin_email: email.trim(),
           name: name.trim(),
           institution_type: institutionType,
+          ...(Object.keys(prefillAnswers).length
+            ? { onboarding_answers: prefillAnswers }
+            : {}),
         }).unwrap());
       }
       dispatch(
@@ -113,9 +211,25 @@ export function CreateUserDrawer({ segment, onClose }: CreateUserDrawerProps) {
       );
       onClose();
     } catch (error) {
-      setSubmitError(
-        getApiErrorMessage(error, "The account could not be created. Please try again."),
-      );
+      const message = getApiErrorMessage(error, "The account could not be created. Please try again.");
+      const code = getApiErrorCode(error);
+      if (code === "identity_account_exists" || code === "identity_already_in_organisation" || code === "account_contact_in_use") {
+        // The address is the problem, so say so on the address.
+        setServerErrors((current) => ({ ...current, email: message }));
+        setSubmitError(null);
+        return;
+      }
+      const issues = problemParam(error, "issues");
+      if (Array.isArray(issues) && issues.length) {
+        const byField: Record<string, string> = {};
+        for (const issue of issues) {
+          if (issue && typeof issue.field === "string") byField[`answer:${issue.field}`] = "This value was not accepted.";
+        }
+        setServerErrors((current) => ({ ...current, ...byField }));
+        setSubmitError("Some profile answers were not accepted. Fix the highlighted fields.");
+        return;
+      }
+      setSubmitError(message);
     }
   }
 
@@ -153,77 +267,144 @@ export function CreateUserDrawer({ segment, onClose }: CreateUserDrawerProps) {
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
-            {segment !== "candidates" ? (
-              <Field label={segment === "employers" ? "Legal name" : "Institution name"}>
+            {mode === "create" ? <div className="rounded-xl border border-[#e3e7ed] bg-[#f8fafc] p-4">
+              <h3 className="text-[13px] font-bold text-[#26334a]">Account details</h3>
+              <p className="mt-1 text-[11px] leading-5 text-[#7b8494]">
+                These details are saved before the invitation is sent.
+              </p>
+            </div> : null}
+
+            {mode === "create" && segment !== "candidates" ? (
+              <FormField id="account-name" label={segment === "employers" ? "Legal name" : "Institution name"} error={shown("name")}>
                 <input
+                  {...a11y("account-name", shown("name"))}
                   autoFocus
-                  required
-                  minLength={2}
                   maxLength={255}
                   value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  onChange={(event) => { setName(event.target.value); edited("name"); }}
+                  onBlur={() => touch("name")}
                   placeholder={segment === "employers" ? "Acme Private Limited" : "Institution name"}
-                  className={INPUT_CLASS}
+                  className={inputClass(Boolean(shown("name")), INPUT_HEIGHT)}
                 />
-              </Field>
+              </FormField>
             ) : null}
 
-            <Field label={EMAIL_LABEL[segment]}>
+            <FormField id="account-email" label={EMAIL_LABEL[segment]} error={shown("email")}>
               <input
-                autoFocus={segment === "candidates"}
-                required
+                {...a11y("account-email", shown("email"))}
+                autoFocus={mode === "invite" || segment === "candidates"}
                 type="email"
+                autoComplete="off"
                 maxLength={320}
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => { setEmail(event.target.value); edited("email"); }}
+                onBlur={() => touch("email")}
                 placeholder="name@example.com"
-                className={INPUT_CLASS}
+                className={inputClass(Boolean(shown("email")), INPUT_HEIGHT)}
               />
-            </Field>
+            </FormField>
 
-            {segment === "employers" ? (
+            {mode === "create" && segment === "candidates" ? (
               <>
-                <Field label="Employer type (optional)">
-                  <select
-                    value={employerType}
-                    onChange={(event) => setEmployerType(event.target.value)}
-                    className={INPUT_CLASS}
-                  >
-                    <option value="">Not specified</option>
-                    {employerTypes.map((item) => (
-                      <option key={item.code} value={item.code}>{item.label}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Industry (optional)">
-                  <select
-                    value={industry}
-                    onChange={(event) => setIndustry(event.target.value)}
-                    className={INPUT_CLASS}
-                  >
-                    <option value="">Not specified</option>
-                    {industries.map((item) => (
-                      <option key={item.code} value={item.code}>{item.label}</option>
-                    ))}
-                  </select>
-                </Field>
+                <FormField id="candidate-name" label="Full name (optional)" error={shown("name")}>
+                  <input
+                    {...a11y("candidate-name", shown("name"))}
+                    value={name}
+                    maxLength={120}
+                    onChange={(event) => { setName(event.target.value); edited("name"); }}
+                    onBlur={() => touch("name")}
+                    placeholder="Candidate full name"
+                    className={inputClass(Boolean(shown("name")), INPUT_HEIGHT)}
+                  />
+                </FormField>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField id="candidate-city" label="City (optional)" error={shown("city")}>
+                    <input
+                      {...a11y("candidate-city", shown("city"))}
+                      value={city}
+                      maxLength={100}
+                      onChange={(event) => { setCity(event.target.value); edited("city"); }}
+                      onBlur={() => touch("city")}
+                      placeholder="Pune"
+                      className={inputClass(Boolean(shown("city")), INPUT_HEIGHT)}
+                    />
+                  </FormField>
+                  <div>
+                    <span className="mb-1.5 block text-[12px] font-semibold text-[#344054]">State (optional)</span>
+                    <SelectDropdown
+                      value={stateCode}
+                      onChange={(value) => { setStateCode(value); touch("state"); }}
+                      options={INDIAN_STATES.map((state) => ({ value: state.code, label: state.name }))}
+                      placeholder="Select state"
+                      ariaLabel="State"
+                      containerClassName="w-full"
+                      className={shown("state") ? "rounded-lg !border-[#d92d20]" : DROPDOWN_CLASS}
+                    />
+                    <FieldError id="candidate-state-error" message={shown("state")} />
+                  </div>
+                </div>
               </>
             ) : null}
 
-            {segment === "institutions" ? (
-              <Field label="Institution type">
+            {mode === "create" && segment === "employers" ? (
+              <>
+                <div>
+                  <span className="mb-1.5 block text-[12px] font-semibold text-[#344054]">Employer type (optional)</span>
+                  <SelectDropdown
+                    value={employerType}
+                    onChange={setEmployerType}
+                    options={[{ value: "", label: "Not specified" }, ...employerTypes.map((item) => ({ value: item.code, label: item.label }))]}
+                    ariaLabel="Employer type"
+                    containerClassName="w-full"
+                    className={DROPDOWN_CLASS}
+                  />
+                </div>
+                <div>
+                  <span className="mb-1.5 block text-[12px] font-semibold text-[#344054]">Industry (optional)</span>
+                  <SelectDropdown
+                    value={industry}
+                    onChange={setIndustry}
+                    options={[{ value: "", label: "Not specified" }, ...industries.map((item) => ({ value: item.code, label: item.label }))]}
+                    ariaLabel="Industry"
+                    containerClassName="w-full"
+                    className={DROPDOWN_CLASS}
+                  />
+                </div>
+              </>
+            ) : null}
+
+            {mode === "create" && segment === "institutions" ? (
+              <div>
+                <span className="mb-1.5 block text-[12px] font-semibold text-[#344054]">Institution type</span>
                 <SelectDropdown
                   value={institutionType}
-                  onChange={setInstitutionType}
+                  onChange={(value) => { setInstitutionType(value); touch("institutionType"); }}
                   options={INSTITUTION_TYPES}
                   placeholder="Select institution type"
                   ariaLabel="Institution type"
                   containerClassName="w-full"
-                  className="rounded-lg focus:border-[#315c9f] focus:ring-[#315c9f]/20"
+                  className={shown("institutionType") ? "rounded-lg !border-[#d92d20]" : DROPDOWN_CLASS}
                 />
-              </Field>
+                <FieldError id="institution-type-error" message={shown("institutionType")} />
+              </div>
+            ) : null}
+
+            {mode === "create" && segment !== "candidates" ? (
+              <AdminPrefillFields
+                form={segment === "employers" ? accountForms.data?.employer : accountForms.data?.college}
+                answers={draftAnswers}
+                loading={accountForms.isLoading}
+                error={accountForms.isError}
+                excludedCodes={PREFILL_EXCLUDED[segment]}
+                errorFor={(code) => shown(`answer:${code}`)}
+                onChange={(code, value) => {
+                  setDraftAnswers((current) => ({ ...current, [code]: value }));
+                  edited(`answer:${code}`);
+                }}
+                onBlur={(code) => touch(`answer:${code}`)}
+              />
             ) : null}
 
             {submitError ? (
@@ -240,7 +421,7 @@ export function CreateUserDrawer({ segment, onClose }: CreateUserDrawerProps) {
             <Button type="button" variant="secondary" onClick={onClose} disabled={isLoading}>
               Cancel
             </Button>
-            <Button type="submit" variant="dark" isLoading={isLoading} loadingText="Sending…">
+            <Button type="submit" variant="dark" isLoading={isLoading} loadingText={mode === "invite" ? "Sending…" : "Creating…"}>
               {copy.title}
             </Button>
           </footer>
@@ -250,11 +431,87 @@ export function CreateUserDrawer({ segment, onClose }: CreateUserDrawerProps) {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function AdminPrefillFields({
+  form,
+  answers,
+  loading,
+  error,
+  excludedCodes,
+  errorFor,
+  onChange,
+  onBlur,
+}: {
+  form?: AdminAccountForm;
+  answers: Record<string, unknown>;
+  loading: boolean;
+  error: boolean;
+  excludedCodes: ReadonlySet<string>;
+  errorFor: (code: string) => string | undefined;
+  onChange: (code: string, value: unknown) => void;
+  onBlur: (code: string) => void;
+}) {
+  if (loading) {
+    return <p className="text-[12px] text-[#7b8494]">Loading profile fields…</p>;
+  }
+  if (error || !form) {
+    return (
+      <p role="alert" className="rounded-lg border border-[#f1c0c0] bg-[#fff5f5] px-3 py-2 text-[12px] text-[#9f2d2d]">
+        Profile fields could not be loaded. Close the drawer and try again.
+      </p>
+    );
+  }
+
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-[12px] font-semibold text-[#344054]">{label}</span>
-      {children}
-    </label>
+    <div className="space-y-5 border-t border-[#e5e7eb] pt-5">
+      <div>
+        <h3 className="text-[14px] font-bold text-[#26334a]">Prefill their profile</h3>
+        <p className="mt-1 text-[11px] leading-5 text-[#7b8494]">
+          Optional. The user will find these answers filled in as a draft after signing in. They must accept declarations, upload documents, and submit it themselves.
+        </p>
+      </div>
+      {form.sections.map((section) => {
+        const fields = section.fields.filter((field) => !excludedCodes.has(field.code));
+        if (!fields.length) return null;
+        return (
+          <section key={section.code} className="space-y-4 rounded-xl border border-[#e3e7ed] p-4">
+            <div>
+              <h4 className="text-[13px] font-bold text-[#344054]">{section.title}</h4>
+              {section.help_text ? <p className="mt-1 text-[11px] text-[#7b8494]">{section.help_text}</p> : null}
+            </div>
+            {fields.map((field) => (
+              <div key={field.code} onBlur={() => onBlur(field.code)}>
+              <KybFieldInput
+                field={{ ...field, required: false }}
+                error={errorFor(field.code)}
+                value={answers[field.code]}
+                options={field.options_source ? (form.options[field.options_source] ?? []) : []}
+                onChange={(value) => onChange(field.code, value)}
+              />
+              </div>
+            ))}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function cleanAnswers(
+  answers: Record<string, unknown>,
+  form?: AdminAccountForm,
+): Record<string, unknown> {
+  if (!form) return {};
+  const fields = new Map<string, AdminAccountFormField>(
+    form.sections.flatMap((section) => section.fields).map((field) => [field.code, field]),
+  );
+  return Object.fromEntries(
+    Object.entries(answers).flatMap(([code, value]) => {
+      const field = fields.get(code);
+      if (!field) return [];
+      const normalized = wireValue(field, value);
+      return normalized === null || normalized === undefined || normalized === ""
+        ? []
+        : [[code, normalized]];
+    }),
   );
 }

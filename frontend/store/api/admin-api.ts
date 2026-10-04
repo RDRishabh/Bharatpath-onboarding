@@ -383,10 +383,19 @@ export type ProvisionedAccountResponse = {
   tenant_id: string | null;
   role: string | null;
   invitation: "SENT" | "ALREADY_REGISTERED";
+  prefilled: string[];
 };
 
 export type ProvisionCandidateRequest = {
   email: string;
+  full_name?: string;
+  city?: string;
+  state_code?: string;
+};
+
+export type InviteAdminAccountRequest = {
+  email: string;
+  kind: "CANDIDATE" | "EMPLOYER" | "COLLEGE";
 };
 
 export type ProvisionEmployerRequest = {
@@ -394,12 +403,45 @@ export type ProvisionEmployerRequest = {
   legal_name: string;
   employer_type?: string;
   industry?: string;
+  kyb_answers?: Record<string, unknown>;
 };
 
 export type ProvisionCollegeRequest = {
   admin_email: string;
   name: string;
   institution_type: string;
+  onboarding_answers?: Record<string, unknown>;
+};
+
+export type AdminAccountFormField = {
+  code: string;
+  key: string;
+  label: string;
+  type: "TEXT" | "TEXTAREA" | "EMAIL" | "PHONE" | "NUMBER" | "SELECT" | "MULTISELECT" | "DATE";
+  required: boolean;
+  pattern: string | null;
+  max_length: number | null;
+  help_text: string | null;
+  options_source: string | null;
+  public: boolean;
+  verification_note: string | null;
+};
+
+export type AdminAccountForm = {
+  code: string;
+  version: string;
+  sections: Array<{
+    code: string;
+    title: string;
+    fields: AdminAccountFormField[];
+    help_text: string | null;
+  }>;
+  options: Record<string, Array<{ code: string; label: string }>>;
+};
+
+export type AdminAccountFormsResponse = {
+  employer: AdminAccountForm;
+  college: AdminAccountForm;
 };
 
 export type AdminDashboardResponse = {
@@ -572,6 +614,13 @@ export const adminApi = baseApi.injectEndpoints({
       query: ({ id, ...params }) => ({ url: `/admin/discount-codes/${id}/redemptions`, params }),
       providesTags: (_result, _error, { id }) => [{ type: "Admin", id: `DISCOUNT_REDEMPTIONS_${id}` }],
     }),
+    getAdminAccountForms: builder.query<AdminAccountFormsResponse, void>({
+      query: () => "/admin/accounts/forms",
+      providesTags: [{ type: "Admin", id: "ACCOUNT_FORMS" }],
+    }),
+    inviteAdminAccount: builder.mutation<{ invitation: "SENT" }, InviteAdminAccountRequest>({
+      query: (body) => ({ url: "/admin/accounts/invitations", method: "POST", body }),
+    }),
     provisionAdminCandidate: builder.mutation<ProvisionedAccountResponse, ProvisionCandidateRequest>({
       query: (body) => ({ url: "/admin/accounts/candidates", method: "POST", body }),
       invalidatesTags: ["Admin"],
@@ -668,6 +717,8 @@ export const {
   useResolveAdminIntegritySignalMutation,
   useGetAdminTenantsQuery,
   useGetAdminCandidatesQuery,
+  useGetAdminAccountFormsQuery,
+  useInviteAdminAccountMutation,
   useProvisionAdminCandidateMutation,
   useProvisionAdminEmployerMutation,
   useProvisionAdminCollegeMutation,
