@@ -2,7 +2,6 @@
 
 import {
   BriefcaseBusiness,
-  CheckCircle,
   MapPin,
   Star,
 } from "lucide-react";
@@ -12,40 +11,6 @@ import type { Candidate } from "./types";
 interface CandidateCardProps {
   candidate: Candidate;
   onReveal?: () => void;
-}
-
-/* =========================================================
-   ADD-ON PILL
-   Matches:
-   background: var(--green-bg)
-   color: var(--green-ink)
-   ========================================================= */
-
-function AddonPill({
-  children,
-  title,
-}: {
-  children: React.ReactNode;
-  title?: string;
-}) {
-  return (
-    <span
-      title={title}
-      className="flex h-[21px] shrink-0 items-center gap-[6px] rounded-full bg-[#e8f5ef] px-[9px]"
-    >
-      <CheckCircle
-        size={12}
-        strokeWidth={2.5}
-        className="shrink-0 text-[#217653]"
-        fill="currentColor"
-        color="#217653"
-      />
-
-      <span className="whitespace-nowrap text-[11px] font-semibold leading-[14px] text-[#217653]">
-        {children}
-      </span>
-    </span>
-  );
 }
 
 /* =========================================================
@@ -189,7 +154,7 @@ export function CandidateCard({
         "
       >
         {/* -------------------------------------------------
-            NAME + SCORE + ADDONS
+            NAME + SCORE
             ------------------------------------------------- */}
 
         <span
@@ -245,25 +210,6 @@ export function CandidateCard({
             <span>{band}</span>
           </span>
 
-          {/* Mock interview */}
-          {candidate.badges.includes("MOCK_INTERVIEW_COMPLETED") && (
-            <AddonPill title="Mock interview completed">
-              Mock interview
-            </AddonPill>
-          )}
-
-          {/* Attribute check */}
-          {candidate.badges.includes("COURSE_COMPLETED") && (
-            <AddonPill title="Attribute check completed">
-              Course completed
-            </AddonPill>
-          )}
-
-          {candidate.badges.length === 0 && (
-            <span className="text-[11px] font-medium text-[#8a92a0]">
-              No completed add-ons
-            </span>
-          )}
         </span>
 
         {/* -------------------------------------------------

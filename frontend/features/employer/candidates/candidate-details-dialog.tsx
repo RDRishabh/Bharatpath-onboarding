@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import {
   BriefcaseBusiness,
-  CheckCircle2,
   Mail,
   MapPin,
   Phone,
@@ -47,11 +46,6 @@ const BAND_PRESENTATION: Record<
     className: "bg-[#eeecff] text-[#51449a]",
   },
 };
-
-const BADGE_LABELS = {
-  COURSE_COMPLETED: "Course completed",
-  MOCK_INTERVIEW_COMPLETED: "Mock interview completed",
-} as const;
 
 function initialsOf(name: string | null): string {
   if (!name) {
@@ -246,27 +240,6 @@ export function CandidateDetailsDialog({
                 )}
               </section>
 
-              <section>
-                <SectionHeading
-                  icon={CheckCircle2}
-                  title="Completed add-ons"
-                />
-                {candidate.badges.length > 0 ? (
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {candidate.badges.map((badge) => (
-                      <div
-                        key={badge}
-                        className="flex items-center gap-2 rounded-lg border border-[#cfe7d9] bg-[#f1f8f4] px-3 py-2.5 text-[12px] font-semibold text-[#217653]"
-                      >
-                        <CheckCircle2 className="h-4 w-4 shrink-0" />
-                        {BADGE_LABELS[badge]}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyDetail text="No completed add-ons yet." />
-                )}
-              </section>
             </div>
           ) : null}
         </div>

@@ -423,31 +423,6 @@ export function CandidateFilters({
           )}
         </FilterSection>
 
-        <Divider />
-
-        {/* =================================================
-            COMPLETED ADD ONS
-            ================================================= */}
-        <FilterSection title="COMPLETED ADD ONS">
-          {panelLoading ? (
-            <FilterRowsSkeleton label="Loading add-on filters" count={3} />
-          ) : (
-            <div className="flex flex-col gap-[2px]">
-              {(panel?.badges ?? []).map((item) => (
-                <CheckRow
-                  key={item.value}
-                  label={item.label}
-                  checked={filters.addons.includes(
-                    item.value,
-                  )}
-                  onClick={() =>
-                    onToggleFilter("addons", item.value)
-                  }
-                />
-              ))}
-            </div>
-          )}
-        </FilterSection>
       </div>
     </aside>
   );

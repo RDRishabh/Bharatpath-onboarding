@@ -25,11 +25,15 @@ const selectClass =
 
 function Field({
   label,
+  providedValue,
   children,
 }: {
   label: string;
+  providedValue: string | null | undefined;
   children: React.ReactNode;
 }) {
+  if (!providedValue?.trim()) return null;
+
   return (
     <label className="mb-3 flex flex-col gap-1.5">
       <span className="text-[11px] font-semibold leading-[15px] text-[#526074]">
@@ -134,6 +138,12 @@ export function CompanyTab() {
     })),
   ];
 
+  const visibleDetailCount = [
+    organisation?.gstin,
+    organisation?.businessType,
+    organisation?.industry,
+  ].filter((value) => value?.trim()).length;
+
   return (
     <section className="max-w-[600px] rounded-xl border border-[#e0e4e9] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.02)]">
       <div className="mb-3">
@@ -149,7 +159,7 @@ export function CompanyTab() {
         <EmployerErrorState className="mb-3" fallback="Unable to load company details. Please try again." />
       )}
 
-      <Field label="Legal business name">
+      <Field label="Legal business name" providedValue={organisation?.legalName}>
         <input
           value={company.legalName}
           onChange={update("legalName")}
@@ -157,18 +167,17 @@ export function CompanyTab() {
         />
       </Field>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="GSTIN">
+      <div className={`grid grid-cols-1 gap-x-3 ${visibleDetailCount > 1 ? "sm:grid-cols-2" : ""}`}>
+        <Field label="GSTIN" providedValue={organisation?.gstin}>
           <input
             value={company.gstin}
-            placeholder="Not returned by organisation API"
             disabled
             readOnly
             className={inputClass}
           />
         </Field>
 
-        <Field label="Business type">
+        <Field label="Business type" providedValue={organisation?.businessType}>
           <AppSelect
             value={company.businessType}
             onChange={updateValue("businessType")}
@@ -179,7 +188,7 @@ export function CompanyTab() {
           />
         </Field>
 
-        <Field label="Industry">
+        <Field label="Industry" providedValue={organisation?.industry}>
           <AppSelect
             value={company.industry}
             onChange={updateValue("industry")}
@@ -193,22 +202,20 @@ export function CompanyTab() {
         </Field>
       </div>
 
-      <Field label="Verification status">
+      <Field label="Verification status" providedValue={organisation?.kybStatus}>
         <input
           value={company.kybStatus}
-          placeholder="Not specified"
           disabled
           readOnly
           className={inputClass}
         />
       </Field>
 
-      <Field label="Registered address">
-          <input
-            value={company.address}
-            placeholder="Not returned by organisation API"
-            disabled
-            readOnly
+      <Field label="Registered address" providedValue={organisation?.address}>
+        <input
+          value={company.address}
+          disabled
+          readOnly
           className={inputClass}
         />
       </Field>

@@ -9,6 +9,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -23,7 +24,6 @@ import { useJobCreateForm } from "../hooks/use-job-create-form";
 import {
   hasThreshold,
   previewThreshold,
-  SCORE_FLOOR,
   THRESHOLD_MAX,
   THRESHOLD_MIN,
   THRESHOLD_STEP,
@@ -56,6 +56,10 @@ const employmentOptions = [
   },
 ];
 
+const subscribeToHydration = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export interface JobCreatePageProps {
   initialValues?: CreateJobFormValues;
   heading?: string;
@@ -70,6 +74,12 @@ export function JobCreatePage({
   jobStatus,
 }: JobCreatePageProps) {
   const router = useRouter();
+  // Cached query data can be available before this server-rendered tree hydrates.
+  const hasHydrated = useSyncExternalStore(
+    subscribeToHydration,
+    getClientSnapshot,
+    getServerSnapshot,
+  );
   const [statusOverride, setStatusOverride] =
     useState<ApiJobStatus | undefined>();
   const currentStatus = statusOverride ?? jobStatus;
@@ -91,8 +101,8 @@ export function JobCreatePage({
   const { data: organisation } = useGetEmployerOrganisationQuery(undefined, {
     skip: !canChangeToPublished,
   });
-  const canPublish = organisation?.kybStatus === "APPROVED";
-  const { data: thresholdPreview } = usePreviewEmployerJobThresholdQuery(
+  const canPublish = hasHydrated && organisation?.kybStatus === "APPROVED";
+  const { data: thresholdPreviewData } = usePreviewEmployerJobThresholdQuery(
     previewThreshold(values.minScore),
     {
       skip:
@@ -100,6 +110,7 @@ export function JobCreatePage({
         !hasThreshold(values.minScore),
     },
   );
+  const thresholdPreview = hasHydrated ? thresholdPreviewData : undefined;
   const thresholdSet = hasThreshold(values.minScore);
   const [createJob, { isLoading: isCreating }] = useCreateEmployerJobMutation();
   const [updateJob, { isLoading: isUpdating }] = useUpdateEmployerJobMutation();
@@ -420,7 +431,7 @@ export function JobCreatePage({
               label="Minimum score threshold"
               trailing={
                 <span className="text-[15px] font-bold text-[#151b2b]">
-                  {thresholdSet ? values.minScore : `${values.minScore} · No minimum`}
+                  {values.minScore}
                 </span>
               }
               error={errors.minScore}
@@ -432,11 +443,7 @@ export function JobCreatePage({
                 step={THRESHOLD_STEP}
                 value={values.minScore}
                 disabled={!isFormEditable}
-                aria-valuetext={
-                  thresholdSet
-                    ? `Minimum score ${values.minScore}`
-                    : "No minimum score"
-                }
+                aria-valuetext={`Selected score ${values.minScore}`}
                 onChange={(event) =>
                   setValue(
                     "minScore",
@@ -452,10 +459,6 @@ export function JobCreatePage({
                 <span>{THRESHOLD_MIN}</span>
                 <span>{THRESHOLD_MAX}</span>
               </div>
-              <p className="mt-1 text-[11px] leading-4 text-[#7b8493]">
-                Candidate scores start at {SCORE_FLOOR}, so anything below it
-                sets no minimum.
-              </p>
             </FieldShell>
 
             {isFormEditable ? (
@@ -468,7 +471,7 @@ export function JobCreatePage({
 
                 <span className="text-[13px] font-medium leading-[17px] text-[#28578f]">
                   {!thresholdSet
-                    ? "No minimum score. Every scored candidate in your pool meets this bar"
+                    ? "Every scored candidate in your pool meets this bar"
                     : `${thresholdPreview?.fewer_than_ten
                         ? "Fewer than 10 candidates"
                         : `${thresholdPreview?.approximate_count ?? "—"} candidates`} in your pool currently meet this bar`}
@@ -504,7 +507,7 @@ export function JobCreatePage({
             </div>
           ) : null}
 
-          {canChangeToPublished && !canPublish ? (
+          {canChangeToPublished && hasHydrated && organisation && !canPublish ? (
             <div className="mb-4 flex items-start gap-2.5 rounded-[10px] bg-[#fff7e8] px-4 py-3.5">
               <LockKeyhole
                 size={17}

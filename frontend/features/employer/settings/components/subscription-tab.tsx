@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CancelSubscriptionDialog } from "@/components/billing/cancel-subscription-dialog";
 
 import { useCancelEmployerSubscriptionMutation, useCheckoutEmployerSubscriptionMutation, useCreateEmployerMandateMutation, useGetEmployerPlansQuery, useGetEmployerSubscriptionQuery, usePreviewEmployerDiscountMutation } from "@/store/employer/billing";
 import { DiscountCodeField } from "@/components/billing/discount-code-field";
@@ -52,6 +53,7 @@ export function SubscriptionTab() {
   const { data: plans = [], isLoading: plansLoading } = useGetEmployerPlansQuery();
   const [checkout, checkoutState] = useCheckoutEmployerSubscriptionMutation();
   const [previewDiscount] = usePreviewEmployerDiscountMutation();
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [cancel, cancelState] = useCancelEmployerSubscriptionMutation();
   const [createMandate, mandateState] = useCreateEmployerMandateMutation();
   const { confirm, dialog } = useConfirmDialog();
@@ -94,15 +96,10 @@ export function SubscriptionTab() {
           <span className={subscription?.has_access ? "text-[#13875e]" : "text-[#b42318]"}>{subscription?.has_access ? "Employer access active" : "Employer access inactive"}</span>
           {subscription?.current_period_end && <span className="text-[#718096]">Until {new Date(subscription.current_period_end).toLocaleDateString("en-IN")}</span>}
         </div>
+        {subscription?.cancel_at && <p role="status" className="mt-3 text-xs text-[#718096]">Renewal cancelled. Access continues until {new Date(subscription.cancel_at).toLocaleDateString("en-IN")}.</p>}
         <div className="mt-4 flex gap-2">
-          {subscription?.has_access && !subscription.cancel_at && <button disabled={cancelState.isLoading} onClick={() => confirm({
-            title: "Cancel auto-renewal?",
-            description: "Your plan stays active until the end of the current period and will not renew after that.",
-            confirmLabel: "Cancel renewal",
-            tone: "danger",
-            onConfirm: () => cancel().unwrap().catch(() => undefined),
-          })} className="rounded-lg border px-3 py-2 text-xs font-semibold">Cancel renewal</button>}
-          {subscription?.has_access && !subscription.renews_automatically && <button disabled={mandateState.isLoading} onClick={() => confirm({
+          {subscription?.has_access && !subscription.cancel_at && <button disabled={cancelState.isLoading} onClick={() => setCancelOpen(true)} className="rounded-lg border px-3 py-2 text-xs font-semibold">Cancel renewal</button>}
+          {subscription?.has_access && !subscription.cancel_at && !subscription.renews_automatically && <button disabled={mandateState.isLoading} onClick={() => confirm({
             title: "Enable UPI AutoPay?",
             description: "You will be taken to your UPI app to authorise recurring payments. You are notified before every debit.",
             confirmLabel: "Continue",
@@ -130,6 +127,7 @@ export function SubscriptionTab() {
         </div>
       )}
       {(checkoutState.isError || cancelState.isError || mandateState.isError) && <EmployerErrorState variant="inline" error={checkoutState.error || cancelState.error || mandateState.error} fallback="The billing request could not be completed." />}
+      <CancelSubscriptionDialog open={cancelOpen} planCode={subscription?.plan_code} periodEnd={subscription?.current_period_end} onCancel={() => cancel().unwrap()} onClose={() => setCancelOpen(false)} />
       {dialog}
       {simulatedCheckout && selectedPlanCode ? <SimulatedPaymentDialog paymentId={simulatedCheckout.payment_id} amountMinor={simulatedCheckout.amount_minor} currency={simulatedCheckout.currency} title="Employer subscription" checkoutContent={<DiscountCodeField planCode={selectedPlanCode} preview={(args) => previewDiscount(args).unwrap()} onChange={(code) => createCheckout(selectedPlanCode, code ?? undefined)} />} onComplete={() => refetchSubscription()} onClose={() => { setSimulatedCheckout(null); setSelectedPlanCode(null); }} /> : null}
     </div>

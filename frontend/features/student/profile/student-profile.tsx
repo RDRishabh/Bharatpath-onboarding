@@ -123,7 +123,7 @@ export function StudentProfile() {
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
               <ProfileAction icon={FileText} title="Resume details" detail="Review and edit extracted information" tone="violet" onClick={() => router.push("/student/profile/resume")} />
               <ProfileAction icon={ClipboardCheck} title="Attribute report" detail="View your completed assessment" tone="green" onClick={() => router.push("/student/attribute")} />
-              <ProfileAction icon={Mic2} title="Interview report" detail="Practice history and feedback" tone="orange" onClick={() => router.push("/student/interview")} />
+              <ProfileAction icon={Mic2} title="Interview report" detail="Practice history and feedback" tone="orange" onClick={() => router.push("/student/interview#interview-history")} />
               <ProfileAction icon={BookOpen} title="Skill courses" detail={`${courses.data?.length ?? 0} available · ${courses.data?.filter((course) => course.completed).length ?? 0} completed`} tone="blue" onClick={() => router.push("/student/courses")} />
               <ProfileAction icon={Languages} title="Language" detail="English" tone="gold" />
             </div>

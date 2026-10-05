@@ -1,5 +1,6 @@
 import { APPLICATION_STAGES } from "../drawer-data";
-import type { ApplicationStage } from "../types";
+import type { ApplicationStage, EmployerApplication } from "../types";
+import { canMoveApplicationStage } from "../transitions";
 
 interface StageProgressProps {
   currentStage: number;
@@ -43,11 +44,13 @@ export function StageProgress({
 
 interface StageMoveControlsProps {
   currentStage: number;
+  application: EmployerApplication;
   onMoveStage: (stage: ApplicationStage) => void;
 }
 
 export function StageMoveControls({
   currentStage,
+  application,
   onMoveStage,
 }: StageMoveControlsProps) {
   return (
@@ -59,16 +62,20 @@ export function StageMoveControls({
       <div className="flex flex-wrap gap-2">
         {APPLICATION_STAGES.map((stage) => {
           const active = Number(stage.value) === currentStage;
+          const disabled = !canMoveApplicationStage(application, stage.value);
 
           return (
             <button
               key={stage.value}
               type="button"
+              disabled={disabled}
               onClick={() => onMoveStage(stage.value)}
-              className={`rounded-full px-3 py-2 text-[12px] font-semibold leading-4 transition ${
+              className={`rounded-full px-3 py-2 text-[12px] font-semibold leading-4 transition disabled:cursor-not-allowed ${
                 active
-                  ? "cursor-pointer border border-[#151b2b] bg-[#151b2b] text-white"
-                  : "cursor-pointer border border-[#e1e5eb] bg-white text-[#4f5969] hover:bg-[#f3f4f7]"
+                  ? "border border-[#151b2b] bg-[#151b2b] text-white"
+                  : disabled
+                    ? "border border-[#e1e5eb] bg-[#f3f4f7] text-[#9aa2af]"
+                    : "cursor-pointer border border-[#e1e5eb] bg-white text-[#4f5969] hover:bg-[#f3f4f7]"
               }`}
             >
               {stage.label}

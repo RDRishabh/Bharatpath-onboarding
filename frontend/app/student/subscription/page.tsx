@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CancelSubscriptionDialog } from "@/components/billing/cancel-subscription-dialog";
 
 import { DiscountCodeField } from "@/components/billing/discount-code-field";
 import { SimulatedPaymentDialog } from "@/components/billing/simulated-payment-dialog";
@@ -16,6 +17,7 @@ export default function CandidateSubscriptionPage() {
   const { data: plans = [], isLoading: plansLoading } = useGetCandidatePlansQuery();
   const [preview] = usePreviewCandidateDiscountMutation();
   const [checkout, checkoutState] = useCheckoutCandidateSubscriptionMutation();
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [cancel, cancelState] = useCancelCandidateSubscriptionMutation();
   const [error, setError] = useState<string | null>(null);
   const [simulatedCheckout, setSimulatedCheckout] = useState<CandidateCheckout | null>(null);
@@ -42,9 +44,11 @@ export default function CandidateSubscriptionPage() {
         <strong className="text-[#0A1931]">{subscription?.state ?? "NONE"}</strong>
         <span className={subscription?.has_access ? "font-semibold text-[#23805d]" : "text-[#5F6B80]"}>{subscription?.has_access ? "Access active" : "No active paid access"}</span>
         {subscription?.current_period_end ? <span className="text-[#5F6B80]">Until {new Date(subscription.current_period_end).toLocaleDateString("en-IN")}</span> : null}
-        {subscription?.has_access && !subscription.cancel_at ? <button type="button" disabled={cancelState.isLoading} onClick={() => void cancel()} className="ml-auto rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50">{cancelState.isLoading ? "Cancelling…" : "Cancel renewal"}</button> : null}
+        {subscription?.has_access && !subscription.cancel_at ? <button type="button" disabled={cancelState.isLoading} onClick={() => setCancelOpen(true)} className="ml-auto rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50">{cancelState.isLoading ? "Cancelling…" : "Cancel renewal"}</button> : null}
       </div>}
+      {subscription?.cancel_at ? <p role="status" className="mt-3 text-sm text-[#5F6B80]">Renewal cancelled. Access continues until {new Date(subscription.cancel_at).toLocaleDateString("en-IN")}.</p> : null}
     </section>
+    <CancelSubscriptionDialog open={cancelOpen} planCode={subscription?.plan_code} periodEnd={subscription?.current_period_end} onCancel={() => cancel().unwrap()} onClose={() => setCancelOpen(false)} />
 
     {error ? <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
 

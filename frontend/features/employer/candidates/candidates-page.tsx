@@ -65,7 +65,6 @@ export function CandidatesPage() {
     q: committedSearch.trim() || undefined,
     band: filters.bands.length ? filters.bands : undefined,
     skill: filters.skills.length ? filters.skills : undefined,
-    badge: filters.addons.length ? filters.addons : undefined,
     state: filters.state || undefined,
     city: filters.locations.length ? filters.locations : undefined,
     min_experience_years: filters.experiences.length
@@ -76,7 +75,6 @@ export function CandidatesPage() {
   }), [
     cursor,
     committedSearch,
-    filters.addons,
     filters.bands,
     filters.experiences,
     filters.locations,
