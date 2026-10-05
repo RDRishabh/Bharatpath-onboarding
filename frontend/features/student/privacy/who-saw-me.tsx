@@ -15,7 +15,7 @@ export function WhoSawMe() {
   return (
     <StudentPage>
       <div className="flex flex-col gap-6">
-        <StudentTopBar title="Who has seen me" />
+        <StudentTopBar title="Who has seen me" className="!mb-0" />
         <div>
           <h1 className="text-2xl font-extrabold tracking-[-0.03em] text-[#0A1931] sm:text-3xl">Every unlock, logged</h1>
           <p className="mt-1 text-[14px] leading-6 text-[#5F6B80]">Details appear only after an employer opens your profile.</p>
