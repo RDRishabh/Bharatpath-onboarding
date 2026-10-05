@@ -15,6 +15,7 @@ import {
   Plus,
   TriangleAlert,
   Trophy,
+  Trash2,
   User,
   Users,
   Wrench,
@@ -67,7 +68,10 @@ function metaOf(kind: string) {
 }
 
 /** Sections worth prompting for when the resume has none. */
-const PROMPTED_KINDS: ResumeSectionKind[] = ["education", "experience", "projects", "skills"];
+const ADDABLE_KINDS: ResumeSectionKind[] = [
+  "summary", "experience", "projects", "education", "skills", "certifications",
+  "languages", "achievements", "activities", "personal",
+];
 
 interface ReviewStepProps {
   resumeVersionId: string;
@@ -212,6 +216,7 @@ interface DraftSection extends ResumeSection {
 type SheetState =
   | { type: "item"; sectionKey: string; item: ResumeSectionItem }
   | { type: "section"; sectionKey: string; adding?: boolean }
+  | { type: "picker" }
   | null;
 
 function SectionsReview({
@@ -250,7 +255,7 @@ function SectionsReview({
     0,
   );
   const present = new Set(drafts.filter((section) => section.body.trim()).map((section) => section.kind));
-  const missing = PROMPTED_KINDS.filter((kind) => !present.has(kind));
+  const missing = ADDABLE_KINDS.filter((kind) => !present.has(kind));
 
   const update = (key: string, change: (section: DraftSection) => DraftSection | null) => {
     setDrafts((current) =>
@@ -297,7 +302,9 @@ function SectionsReview({
     }
   };
 
-  const sheetSection = sheet ? drafts.find((section) => section.key === sheet.sectionKey) : undefined;
+  const sheetSection = sheet && sheet.type !== "picker"
+    ? drafts.find((section) => section.key === sheet.sectionKey)
+    : undefined;
 
   return (
     <div className="flex flex-col gap-5">
@@ -327,28 +334,9 @@ function SectionsReview({
         ))}
 
         {missing.length > 0 && (
-          <Card className="flex flex-col gap-3 p-4">
-            <Eyebrow>Missing from your resume</Eyebrow>
-            {missing.map((kind) => (
-              <div key={kind} className="flex items-center gap-3">
-                <span className="flex-1 text-[14px] font-medium leading-5 text-[#5F6B80]">
-                  {metaOf(kind).label} not found
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const key = `${kind}-new-${Date.now()}`;
-                    setDrafts((current) => [...current, { key, kind, heading: null, body: "", items: null }]);
-                    setSheet({ type: "section", sectionKey: key, adding: true });
-                  }}
-                  className="flex cursor-pointer items-center gap-1.5 rounded-full bg-[#5F4DB2] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#4A3E8F]"
-                >
-                  <Plus className="h-3 w-3" aria-hidden="true" />
-                  Add
-                </button>
-              </div>
-            ))}
-          </Card>
+          <button type="button" onClick={() => setSheet({ type: "picker" })} className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[20px] border border-dashed border-[#CFC4F4] bg-white px-5 py-4 text-[14px] font-bold text-[#5F4DB2] transition hover:border-[#5F4DB2] hover:bg-[#FCFAFF]">
+            <Plus className="h-4 w-4" aria-hidden="true" /> Add missing section
+          </button>
         )}
       </div>
 
@@ -394,13 +382,19 @@ function SectionsReview({
         />
       )}
 
-      {sheet?.type === "section" && sheetSection && (
-        <EditSectionSheet
-          title={
-            sheet.adding
-              ? `Add ${metaOf(sheetSection.kind).label.toLowerCase()}`
-              : `Edit ${(sheetSection.heading ?? metaOf(sheetSection.kind).label).toLowerCase()}`
-          }
+      {sheet?.type === "section" && sheetSection?.kind === "header" && (
+        <EditBasicsSheet
+          body={sheetSection.body}
+          onClose={() => setSheet(null)}
+          onSave={(body) => {
+            update(sheetSection.key, (section) => ({ ...section, body, items: null }));
+            setSheet(null);
+          }}
+        />
+      )}
+
+      {sheet?.type === "section" && sheetSection?.kind === "skills" && (
+        <EditSkillsSheet
           body={sheetSection.body}
           onClose={() => {
             if (sheet.adding) {
@@ -408,12 +402,59 @@ function SectionsReview({
             }
             setSheet(null);
           }}
+          onDelete={() => {
+            update(sheetSection.key, () => null);
+            setSheet(null);
+          }}
           onSave={(body) => {
+            update(sheetSection.key, (section) => ({ ...section, body, items: null }));
+            setSheet(null);
+          }}
+        />
+      )}
+
+      {sheet?.type === "section" && sheetSection && sheetSection.kind !== "header" && sheetSection.kind !== "skills" && (
+        <EditSectionSheet
+          title={
+            sheet.adding
+              ? `Add ${metaOf(sheetSection.kind).label.toLowerCase()}`
+              : `Edit ${(sheetSection.heading ?? metaOf(sheetSection.kind).label).toLowerCase()}`
+          }
+          heading={sheetSection.heading ?? metaOf(sheetSection.kind).label}
+          body={sheetSection.body}
+          onClose={() => {
+            if (sheet.adding) {
+              setDrafts((current) => current.filter((section) => section.key !== sheetSection.key));
+            }
+            setSheet(null);
+          }}
+          onDelete={() => {
+            update(sheetSection.key, () => null);
+            setSheet(null);
+          }}
+          onSave={(heading, body) => {
             update(sheetSection.key, (section) =>
               // Item chips are derived by the server; after a free-text edit
               // the text itself is shown until the next review.
-              ({ ...section, body, items: null }),
+              ({ ...section, heading, body, items: null }),
             );
+            setSheet(null);
+          }}
+        />
+      )}
+
+      {sheet?.type === "picker" && (
+        <AddSectionSheet
+          kinds={missing}
+          onClose={() => setSheet(null)}
+          onAdd={(kind, body) => {
+            const key = `${kind}-new-${Date.now()}`;
+            setDrafts((current) => [
+              ...current,
+              { key, kind, heading: metaOf(kind).label, body, items: null },
+            ]);
+            setDirty(true);
+            setError(null);
             setSheet(null);
           }}
         />
@@ -435,10 +476,16 @@ function SectionCard({
   onEdit: () => void;
   onFixItem: (item: ResumeSectionItem) => void;
 }) {
+  if (section.kind === "header") {
+    return <BasicsCard section={section} onEdit={onEdit} />;
+  }
+  if (section.kind === "skills") {
+    return <SkillsCard section={section} onEdit={onEdit} />;
+  }
+
   const meta = metaOf(section.kind);
   const unclear = section.items?.filter((item) => item.unclear).length ?? 0;
-  const title =
-    section.kind === "header" ? meta.label : (section.heading ?? meta.label);
+  const title = section.heading ?? meta.label;
   const lines = section.body.split("\n").filter((line) => line.trim());
 
   return (
@@ -515,6 +562,72 @@ function SectionCard({
         <span className="text-[14px] text-[#5F6B80]">Nothing here yet.</span>
       )}
     </Card>
+  );
+}
+
+function SkillsCard({ section, onEdit }: { section: DraftSection; onEdit: () => void }) {
+  const skills = skillList(section.body);
+  return (
+    <Card className="flex flex-col gap-4 p-4 sm:p-5">
+      <div className="flex items-center gap-2">
+        <Wrench className="h-4 w-4 text-[#5F6B80]" aria-hidden="true" />
+        <Eyebrow>{section.heading ?? "Technical skills"}</Eyebrow>
+        {skills.length > 0 && <DoneDot />}
+        <button type="button" onClick={onEdit} aria-label="Edit technical skills" className="ml-auto grid h-8 w-8 cursor-pointer place-items-center rounded-full text-[#566073] transition hover:bg-[#F7F4EC]">
+          <PencilLine className="h-[15px] w-[15px]" aria-hidden="true" />
+        </button>
+      </div>
+      {skills.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {skills.map((skill, index) => <span key={`${skill}-${index}`} className="rounded-full bg-[#F7EFD6] px-3 py-2 text-[13px] font-medium leading-4 text-[#0A1931]">{skill}</span>)}
+        </div>
+      ) : <span className="text-[14px] text-[#5F6B80]">No skills added yet.</span>}
+    </Card>
+  );
+}
+
+function basicsOf(body: string) {
+  const lines = body.split("\n").map((line) => line.trim()).filter(Boolean);
+  const phonePattern = /(?:\+?\d[\d\s()-]{7,}\d)/;
+  const phoneLine = lines.find((line) => phonePattern.test(line));
+  const phone = phoneLine?.match(phonePattern)?.[0]?.trim() ?? "";
+  const name = lines[0] ?? "";
+  const details = lines
+    .slice(1)
+    .map((line) => line === phoneLine ? line.replace(phone, "").replace(/^[\s·—|,-]+|[\s·—|,-]+$/g, "").trim() : line)
+    .filter(Boolean)
+    .join("\n");
+  return { name, phone, details };
+}
+
+function BasicsCard({ section, onEdit }: { section: DraftSection; onEdit: () => void }) {
+  const basics = basicsOf(section.body);
+
+  return (
+    <Card className="flex flex-col gap-4 p-4 sm:p-5">
+      <div className="flex items-center gap-2">
+        <User className="h-4 w-4 text-[#5F6B80]" aria-hidden="true" />
+        <Eyebrow>Basics</Eyebrow>
+        {section.body.trim() && <DoneDot />}
+        <button type="button" onClick={onEdit} aria-label="Edit basics" className="ml-auto grid h-8 w-8 cursor-pointer place-items-center rounded-full text-[#566073] transition hover:bg-[#F7F4EC]">
+          <PencilLine className="h-[15px] w-[15px]" aria-hidden="true" />
+        </button>
+      </div>
+      <BasicRow label="Name" value={basics.name} />
+      <BasicRow label="Phone" value={basics.phone} />
+      <BasicRow label="Details" value={basics.details} multiline />
+    </Card>
+  );
+}
+
+function BasicRow({ label, value, multiline = false }: { label: string; value: string; multiline?: boolean }) {
+  return (
+    <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-4 sm:grid-cols-[7rem_minmax(0,1fr)]">
+      <span className="text-[14px] text-[#5F6B80]">{label}</span>
+      <span className={`text-right text-[14px] font-semibold leading-5 text-[#0A1931] ${multiline ? "whitespace-pre-line break-words" : "break-words"}`}>
+        {value || "Not added"}
+      </span>
+    </div>
   );
 }
 
@@ -714,8 +827,17 @@ function Sheet({
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
+    const previousOverflow = document.body.style.overflow;
+    const previousOverscrollBehavior = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "none";
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overscrollBehavior = previousOverscrollBehavior;
+    };
   }, [onClose]);
 
   return (
@@ -730,10 +852,10 @@ function Sheet({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="flex max-h-[90vh] w-full flex-col gap-5 overflow-y-auto rounded-t-[28px] bg-white px-5 pb-5 pt-3 shadow-[0_-8px_40px_-12px_rgba(10,25,49,0.22)] sm:max-w-[520px] sm:rounded-[28px] sm:p-6"
+        className="flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white px-5 pb-5 pt-3 shadow-[0_-8px_40px_-12px_rgba(10,25,49,0.22)] sm:max-w-[620px] sm:rounded-[28px] sm:p-6"
       >
-        <div className="mx-auto h-1 w-10 rounded-full bg-[#E7E0D4] sm:hidden" aria-hidden="true" />
-        <div className="flex items-start gap-3">
+        <div className="mx-auto mb-4 h-1 w-10 shrink-0 rounded-full bg-[#E7E0D4] sm:hidden" aria-hidden="true" />
+        <div className="flex shrink-0 items-start gap-3 pb-5">
           <div className="flex flex-1 flex-col gap-1">
             <span className="text-[20px] font-bold leading-6 tracking-[-0.02em] text-[#0A1931]">{title}</span>
             {subtitle && <span className="text-[13px] leading-[18px] text-[#5F6B80]">{subtitle}</span>}
@@ -747,7 +869,9 @@ function Sheet({
             <X className="h-4 w-4 text-[#3A4761]" aria-hidden="true" />
           </button>
         </div>
-        {children}
+        <div className="bp-scrollbar flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain pr-2 sm:pr-3">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -825,21 +949,240 @@ function FixItemSheet({
   );
 }
 
-function EditSectionSheet({
-  title,
-  body,
-  onClose,
-  onSave,
-}: {
-  title: string;
+function AddSectionSheet({ kinds, onClose, onAdd }: {
+  kinds: ResumeSectionKind[];
+  onClose: () => void;
+  onAdd: (kind: ResumeSectionKind, body: string) => void;
+}) {
+  const [selected, setSelected] = useState<ResumeSectionKind | null>(null);
+  const [body, setBody] = useState("");
+  const selectedMeta = selected ? metaOf(selected) : null;
+
+  return (
+    <Sheet title="Add section" subtitle="Select a section and add the content you want employers to see." onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        <span className="text-[14px] font-bold text-[#0A1931]">Choose section type</span>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Section type">
+          {kinds.map((kind) => {
+            const active = selected === kind;
+            return (
+              <button
+                key={kind}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setSelected(kind)}
+                className={`cursor-pointer rounded-full border px-4 py-2.5 text-[14px] font-semibold transition ${
+                  active
+                    ? "border-[#5F4DB2] bg-[#5F4DB2] text-white shadow-sm"
+                    : "border-transparent bg-[#F7EFD6] text-[#3A4761] hover:border-[#CFC4F4]"
+                }`}
+              >
+                {metaOf(kind).label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[#0A1931]">
+        {selectedMeta ? `${selectedMeta.label} content` : "Section content"}
+        <span className="font-normal text-[#5F6B80]">
+          {selectedMeta
+            ? `Add your ${selectedMeta.label.toLowerCase()} details below.`
+            : "Select a section type above before saving."}
+        </span>
+        <textarea
+          rows={10}
+          value={body}
+          maxLength={20000}
+          placeholder="Enter details, dates, accomplishments..."
+          onChange={(event) => setBody(event.target.value)}
+          className={`${fieldClass} ${fieldBorder(false)} min-h-[220px] resize-y text-[15px] font-normal leading-6`}
+        />
+      </label>
+
+      <div className="flex gap-3">
+        <PillButton variant="secondary" onClick={onClose} className="w-28 flex-none py-4 text-[15px]">
+          Cancel
+        </PillButton>
+        <PillButton
+          onClick={() => selected && onAdd(selected, body.trim())}
+          disabled={!selected || !body.trim()}
+          className="flex-1 py-4 text-[15px]"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" /> Add section
+        </PillButton>
+      </div>
+    </Sheet>
+  );
+}
+
+function skillList(body: string): string[] {
+  const seen = new Set<string>();
+  const withoutCategoryLabels = body.replace(
+    /(^|\n)\s*[^,;|\n:]{1,40}:\s*/g,
+    "$1",
+  );
+  return withoutCategoryLabels
+    .split(/[,;|\n•●▪■◦‣►➢✓·]+/)
+    .map((skill) => skill.replace(/^[-*]\s*/, "").trim())
+    .filter((skill) => {
+      const key = skill.toLocaleLowerCase();
+      if (!skill || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function EditSkillsSheet({ body, onClose, onDelete, onSave }: {
+  body: string;
+  onClose: () => void;
+  onDelete: () => void;
+  onSave: (body: string) => void;
+}) {
+  const [skills, setSkills] = useState(() => skillList(body));
+  const [newSkill, setNewSkill] = useState("");
+  const [rawMode, setRawMode] = useState(false);
+  const [rawText, setRawText] = useState(body);
+
+  const addSkill = () => {
+    const value = newSkill.trim();
+    if (!value || skills.some((skill) => skill.toLocaleLowerCase() === value.toLocaleLowerCase())) return;
+    setSkills((current) => [...current, value]);
+    setNewSkill("");
+  };
+
+  const toggleMode = () => {
+    if (rawMode) {
+      setSkills(skillList(rawText));
+    } else {
+      setRawText(skills.join("\n"));
+    }
+    setRawMode((current) => !current);
+  };
+
+  return (
+    <Sheet title="Edit technical skills" subtitle="Changes will be saved as a new version." onClose={onClose}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[14px] font-bold text-[#0A1931]">Skills (chips)</span>
+        <button type="button" onClick={toggleMode} className="cursor-pointer text-[13px] font-semibold text-[#5F4DB2] hover:text-[#4A3E8F]">
+          {rawMode ? "Edit as chips" : "Edit as raw text"}
+        </button>
+      </div>
+
+      {rawMode ? (
+        <textarea autoFocus rows={10} value={rawText} onChange={(event) => setRawText(event.target.value)} className={`${fieldClass} ${fieldBorder(false)} min-h-[220px] resize-y text-[15px] font-normal leading-6`} aria-label="Skills as raw text" />
+      ) : (
+        <>
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              value={newSkill}
+              maxLength={100}
+              placeholder="Add a new skill..."
+              onChange={(event) => setNewSkill(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addSkill();
+                }
+              }}
+              className={`${fieldClass} ${fieldBorder(false)} min-w-0 flex-1`}
+            />
+            <button type="button" onClick={addSkill} disabled={!newSkill.trim()} className="flex cursor-pointer items-center gap-1.5 rounded-[16px] bg-[#5F4DB2] px-4 text-[14px] font-semibold text-white transition hover:bg-[#4A3E8F] disabled:cursor-not-allowed disabled:opacity-45">
+              <Plus className="h-4 w-4" aria-hidden="true" /> Add
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {skills.map((skill) => (
+              <span key={skill} className="flex items-center gap-2 rounded-full bg-[#F7EFD6] py-2 pl-3.5 pr-2.5 text-[13px] font-medium text-[#0A1931]">
+                {skill}
+                <button type="button" onClick={() => setSkills((current) => current.filter((item) => item !== skill))} aria-label={`Remove ${skill}`} className="grid h-5 w-5 cursor-pointer place-items-center rounded-full text-[#667085] hover:bg-[#EADFBF] hover:text-[#0A1931]">
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+
+      <button type="button" onClick={onDelete} className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[16px] border border-[#E8A3A3] bg-[#FFF7F7] px-4 py-3.5 text-[14px] font-semibold text-[#C73838] transition hover:bg-[#FFF0F0]">
+        <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete this section
+      </button>
+      <div className="flex gap-3">
+        <PillButton variant="secondary" onClick={onClose} className="w-28 flex-none py-4 text-[15px]">Cancel</PillButton>
+        <PillButton onClick={() => onSave(rawMode ? rawText.trim() : skills.join("\n"))} disabled={rawMode ? !rawText.trim() : skills.length === 0} className="flex-1 py-4 text-[15px]">Save changes</PillButton>
+      </div>
+    </Sheet>
+  );
+}
+
+function EditBasicsSheet({ body, onClose, onSave }: {
   body: string;
   onClose: () => void;
   onSave: (body: string) => void;
 }) {
+  const initial = basicsOf(body);
+  const [name, setName] = useState(initial.name);
+  const [phone, setPhone] = useState(initial.phone);
+  const [details, setDetails] = useState(initial.details);
+
+  const save = () => onSave([name.trim(), phone.trim(), details.trim()].filter(Boolean).join("\n"));
+
+  return (
+    <Sheet title="Edit basics" subtitle="Keep your main contact details accurate and easy to read." onClose={onClose}>
+      <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[#0A1931]">
+        Full name
+        <input autoFocus value={name} maxLength={200} onChange={(event) => setName(event.target.value)} className={`${fieldClass} ${fieldBorder(false)}`} />
+      </label>
+      <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[#0A1931]">
+        Phone number
+        <input type="tel" value={phone} maxLength={40} onChange={(event) => setPhone(event.target.value)} className={`${fieldClass} ${fieldBorder(false)}`} />
+      </label>
+      <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[#0A1931]">
+        Additional details (email, location, links)
+        <textarea rows={5} value={details} maxLength={4000} onChange={(event) => setDetails(event.target.value)} className={`${fieldClass} ${fieldBorder(false)} min-h-[130px] resize-y text-[15px] font-normal leading-6`} />
+      </label>
+      <div className="flex gap-3">
+        <PillButton variant="secondary" onClick={onClose} className="w-28 flex-none py-4 text-[15px]">Cancel</PillButton>
+        <PillButton onClick={save} disabled={!name.trim()} className="flex-1 py-4 text-[15px]">Save changes</PillButton>
+      </div>
+    </Sheet>
+  );
+}
+
+function EditSectionSheet({
+  title,
+  heading,
+  body,
+  onClose,
+  onDelete,
+  onSave,
+}: {
+  title: string;
+  heading: string;
+  body: string;
+  onClose: () => void;
+  onDelete?: () => void;
+  onSave: (heading: string, body: string) => void;
+}) {
+  const [headingValue, setHeadingValue] = useState(heading);
   const [value, setValue] = useState(body);
 
   return (
     <Sheet title={title} subtitle="Write it the way you want an employer to read it." onClose={onClose}>
+      <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[#0A1931]">
+        Section heading
+        <input
+          value={headingValue}
+          maxLength={100}
+          onChange={(event) => setHeadingValue(event.target.value)}
+          className={`${fieldClass} ${fieldBorder(false)}`}
+        />
+      </label>
+      <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-[#0A1931]">
+        Content / body
       <textarea
         aria-label={title}
         autoFocus
@@ -849,11 +1192,17 @@ function EditSectionSheet({
         onChange={(event) => setValue(event.target.value)}
         className={`${fieldClass} ${fieldBorder(false)} min-h-[220px] resize-y text-[15px] font-normal leading-6`}
       />
+      </label>
+      {onDelete && (
+        <button type="button" onClick={onDelete} className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[16px] border border-[#E8A3A3] bg-[#FFF7F7] px-4 py-3.5 text-[14px] font-semibold text-[#C73838] transition hover:bg-[#FFF0F0]">
+          <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete this section
+        </button>
+      )}
       <div className="flex gap-3">
         <PillButton variant="secondary" onClick={onClose} className="w-28 flex-none py-4 text-[15px]">
           Cancel
         </PillButton>
-        <PillButton onClick={() => onSave(value.trim())} className="flex-1 py-4 text-[15px]">
+        <PillButton onClick={() => onSave(headingValue.trim(), value.trim())} disabled={!headingValue.trim()} className="flex-1 py-4 text-[15px]">
           Save
         </PillButton>
       </div>

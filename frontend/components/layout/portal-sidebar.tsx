@@ -29,6 +29,7 @@ import {
 
 import { authService } from "@/features/auth/services/auth.service";
 import {
+  identityDisplayLabel,
   identityInitials,
   roleLabel,
   useSessionIdentity,
@@ -86,9 +87,11 @@ export function PortalSidebar({
           ? "BharatPath operations"
           : null;
 
-  const accountEmail = identity?.email || null;
-  const accountTitle = accountEmail ?? "Signed-in account";
   const accountRole = roleLabel(identity?.backendRole);
+  const accountTitle = identityDisplayLabel(
+    identity,
+    accountRole ?? (portal === "admin" ? "Staff account" : "Signed-in account"),
+  );
   const accountDetail =
     [accountRole, organisationName].filter(Boolean).join(" · ") ||
     (portal === "employer"
@@ -96,7 +99,7 @@ export function PortalSidebar({
       : portal === "college"
         ? "College account"
         : "Staff account");
-  const initials = identityInitials(accountEmail);
+  const initials = identityInitials(accountTitle);
 
   /*
    * ============================================================

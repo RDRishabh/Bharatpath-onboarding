@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 
 import { Button, SelectDropdown } from "@/components/ui";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 import { INSTITUTION_TYPES } from "@/features/college/onboarding/institution-types";
 import { INDIAN_STATES } from "@/features/student/onboarding/constants";
 import { KybFieldInput } from "@/features/employer/onboarding/components/kyb-field";
@@ -74,6 +75,7 @@ const EMAIL_LABEL = {
 } satisfies Record<UserSegment, string>;
 
 export function CreateUserDrawer({ segment, mode, onClose }: CreateUserDrawerProps) {
+  useScrollLock(true);
   const dispatch = useAppDispatch();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -211,7 +213,12 @@ export function CreateUserDrawer({ segment, mode, onClose }: CreateUserDrawerPro
       );
       onClose();
     } catch (error) {
-      const message = getApiErrorMessage(error, "The account could not be created. Please try again.");
+      const message = getApiErrorMessage(
+        error,
+        mode === "invite"
+          ? "The invitation could not be sent. Please try again."
+          : "The account could not be created. Please try again.",
+      );
       const code = getApiErrorCode(error);
       if (code === "identity_account_exists" || code === "identity_already_in_organisation" || code === "account_contact_in_use") {
         // The address is the problem, so say so on the address.
@@ -237,7 +244,7 @@ export function CreateUserDrawer({ segment, mode, onClose }: CreateUserDrawerPro
   const industries = reference.data?.industries ?? [];
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div data-scroll-lock-root className="fixed inset-0 z-[100]">
       <button
         type="button"
         aria-label="Close"

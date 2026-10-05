@@ -8,6 +8,7 @@ import { clearUser } from "@/store/common/slices/auth.slice";
 import { clearTenant } from "@/store/common/slices/tenant.slice";
 import { authService } from "@/features/auth/services/auth.service";
 import { ConfirmModal } from "@/components/ui";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 
 import { StudentHeader } from "./student-header";
 import { StudentSidebarContent } from "./student-sidebar";
@@ -31,6 +32,8 @@ export function StudentAppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
+
+  useScrollLock(mobileOpen);
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
@@ -63,6 +66,7 @@ export function StudentAppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile drawer + scrim */}
       <div
+        data-scroll-lock-root
         className={[
           "fixed inset-0 z-40 md:hidden",
           mobileOpen ? "" : "pointer-events-none",

@@ -38,6 +38,22 @@ export function identityInitials(value: string | null | undefined): string {
   );
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** A user-facing name/email, never an internal user or tenant identifier. */
+export function identityDisplayLabel(
+  user: AuthUser | null,
+  fallback: string,
+): string {
+  for (const value of [user?.name, user?.email]) {
+    const label = value?.trim();
+    if (label && label !== user?.id && label !== user?.tenantId && !UUID_PATTERN.test(label)) {
+      return label;
+    }
+  }
+  return roleLabel(user?.backendRole) ?? fallback;
+}
+
 let pending: Promise<boolean> | null = null;
 
 /**

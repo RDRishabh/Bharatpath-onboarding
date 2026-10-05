@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGetInterviewSessionQuery, useGetInterviewUploadMutation, useCompleteInterviewAnswerMutation, useNextInterviewQuestionMutation, useCompleteInterviewMutation } from "@/store/student/learning.api";
 import { StudentPage } from "@/features/student/shell";
-import { Clock, Mic, Square } from "lucide-react";
+import { Clock, LoaderCircle, Mic, Square } from "lucide-react";
 import { MeterBar, PillButton, SectionEyebrow, StatusChip, StudentAudioPlayer, StudentCard, StudentErrorState } from "@/features/student/components";
 
 export default function InterviewSessionPage() {
@@ -23,6 +23,7 @@ export default function InterviewSessionPage() {
   const [duration, setDuration] = useState(0);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [saveStage, setSaveStage] = useState<"saving" | "preparing">("saving");
   const [error, setError] = useState("");
   const current = session.data?.questions.find((q) => session.data?.answers.find((a) => a.question_index === q.index)?.upload_state !== "STORED");
   const clipUrl = useMemo(() => clip ? URL.createObjectURL(clip) : null, [clip]);
@@ -41,7 +42,7 @@ export default function InterviewSessionPage() {
   }
   function stop() { recorder.current?.stop(); }
   async function send() {
-    if (!clip || !current) return; setBusy(true); setError("");
+    if (!clip || !current || busy) return; setBusy(true); setSaveStage("saving"); setError("");
     try {
       const signed = await upload({ id, index: current.index }).unwrap();
       if (clip.size > signed.max_bytes || duration > signed.max_duration_ms || !signed.accepted_types.includes(clip.type)) throw new Error("Recording format, size or length is not accepted. Please record again.");
@@ -49,7 +50,10 @@ export default function InterviewSessionPage() {
       if (!response.ok) throw new Error("Recording upload failed. Please retry.");
       await completeAnswer({ id, index: current.index, durationMs: duration }).unwrap();
       setClip(null);
-      if (current.index + 1 < (session.data?.questions_total ?? 0)) await nextQuestion(id).unwrap();
+      if (current.index + 1 < (session.data?.questions_total ?? 0)) {
+        setSaveStage("preparing");
+        await nextQuestion(id).unwrap();
+      }
       await session.refetch();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save the answer. Please retry."); }
     finally { setBusy(false); }
@@ -59,7 +63,28 @@ export default function InterviewSessionPage() {
   const total = session.data?.questions_total ?? 0;
   const done = session.data?.state === "COMPLETED" || session.data?.state === "EVALUATED";
   const allStored = session.data?.answers.every((a) => a.upload_state === "STORED");
-  return <StudentPage><div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+  return <StudentPage>
+    {busy && (
+      <div
+        className="fixed inset-0 z-[100] grid cursor-wait place-items-center bg-[#FFFCF7]/95 px-6 text-center backdrop-blur-sm"
+        role="alert"
+        aria-live="assertive"
+        aria-busy="true"
+      >
+        <div className="flex max-w-sm flex-col items-center">
+          <span className="grid h-16 w-16 place-items-center rounded-full bg-[#F1EAF7] text-[#5F4DB2]">
+            <LoaderCircle className="h-8 w-8 animate-spin" aria-hidden="true" />
+          </span>
+          <p className="mt-5 text-[18px] font-bold text-[#0A1931]">
+            {saveStage === "saving" ? "Saving your answer…" : "Preparing your next question…"}
+          </p>
+          <p className="mt-2 text-[13px] leading-5 text-[#5F6B80]">
+            Please keep this page open. This may take a few moments.
+          </p>
+        </div>
+      </div>
+    )}
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
     {session.isLoading && <StudentCard><p className="text-sm text-[#5F6B80]">Loading your interview…</p></StudentCard>}
     {session.error && <StudentErrorState title="Interview unavailable" error={session.error} fallback="We could not load this interview." onRetry={() => void session.refetch()} />}
     {session.data && <>
@@ -81,7 +106,7 @@ export default function InterviewSessionPage() {
         <div className="mt-6 flex flex-col items-center gap-3 rounded-2xl bg-[#F7F4EC] px-4 py-6 text-center">
           {recording ? <>
             <span className="relative grid h-14 w-14 place-items-center"><span className="absolute inset-0 animate-ping rounded-full bg-red-500/25" /><span className="relative grid h-14 w-14 place-items-center rounded-full bg-red-600 text-white"><Mic size={22} /></span></span>
-            <p className="text-[13px] font-semibold text-[#0A1931]">Recording… speak clearly</p>
+            <p className="text-[13px] font-semibold text-[#0A1931]">Recording in progress. Speak clearly.</p>
             <PillButton variant="secondary" onClick={stop} icon={<Square size={14} fill="currentColor" />} className="!px-6 !py-3 !text-[14px]">Stop recording</PillButton>
           </> : <>
             <span className="grid h-14 w-14 place-items-center rounded-full bg-white text-[#5F4DB2] shadow-sm"><Mic size={22} /></span>

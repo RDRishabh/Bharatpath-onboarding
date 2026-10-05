@@ -20,6 +20,7 @@ import { useState } from "react";
 
 import { StudentAudioPlayer, StudentErrorState } from "@/features/student/components";
 import { StudentPage } from "@/features/student/shell";
+import { useSimulatePaymentMutation } from "@/store/api/payment.api";
 import { useGetInterviewOfferQuery } from "@/store/student";
 import {
   useCheckoutInterviewMutation,
@@ -27,7 +28,6 @@ import {
   useGetInterviewHistoryQuery,
   useGetInterviewRecordingsQuery,
   useGetInterviewReportQuery,
-  useSimulatePaymentMutation,
   useStartInterviewMutation,
 } from "@/store/student/learning.api";
 
@@ -90,6 +90,7 @@ export default function StudentInterviewPage() {
   const hasPassedCheck =
     Boolean(offerData?.deviceCheckPassed) ||
     deviceFailures.length === 0 && checking.isSuccess;
+  const hasPurchasedSession = (offerData?.sessionsAvailable ?? 0) > 0;
   const price =
     offerData?.priceMinor == null
       ? null
@@ -261,7 +262,7 @@ export default function StudentInterviewPage() {
                         <ArrowRight className="h-4 w-4" aria-hidden="true" />
                       </Link>
                     </div>
-                  ) : (offerData?.sessionsAvailable ?? 0) > 0 ? (
+                  ) : hasPurchasedSession && hasPassedCheck ? (
                     <div className="rounded-xl border border-[#C9BEEB] bg-[#F8F5FB] p-4 sm:p-5">
                       <p className="text-[13px] font-bold text-[#0A1931]">
                         Your next session is ready
@@ -358,7 +359,9 @@ export default function StudentInterviewPage() {
                           className="flex items-center gap-2 rounded-lg border border-[#B9D8C4] bg-[#E6F1EA] px-3.5 py-2.5 text-[12px] font-semibold text-[#1F6B45]"
                         >
                           <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                          Device check passed. You can continue to checkout.
+                          Device check passed. You can continue to {hasPurchasedSession
+                            ? "your interview"
+                            : "checkout"}.
                         </div>
                       )}
 
@@ -485,10 +488,11 @@ export default function StudentInterviewPage() {
               {!hasPassedCheck &&
                 !offer.isLoading &&
                 !offer.isError &&
-                !offerData?.openSessionId &&
-                (offerData?.sessionsAvailable ?? 0) === 0 && (
+                !offerData?.openSessionId && (
                   <p className="mt-2 text-center text-[10px] leading-5 text-[#5F6B80]">
-                    Complete the device check to enable payment.
+                    Complete the device check to enable {hasPurchasedSession
+                      ? "your interview"
+                      : "payment"}.
                   </p>
                 )}
 
@@ -541,7 +545,13 @@ export default function StudentInterviewPage() {
                 <button
                   key={session.id}
                   type="button"
-                  onClick={() => setSelected(session.id)}
+                  onClick={() => {
+                    if (session.report_status === "READY") {
+                      router.push(`/student/interview/${session.id}/feedback`);
+                      return;
+                    }
+                    setSelected(session.id);
+                  }}
                   className={`block w-full rounded-xl border p-3.5 text-left transition-colors ${
                     selected === session.id
                       ? "border-[#C9BEEB] bg-[#F1EAF7]"
@@ -562,6 +572,7 @@ export default function StudentInterviewPage() {
                   </span>
                   <span className="mt-1 block text-[11px] text-[#5F6B80]">
                     {session.answers_stored}/{session.questions_asked} answers
+                    {session.report_status === "READY" && " · View feedback"}
                   </span>
                 </button>
               ))}

@@ -147,15 +147,16 @@ export function StudentProfile() {
               onClick={() => router.push("/student/privacy")}
               className={`flex items-center gap-3 rounded-2xl border border-[#E7E0D4] bg-white p-4 text-left ${interactiveCardClass}`}
             >
-              <Eye size={20} className="text-[#0A1931]" />
+              <Eye size={20} className="text-[#5F4DB2]" />
               <span className="flex flex-1 flex-col">
                 <span className="text-[15px] font-medium text-[#0A1931]">
-                  Profile visibility
+                  Who has seen me
                 </span>
                 <span className="text-[12px] text-[#5F6B80]">
-                  Review what employers can access
+                  See which employers opened your profile
                 </span>
               </span>
+              <ChevronRight size={17} className="shrink-0 text-[#7B8495]" aria-hidden="true" />
             </button>
             <div className="flex items-center gap-3 rounded-2xl border border-[#E7E0D4] bg-white p-4">
               <Bell size={20} className="text-[#0A1931]" />

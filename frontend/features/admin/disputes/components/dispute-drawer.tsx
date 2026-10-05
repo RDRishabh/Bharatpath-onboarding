@@ -13,6 +13,7 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { showAdminFeedback } from "@/store/admin";
 import { DetailSkeleton } from "@/components/common/loading";
 import { ErrorState } from "@/components/ui";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 
 import {
   selectAdminDisputes,
@@ -31,6 +32,7 @@ import { FieldError } from "../../shared/form";
 export function DisputeDrawer() {
   const dispatch = useAppDispatch();
   const { openId } = useAppSelector(selectAdminDisputes);
+  useScrollLock(Boolean(openId));
   const detailQuery = useGetAdminDisputeQuery(openId ?? "", { skip: !openId });
   const [assignDispute, assignState] = useAssignAdminDisputeMutation();
   const [resolveDispute, resolveState] = useResolveAdminDisputeMutation();
@@ -94,7 +96,7 @@ export function DisputeDrawer() {
   };
 
   return (
-    <>
+    <div data-scroll-lock-root>
       {/* ================================================================
           BACKDROP
           ================================================================ */}
@@ -288,7 +290,7 @@ export function DisputeDrawer() {
           </div>
         </div>
       </aside>
-    </>
+    </div>
   );
 }
 

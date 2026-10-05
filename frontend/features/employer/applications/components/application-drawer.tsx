@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 
 import type { EmployerApplication, ApplicationStage } from "../types";
 import { getScoreBand } from "../band";
@@ -25,6 +26,8 @@ export function ApplicationDrawer({
   onMeetingLinkChange,
   onConfirmHire,
 }: ApplicationDrawerProps) {
+  useScrollLock(application !== null);
+
   if (!application) {
     return null;
   }
@@ -50,7 +53,7 @@ export function ApplicationDrawer({
     !application.hireEmployerConfirmed;
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div data-scroll-lock-root className="fixed inset-0 z-50">
       {/* Backdrop */}
       <button
         type="button"

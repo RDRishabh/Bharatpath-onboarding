@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 import type { RevealedCandidateResponse } from "@/store/employer/candidates";
 
 import type { CandidateBand } from "./types";
@@ -76,6 +77,8 @@ export function CandidateDetailsDialog({
   onRetry,
   onClose,
 }: CandidateDetailsDialogProps) {
+  useScrollLock(open);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -101,7 +104,7 @@ export function CandidateDetailsDialog({
     "Location not shared";
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div data-scroll-lock-root className="fixed inset-0 z-[100]">
       <button
         type="button"
         aria-label="Close candidate profile"

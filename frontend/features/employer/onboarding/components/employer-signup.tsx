@@ -66,7 +66,7 @@ export function EmployerSignup() {
     dispatch(
       setUser({
         ...identity.user,
-        // `/auth/me` does not return an email; keep the one we signed up with.
+        // Keep the typed address while an account has no active membership.
         email: identity.user.email || knownEmail || "",
         name: identity.user.name || knownEmail || "",
       }),

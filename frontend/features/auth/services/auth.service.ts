@@ -39,6 +39,10 @@ function extractEmailFromJwt(token: string): string {
   }
 }
 
+function emailAddress(value: unknown): string {
+  return typeof value === "string" && EMAIL_PATTERN.test(value.trim()) ? value.trim() : "";
+}
+
 /** Resolve the signed-in identity from a backend access token, and store it. */
 async function resolveSession(
   accessToken: string,
@@ -62,7 +66,7 @@ async function resolveSession(
     );
   }
 
-  const resolvedEmail = email || extractEmailFromJwt(accessToken);
+  const resolvedEmail = emailAddress(email) || emailAddress(extractEmailFromJwt(accessToken));
 
   if (!meResponse.ok) {
     const isBusiness = fallback.pool === "BUSINESS";
@@ -128,18 +132,27 @@ async function resolveSession(
     user_id?: string;
     role?: string;
     tenant_id?: string | null;
+    email?: string | null;
+    full_name?: string | null;
   };
 
   const role = typeof me.role === "string" ? me.role : "CANDIDATE";
   const mapping = portalForRole(role);
+  // `/auth/me` is authoritative. Cognito's username claim may be an opaque
+  // subject/UUID, so it must never become a user-facing email or name.
+  const accountEmail = emailAddress(me.email) || resolvedEmail;
+  const accountName =
+    typeof me.full_name === "string" && me.full_name.trim()
+      ? me.full_name.trim()
+      : accountEmail;
 
   setStoredToken(accessToken);
 
   return {
     user: {
       id: me.user_id ?? "",
-      email: resolvedEmail,
-      name: resolvedEmail,
+      email: accountEmail,
+      name: accountName,
       role: mapping.authRole,
       tenantId: me.tenant_id ?? undefined,
     },

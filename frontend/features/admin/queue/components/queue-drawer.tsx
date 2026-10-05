@@ -12,6 +12,7 @@ import {
 
 import { DetailSkeleton } from "@/components/common/loading";
 import { ErrorState } from "@/components/ui";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 import { FieldError } from "../../shared/form";
 import { showAdminFeedback } from "@/store/admin";
 import { useAppDispatch } from "@/store/hooks";
@@ -34,6 +35,7 @@ function formatDetail(value: unknown): string {
 export function QueueDrawer() {
   const dispatch = useAppDispatch();
   const { openReviewId, items, closeReview } = useQueue();
+  useScrollLock(Boolean(openReviewId));
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState<string | undefined>();
 
@@ -210,7 +212,7 @@ export function QueueDrawer() {
    */
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div data-scroll-lock-root className="fixed inset-0 z-[100]">
       {/* ============================================================
           BACKDROP
           ============================================================ */}

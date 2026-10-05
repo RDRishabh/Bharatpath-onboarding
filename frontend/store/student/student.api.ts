@@ -437,7 +437,10 @@ export const studentApi = baseApi.injectEndpoints({
       Page<JobListing>,
       {
         q?: string;
+        location?: string;
         workMode?: string;
+        skill?: string;
+        minSalaryMinor?: number;
         eligibleOnly?: boolean;
         cursor?: string;
         limit?: number;
@@ -448,7 +451,10 @@ export const studentApi = baseApi.injectEndpoints({
         params: args
           ? {
               q: args.q || undefined,
+              location: args.location || undefined,
               work_mode: args.workMode || undefined,
+              skill: args.skill || undefined,
+              min_salary_minor: args.minSalaryMinor,
               eligible_only: args.eligibleOnly,
               cursor: args.cursor,
               limit: args.limit,
@@ -647,6 +653,7 @@ export const {
   useLazyGetStudentJobsQuery,
   useGetStudentJobQuery,
   useGetStudentApplicationsQuery,
+  useLazyGetStudentApplicationsQuery,
   useGetStudentApplicationQuery,
   useApplyToStudentJobMutation,
   useWithdrawStudentApplicationMutation,

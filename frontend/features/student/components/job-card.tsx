@@ -2,14 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import {
-  Bookmark,
   CheckCircle2,
   ChevronRight,
   Clock,
 } from "lucide-react";
 
-import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { toggleSavedJob, selectIsJobSaved } from "@/store/student";
 import type { JobListing } from "@/features/student/types";
 import {
   employerMonogram,
@@ -22,8 +19,6 @@ import { interactiveCardClass, MonogramTile, StatusChip } from "./primitives";
 
 export function JobCard({ job }: { job: JobListing }) {
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const saved = useAppSelector(selectIsJobSaved(job.id));
   const open = () => router.push(`/student/jobs/${job.id}`);
 
   return (
@@ -51,22 +46,6 @@ export function JobCard({ job }: { job: JobListing }) {
             {job.employerName ?? "Employer"}
           </span>
         </div>
-        <button
-          type="button"
-          aria-label={saved ? "Remove saved job" : "Save job"}
-          aria-pressed={saved}
-          onClick={(event) => {
-            event.stopPropagation();
-            dispatch(toggleSavedJob(job.id));
-          }}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#5F6B80] transition-colors hover:bg-[#F7F4EC] hover:text-[#5F4DB2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30"
-        >
-          <Bookmark
-            size={17}
-            className={saved ? "text-[#5F4DB2]" : ""}
-            fill={saved ? "#5F4DB2" : "none"}
-          />
-        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2.5">

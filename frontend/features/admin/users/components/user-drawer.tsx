@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 
 import { DetailSkeleton } from "@/components/common/loading";
 import { ErrorState } from "@/components/ui";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 import { showAdminFeedback } from "@/store/admin";
 import { useAppDispatch } from "@/store/hooks";
 import {
@@ -24,6 +25,7 @@ import { FieldError, a11y, validateRequiredText } from "../../shared/form";
 export function UserDrawer() {
   const dispatch = useAppDispatch();
   const { segment, selectedId, closeUser } = useUsers();
+  useScrollLock(Boolean(selectedId));
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | undefined>();
   const isCandidate = segment === "candidates";
@@ -99,7 +101,7 @@ export function UserDrawer() {
   };
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div data-scroll-lock-root className="fixed inset-0 z-[100]">
       <button type="button" aria-label="Close details" onClick={closeUser} className="absolute inset-0 bg-[#172033]/30" />
       <aside className="absolute right-0 top-0 flex h-full w-[520px] max-w-full flex-col bg-white shadow-[-20px_0_60px_-24px_rgba(0,0,0,0.5)]" role="dialog" aria-modal="true">
         <header className="flex items-start justify-between border-b border-[#e5e7eb] px-5 py-4">

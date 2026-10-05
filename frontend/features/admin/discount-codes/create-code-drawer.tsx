@@ -3,7 +3,8 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 
-import { Button, SelectDropdown } from "@/components/ui";
+import { Button, DateTimePicker, SelectDropdown } from "@/components/ui";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 import { getApiErrorCode, getApiErrorMessage } from "@/lib/api/error-message";
 import { showAdminFeedback } from "@/store/admin";
 import {
@@ -41,6 +42,7 @@ const CODE_PATTERN = /^[A-Z0-9-]+$/;
 type Field = "code" | "value" | "usageLimit" | "label" | "validFrom" | "validUntil";
 
 export function CreateCodeDrawer({ onClose }: { onClose: () => void }) {
+  useScrollLock(true);
   const dispatch = useAppDispatch();
   const [create, { isLoading }] = useCreateAdminDiscountCodeMutation();
   const [audience, setAudience] = useState<DiscountAudience>("CANDIDATE");
@@ -156,7 +158,7 @@ export function CreateCodeDrawer({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div data-scroll-lock-root className="fixed inset-0 z-[100]">
       <button
         type="button"
         aria-label="Close"
@@ -279,22 +281,24 @@ export function CreateCodeDrawer({ onClose }: { onClose: () => void }) {
 
             <div className="grid grid-cols-2 gap-4">
               <FormField id="discount-from" label="Valid from" error={shown("validFrom")}>
-                <input
-                  {...a11y("discount-from", shown("validFrom"))}
-                  type="datetime-local"
+                <DateTimePicker
+                  id="discount-from"
                   value={validFrom}
-                  onChange={(event) => { setValidFrom(event.target.value); edited("validFrom"); edited("validUntil"); }}
+                  onChange={(next) => { setValidFrom(next); edited("validFrom"); edited("validUntil"); }}
                   onBlur={() => touch("validFrom")}
+                  invalid={Boolean(shown("validFrom"))}
+                  ariaDescribedBy={shown("validFrom") ? "discount-from-error" : undefined}
                   className={inputClass(Boolean(shown("validFrom")), INPUT_HEIGHT)}
                 />
               </FormField>
               <FormField id="discount-until" label="Valid until" error={shown("validUntil")}>
-                <input
-                  {...a11y("discount-until", shown("validUntil"))}
-                  type="datetime-local"
+                <DateTimePicker
+                  id="discount-until"
                   value={validUntil}
-                  onChange={(event) => { setValidUntil(event.target.value); edited("validUntil"); }}
+                  onChange={(next) => { setValidUntil(next); edited("validUntil"); }}
                   onBlur={() => touch("validUntil")}
+                  invalid={Boolean(shown("validUntil"))}
+                  ariaDescribedBy={shown("validUntil") ? "discount-until-error" : undefined}
                   className={inputClass(Boolean(shown("validUntil")), INPUT_HEIGHT)}
                 />
               </FormField>

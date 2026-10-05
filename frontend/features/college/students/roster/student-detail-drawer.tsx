@@ -12,6 +12,7 @@ import {
 
 import { ScoreBandBadge } from "@/components/ui/score-band-badge";
 import { Skeleton } from "@/components/common/loading";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 
 import { useGetCollegeStudentQuery } from "@/store/college/students";
 
@@ -50,6 +51,7 @@ export function StudentDetailDrawer({
   onClose,
 }: StudentDetailDrawerProps) {
   const isOpen = candidateId !== null;
+  useScrollLock(isOpen);
 
   const { data, isLoading, isError, error } = useGetCollegeStudentQuery(
     candidateId ?? "",
@@ -74,7 +76,7 @@ export function StudentDetailDrawer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div data-scroll-lock-root className="fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Close student drawer"

@@ -1,43 +1,60 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef } from "react";
 import { ListChecks } from "lucide-react";
 
-import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import {
-  selectBoardFilter,
-  setBoardFilter,
-  type BoardFilter,
-  useGetStudentApplicationsQuery,
-} from "@/store/student";
+import { useLazyGetStudentApplicationsQuery } from "@/store/student";
 import { ApplicationCard, EmptyState, StudentErrorState } from "@/features/student/components";
 import { Spinner } from "@/components/common/loading";
 import { StudentPage } from "@/features/student/shell";
+import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 
-const FILTERS: { key: BoardFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "active", label: "Active" },
-  { key: "interview", label: "Interview" },
-  { key: "closed", label: "Closed" },
-];
-const ACTIVE = new Set(["SUBMITTED", "VIEWED", "SHORTLISTED"]);
-const INTERVIEWING = new Set(["INTERVIEW", "DECISION", "HIRED"]);
-const CLOSED = new Set(["REJECTED", "WITHDRAWN", "EXPIRED"]);
+const APPLICATIONS_PAGE_SIZE = 20;
 
 export function ApplicationBoard() {
-  const dispatch = useAppDispatch();
-  const filter = useAppSelector(selectBoardFilter);
-  const applications = useGetStudentApplicationsQuery({ limit: 100 });
-  const filtered = useMemo(
-    () =>
-      (applications.data?.items ?? []).filter((application) => {
-        if (filter === "active") return ACTIVE.has(application.stage);
-        if (filter === "interview") return INTERVIEWING.has(application.stage);
-        if (filter === "closed") return CLOSED.has(application.stage);
-        return true;
-      }),
-    [applications.data?.items, filter],
+  const [fetchApplications] = useLazyGetStudentApplicationsQuery();
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const applications = useCursorLoadMore(
+    useCallback(
+      (cursor: string | undefined) =>
+        fetchApplications({
+          cursor,
+          limit: APPLICATIONS_PAGE_SIZE,
+        }).unwrap(),
+      [fetchApplications],
+    ),
   );
+  const loadMoreFromObserver = useEffectEvent(applications.loadMore);
+
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (
+      !sentinel ||
+      !applications.hasMore ||
+      applications.isLoading ||
+      applications.isLoadingMore ||
+      applications.error
+    ) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          loadMoreFromObserver();
+        }
+      },
+      { rootMargin: "240px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    applications.error,
+    applications.hasMore,
+    applications.isLoading,
+    applications.isLoadingMore,
+  ]);
 
   return (
     <StudentPage
@@ -48,28 +65,16 @@ export function ApplicationBoard() {
       <div className="flex flex-1 flex-col gap-5">
         <div className="flex flex-col gap-3.5">
           <div className="bp-scrollbar flex gap-2 overflow-x-auto pb-1">
-            {FILTERS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => dispatch(setBoardFilter(tab.key))}
-                className={[
-                  "cursor-pointer whitespace-nowrap rounded-full px-3.5 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30",
-                  filter === tab.key
-                    ? "border border-[#C9BEEB] bg-[#F1EAF7] text-[#4A3E8F] hover:bg-[#E8DEF3]"
-                    : "border border-[#E7E0D4] bg-white text-[#0A1931] hover:border-[#C9BEEB] hover:bg-[#F7F4EC]",
-                ].join(" ")}
-              >
-                {tab.label}
-              </button>
-            ))}
+            <span className="whitespace-nowrap rounded-full border border-[#C9BEEB] bg-[#F1EAF7] px-3.5 py-2 text-[13px] font-semibold text-[#4A3E8F]">
+              All
+            </span>
           </div>
         </div>
 
         {!applications.isLoading && (
           <div className="flex items-baseline justify-between">
             <span className="text-[11px] font-bold uppercase leading-4 tracking-[0.12em] text-[#5F6B80]">
-              {filtered.length} applications
+              {applications.items.length} applications
             </span>
           </div>
         )}
@@ -84,22 +89,55 @@ export function ApplicationBoard() {
               Checking the latest status of your applications.
             </p>
           </div>
-        ) : applications.error ? (
+        ) : applications.error && !applications.items.length ? (
           <StudentErrorState
             icon={<ListChecks size={22} />}
             title="Applications unavailable"
             error={applications.error}
             fallback="Could not load applications."
           />
-        ) : filtered.length ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {filtered.map((application) => (
-              <ApplicationCard
-                key={application.id}
-                application={application}
-              />
-            ))}
-          </div>
+        ) : applications.items.length ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {applications.items.map((application) => (
+                <ApplicationCard
+                  key={application.id}
+                  application={application}
+                />
+              ))}
+            </div>
+
+            {applications.isLoadingMore ? (
+              <div className="flex justify-center py-6">
+                <Spinner
+                  size={28}
+                  tone="primary"
+                  label="Loading more applications"
+                />
+              </div>
+            ) : null}
+
+            {applications.error && applications.hasMore ? (
+              <div className="flex flex-col items-center gap-2 pt-1">
+                <span className="text-[13px] text-[#5F6B80]">
+                  Could not load more applications.
+                </span>
+                <button
+                  type="button"
+                  onClick={applications.loadMore}
+                  className="rounded-full border border-[#E7E0D4] bg-white px-5 py-2.5 text-[13px] font-semibold text-[#0A1931] transition-colors hover:bg-[#F7F3EC]"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : null}
+
+            <div
+              ref={loadMoreSentinelRef}
+              aria-hidden="true"
+              className="h-px w-full"
+            />
+          </>
         ) : (
           <EmptyState
             icon={<ListChecks size={22} />}

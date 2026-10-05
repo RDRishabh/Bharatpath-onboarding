@@ -9,6 +9,7 @@ import logo from "@/assets/Logo.png";
 import { useGetStudentProfileQuery } from "@/store/student";
 import { initials } from "@/features/student/formatters";
 import {
+  identityDisplayLabel,
   identityInitials,
   useSessionIdentity,
 } from "@/lib/auth/use-session-identity";
@@ -44,7 +45,7 @@ export function StudentSidebarContent({
   const { data: profile } = useGetStudentProfileQuery();
   const { user: identity } = useSessionIdentity();
   const email = identity?.email || null;
-  const displayName = profile?.fullName ?? email ?? "Student";
+  const displayName = profile?.fullName?.trim() || identityDisplayLabel(identity, "Student");
   const detail = profile?.fullName && email ? email : "Student account";
   const avatarInitials = profile?.fullName
     ? initials(profile.fullName)
