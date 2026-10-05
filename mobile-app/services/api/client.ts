@@ -91,6 +91,9 @@ export async function apiRequest<T>(
   const headers: Record<string, string> = {
     'Accept': 'application/json',
     'X-Request-ID': requestId,
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
     ...options.headers,
   };
 
@@ -105,6 +108,7 @@ export async function apiRequest<T>(
   const fetchOptions: RequestInit = {
     method: options.method || 'GET',
     headers,
+    cache: 'no-store',
   };
 
   if (options.body) {

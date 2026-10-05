@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from 'expo-router';
 import {
   Bell,
   ArrowRight,
@@ -34,6 +35,7 @@ import { resolveCandidateFullName } from '@/services/profile/name';
 import { useAuthContext } from '@/context/AuthContext';
 import { getQuestionnaire } from '@/services/api/questionnaire';
 import { searchJobs } from '@/services/api/jobs';
+import { getInbox } from '@/services/api/notifications';
 import { BoardJobSummary } from '@/types/job';
 import {
   formatSalaryRangePaise,
@@ -132,6 +134,7 @@ export function HomeScreen({
     candidateFullName || candidateName || emailName || null,
   );
   const [questionnaireSubmitted, setQuestionnaireSubmitted] = useState(false);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
   // 2–3 jobs the candidate is eligible for, from
   // `GET /candidate/jobs?eligible_only=true&limit=3`. Shown on the home
   // dashboard as "Jobs you qualify for". Never tagged with a score delta.
@@ -166,6 +169,22 @@ export function HomeScreen({
     // answer rather than changing it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      getInbox(null, 1)
+        .then((page) => {
+          if (!cancelled) setHasUnreadNotifications(page.unread > 0);
+        })
+        .catch(() => undefined);
+
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   useEffect(() => {
     getQuestionnaire()
@@ -220,7 +239,7 @@ export function HomeScreen({
                 accessibilityLabel="Notifications"
               >
                 <Bell size={18} color={Colors.navy} weight="bold" />
-                <View style={styles.unreadDot} />
+                {hasUnreadNotifications && <View style={styles.unreadDot} />}
               </Pressable>
 
               {/* Profile Avatar Button */}

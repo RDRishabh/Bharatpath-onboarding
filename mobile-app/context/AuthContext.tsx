@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   AuthSession,
   CandidateProfileResponse,
@@ -43,24 +43,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [candidateFullName, setCandidateFullName] = useState<string | null>(null);
   const [candidateScore, setCandidateScore] = useState<CandidateScoreResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const scoreRefreshSequence = useRef(0);
 
   const refreshScore = useCallback(async (): Promise<CandidateScoreResponse | null> => {
+    const requestSequence = ++scoreRefreshSequence.current;
     try {
       const res = await getMyScore();
-      setCandidateScore((prev) => {
-        if (
-          prev &&
-          prev.status === res.status &&
-          prev.value === res.value &&
-          prev.band === res.band &&
-          prev.computed_at === res.computed_at
-        ) {
-          return prev;
-        }
-        return res;
-      });
+      if (!res) return null;
+
+      // Several focused routes can refresh concurrently. Only the most recent
+      // request may update state; a slower earlier response must not restore a
+      // stale score after a newer response has already been applied.
+      if (requestSequence !== scoreRefreshSequence.current) return res;
+
+      setCandidateScore(res);
+      // Persist PENDING as well as READY. Otherwise the old READY row remains
+      // on the device and can reappear after an app restart while the newly
+      // confirmed resume is still being scored.
+      saveStoredCandidateScore(res);
+
       if (res.status === 'READY' && res.value != null) {
-        saveStoredCandidateScore(res);
         const numericBand = res.band ? bandIndex(res.band) : 1;
         setProfile((current) => {
           if (!current) return current;
@@ -183,11 +185,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       numericBand = bandIndex(band);
       bandStr = String(band);
     }
+    const finalComputedAt = computedAt || new Date().toISOString();
     const scoreObj: CandidateScoreResponse = {
       status: 'READY',
       value: score,
       band: bandStr,
-      computed_at: computedAt || new Date().toISOString(),
+      computed_at: finalComputedAt,
     };
     saveStoredCandidateScore(scoreObj);
     setCandidateScore((prev) => {
@@ -196,7 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         prev.status === 'READY' &&
         prev.value === score &&
         prev.band === bandStr &&
-        prev.computed_at === computedAt
+        prev.computed_at === finalComputedAt
       ) {
         return prev;
       }

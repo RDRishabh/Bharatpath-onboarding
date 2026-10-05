@@ -37,7 +37,7 @@ export interface SignUpFormData {
 export interface SignUpScreenProps {
   onBack?: () => void;
   onNavigateToLogin?: () => void;
-  onSubmit?: (data: SignUpFormData) => void;
+  onSubmit?: (data: SignUpFormData, isUnconfirmed?: boolean) => void;
 }
 
 export function SignUpScreen({
@@ -152,7 +152,7 @@ export function SignUpScreen({
             email: email.trim().toLowerCase(),
             password,
             confirmPassword,
-          });
+          }, true);
         }
         return;
       }
@@ -165,7 +165,7 @@ export function SignUpScreen({
           email: email.trim().toLowerCase(),
           password,
           confirmPassword,
-        });
+        }, false);
       }
     } catch (err: any) {
       if (err instanceof ApiError && err.code === 'user_not_confirmed') {
@@ -175,7 +175,7 @@ export function SignUpScreen({
             email: email.trim().toLowerCase(),
             password,
             confirmPassword,
-          });
+          }, true);
           return;
         }
       }
