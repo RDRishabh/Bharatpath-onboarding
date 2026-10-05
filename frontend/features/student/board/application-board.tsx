@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useEffectEvent, useRef } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { ListChecks } from "lucide-react";
 
 import { useLazyGetStudentApplicationsQuery } from "@/store/student";
@@ -10,8 +10,10 @@ import { StudentPage } from "@/features/student/shell";
 import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 
 const APPLICATIONS_PAGE_SIZE = 20;
+const FILTERS = [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "closed", label: "Closed" }] as const;
 
 export function ApplicationBoard() {
+  const [filter, setFilter] = useState<"all" | "active" | "closed">("all");
   const [fetchApplications] = useLazyGetStudentApplicationsQuery();
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const applications = useCursorLoadMore(
@@ -20,11 +22,14 @@ export function ApplicationBoard() {
         fetchApplications({
           cursor,
           limit: APPLICATIONS_PAGE_SIZE,
+          filter: filter === "all" ? undefined : filter,
         }).unwrap(),
-      [fetchApplications],
+      [fetchApplications, filter],
     ),
+    [filter],
   );
   const loadMoreFromObserver = useEffectEvent(applications.loadMore);
+  const visibleApplications = applications.items;
 
   useEffect(() => {
     const sentinel = loadMoreSentinelRef.current;
@@ -65,16 +70,18 @@ export function ApplicationBoard() {
       <div className="flex flex-1 flex-col gap-5">
         <div className="flex flex-col gap-3.5">
           <div className="bp-scrollbar flex gap-2 overflow-x-auto pb-1">
-            <span className="whitespace-nowrap rounded-full border border-[#C9BEEB] bg-[#F1EAF7] px-3.5 py-2 text-[13px] font-semibold text-[#4A3E8F]">
-              All
-            </span>
+            {FILTERS.map((option) => (
+              <button key={option.value} type="button" aria-pressed={filter === option.value} onClick={() => setFilter(option.value)} className={`whitespace-nowrap rounded-full border px-3.5 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/40 ${filter === option.value ? "border-[#C9BEEB] bg-[#F1EAF7] text-[#4A3E8F]" : "border-[#E7E0D4] bg-white text-[#5F6B80] hover:bg-[#F7F3EC]"}`}>
+                {option.label}
+              </button>
+            ))}
           </div>
         </div>
 
         {!applications.isLoading && (
           <div className="flex items-baseline justify-between">
             <span className="text-[11px] font-bold uppercase leading-4 tracking-[0.12em] text-[#5F6B80]">
-              {applications.items.length} applications
+              {visibleApplications.length} {filter === "all" ? "" : `${filter} `}applications
             </span>
           </div>
         )}
@@ -99,13 +106,16 @@ export function ApplicationBoard() {
         ) : applications.items.length ? (
           <>
             <div className="grid gap-3 sm:grid-cols-2">
-              {applications.items.map((application) => (
+              {visibleApplications.map((application) => (
                 <ApplicationCard
                   key={application.id}
                   application={application}
                 />
               ))}
             </div>
+            {!visibleApplications.length ? (
+              <EmptyState icon={<ListChecks size={22} />} title={`No ${filter} applications${applications.hasMore ? " loaded yet" : ""}`} message={applications.hasMore ? "Checking more applications for this filter." : "Applications in this category will appear here."} />
+            ) : null}
 
             {applications.isLoadingMore ? (
               <div className="flex justify-center py-6">

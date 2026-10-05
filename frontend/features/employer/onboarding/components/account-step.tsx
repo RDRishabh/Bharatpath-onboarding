@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, KeyRound, Lock, Mail } from "lucide-react";
+import { ArrowRight, Check, Copy, KeyRound, Lock, Mail } from "lucide-react";
 
 import { Button, ErrorState } from "@/components/ui";
 import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
@@ -15,7 +15,7 @@ import type { SignupResponse } from "@/features/auth/types";
 import { FieldError, inputBorder, kybInputClass } from "./kyb-field";
 import { StepCard } from "./signup-shell";
 
-const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const EMtIL_PtTTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 interface AccountStepCopy {
   title: string;
@@ -48,8 +48,12 @@ export function AccountStep({
 }: Readonly<AccountStepProps>) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [totpCode, setTotpCode] = useState("");
+  const [keyCopied, setKeyCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
+  const [errors, setErrors] = useState<{ email?: string; password?: string; confirmPassword?: string }>({});
 
   const flow = useSignupFlow("BUSINESS", (session, signedUpEmail) => {
     showSuccessFeedback(copy.successMessage);
@@ -60,23 +64,27 @@ export function AccountStep({
     event.preventDefault();
 
     const next = {
-      email: EMAIL_PATTERN.test(email.trim()) ? undefined : "Enter a valid email address.",
+      email: EMtIL_PtTTERN.test(email.trim()) ? undefined : "Enter a valid email address.",
       password: passwordError(password),
+      confirmPassword: !confirmPassword ? "Confirm your password." : password !== confirmPassword ? "Passwords do not match." : undefined,
     };
     setErrors(next);
-    if (next.email || next.password) return;
+    if (next.email || next.password || next.confirmPassword) return;
 
     void flow.register(email.trim(), password);
   };
 
   const submitCode = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setTotpCode("");
+    setKeyCopied(false);
+    setCopyError("");
     void flow.confirm(code.trim());
   };
 
   const submitTotp = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void flow.finishTotp(code.trim());
+    void flow.finishTotp(totpCode.trim());
   };
 
   return (
@@ -161,9 +169,28 @@ export function AccountStep({
             <FieldError id="signup-password-error" message={errors.password} />
             {!errors.password && (
               <p id="signup-password-help" className="mt-1.5 text-xs leading-5 text-[#7b8493]">
-                At least 14 characters, with uppercase, lowercase, a number and a symbol.
+                At least 12 characters, with uppercase, lowercase, a number and a symbol.
               </p>
             )}
+          </div>
+
+          <div>
+            <label htmlFor="signup-confirm-password" className="mb-1.5 block text-[13px] font-semibold text-[#303747]">Confirm password</label>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9aa2b1]" aria-hidden="true" />
+              <input
+                id="signup-confirm-password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Re-enter your password"
+                value={confirmPassword}
+                aria-invalid={Boolean(errors.confirmPassword)}
+                aria-describedby={errors.confirmPassword ? "signup-confirm-password-error" : undefined}
+                onChange={(event) => { setConfirmPassword(event.target.value); setErrors((current) => ({ ...current, confirmPassword: undefined })); }}
+                className={`${kybInputClass} ${inputBorder(Boolean(errors.confirmPassword))} pl-10`}
+              />
+            </div>
+            <FieldError id="signup-confirm-password-error" message={errors.confirmPassword} />
           </div>
 
           <Button
@@ -250,7 +277,7 @@ export function AccountStep({
       )}
 
       {flow.phase === "TOTP_SETUP" && (
-        <form onSubmit={submitTotp} noValidate className="max-w-md space-y-5">
+        <form onSubmit={submitTotp} noValidate className="w-full min-w-0 max-w-md space-y-5">
           {flow.error && <ErrorState message={flow.error} />}
 
           <p className="text-sm leading-6 text-[#4b5563]">
@@ -267,9 +294,31 @@ export function AccountStep({
             />
           )}
           {flow.totpSecret && (
-            <p className="select-all font-mono text-[13px] font-semibold text-[#111827]">
-              {flow.totpSecret}
-            </p>
+            <div className="w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f9fafb] p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs text-[#6b7280]">Can’t scan? Enter this secret key:</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setCopyError("");
+                    try {
+                      await navigator.clipboard.writeText(flow.totpSecret);
+                      setKeyCopied(true);
+                    } catch {
+                      setCopyError("Could not copy the key. Select the text and copy it manually.");
+                    }
+                  }}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-[#3566b8] transition hover:bg-[#eaf0fa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3566b8]/30"
+                >
+                  {keyCopied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+                  {keyCopied ? "Copied" : "Copy key"}
+                </button>
+              </div>
+              <p className="m-0 w-full min-w-0 select-all whitespace-normal font-mono text-[13px] font-semibold leading-5 text-[#111827]" style={{ overflowWrap: "anywhere", wordBreak: "break-all" }}>
+                {flow.totpSecret}
+              </p>
+              {copyError ? <p role="alert" className="mt-2 text-xs text-red-700">{copyError}</p> : null}
+            </div>
           )}
 
           <input
@@ -277,10 +326,10 @@ export function AccountStep({
             inputMode="numeric"
             maxLength={6}
             autoComplete="one-time-code"
-            placeholder="000000"
+            placeholder="6-digit code"
             aria-label="Authenticator code"
-            value={code}
-            onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+            value={totpCode}
+            onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, ""))}
             className={`${kybInputClass} ${inputBorder(false)} text-center font-mono tracking-[0.3em]`}
           />
 
@@ -291,7 +340,7 @@ export function AccountStep({
             className="w-full"
             isLoading={flow.busy}
             loadingText="Verifying…"
-            disabled={code.length !== 6}
+            disabled={totpCode.length !== 6}
           >
             Complete setup
           </Button>

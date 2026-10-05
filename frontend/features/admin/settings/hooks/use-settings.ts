@@ -9,7 +9,10 @@ import {
   selectAdminSettings,
   setSettingsTab,
 } from "@/store/admin";
-import { useGetAdminKybSubmissionsQuery } from "@/store/api/admin-api";
+import {
+  useGetAdminKybSubmissionsQuery,
+  useSetAdminKybApprovalModeMutation,
+} from "@/store/api/admin-api";
 
 import type {
   SettingsTab,
@@ -22,11 +25,16 @@ export function useSettings() {
     selectAdminSettings,
   );
   const configQuery = useGetAdminKybSubmissionsQuery({ limit: 1 });
+  const [setApprovalMode, modeMutation] = useSetAdminKybApprovalModeMutation();
 
   const setTab = (
     tab: SettingsTab,
   ) => {
     dispatch(setSettingsTab(tab));
+  };
+
+  const setKybMode = async (mode: "manual" | "auto") => {
+    await setApprovalMode(mode === "manual").unwrap();
   };
 
   return {
@@ -38,6 +46,10 @@ export function useSettings() {
     isLoading: configQuery.isLoading,
 
     error: configQuery.error,
+
+    isSaving: modeMutation.isLoading,
+    saveError: modeMutation.error,
+    setKybMode,
 
     setTab,
   };

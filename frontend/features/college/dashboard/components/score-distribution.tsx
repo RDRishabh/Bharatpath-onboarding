@@ -48,7 +48,7 @@ export function ScoreDistribution({
         </div>
 
         <span className="text-xl font-semibold text-[#151b2b]">
-          {medianScore ?? "—"}{" "}
+          {medianScore ?? 0}{" "}
           <span className="text-xs font-normal text-[#8a91a0]">
             median
           </span>
@@ -72,7 +72,7 @@ export function ScoreDistribution({
             return (
               <div key={band.label}>
                 <p className="text-lg font-semibold text-[#151b2b]">
-                  {band.count ?? "—"}
+                  {band.count ?? 0}
                 </p>
 
                 <div

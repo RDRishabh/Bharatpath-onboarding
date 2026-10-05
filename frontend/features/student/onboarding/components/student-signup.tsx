@@ -10,10 +10,7 @@ import type { LoginResponse } from "@/features/auth/types";
 import { getApiErrorCode, getApiErrorMessage } from "@/lib/api/error-message";
 import { clearStoredToken, setStoredToken } from "@/lib/auth/token";
 import { baseApi } from "@/store/api/base-api";
-import {
-  notificationApi,
-  useUpdateNotificationPreferencesMutation,
-} from "@/store/api/notification-api";
+import { notificationApi } from "@/store/api/notification-api";
 import { clearUser, setUser } from "@/store/common/slices/auth.slice";
 import { clearTenant, setTenant } from "@/store/common/slices/tenant.slice";
 import { useAppDispatch } from "@/store/hooks";
@@ -28,8 +25,8 @@ import {
   type ManualResume,
 } from "@/store/student";
 
-import { parseFailureMessage, type SignupLocale } from "../constants";
-import { AboutStep, AccountStep } from "./account-steps";
+import { parseFailureMessage } from "../constants";
+import { AccountStep, LocationStep } from "./account-steps";
 import { ComputingStep } from "./computing-step";
 import {
   IntakeStep,
@@ -37,18 +34,17 @@ import {
   PasteStep,
   resumeFileProblem,
 } from "./intake-steps";
-import { HowItWorksStep, LanguageStep } from "./intro-steps";
 import { ParsingStep, type UploadPhase } from "./parsing-step";
 import { ReviewStep } from "./review-step";
+import { SubscriptionStep } from "./subscription-step";
 import { SignupFrame, TrustAside, type SignupPhase } from "./ui";
 
 type Stage =
   | { name: "booting" }
-  | { name: "language" }
-  | { name: "how" }
   | { name: "account" }
   | { name: "referral"; code: string }
-  | { name: "about" }
+  | { name: "location" }
+  | { name: "subscription" }
   | { name: "intake"; error?: string }
   | { name: "paste" }
   | { name: "manual"; initial?: ManualResume; editOf?: string }
@@ -67,11 +63,10 @@ type Stage =
 
 const PHASE_OF: Record<Stage["name"], SignupPhase> = {
   booting: "start",
-  language: "start",
-  how: "start",
   account: "start",
   referral: "start",
-  about: "start",
+  location: "start",
+  subscription: "subscription",
   intake: "resume",
   paste: "resume",
   manual: "resume",
@@ -89,8 +84,7 @@ interface Profile {
 const EMPTY_PROFILE: Profile = { fullName: "", city: "", stateCode: "" };
 
 /**
- * Candidate sign-up, as in the app design: language, how it works,
- * account, about you, resume intake, reading, review and confirm, scoring -
+ * Candidate sign-up: account, about you, resume intake, reading, review and confirm, scoring -
  * then the existing score screen takes over.
  */
 export function StudentSignup() {
@@ -99,16 +93,15 @@ export function StudentSignup() {
 
   const [stage, setStage] = useState<Stage>({ name: "booting" });
   const [signedIn, setSignedIn] = useState(false);
-  const [locale, setLocale] = useState<SignupLocale["code"] | null>(null);
   const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
 
   const [loadProfile] = studentApi.endpoints.getStudentProfile.useLazyQuery();
   const [loadVersions] = useLazyGetResumeVersionsQuery();
-  const [updatePreferences] = useUpdateNotificationPreferencesMutation();
   const [createUpload] = useCreateResumeUploadMutation();
   const [uploadFile] = useUploadResumeFileMutation();
   const [completeUpload] = useCompleteResumeUploadMutation();
   const [linkCollege] = useLinkStudentCollegeByReferralMutation();
+  const [saveStudentName] = studentApi.endpoints.updateStudentName.useMutation();
 
   const go = (next: Stage) => {
     setStage(next);
@@ -145,9 +138,7 @@ export function StudentSignup() {
     };
     setProfile(known);
 
-    if (!known.fullName) {
-      return { name: "about" };
-    }
+    if (!known.fullName) return { name: "intake" };
 
     const versions = await loadVersions(undefined, false).unwrap();
     const latest = versions.find((version) => !version.superseded);
@@ -165,7 +156,7 @@ export function StudentSignup() {
       .then(async (identity) => {
         if (cancelled) return;
         if (identity.backendRole !== "CANDIDATE") {
-          setStage({ name: "language" });
+          setStage({ name: "account" });
           return;
         }
         remember(identity);
@@ -174,7 +165,7 @@ export function StudentSignup() {
         if (!cancelled) setStage(next);
       })
       .catch(() => {
-        if (!cancelled) setStage({ name: "language" });
+        if (!cancelled) setStage({ name: "account" });
       });
 
     return () => {
@@ -201,7 +192,7 @@ export function StudentSignup() {
     resetCaches();
     setSignedIn(false);
     setProfile(EMPTY_PROFILE);
-    go({ name: "language" });
+    go({ name: "account" });
   };
 
   const startUpload = async (file: File) => {
@@ -281,47 +272,23 @@ export function StudentSignup() {
     case "booting":
       return frame(<FormSkeleton fields={3} bordered={false} />);
 
-    case "language":
-      return frame(
-        <LanguageStep
-          value={locale}
-          onPick={(code) => {
-            setLocale(code);
-            go({ name: "how" });
-          }}
-        />,
-      );
-
-    case "how":
-      return frame(
-        <HowItWorksStep
-          onBack={() => go({ name: "language" })}
-          onNext={() => go(signedIn ? { name: "about" } : { name: "account" })}
-        />,
-        <TrustAside />,
-      );
-
     case "account":
       return frame(
         <AccountStep
-          onBack={() => go({ name: "how" })}
-          onSignedUp={async (result, email, referralCode) => {
+          onSignedUp={async (result, email, referralCode, fullName) => {
             if (result.token) setStoredToken(result.token);
             // A different person may have been signed in on this browser.
             resetCaches();
             remember(result, email);
             setSignedIn(true);
-
-            if (locale) {
-              // The language is a preference, not a gate: a failure here
-              // must not stop the sign-up.
-              await updatePreferences({ locale }).unwrap().catch(() => undefined);
-            }
+            const normalizedName = fullName.split(/\s+/).join(" ").trim();
+            setProfile((current) => ({ ...current, fullName: normalizedName }));
+            await saveStudentName(normalizedName).unwrap();
 
             if (referralCode) {
               go({ name: "referral", code: referralCode });
             } else {
-              go(await resume());
+              go({ name: "location" });
             }
           }}
         />,
@@ -334,37 +301,32 @@ export function StudentSignup() {
           linkCollege={(code, consentVersion) =>
             linkCollege({ code, consentVersion }).unwrap()
           }
-          onDone={() => void resume().then(go)}
+          onDone={() => go({ name: "location" })}
         />,
       );
 
-    case "about":
+    case "location":
       return frame(
-        <AboutStep
+        <LocationStep
           initial={profile}
-          onDone={() => {
-            void loadVersions(undefined, false)
-              .unwrap()
-              .then((versions) => {
-                const latest = versions.find((version) => !version.superseded);
-                go(
-                  !latest
-                    ? { name: "intake" }
-                    : latest.confirmed
-                      ? { name: "computing", confirmedAt: latest.confirmedAt }
-                      : { name: "review", resumeVersionId: latest.resumeVersionId },
-                );
-              })
-              .catch(() => go({ name: "intake" }));
-          }}
+          onDone={() => go({ name: "subscription" })}
         />,
+      );
+
+    case "subscription":
+      return frame(
+        <SubscriptionStep
+          onBack={() => go({ name: "location" })}
+          onContinue={() => go({ name: "intake" })}
+        />,
+        <TrustAside />,
       );
 
     case "intake":
       return frame(
         <IntakeStep
           error={stage.error}
-          onBack={() => go({ name: "about" })}
+          onBack={() => go({ name: "subscription" })}
           onFile={(file) => void startUpload(file)}
           onPaste={() => go({ name: "paste" })}
           onForm={() => go({ name: "manual" })}

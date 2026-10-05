@@ -171,7 +171,6 @@ export function LanguageStep({ value, onPick, onBack }: Readonly<LanguageStepPro
   return (
     <div className="flex flex-col gap-6">
       <StepHeader
-        step="language"
         title="Pick your language"
         subtitle="Change it any time from your profile."
       />
@@ -267,7 +266,6 @@ export function HowItWorksStep({
   return (
     <div className="flex flex-col gap-6">
       <StepHeader
-        step="how"
         title="Three steps, that's all"
         subtitle="Give us your resume, check what we read, then see your score."
       />

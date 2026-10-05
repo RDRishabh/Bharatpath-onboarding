@@ -3,11 +3,17 @@
 import { useRef, useState } from "react";
 import {
   ArrowRight,
+  BriefcaseBusiness,
+  CheckCircle2,
   ClipboardList,
+  FilePenLine,
+  GraduationCap,
   Plus,
+  Sparkles,
   SquarePen,
   Trash2,
   Upload,
+  User,
   X,
 } from "lucide-react";
 
@@ -155,7 +161,7 @@ export function IntakeStep({ onFile, onPaste, onForm, onBack, error }: Readonly<
         </span>
         <span className="flex w-full items-center gap-2.5 border-t border-[rgba(255,252,247,0.28)] pt-3.5">
           <span className="flex-1 text-[11px] font-bold tracking-[0.1em] text-[#E0DBF4]">
-            PDF · DOCX · UP TO {Math.round(RESUME_MAX_BYTES / (1024 * 1024))} MB
+            PDF Â· DOCX Â· UP TO {Math.round(RESUME_MAX_BYTES / (1024 * 1024))} MB
           </span>
           <ArrowRight className="h-4 w-4 text-[#FFFCF7]" aria-hidden="true" />
         </span>
@@ -229,13 +235,14 @@ export function PasteStep({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitText, { isLoading }] = useSubmitResumeTextMutation();
-  const usable = text.split(/\s+/).join(" ").trim().length;
+  const characterCount = text.trim().length;
+  const sampleResume = "Priya Deshmukh\nPune, Maharashtra\n\nWork Experience\nQuality Lab Intern, Sahyadri Dairy, 2023–2024\nAssisted with sample testing, quality reports, and lab documentation.\n\nEducation\nB.Sc Microbiology, Fergusson College, 2022\n\nSkills\nMicrobial culturing, Lab reporting, MS Excel";
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
 
-    if (usable < MIN_PASTE_CHARS) {
+    if (characterCount < MIN_PASTE_CHARS) {
       setError("That is too short to be a resume. Paste the whole thing.");
       return;
     }
@@ -249,43 +256,48 @@ export function PasteStep({
   };
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-5">
-      <StepHeader
-        title="Paste your resume"
-        subtitle="Copy everything from your email or notes. We keep the text exactly as you paste it."
-      />
+    <div className="flex min-w-0 flex-col gap-5 text-[#0A1931]">
+      <header className="border-b border-[#E7E0D4] pb-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#F1EAF7] text-[#5F4DB2]"><ClipboardList size={23} aria-hidden="true" /></span>
+          <div className="min-w-0 flex-1"><h1 className="text-[18px] font-bold leading-6 tracking-[-0.02em] sm:text-[21px]">Paste your CV / Resume</h1><p className="mt-0.5 text-[13px] text-[#5F6B80] sm:text-[14px]">No file needed · Minimum 50 chars</p></div>
+          <button type="button" onClick={onBack} aria-label="Close paste resume" className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#F3F0E8] text-[#0A1931] transition hover:bg-[#EAE5D9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/40"><X size={23} aria-hidden="true" /></button>
+        </div>
+      </header>
 
-      {error && <ErrorNote>{error}</ErrorNote>}
-
-      <Field id="paste-text" label="Resume text">
+      <form id="paste-resume-form" onSubmit={submit} noValidate className="flex min-w-0 flex-col gap-5">
+        {error ? <ErrorNote>{error}</ErrorNote> : null}
+        <button type="button" onClick={() => { setText(sampleResume); setError(null); }} className="flex w-fit items-center gap-2 rounded-full border border-[#D9CFF0] bg-[#F1EAF7] px-4 py-2.5 text-[14px] font-medium text-[#5F4DB2] transition hover:bg-[#E8DFF2]"><Sparkles size={17} aria-hidden="true" />Use sample CV</button>
         <textarea
           id="paste-text"
+          aria-label="Paste your full resume or CV text"
           autoFocus
-          rows={14}
           value={text}
-          onChange={(event) => {
-            setText(event.target.value);
-            setError(null);
-          }}
-          placeholder={"Priya Deshmukh\nPune, Maharashtra\n\nEducation\nB.Sc Microbiology, Fergusson College, 2022–2025\n\nSkills\nMicrobial culturing, Lab reporting, MS Excel"}
-          className={`${fieldClass} ${fieldBorder(Boolean(error))} min-h-[320px] resize-y text-[15px] font-normal leading-6`}
+          onChange={(event) => { setText(event.target.value); setError(null); }}
+          placeholder="Paste your full resume or CV text here... Include your work experience, education, skills, and summary so the scoring engine can analyze your profile accurately."
+          className={`${fieldClass} ${fieldBorder(Boolean(error))} min-h-[42vh] flex-1 resize-y rounded-[24px] border-2 px-5 py-5 text-[16px] font-normal leading-6 shadow-sm placeholder:text-[#8993A1] sm:min-h-[480px] sm:px-6 sm:py-6`}
         />
-      </Field>
-      <p className="m-0 -mt-3 text-right text-[12px] text-[#5F6B80]">
-        {usable < MIN_PASTE_CHARS
-          ? `${MIN_PASTE_CHARS - usable} more characters needed`
-          : `${usable} characters`}
-      </p>
+        <div className="flex items-center justify-between gap-3 px-1 text-[13px] font-semibold text-[#85650F] sm:text-[14px]">
+          <span>{characterCount} / {MIN_PASTE_CHARS} characters min</span>
+          <span className="text-right">{characterCount < MIN_PASTE_CHARS ? `${MIN_PASTE_CHARS - characterCount} more characters needed` : "Ready to continue"}</span>
+        </div>
+        <section className="rounded-[20px] border border-[#E7E0D4] bg-[#F7F4EC] p-4 sm:p-5">
+          <h2 className="mb-2 flex items-center gap-2 text-[14px] font-semibold text-[#0A1931]"><span aria-hidden="true">💡</span>What to include for best scoring</h2>
+          <ul className="m-0 list-disc space-y-1 pl-5 text-[13px] leading-5 text-[#5F6B80] sm:text-[14px]">
+            <li>Job titles, company names, and dates of work</li>
+            <li>Degrees, colleges, and completion years</li>
+            <li>Technical and professional skills</li>
+          </ul>
+        </section>
+      </form>
 
-      <div className="flex gap-2">
-        <PillButton variant="secondary" onClick={onBack} className="flex-1">
-          Back
-        </PillButton>
-        <PillButton type="submit" isLoading={isLoading} className="flex-[2]">
-          Read my resume
-        </PillButton>
-      </div>
-    </form>
+      <footer className="sticky bottom-0 z-20 border-t border-[#E7E0D4] bg-[#FFFCF7]/95 py-3 backdrop-blur">
+        <div className="flex gap-3">
+          <button type="button" onClick={onBack} className="rounded-[16px] bg-[#F2EFE7] px-5 py-3.5 text-[14px] font-semibold text-[#0A1931] transition hover:bg-[#E8E3D8]">Cancel</button>
+          <PillButton type="submit" form="paste-resume-form" isLoading={isLoading} disabled={characterCount < MIN_PASTE_CHARS} className="flex-1 rounded-[16px] py-3.5">Continue &amp; Parse</PillButton>
+        </div>
+      </footer>
+    </div>
   );
 }
 
@@ -478,16 +490,21 @@ export function ManualStep({
   });
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-6">
-      <StepHeader
-        title={editOf ? "Correct your details" : "Build your resume"}
-        subtitle="No resume yet? Fill in what you have. You can add more later."
-      />
+    <div className="flex min-w-0 flex-col gap-5 text-[#0A1931]">
+      <header className="border-b border-[#E7E0D4] pb-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#F1EAF7] text-[#5F4DB2]"><FilePenLine size={23} aria-hidden="true" /></span>
+          <div className="min-w-0 flex-1"><h1 className="text-[18px] font-bold leading-6 tracking-[-0.02em] sm:text-[21px]">Manual Resume Entry</h1><p className="mt-0.5 text-[13px] text-[#5F6B80] sm:text-[14px]">Create your profile step-by-step</p></div>
+          <button type="button" onClick={onBack} aria-label="Close manual resume entry" className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#F3F0E8] text-[#0A1931] transition hover:bg-[#EAE5D9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/40"><X size={23} aria-hidden="true" /></button>
+        </div>
+      </header>
+
+      <form id="manual-resume-form" onSubmit={submit} noValidate className="flex min-w-0 flex-col gap-5">
 
       {serverError && <ErrorNote>{serverError}</ErrorNote>}
 
-      <Card className="flex flex-col gap-4 p-5">
-        <Eyebrow>Basics</Eyebrow>
+      <Card className="flex flex-col gap-4 p-5 sm:p-6">
+        <ManualSectionTitle number="1" title="Personal Info" icon={<User size={20} />} />
         <Field id="manual-name" label="Full name" error={errors.fullName}>
           <input
             id="manual-name"
@@ -509,79 +526,23 @@ export function ManualStep({
         </Field>
       </Card>
 
-      <Card className="flex flex-col gap-4 p-5">
-        <Eyebrow>Education</Eyebrow>
-        {education.map((row, index) => (
-          <div key={index} className="flex flex-col gap-3 border-b border-[#F7EFD6] pb-4 last:border-0 last:pb-0">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field id={`edu-${index}-qualification`} label="Course or class" error={errors[`edu-${index}-qualification`]}>
-                <input
-                  id={`edu-${index}-qualification`}
-                  value={row.qualification}
-                  maxLength={200}
-                  placeholder="e.g. B.Sc Microbiology"
-                  onChange={(event) =>
-                    setEducation((rows) => rows.map((item, i) => (i === index ? { ...item, qualification: event.target.value } : item)))
-                  }
-                  {...fieldProps(`edu-${index}-qualification`)}
-                />
-              </Field>
-              <Field id={`edu-${index}-institution`} label="Institution" error={errors[`edu-${index}-institution`]}>
-                <input
-                  id={`edu-${index}-institution`}
-                  value={row.institution}
-                  maxLength={200}
-                  placeholder="e.g. Fergusson College, Pune"
-                  onChange={(event) =>
-                    setEducation((rows) => rows.map((item, i) => (i === index ? { ...item, institution: event.target.value } : item)))
-                  }
-                  {...fieldProps(`edu-${index}-institution`)}
-                />
-              </Field>
-            </div>
-            <div className="flex items-end gap-3">
-              <div className="w-40">
-                <Field id={`edu-${index}-year`} label="Year completed" optional error={errors[`edu-${index}-year`]}>
-                  <input
-                    id={`edu-${index}-year`}
-                    inputMode="numeric"
-                    value={row.completedYear}
-                    maxLength={4}
-                    placeholder="2025"
-                    onChange={(event) =>
-                      setEducation((rows) => rows.map((item, i) => (i === index ? { ...item, completedYear: event.target.value } : item)))
-                    }
-                    {...fieldProps(`edu-${index}-year`)}
-                  />
-                </Field>
-              </div>
-              {education.length > 1 && (
-                <RemoveButton label="Remove this course" onClick={() => setEducation((rows) => rows.filter((_, i) => i !== index))} />
-              )}
-            </div>
-          </div>
-        ))}
-        {education.length < 20 && (
-          <AddButton onClick={() => setEducation((rows) => [...rows, emptyEducation()])}>Add education</AddButton>
-        )}
-      </Card>
-
-      <Card className="flex flex-col gap-4 p-5">
-        <Eyebrow>Experience &amp; projects</Eyebrow>
+<Card className="flex flex-col gap-4 p-5 sm:p-6">
+        <ManualSectionTitle number="2" title="Work Experience" icon={<BriefcaseBusiness size={20} />} action={experience.length < 40 ? <AddButton onClick={() => setExperience((rows) => [...rows, emptyExperience()])}>Add Role</AddButton> : undefined} />
         {experience.length === 0 && (
           <p className="m-0 text-[14px] leading-5 text-[#5F6B80]">
             Internships, part-time work and projects all count.
           </p>
         )}
         {experience.map((row, index) => (
-          <div key={index} className="flex flex-col gap-3 border-b border-[#F7EFD6] pb-4 last:border-0 last:pb-0">
+          <div key={index} className="flex flex-col gap-3 rounded-[18px] border border-[#EEEAE1] bg-[#FAF9F6] p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3"><p className="m-0 text-[14px] font-medium text-[#5F6B80]">Role #{index + 1}</p>{experience.length > 1 ? <RemoveButton label="Remove this role" onClick={() => setExperience((rows) => rows.filter((_, i) => i !== index))} /> : null}</div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field id={`exp-${index}-title`} label="Role" error={errors[`exp-${index}-title`]}>
                 <input
                   id={`exp-${index}-title`}
                   value={row.title}
                   maxLength={200}
-                  placeholder="e.g. Intern — Quality lab"
+                  placeholder="e.g. Intern â€” Quality lab"
                   onChange={(event) =>
                     setExperience((rows) => rows.map((item, i) => (i === index ? { ...item, title: event.target.value } : item)))
                   }
@@ -629,7 +590,8 @@ export function ManualStep({
                 />
               </Field>
             </div>
-            <Field id={`exp-${index}-summary`} label="What you did" optional>
+            <label className="flex items-center gap-3 text-[14px] font-medium text-[#3A4761]"><input type="checkbox" checked={!row.endYear} onChange={(event) => setExperience((rows) => rows.map((item, i) => (i === index ? { ...item, endYear: event.target.checked ? "" : String(new Date().getFullYear()) } : item)))} className="h-5 w-5 accent-[#5F4DB2]" />I currently work here</label>
+            <Field id={`exp-${index}-summary`} label="Summary / Responsibilities" optional>
               <textarea
                 id={`exp-${index}-summary`}
                 rows={3}
@@ -647,13 +609,50 @@ export function ManualStep({
             </div>
           </div>
         ))}
-        {experience.length < 40 && (
-          <AddButton onClick={() => setExperience((rows) => [...rows, emptyExperience()])}>Add experience or project</AddButton>
-        )}
       </Card>
 
-      <Card className="flex flex-col gap-4 p-5">
-        <Eyebrow>Skills</Eyebrow>
+<Card className="flex flex-col gap-4 p-5 sm:p-6">
+        <ManualSectionTitle number="3" title="Education" icon={<GraduationCap size={21} />} action={education.length < 20 ? <AddButton onClick={() => setEducation((rows) => [...rows, emptyEducation()])}>Add Degree</AddButton> : undefined} />
+        {education.map((row, index) => (
+          <div key={index} className="flex flex-col gap-3 rounded-[18px] border border-[#EEEAE1] bg-[#FAF9F6] p-4 sm:p-5">
+            <p className="m-0 text-[14px] font-medium text-[#5F6B80]">Education #{index + 1}</p>
+            <Field id={`edu-${index}-institution`} label="College / University / School" error={errors[`edu-${index}-institution`]}>
+              <input id={`edu-${index}-institution`} value={row.institution} maxLength={200} placeholder="e.g. Delhi Technological University" onChange={(event) => setEducation((rows) => rows.map((item, i) => (i === index ? { ...item, institution: event.target.value } : item)))} {...fieldProps(`edu-${index}-institution`)} />
+            </Field>
+            <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+              <Field id={`edu-${index}-qualification`} label="Degree / Qualification" error={errors[`edu-${index}-qualification`]}>
+                <input
+                  id={`edu-${index}-qualification`}
+                  value={row.qualification}
+                  maxLength={200}
+                  placeholder="e.g. B.Tech Computer Science"
+                  onChange={(event) =>
+                    setEducation((rows) => rows.map((item, i) => (i === index ? { ...item, qualification: event.target.value } : item)))
+                  }
+                  {...fieldProps(`edu-${index}-qualification`)}
+                />
+              </Field>
+              <Field id={`edu-${index}-year`} label="Completion" optional error={errors[`edu-${index}-year`]}>
+                  <input
+                    id={`edu-${index}-year`}
+                    inputMode="numeric"
+                    value={row.completedYear}
+                    maxLength={4}
+                    placeholder="e.g. 2022"
+                    onChange={(event) =>
+                      setEducation((rows) => rows.map((item, i) => (i === index ? { ...item, completedYear: event.target.value } : item)))
+                    }
+                    {...fieldProps(`edu-${index}-year`)}
+                  />
+              </Field>
+            </div>
+            {education.length > 1 ? <RemoveButton label="Remove this course" onClick={() => setEducation((rows) => rows.filter((_, i) => i !== index))} /> : null}
+          </div>
+        ))}
+      </Card>
+
+<Card className="flex flex-col gap-4 p-5 sm:p-6">
+        <ManualSectionTitle number="4" title="Key Skills" icon={<Sparkles size={20} />} />
         {skills.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {skills.map((skill) => (
@@ -689,21 +688,30 @@ export function ManualStep({
             }}
             className={`${fieldClass} ${fieldBorder(false)} flex-1`}
           />
-          <PillButton variant="secondary" onClick={addSkill} className="px-5 py-3 text-[14px]">
+          <PillButton variant="secondary" onClick={addSkill} className="rounded-[14px] bg-[#D6CDEF] px-5 py-3 text-[14px] text-[#4A3E8F] hover:bg-[#C9BDE8]">
             Add
           </PillButton>
         </div>
+        <p className="m-0 text-[13px] font-medium text-[#5F6B80]">Quick Suggestions:</p>
+        <div className="flex flex-wrap gap-2">
+          {["React Native", "TypeScript", "JavaScript", "Python", "SQL", "REST APIs", "Git", "UI/UX Design", "Customer Support", "Project Management"].map((skill) => (
+            <button key={skill} type="button" onClick={() => setSkills((current) => current.some((item) => item.toLowerCase() === skill.toLowerCase()) ? current : [...current, skill])} className="rounded-full bg-[#F2EFE7] px-3.5 py-2 text-[13px] font-medium text-[#3A4761] transition hover:bg-[#E8E3D8]">+ {skill}</button>
+          ))}
+        </div>
       </Card>
 
-      <div className="flex gap-2">
-        <PillButton variant="secondary" onClick={onBack} className="flex-1">
-          Back
-        </PillButton>
-        <PillButton type="submit" isLoading={saving} className="flex-[2]">
-          {editOf ? "Save changes" : "Review my details"}
-        </PillButton>
+      <div className="flex items-start gap-3 rounded-[18px] border border-[#C8E5D2] bg-[#EDF7F0] px-4 py-4 text-[13px] leading-5 text-[#28734E]">
+        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+        <p className="m-0">No age or date of birth required. BharatPath assesses your readiness solely on skills, education, and experience.</p>
       </div>
     </form>
+      <footer className="sticky bottom-0 z-20 border-t border-[#E7E0D4] bg-[#FFFCF7]/95 py-3 backdrop-blur">
+        <div className="flex gap-3">
+          <button type="button" onClick={onBack} className="rounded-[16px] bg-[#F2EFE7] px-5 py-3.5 text-[14px] font-semibold text-[#0A1931] transition hover:bg-[#E8E3D8]">Cancel</button>
+          <PillButton type="submit" form="manual-resume-form" isLoading={saving} className="flex-1 rounded-[16px] py-3.5">{editOf ? "Save changes" : "Save & Review"}</PillButton>
+        </div>
+      </footer>
+    </div>
   );
 }
 
@@ -712,11 +720,26 @@ function AddButton({ onClick, children }: { onClick: () => void; children: React
     <button
       type="button"
       onClick={onClick}
-      className="flex w-fit cursor-pointer items-center gap-1.5 rounded-full bg-[#5F4DB2] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#4A3E8F]"
+      className="flex w-fit cursor-pointer items-center gap-1.5 rounded-full bg-[#F1EAF7] px-3.5 py-2 text-[13px] font-medium text-[#5F4DB2] transition hover:bg-[#E8DFF2]"
     >
       <Plus className="h-3 w-3" aria-hidden="true" />
       {children}
     </button>
+  );
+}
+
+function ManualSectionTitle({ number, title, icon, action }: {
+  number: string;
+  title: string;
+  icon: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-h-10 items-center gap-2.5">
+      <span className="shrink-0 text-[#5F4DB2]">{icon}</span>
+      <h2 className="min-w-0 flex-1 text-[19px] font-bold tracking-[-0.02em] text-[#0A1931] sm:text-[21px]">{number}. {title}</h2>
+      {action}
+    </div>
   );
 }
 

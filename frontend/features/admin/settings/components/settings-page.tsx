@@ -20,6 +20,9 @@ export function SettingsPage() {
     state,
     isLoading,
     error,
+    isSaving,
+    saveError,
+    setKybMode,
     setTab,
   } = useSettings();
 
@@ -37,6 +40,9 @@ export function SettingsPage() {
           kybMode={state.kybMode}
           isLoading={isLoading}
           hasError={Boolean(error)}
+          isSaving={isSaving}
+          saveError={Boolean(saveError)}
+          onModeChange={setKybMode}
         />
       ) : (
         <PlatformTab />

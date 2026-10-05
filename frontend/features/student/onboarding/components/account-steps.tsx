@@ -35,31 +35,33 @@ const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * Cognito (the client has deferred phone OTP and SMS).
  * ---------------------------------------------------------------------- */
 interface AccountStepProps {
-  onBack: () => void;
-  onSignedUp: (result: SignupResponse, email: string, referralCode: string) => Promise<void>;
+  onSignedUp: (result: SignupResponse, email: string, referralCode: string, fullName: string) => Promise<void>;
 }
 
-export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) {
+export function AccountStep({ onSignedUp }: Readonly<AccountStepProps>) {
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");
   const [referralCode, setReferralCode] = useState("");
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [errors, setErrors] = useState<{ fullName?: string; email?: string; password?: string }>({});
 
   const flow = useSignupFlow("CANDIDATE", async (session, signedUpEmail) => {
     showSuccessFeedback("Your account is ready.");
-    await onSignedUp(session, signedUpEmail, referralCode.trim().toUpperCase());
+    await onSignedUp(session, signedUpEmail, referralCode.trim().toUpperCase(), fullName.trim());
   });
 
   const submitDetails = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const next = {
+      fullName: nameError(fullName),
       email: EMAIL_PATTERN.test(email.trim()) ? undefined : "Enter a valid email address.",
-      password: passwordError(password),
+      password: passwordError(password, "CANDIDATE"),
     };
     setErrors(next);
-    if (next.email || next.password) return;
+    if (next.fullName || next.email || next.password) return;
 
     void flow.register(email.trim(), password);
   };
@@ -143,11 +145,18 @@ export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) 
     <form onSubmit={submitDetails} noValidate className="flex flex-col gap-6">
       <StepHeader
         step="account"
-        title="Your email address"
-        subtitle="We'll use it to sign you in and to tell you when your score is ready."
+        title="Start your career journey"
+        subtitle="Create an account to evaluate your resume, discover matching jobs, and get recruited."
       />
 
       {errorNote}
+
+      <Field id="signup-full-name" label="Full name" hint="Only letters and spaces. Stored in profile upon signup." error={errors.fullName}>
+        <div className="relative">
+          <User className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#3A4761]" aria-hidden="true" />
+          <input id="signup-full-name" autoComplete="name" autoFocus placeholder="e.g. Priya Sharma" value={fullName} aria-invalid={Boolean(errors.fullName)} onChange={(event) => { setFullName(event.target.value); setErrors((current) => ({ ...current, fullName: undefined })); }} className={`${fieldClass} ${fieldBorder(Boolean(errors.fullName))} pl-12`} />
+        </div>
+      </Field>
 
       <Field id="signup-email" label="Email" error={errors.email}>
         <div className="relative">
@@ -159,7 +168,6 @@ export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) 
             id="signup-email"
             type="email"
             autoComplete="email"
-            autoFocus
             placeholder="you@example.com"
             value={email}
             aria-invalid={Boolean(errors.email)}
@@ -176,7 +184,7 @@ export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) 
       <Field
         id="signup-password"
         label="Password"
-        hint="At least 14 characters, with uppercase, lowercase, a number and a symbol."
+        hint="At least 8 characters, with uppercase, lowercase, a number and a symbol."
         error={errors.password}
       >
         <div className="relative">
@@ -201,6 +209,14 @@ export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) 
         </div>
       </Field>
 
+      <Field id="signup-confirm-password" label="Confirm password">
+        <div className="relative">
+          <Lock className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#3A4761]" aria-hidden="true" />
+          <input id="signup-confirm-password" type="password" autoComplete="new-password" placeholder="Re-enter your password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className={`${fieldClass} ${fieldBorder(false)} pl-12`} />
+        </div>
+        {confirmPassword && password !== confirmPassword ? <span className="text-[12px] text-[#A33A2B]">Passwords do not match.</span> : null}
+      </Field>
+
       <Field
         id="signup-referral-code"
         label="College referral code (optional)"
@@ -222,11 +238,8 @@ export function AccountStep({ onBack, onSignedUp }: Readonly<AccountStepProps>) 
 
       <div className="flex flex-col gap-3">
         <div className="flex gap-2">
-          <PillButton variant="secondary" onClick={onBack} className="flex-1">
-            Back
-          </PillButton>
-          <PillButton type="submit" isLoading={flow.busy} className="flex-[2]">
-            {flow.busy ? "Creating your account…" : "Continue"}
+          <PillButton type="submit" isLoading={flow.busy} disabled={!fullName.trim() || password !== confirmPassword} className="flex-1">
+            {flow.busy ? "Creating your account…" : "Create account"}
           </PillButton>
         </div>
         <p className="m-0 text-center text-[12px] leading-4 text-[#5F6B80]">
@@ -266,36 +279,32 @@ function cityError(value: string): string | undefined {
   return undefined;
 }
 
-interface AboutStepProps {
+interface LocationStepProps {
   initial: { fullName: string; city: string; stateCode: string };
-  onBack?: () => void;
   onDone: () => void;
 }
 
 const selectClass =
   "[&>button]:h-[54px] [&>button]:rounded-[16px] [&>button]:border-[1.5px] [&>button]:border-[#E7E0D4] [&>button]:bg-white [&>button]:px-4 [&>button>span]:text-[16px] [&>button>span]:font-medium [&>button>span]:text-[#0A1931] [&_[role=option]]:text-[13px]";
 
-export function AboutStep({ initial, onBack, onDone }: Readonly<AboutStepProps>) {
-  const [fullName, setFullName] = useState(initial.fullName);
+export function LocationStep({ initial, onDone }: Readonly<LocationStepProps>) {
   const [city, setCity] = useState(initial.city);
   const [stateCode, setStateCode] = useState(initial.stateCode);
-  const [errors, setErrors] = useState<{ fullName?: string; city?: string }>({});
+  const [errors, setErrors] = useState<{ city?: string }>({});
   const [serverError, setServerError] = useState<unknown>(null);
 
-  const [saveName, nameState] = useUpdateStudentNameMutation();
   const [saveLocation, locationState] = useUpdateStudentLocationMutation();
-  const saving = nameState.isLoading || locationState.isLoading;
+  const saving = locationState.isLoading;
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setServerError(null);
 
-    const nextErrors = { fullName: nameError(fullName), city: cityError(city) };
+    const nextErrors = { city: cityError(city) };
     setErrors(nextErrors);
-    if (nextErrors.fullName || nextErrors.city) return;
+    if (nextErrors.city) return;
 
     try {
-      await saveName(fullName.split(/\s+/).join(" ").trim()).unwrap();
       const trimmedCity = city.split(/\s+/).join(" ").trim();
       if (trimmedCity || stateCode || initial.city || initial.stateCode) {
         await saveLocation({
@@ -303,7 +312,7 @@ export function AboutStep({ initial, onBack, onDone }: Readonly<AboutStepProps>)
           stateCode: stateCode || null,
         }).unwrap();
       }
-      showSuccessFeedback("Your details are saved.");
+      showSuccessFeedback("Your location is saved.");
       onDone();
     } catch (error) {
       setServerError(error);
@@ -313,9 +322,9 @@ export function AboutStep({ initial, onBack, onDone }: Readonly<AboutStepProps>)
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-6">
       <StepHeader
-        step="about"
-        title="A little about you"
-        subtitle="Your name is shown to an employer only after you apply. Your city helps employers near you find you."
+        step="location"
+        title="Where are you based?"
+        subtitle="Your city helps employers near you find you."
       />
 
       {serverError ? (
@@ -323,29 +332,6 @@ export function AboutStep({ initial, onBack, onDone }: Readonly<AboutStepProps>)
           {getApiErrorMessage(serverError, "We could not save your details. Please try again.")}
         </ErrorNote>
       ) : null}
-
-      <Field id="signup-name" label="Full name" hint="As it appears on your resume." error={errors.fullName}>
-        <div className="relative">
-          <User
-            className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#3A4761]"
-            aria-hidden="true"
-          />
-          <input
-            id="signup-name"
-            autoComplete="name"
-            autoFocus
-            placeholder="e.g. Priya Deshmukh"
-            value={fullName}
-            maxLength={200}
-            aria-invalid={Boolean(errors.fullName)}
-            onChange={(event) => {
-              setFullName(event.target.value);
-              setErrors((current) => ({ ...current, fullName: undefined }));
-            }}
-            className={`${fieldClass} ${fieldBorder(Boolean(errors.fullName))} pl-12`}
-          />
-        </div>
-      </Field>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field id="signup-city" label="City or town" optional error={errors.city}>
@@ -397,11 +383,6 @@ export function AboutStep({ initial, onBack, onDone }: Readonly<AboutStepProps>)
 
       <div className="flex flex-col gap-3">
         <div className="flex gap-2">
-          {onBack && (
-            <PillButton variant="secondary" onClick={onBack} className="flex-1">
-              Back
-            </PillButton>
-          )}
           <PillButton type="submit" isLoading={saving} className="flex-[2]">
             Continue
           </PillButton>
