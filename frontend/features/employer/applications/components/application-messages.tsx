@@ -6,6 +6,7 @@ import { MessageSquareText } from "lucide-react";
 import { Skeleton } from "@/components/common/loading";
 import { AppSelect } from "@/components/ui/app-select";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
   useGetEmployerMessagesQuery,
   useSendEmployerMessageMutation,
@@ -46,6 +47,11 @@ export function ApplicationMessages({ applicationId }: { applicationId: string }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+
+    if (kind === "INTERVIEW" && !when) {
+      setError("Choose the interview date and time.");
+      return;
+    }
 
     try {
       await send({
@@ -129,16 +135,18 @@ export function ApplicationMessages({ applicationId }: { applicationId: string }
 
         {kind !== "GENERAL" && (
           <>
-            <label className={labelClass}>
-              {kind === "INTERVIEW" ? "Interview time" : "Assessment deadline (optional)"}
-              <input
-                type="datetime-local"
+            <div>
+              <label htmlFor="application-message-time" className={labelClass}>
+                {kind === "INTERVIEW" ? "Interview time" : "Assessment deadline (optional)"}
+              </label>
+              <DateTimePicker
+                id="application-message-time"
                 value={when}
-                onChange={(event) => setWhen(event.target.value)}
+                onChange={setWhen}
                 required={kind === "INTERVIEW"}
-                className={fieldClass}
+                className={`${fieldClass} mt-1.5`}
               />
-            </label>
+            </div>
             <label className={labelClass}>
               {kind === "INTERVIEW" ? "Meeting link (optional)" : "Assessment link"}
               <input

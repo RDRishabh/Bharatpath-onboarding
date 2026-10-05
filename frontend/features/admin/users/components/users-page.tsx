@@ -19,7 +19,7 @@ import { UserDrawer } from "./user-drawer";
 import { CreateUserDrawer } from "./create-user-drawer";
 
 export function UsersPage() {
-  const [createOpen, setCreateOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<"create" | "invite" | null>(null);
   usePageHeader(
     "Users",
     "Candidates, employers and institutions on the platform",
@@ -127,14 +127,23 @@ export function UsersPage() {
           />
         </label>
 
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          className="inline-flex h-[38px] shrink-0 cursor-pointer items-center gap-2 rounded-lg bg-[#151b2b] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#20283d]"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Invite {segment === "candidates" ? "candidate" : segment === "employers" ? "employer" : "institution"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setDrawerMode("invite")}
+            className="inline-flex h-[38px] shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-[#d7dce5] bg-white px-4 text-[12px] font-semibold text-[#172033] transition-colors hover:bg-[#f7f8fa]"
+          >
+            Invite {segment === "candidates" ? "candidate" : segment === "employers" ? "employer" : "institution"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDrawerMode("create")}
+            className="inline-flex h-[38px] shrink-0 cursor-pointer items-center gap-2 rounded-lg bg-[#151b2b] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#20283d]"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Create {segment === "candidates" ? "candidate" : segment === "employers" ? "employer" : "institution"}
+          </button>
+        </div>
       </div>
 
       {/* ================================================================ */}
@@ -170,10 +179,11 @@ export function UsersPage() {
         />
       )}
       <UserDrawer />
-      {createOpen ? (
+      {drawerMode ? (
         <CreateUserDrawer
           segment={segment}
-          onClose={() => setCreateOpen(false)}
+          mode={drawerMode}
+          onClose={() => setDrawerMode(null)}
         />
       ) : null}
     </div>

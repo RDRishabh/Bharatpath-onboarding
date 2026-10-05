@@ -26,7 +26,9 @@ export const paymentApi = baseApi.injectEndpoints({
       invalidatesTags: ["Billing"],
     }),
   }),
-  overrideExisting: false,
+  // This shared endpoint can be re-evaluated during Next.js Fast Refresh.
+  // Replacing its identical registration avoids a stale development overlay.
+  overrideExisting: true,
 });
 
 export const { useSimulatePaymentMutation } = paymentApi;

@@ -127,6 +127,53 @@ export type ScoreTimeline = { points: Array<{ computed_at: string; display_value
 export type InterviewRow = { id: string; session_number: number; state: string; question_set_title: string; created_at: string; completed_at: string | null; questions_asked: number; answers_stored: number; report_status: string };
 export type RecordingRow = { question_index: number; question_code: string; prompt: string; url: string; expires_in_seconds: number; mime: string | null; duration_ms: number | null; uploaded_at: string | null; transcript: string | null };
 export type CourseStatus = { code: string; title: string; purchased: boolean; lessons_total: number; lessons_completed: number; percent_complete: number; completed_at: string | null };
+export type AdminCourseLesson = {
+  id: string;
+  title: string;
+  description: string | null;
+  sort_order: number;
+  duration_seconds: number;
+  media_kind: "YOUTUBE" | "UPLOAD";
+  youtube_video_id: string | null;
+  media_ready: boolean;
+  mime: string | null;
+  size_bytes: number | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+export type AdminCourseModule = {
+  id: string;
+  title: string;
+  sort_order: number;
+  active: boolean;
+  lessons: AdminCourseLesson[];
+};
+export type AdminCourse = {
+  id: string;
+  code: string;
+  title: string;
+  version: number;
+  price_minor: number;
+  published: boolean;
+  modules: AdminCourseModule[];
+};
+export type CourseModuleInput = { title: string; sort_order?: number };
+export type CourseModuleUpdate = { title?: string; sort_order?: number; active?: boolean };
+export type CourseLessonInput = {
+  title: string;
+  description?: string | null;
+  sort_order?: number;
+  youtube_url?: string | null;
+};
+export type CourseLessonUpdate = Partial<CourseLessonInput> & { active?: boolean };
+export type LessonUpload = {
+  url: string;
+  method: "PUT";
+  expires_in_seconds: number;
+  max_bytes: number;
+  accepted_types: string[];
+};
 export type CandidateApplications = { items: Array<{ id: string; job_title: string; employer_name: string | null; stage: string; applied_at: string }>; analytics: { total: number; open: number; by_stage: Record<string, number>; reached: Record<string, number> } };
 
 export type EmployerDrilldown = {
@@ -383,10 +430,19 @@ export type ProvisionedAccountResponse = {
   tenant_id: string | null;
   role: string | null;
   invitation: "SENT" | "ALREADY_REGISTERED";
+  prefilled: string[];
 };
 
 export type ProvisionCandidateRequest = {
   email: string;
+  full_name?: string;
+  city?: string;
+  state_code?: string;
+};
+
+export type InviteAdminAccountRequest = {
+  email: string;
+  kind: "CANDIDATE" | "EMPLOYER" | "COLLEGE";
 };
 
 export type ProvisionEmployerRequest = {
@@ -394,12 +450,45 @@ export type ProvisionEmployerRequest = {
   legal_name: string;
   employer_type?: string;
   industry?: string;
+  kyb_answers?: Record<string, unknown>;
 };
 
 export type ProvisionCollegeRequest = {
   admin_email: string;
   name: string;
   institution_type: string;
+  onboarding_answers?: Record<string, unknown>;
+};
+
+export type AdminAccountFormField = {
+  code: string;
+  key: string;
+  label: string;
+  type: "TEXT" | "TEXTAREA" | "EMAIL" | "PHONE" | "NUMBER" | "SELECT" | "MULTISELECT" | "DATE";
+  required: boolean;
+  pattern: string | null;
+  max_length: number | null;
+  help_text: string | null;
+  options_source: string | null;
+  public: boolean;
+  verification_note: string | null;
+};
+
+export type AdminAccountForm = {
+  code: string;
+  version: string;
+  sections: Array<{
+    code: string;
+    title: string;
+    fields: AdminAccountFormField[];
+    help_text: string | null;
+  }>;
+  options: Record<string, Array<{ code: string; label: string }>>;
+};
+
+export type AdminAccountFormsResponse = {
+  employer: AdminAccountForm;
+  college: AdminAccountForm;
 };
 
 export type AdminDashboardResponse = {
@@ -449,6 +538,37 @@ export const adminApi = baseApi.injectEndpoints({
     getAdminDashboard: builder.query<AdminDashboardResponse, void>({
       query: () => "/admin/dashboard",
       providesTags: ["Admin"],
+    }),
+    getAdminCourses: builder.query<AdminCourse[], void>({
+      query: () => "/admin/courses",
+      providesTags: [{ type: "Admin", id: "COURSES" }],
+    }),
+    createAdminCourseModule: builder.mutation<AdminCourse, { code: string; body: CourseModuleInput }>({
+      query: ({ code, body }) => ({ url: `/admin/courses/${encodeURIComponent(code)}/modules`, method: "POST", body }),
+      invalidatesTags: [{ type: "Admin", id: "COURSES" }],
+    }),
+    updateAdminCourseModule: builder.mutation<AdminCourse, { moduleId: string; body: CourseModuleUpdate }>({
+      query: ({ moduleId, body }) => ({ url: `/admin/course-modules/${moduleId}`, method: "PATCH", body }),
+      invalidatesTags: [{ type: "Admin", id: "COURSES" }],
+    }),
+    createAdminCourseLesson: builder.mutation<AdminCourseLesson, { moduleId: string; body: CourseLessonInput }>({
+      query: ({ moduleId, body }) => ({ url: `/admin/course-modules/${moduleId}/lessons`, method: "POST", body }),
+      invalidatesTags: [{ type: "Admin", id: "COURSES" }],
+    }),
+    updateAdminCourseLesson: builder.mutation<AdminCourseLesson, { lessonId: string; body: CourseLessonUpdate }>({
+      query: ({ lessonId, body }) => ({ url: `/admin/course-lessons/${lessonId}`, method: "PATCH", body }),
+      invalidatesTags: [{ type: "Admin", id: "COURSES" }],
+    }),
+    issueAdminLessonUpload: builder.mutation<LessonUpload, string>({
+      query: (lessonId) => ({ url: `/admin/course-lessons/${lessonId}/upload`, method: "POST" }),
+    }),
+    confirmAdminLessonUpload: builder.mutation<AdminCourseLesson, string>({
+      query: (lessonId) => ({ url: `/admin/course-lessons/${lessonId}/upload/confirm`, method: "POST" }),
+      invalidatesTags: [{ type: "Admin", id: "COURSES" }],
+    }),
+    publishAdminCourse: builder.mutation<AdminCourse, { code: string; published: boolean }>({
+      query: ({ code, published }) => ({ url: `/admin/courses/${encodeURIComponent(code)}/published`, method: "PUT", body: { published } }),
+      invalidatesTags: [{ type: "Admin", id: "COURSES" }],
     }),
     getAdminSearchFilters: builder.query<
       SearchFilterOptionsPage,
@@ -572,6 +692,13 @@ export const adminApi = baseApi.injectEndpoints({
       query: ({ id, ...params }) => ({ url: `/admin/discount-codes/${id}/redemptions`, params }),
       providesTags: (_result, _error, { id }) => [{ type: "Admin", id: `DISCOUNT_REDEMPTIONS_${id}` }],
     }),
+    getAdminAccountForms: builder.query<AdminAccountFormsResponse, void>({
+      query: () => "/admin/accounts/forms",
+      providesTags: [{ type: "Admin", id: "ACCOUNT_FORMS" }],
+    }),
+    inviteAdminAccount: builder.mutation<{ invitation: "SENT" }, InviteAdminAccountRequest>({
+      query: (body) => ({ url: "/admin/accounts/invitations", method: "POST", body }),
+    }),
     provisionAdminCandidate: builder.mutation<ProvisionedAccountResponse, ProvisionCandidateRequest>({
       query: (body) => ({ url: "/admin/accounts/candidates", method: "POST", body }),
       invalidatesTags: ["Admin"],
@@ -650,6 +777,14 @@ export const {
   useGetAdminIdentityQuery,
   useLazyGetAdminIdentityQuery,
   useGetAdminDashboardQuery,
+  useGetAdminCoursesQuery,
+  useCreateAdminCourseModuleMutation,
+  useUpdateAdminCourseModuleMutation,
+  useCreateAdminCourseLessonMutation,
+  useUpdateAdminCourseLessonMutation,
+  useIssueAdminLessonUploadMutation,
+  useConfirmAdminLessonUploadMutation,
+  usePublishAdminCourseMutation,
   useGetAdminDiscountCodesQuery,
   useGetAdminDiscountCodeQuery,
   useCreateAdminDiscountCodeMutation,
@@ -668,6 +803,8 @@ export const {
   useResolveAdminIntegritySignalMutation,
   useGetAdminTenantsQuery,
   useGetAdminCandidatesQuery,
+  useGetAdminAccountFormsQuery,
+  useInviteAdminAccountMutation,
   useProvisionAdminCandidateMutation,
   useProvisionAdminEmployerMutation,
   useProvisionAdminCollegeMutation,

@@ -1,24 +1,62 @@
 "use client";
 
-import { EyeOff, Info } from "lucide-react";
+import { Building2, EyeOff, Info, LockOpen } from "lucide-react";
 
-import { EmptyState, NoteStrip } from "@/features/student/components";
+import { Skeleton } from "@/components/common/loading";
+import { EmptyState, NoteStrip, StudentErrorState } from "@/features/student/components";
+import { formatDateTime } from "@/features/student/formatters";
 import { StudentPage, StudentTopBar } from "@/features/student/shell";
+import { useGetStudentProfileViewsQuery } from "@/store/student";
 import { DataRights } from "./data-rights";
 
 export function WhoSawMe() {
+  const views = useGetStudentProfileViewsQuery({ limit: 100 });
+
   return (
     <StudentPage>
-      <div className="flex flex-col gap-4">
-        <StudentTopBar title="Profile visibility" />
-        <EmptyState
-          icon={<EyeOff size={22} />}
-          title="View history is not available"
-          message="Employer profile-view history is not available in your account yet."
-        />
-        <NoteStrip icon={<Info size={16} />}>
-          Your resume file is never returned through employer discovery.
-        </NoteStrip>
+      <div className="flex flex-col gap-6">
+        <StudentTopBar title="Who has seen me" className="!mb-0" />
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-[-0.03em] text-[#0A1931] sm:text-3xl">Every unlock, logged</h1>
+          <p className="mt-1 text-[14px] leading-6 text-[#5F6B80]">Details appear only after an employer opens your profile.</p>
+        </div>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+          <section className="rounded-[24px] border border-[#E7E0D4] bg-white p-5 sm:p-7">
+            {views.isLoading ? (
+              <div className="flex flex-col gap-4" aria-label="Loading profile views">
+                {[0, 1, 2].map((row) => (
+                  <div key={row} className="flex items-center gap-3">
+                    <Skeleton circle width={42} height={42} />
+                    <div className="flex flex-1 flex-col gap-2"><Skeleton width="45%" height={14} radius={6} /><Skeleton width="30%" height={11} radius={6} /></div>
+                  </div>
+                ))}
+              </div>
+            ) : views.isError ? (
+              <StudentErrorState variant="inline" error={views.error} fallback="We could not load who viewed your profile." onRetry={() => void views.refetch()} />
+            ) : views.data?.items.length ? (
+              <ul className="flex flex-col divide-y divide-[#F0EBDF]">
+                {views.data.items.map((view) => (
+                  <li key={`${view.employerName}-${view.lastViewedAt}`} className="flex items-center gap-3 py-4 first:pt-0 last:pb-0">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#F1EAF7] text-[#5F4DB2]"><Building2 size={20} aria-hidden="true" /></span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[15px] font-semibold text-[#0A1931]">{view.employerName}</span><span className="mt-0.5 block text-[12px] text-[#5F6B80]">Opened {formatDateTime(view.lastViewedAt)}</span></span>
+                    <LockOpen size={17} className="shrink-0 text-[#1F6B45]" aria-hidden="true" />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState icon={<EyeOff size={22} />} title="No employer views yet" message="When an employer views your profile, their activity will be logged here." />
+            )}
+          </section>
+
+          <aside className="flex flex-col gap-4 lg:sticky lg:top-6">
+            <NoteStrip icon={<Info size={16} />}>Your resume file is never shared. Employers see the parsed profile only.</NoteStrip>
+            <div className="rounded-[20px] border border-[#E7E0D4] bg-white p-5">
+              <p className="text-[14px] font-semibold text-[#0A1931]">Your privacy is protected</p>
+              <p className="mt-2 text-[12px] leading-5 text-[#5F6B80]">We show the employer organisation, never the individual recruiter or how many times they opened your profile.</p>
+            </div>
+          </aside>
+        </div>
         <DataRights />
       </div>
     </StudentPage>

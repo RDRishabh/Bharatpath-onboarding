@@ -1,10 +1,11 @@
 "use client";
 
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 
-import { Button, SelectDropdown } from "@/components/ui";
-import { getApiErrorMessage } from "@/lib/api/error-message";
+import { Button, DateTimePicker, SelectDropdown } from "@/components/ui";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/api/error-message";
 import { showAdminFeedback } from "@/store/admin";
 import {
   type CreateDiscountCodeRequest,
@@ -13,8 +14,14 @@ import {
 } from "@/store/api/admin-api";
 import { useAppDispatch } from "@/store/hooks";
 
-const INPUT_CLASS =
-  "h-10 w-full rounded-lg border border-[#dfe2e8] bg-white px-3 text-[13px] text-[#172033] outline-none transition-colors placeholder:text-[#98a0ae] focus:border-[#315c9f]";
+import {
+  FormField,
+  INPUT_HEIGHT,
+  a11y,
+  hasErrors,
+  inputClass,
+  validateOptionalText,
+} from "../shared/form";
 
 const AUDIENCES = [
   { value: "CANDIDATE", label: "Candidate" },
@@ -29,7 +36,13 @@ const KINDS = [
 
 const DROPDOWN_CLASS = "rounded-lg focus:border-[#315c9f] focus:ring-[#315c9f]/20";
 
+// The characters the backend accepts in a code (`billing.domain`), after upper-casing.
+const CODE_PATTERN = /^[A-Z0-9-]+$/;
+
+type Field = "code" | "value" | "usageLimit" | "label" | "validFrom" | "validUntil";
+
 export function CreateCodeDrawer({ onClose }: { onClose: () => void }) {
+  useScrollLock(true);
   const dispatch = useAppDispatch();
   const [create, { isLoading }] = useCreateAdminDiscountCodeMutation();
   const [audience, setAudience] = useState<DiscountAudience>("CANDIDATE");
@@ -41,6 +54,60 @@ export function CreateCodeDrawer({ onClose }: { onClose: () => void }) {
   const [validFrom, setValidFrom] = useState("");
   const [validUntil, setValidUntil] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [touched, setTouched] = useState<ReadonlySet<Field>>(new Set());
+  const [serverErrors, setServerErrors] = useState<Partial<Record<Field, string>>>({});
+
+  const errors = useMemo(() => {
+    const found: Partial<Record<Field, string>> = {};
+
+    const trimmedCode = code.trim().toUpperCase();
+    if (trimmedCode) {
+      if (trimmedCode.length < 4 || trimmedCode.length > 32) found.code = "A code is 4 to 32 characters.";
+      else if (!CODE_PATTERN.test(trimmedCode)) found.code = "Use letters, numbers and hyphens only.";
+    }
+
+    const amount = Number(value);
+    if (!value.trim()) {
+      found.value = kind === "percent" ? "Enter the percentage off." : "Enter the amount off.";
+    } else if (!Number.isFinite(amount)) {
+      found.value = "Enter a number.";
+    } else if (kind === "percent") {
+      if (!Number.isInteger(amount)) found.value = "Use a whole percentage, like 20.";
+      else if (amount < 1 || amount > 99) found.value = "A percentage must be between 1 and 99.";
+    } else if (amount <= 0) {
+      found.value = "The amount must be more than ₹0.";
+    } else if (Math.round(amount * 100) / 100 !== amount) {
+      found.value = "Use at most two decimal places.";
+    }
+
+    if (usageLimit.trim()) {
+      const limit = Number(usageLimit);
+      if (!Number.isInteger(limit) || limit < 1) found.usageLimit = "Enter a whole number of 1 or more, or leave blank for unlimited.";
+    }
+
+    found.label = validateOptionalText(label, 120);
+
+    const from = validFrom ? new Date(validFrom).getTime() : null;
+    const until = validUntil ? new Date(validUntil).getTime() : null;
+    if (until !== null) {
+      if (Number.isNaN(until)) found.validUntil = "Enter a valid date and time.";
+      else if (from !== null && !Number.isNaN(from) && until <= from) found.validUntil = "The end must be after the start.";
+    }
+    if (from !== null && Number.isNaN(from)) found.validFrom = "Enter a valid date and time.";
+
+    return found;
+  }, [code, value, kind, usageLimit, label, validFrom, validUntil]);
+
+  const shown = (key: Field) => serverErrors[key] ?? (submitted || touched.has(key) ? errors[key] : undefined);
+  const touch = (key: Field) => setTouched((current) => new Set(current).add(key));
+  const edited = (key: Field) =>
+    setServerErrors((current) => {
+      if (!(key in current)) return current;
+      const rest = { ...current };
+      delete rest[key];
+      return rest;
+    });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -53,12 +120,24 @@ export function CreateCodeDrawer({ onClose }: { onClose: () => void }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setSubmitted(true);
+
+    if (hasErrors(errors)) {
+      setError("Fix the highlighted fields to continue.");
+      return;
+    }
+    // Checked here rather than while typing: it depends on the clock.
+    if (validUntil && new Date(validUntil).getTime() <= Date.now()) {
+      setServerErrors((current) => ({ ...current, validUntil: "The end is already in the past, so no one could use this code." }));
+      setError("Fix the highlighted fields to continue.");
+      return;
+    }
 
     const amount = Number(value);
     const payload: CreateDiscountCodeRequest = { audience };
     if (code.trim()) payload.code = code.trim().toUpperCase();
     if (label.trim()) payload.label = label.trim();
-    if (usageLimit) payload.usage_limit = Number(usageLimit);
+    if (usageLimit.trim()) payload.usage_limit = Number(usageLimit);
     if (validFrom) payload.valid_from = new Date(validFrom).toISOString();
     if (validUntil) payload.valid_until = new Date(validUntil).toISOString();
     if (kind === "percent") payload.percent_off = amount;
@@ -69,12 +148,17 @@ export function CreateCodeDrawer({ onClose }: { onClose: () => void }) {
       dispatch(showAdminFeedback(`Discount code ${created.code} created.`));
       onClose();
     } catch (mutationError) {
-      setError(getApiErrorMessage(mutationError, "The discount code could not be created."));
+      const message = getApiErrorMessage(mutationError, "The discount code could not be created.");
+      if (getApiErrorCode(mutationError) === "discount_code_taken") {
+        setServerErrors((current) => ({ ...current, code: message }));
+        return;
+      }
+      setError(message);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div data-scroll-lock-root className="fixed inset-0 z-[100]">
       <button
         type="button"
         aria-label="Close"
@@ -106,9 +190,10 @@ export function CreateCodeDrawer({ onClose }: { onClose: () => void }) {
           </button>
         </header>
 
-        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
-            <Field label="Audience">
+            <div>
+              <span className="mb-1.5 block text-[12px] font-semibold text-[#344054]">Audience</span>
               <SelectDropdown
                 value={audience}
                 onChange={(next) => setAudience(next as DiscountAudience)}
@@ -116,85 +201,107 @@ export function CreateCodeDrawer({ onClose }: { onClose: () => void }) {
                 ariaLabel="Audience"
                 className={DROPDOWN_CLASS}
               />
-            </Field>
+            </div>
 
-            <Field label="Code (optional)">
+            <FormField
+              id="discount-code"
+              label="Code (optional)"
+              error={shown("code")}
+              hint="Letters, numbers and hyphens, 4 to 32 characters. Leave blank to generate one."
+            >
               <input
+                {...a11y("discount-code", shown("code"))}
                 value={code}
-                onChange={(event) => setCode(event.target.value)}
-                minLength={4}
+                onChange={(event) => { setCode(event.target.value); edited("code"); }}
+                onBlur={() => touch("code")}
                 maxLength={32}
-                placeholder="Leave blank to generate one"
-                className={`${INPUT_CLASS} uppercase`}
+                autoComplete="off"
+                placeholder="Auto-generate"
+                className={inputClass(Boolean(shown("code")), `${INPUT_HEIGHT} uppercase`)}
               />
-            </Field>
+            </FormField>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Discount type">
+              <div>
+                <span className="mb-1.5 block text-[12px] font-semibold text-[#344054]">Discount type</span>
                 <SelectDropdown
                   value={kind}
                   onChange={(next) => {
                     setKind(next as "percent" | "amount");
                     setValue("");
+                    edited("value");
                   }}
                   options={KINDS}
                   ariaLabel="Discount type"
                   className={DROPDOWN_CLASS}
                 />
-              </Field>
-              <Field label={kind === "percent" ? "Percent off (1–99)" : "Amount off (₹)"}>
+              </div>
+              <FormField
+                id="discount-value"
+                label={kind === "percent" ? "Percent off (1–99)" : "Amount off (₹)"}
+                error={shown("value")}
+              >
                 <input
-                  required
+                  {...a11y("discount-value", shown("value"))}
                   type="number"
+                  inputMode="decimal"
                   value={value}
-                  onChange={(event) => setValue(event.target.value)}
-                  min={kind === "percent" ? 1 : 0.01}
-                  max={kind === "percent" ? 99 : undefined}
+                  onChange={(event) => { setValue(event.target.value); edited("value"); }}
+                  onBlur={() => touch("value")}
                   step={kind === "percent" ? 1 : 0.01}
                   placeholder={kind === "percent" ? "e.g. 20" : "e.g. 100"}
-                  className={INPUT_CLASS}
+                  className={inputClass(Boolean(shown("value")), INPUT_HEIGHT)}
                 />
-              </Field>
+              </FormField>
             </div>
 
-            <Field label="Usage limit (optional)">
+            <FormField id="discount-limit" label="Usage limit (optional)" error={shown("usageLimit")}>
               <input
+                {...a11y("discount-limit", shown("usageLimit"))}
                 type="number"
-                min={1}
+                inputMode="numeric"
                 value={usageLimit}
-                onChange={(event) => setUsageLimit(event.target.value)}
+                onChange={(event) => { setUsageLimit(event.target.value); edited("usageLimit"); }}
+                onBlur={() => touch("usageLimit")}
                 placeholder="Unlimited"
-                className={INPUT_CLASS}
+                className={inputClass(Boolean(shown("usageLimit")), INPUT_HEIGHT)}
               />
-            </Field>
+            </FormField>
 
-            <Field label="Label (optional)">
+            <FormField id="discount-label" label="Label (optional)" error={shown("label")}>
               <input
+                {...a11y("discount-label", shown("label"))}
                 value={label}
-                onChange={(event) => setLabel(event.target.value)}
-                maxLength={120}
+                onChange={(event) => { setLabel(event.target.value); edited("label"); }}
+                onBlur={() => touch("label")}
                 placeholder="e.g. Launch promo"
-                className={INPUT_CLASS}
+                className={inputClass(Boolean(shown("label")), INPUT_HEIGHT)}
               />
-            </Field>
+            </FormField>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Valid from">
-                <input
-                  type="datetime-local"
+              <FormField id="discount-from" label="Valid from" error={shown("validFrom")}>
+                <DateTimePicker
+                  id="discount-from"
                   value={validFrom}
-                  onChange={(event) => setValidFrom(event.target.value)}
-                  className={INPUT_CLASS}
+                  onChange={(next) => { setValidFrom(next); edited("validFrom"); edited("validUntil"); }}
+                  onBlur={() => touch("validFrom")}
+                  invalid={Boolean(shown("validFrom"))}
+                  ariaDescribedBy={shown("validFrom") ? "discount-from-error" : undefined}
+                  className={inputClass(Boolean(shown("validFrom")), INPUT_HEIGHT)}
                 />
-              </Field>
-              <Field label="Valid until">
-                <input
-                  type="datetime-local"
+              </FormField>
+              <FormField id="discount-until" label="Valid until" error={shown("validUntil")}>
+                <DateTimePicker
+                  id="discount-until"
                   value={validUntil}
-                  onChange={(event) => setValidUntil(event.target.value)}
-                  className={INPUT_CLASS}
+                  onChange={(next) => { setValidUntil(next); edited("validUntil"); }}
+                  onBlur={() => touch("validUntil")}
+                  invalid={Boolean(shown("validUntil"))}
+                  ariaDescribedBy={shown("validUntil") ? "discount-until-error" : undefined}
+                  className={inputClass(Boolean(shown("validUntil")), INPUT_HEIGHT)}
                 />
-              </Field>
+              </FormField>
             </div>
 
             {error ? (
@@ -218,14 +325,5 @@ export function CreateCodeDrawer({ onClose }: { onClose: () => void }) {
         </form>
       </aside>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-[12px] font-semibold text-[#344054]">{label}</span>
-      {children}
-    </label>
   );
 }

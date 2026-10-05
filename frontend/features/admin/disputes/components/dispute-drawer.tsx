@@ -13,6 +13,7 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { showAdminFeedback } from "@/store/admin";
 import { DetailSkeleton } from "@/components/common/loading";
 import { ErrorState } from "@/components/ui";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 
 import {
   selectAdminDisputes,
@@ -26,10 +27,12 @@ import {
 import { useDisputes } from "../hooks/use-disputes";
 
 import { StateBadge } from "../../shared/status-badge";
+import { FieldError } from "../../shared/form";
 
 export function DisputeDrawer() {
   const dispatch = useAppDispatch();
   const { openId } = useAppSelector(selectAdminDisputes);
+  useScrollLock(Boolean(openId));
   const detailQuery = useGetAdminDisputeQuery(openId ?? "", { skip: !openId });
   const [assignDispute, assignState] = useAssignAdminDisputeMutation();
   const [resolveDispute, resolveState] = useResolveAdminDisputeMutation();
@@ -38,6 +41,7 @@ export function DisputeDrawer() {
 
   const [resolutionNote, setResolutionNote] =
     useState("");
+  const [noteError, setNoteError] = useState<string | undefined>();
 
   if (!openId) {
     return null;
@@ -60,7 +64,16 @@ export function DisputeDrawer() {
   const actionError = assignState.error || resolveState.error;
 
   const finish = async (outcome: "RESOLVED" | "REJECTED") => {
-    if (!resolutionNote.trim()) return;
+    // The raiser reads this, so it cannot be empty; the backend allows 1-2000 characters.
+    if (!resolutionNote.trim()) {
+      setNoteError("Write the answer the person who raised this will read.");
+      return;
+    }
+    if (resolutionNote.trim().length > 2000) {
+      setNoteError(`Use 2000 characters or fewer. This is ${resolutionNote.trim().length}.`);
+      return;
+    }
+    setNoteError(undefined);
     try {
       await resolveDispute({ disputeId: openId, outcome, resolution: resolutionNote.trim() }).unwrap();
     } catch {
@@ -83,7 +96,7 @@ export function DisputeDrawer() {
   };
 
   return (
-    <>
+    <div data-scroll-lock-root>
       {/* ================================================================
           BACKDROP
           ================================================================ */}
@@ -222,15 +235,17 @@ export function DisputeDrawer() {
             <textarea
               rows={3}
               value={resolutionNote}
-              onChange={(event) =>
-                setResolutionNote(
-                  event.target.value,
-                )
-              }
+              onChange={(event) => {
+                setResolutionNote(event.target.value);
+                setNoteError(undefined);
+              }}
               placeholder="Shared with both parties and written to the audit trail"
               aria-label="Resolution note"
-              className="w-full resize-y rounded-[10px] border border-[#e5e8ee] px-4 py-3 text-[13px] font-medium leading-[18px] text-[#172033] outline-none placeholder:text-[#7b8494] focus:border-[#315c9f] focus:ring-1 focus:ring-[#315c9f]"
+              aria-invalid={noteError ? true : undefined}
+              aria-describedby={noteError ? "resolution-note-error" : undefined}
+              className={`w-full resize-y rounded-[10px] border px-4 py-3 text-[13px] font-medium leading-[18px] text-[#172033] outline-none placeholder:text-[#7b8494] ${noteError ? "border-[#d92d20] focus:border-[#d92d20]" : "border-[#e5e8ee] focus:border-[#315c9f] focus:ring-1 focus:ring-[#315c9f]"}`}
             />
+            <FieldError id="resolution-note-error" message={noteError} />
           </label>
         </div>
 
@@ -255,7 +270,7 @@ export function DisputeDrawer() {
 
           <button
             type="button"
-            disabled={actionLoading || !resolutionNote.trim() || !detail || ["RESOLVED", "REJECTED"].includes(detail.state)}
+            disabled={actionLoading || !detail || ["RESOLVED", "REJECTED"].includes(detail.state)}
             onClick={() => void finish("REJECTED")}
             className="flex-1 cursor-pointer rounded-lg border border-[#c92f3f] bg-white px-3 py-3 text-[13px] font-semibold leading-[17px] text-[#c92f3f] transition-colors hover:bg-[#fff7f7] disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -266,7 +281,7 @@ export function DisputeDrawer() {
 
           <button
             type="button"
-            disabled={actionLoading || !resolutionNote.trim() || !detail || ["RESOLVED", "REJECTED"].includes(detail.state)}
+            disabled={actionLoading || !detail || ["RESOLVED", "REJECTED"].includes(detail.state)}
             onClick={() => void finish("RESOLVED")}
             className="flex-[1.4] cursor-pointer rounded-lg border-0 bg-[#5b4fcf] px-3 py-3 text-[13px] font-semibold leading-[17px] text-white transition-colors hover:bg-[#4f44bc]"
           >
@@ -275,7 +290,7 @@ export function DisputeDrawer() {
           </div>
         </div>
       </aside>
-    </>
+    </div>
   );
 }
 

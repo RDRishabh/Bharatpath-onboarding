@@ -267,7 +267,8 @@ export function TablePagination({
             ariaLabel="Rows per page"
             className="w-18.5 [&>button]:h-8 [&>button]:px-2"
             menuClassName="!min-w-18.5"
-            menuPlacement="top"
+            menuPlacement="auto"
+            portal
           />
         </div>
 
@@ -357,7 +358,8 @@ export function CursorPagination({
               ariaLabel="Rows per page"
               className="w-18.5 [&>button]:h-8 [&>button]:px-2"
               menuClassName="!min-w-18.5"
-              menuPlacement="top"
+              menuPlacement="auto"
+              portal
             />
           </div>
         )}

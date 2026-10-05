@@ -12,7 +12,7 @@ export function DiscountCodeField({ planCode, preview, onChange, tone = "default
   tone?: "default" | "student";
   planCode: string;
   preview: (args: { planCode: string; discountCode: string }) => Promise<DiscountPreview>;
-  onChange: (code: string | null, price: DiscountPreview | null) => void;
+  onChange: (code: string | null, price: DiscountPreview | null) => void | Promise<void>;
 }) {
   const [value, setValue] = useState("");
   const [applied, setApplied] = useState<string | null>(null);
@@ -28,13 +28,23 @@ export function DiscountCodeField({ planCode, preview, onChange, tone = "default
     setLoading(true); setError(null);
     try {
       const result = await preview({ planCode, discountCode: code });
-      setApplied(code); setPrice(result); onChange(code, result);
+      await onChange(code, result);
+      setApplied(code); setPrice(result);
     } catch (e) {
-      setApplied(null); setPrice(null); onChange(null, null);
+      setApplied(null); setPrice(null);
+      try { await onChange(null, null); } catch { /* Keep the original apply error. */ }
       setError(getApiErrorMessage(e, "This discount code could not be applied."));
     } finally { setLoading(false); }
   }
-  function clear() { setValue(""); setApplied(null); setPrice(null); setError(null); onChange(null, null); }
+  async function clear() {
+    setLoading(true); setError(null);
+    try {
+      await onChange(null, null);
+      setValue(""); setApplied(null); setPrice(null);
+    } catch (e) {
+      setError(getApiErrorMessage(e, "The discount code could not be removed."));
+    } finally { setLoading(false); }
+  }
 
   return <div className={`mt-4 rounded-lg border p-3 text-[#0A1931] ${student ? "border-[#E7E0D4] bg-[#FDFAF4]" : "border-[#dfe3e9] bg-[#fafbfc]"}`}>
     <label className="flex items-center gap-2 text-xs font-semibold text-[#0A1931]"><Tag size={14} /> Discount code</label>

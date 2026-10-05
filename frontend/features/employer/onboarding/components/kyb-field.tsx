@@ -51,6 +51,7 @@ interface KybFieldInputProps {
   error?: string;
   options: KybOption[];
   disabled?: boolean;
+  menuPlacement?: "top" | "bottom";
   onChange: (value: unknown) => void;
 }
 
@@ -70,6 +71,7 @@ export function KybFieldInput({
   error,
   options,
   disabled = false,
+  menuPlacement = "bottom",
   onChange,
 }: Readonly<KybFieldInputProps>) {
   const id = `kyb-${field.code}`;
@@ -138,6 +140,7 @@ export function KybFieldInput({
           placeholder="Select an option"
           ariaLabel={field.label}
           className={selectClass}
+          menuPlacement={menuPlacement}
           searchable={selectOptions.length > 8}
           searchPlaceholder={`Search ${field.label.toLowerCase()}`}
         />

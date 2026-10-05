@@ -15,6 +15,7 @@ export * from "./tooltip";
 export * from "./confirm-modal";
 export * from "./modal";
 export * from "./error-state";
+export * from "./date-time-picker";
 export {
   Dropdown,
 } from "./dropdown";

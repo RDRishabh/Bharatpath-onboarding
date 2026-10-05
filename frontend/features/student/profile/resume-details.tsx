@@ -1,25 +1,34 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, FileText, History, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, FileText, History, ShieldCheck, Upload } from "lucide-react";
 
 import { FormSkeleton } from "@/components/common/loading";
 import { StudentErrorState } from "@/features/student/components";
 import { formatDateTime } from "@/features/student/formatters";
-import { ManualStep } from "@/features/student/onboarding/components/intake-steps";
+import { ManualStep, PasteStep, resumeFileProblem } from "@/features/student/onboarding/components/intake-steps";
+import { ParsingStep, type UploadPhase } from "@/features/student/onboarding/components/parsing-step";
 import { ReviewStep } from "@/features/student/onboarding/components/review-step";
+import { parseFailureMessage } from "@/features/student/onboarding/constants";
 import { StudentPage } from "@/features/student/shell";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/api/error-message";
 import { showSuccessFeedback } from "@/lib/feedback/success-feedback";
-import { useGetResumeVersionsQuery, type ManualResume } from "@/store/student";
+import { useCompleteResumeUploadMutation, useCreateResumeUploadMutation, useGetResumeVersionsQuery, useUploadResumeFileMutation, type ManualResume } from "@/store/student";
 
 type View =
   | { name: "review"; versionId: string }
-  | { name: "edit"; versionId: string; resume: ManualResume };
+  | { name: "edit"; versionId: string; resume: ManualResume }
+  | { name: "paste" }
+  | { name: "parsing"; fileName: string; fileSize: number; phase: UploadPhase; resumeFileId?: string; uploadId?: string; error?: string };
 
 export function ResumeDetails() {
   const router = useRouter();
+  const fileInput = useRef<HTMLInputElement>(null);
   const versions = useGetResumeVersionsQuery();
+  const [createUpload] = useCreateResumeUploadMutation();
+  const [uploadFile] = useUploadResumeFileMutation();
+  const [completeUpload] = useCompleteResumeUploadMutation();
   const current = useMemo(
     () => versions.data?.find((version) => !version.superseded) ?? versions.data?.[0],
     [versions.data],
@@ -28,9 +37,39 @@ export function ResumeDetails() {
   const activeView: View | null =
     view ?? (current ? { name: "review", versionId: current.resumeVersionId } : null);
 
+  const finishUpload = async (uploadId: string, fileName: string, fileSize: number) => {
+    setView({ name: "parsing", fileName, fileSize, phase: "checking" });
+    try {
+      const accepted = await completeUpload(uploadId).unwrap();
+      setView({ name: "parsing", fileName, fileSize, phase: "reading", resumeFileId: accepted.resumeFileId });
+    } catch (error) {
+      const code = getApiErrorCode(error);
+      setView({ name: "parsing", fileName, fileSize, phase: "checking", uploadId, error: code?.startsWith("upload_") || code === "resume_upload_rejected" ? parseFailureMessage(code) : getApiErrorMessage(error, "We could not check your file. Please try again.") });
+    }
+  };
+
+  const startUpload = async (file: File) => {
+    const localProblem = resumeFileProblem(file);
+    if (localProblem) {
+      setView({ name: "parsing", fileName: file.name, fileSize: file.size, phase: "uploading", error: localProblem });
+      return;
+    }
+    setView({ name: "parsing", fileName: file.name, fileSize: file.size, phase: "uploading" });
+    try {
+      const ticket = await createUpload().unwrap();
+      const problem = resumeFileProblem(file, ticket.maxBytes);
+      if (problem) throw new Error(problem);
+      await uploadFile({ ticket, file }).unwrap();
+      await finishUpload(ticket.uploadId, file.name, file.size);
+    } catch (error) {
+      setView({ name: "parsing", fileName: file.name, fileSize: file.size, phase: "uploading", error: error instanceof Error ? error.message : getApiErrorMessage(error, "The upload did not finish. Please try again.") });
+    }
+  };
+
   return (
-    <StudentPage className="max-w-none">
+    <StudentPage>
       <div className="w-full">
+        <input ref={fileInput} type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" aria-label="Upload a new resume" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void startUpload(file); }} />
         <button
           type="button"
           onClick={() => router.push("/student/profile")}
@@ -64,6 +103,10 @@ export function ResumeDetails() {
                   Add resume
                 </button>
               </div>
+            ) : activeView.name === "parsing" ? (
+              <ParsingStep key={activeView.resumeFileId ?? activeView.fileName} fileName={activeView.fileName} fileSize={activeView.fileSize} phase={activeView.phase} resumeFileId={activeView.resumeFileId} error={activeView.error} onRetry={activeView.uploadId ? () => void finishUpload(activeView.uploadId!, activeView.fileName, activeView.fileSize) : undefined} onReview={(versionId) => { setView({ name: "review", versionId }); void versions.refetch(); }} onTryAnother={() => fileInput.current?.click()} onPaste={() => setView({ name: "paste" })} />
+            ) : activeView.name === "paste" ? (
+              <PasteStep onBack={() => { if (current) setView({ name: "review", versionId: current.resumeVersionId }); }} onCreated={(versionId) => { setView({ name: "review", versionId }); void versions.refetch(); }} />
             ) : activeView.name === "edit" ? (
               <ManualStep
                 initial={activeView.resume}
@@ -76,20 +119,14 @@ export function ResumeDetails() {
                 }}
               />
             ) : (
-              <ReviewStep
-                key={activeView.versionId}
-                resumeVersionId={activeView.versionId}
-                title="Resume details"
-                subtitle="Review and edit the details extracted from your resume. Changes are saved as a new version."
-                confirmLabel="Save changes"
-                startOverLabel="Back to profile"
-                onStartOver={() => router.push("/student/profile")}
-                onEditStructured={(resume, versionId) => setView({ name: "edit", versionId, resume })}
-                onConfirmed={() => {
-                  showSuccessFeedback("Resume details saved.");
-                  void versions.refetch();
-                }}
-              />
+              <div className="flex flex-col gap-5">
+                <button type="button" onClick={() => fileInput.current?.click()} className="group flex w-full cursor-pointer items-center gap-4 rounded-[20px] border border-[#CFC4F4] bg-white p-4 text-left shadow-sm transition hover:border-[#5F4DB2] sm:p-5">
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#F1EAF7] text-[#5F4DB2]"><Upload className="h-5 w-5" aria-hidden="true" /></span>
+                  <span className="min-w-0 flex-1"><span className="block text-[16px] font-bold text-[#0A1931]">Upload new resume</span><span className="mt-0.5 block text-[13px] leading-5 text-[#5F6B80]">Upload a PDF or DOCX file to replace the current resume</span></span>
+                  <ArrowRight className="h-5 w-5 shrink-0 text-[#5F4DB2] transition group-hover:translate-x-0.5" aria-hidden="true" />
+                </button>
+                <ReviewStep key={activeView.versionId} resumeVersionId={activeView.versionId} title="Resume details" subtitle="Review and edit the details extracted from your resume. Changes are saved as a new version." confirmLabel="Save & update score" startOverLabel="Back to profile" onStartOver={() => router.push("/student/profile")} onEditStructured={(resume, versionId) => setView({ name: "edit", versionId, resume })} onConfirmed={() => { showSuccessFeedback("Resume saved and score update started."); void versions.refetch(); }} />
+              </div>
             )}
           </main>
 

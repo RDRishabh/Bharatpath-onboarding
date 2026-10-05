@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 
 import { ErrorState } from "@/components/ui";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 import { showAdminFeedback } from "@/store/admin";
 import {
   type DiscountCode,
@@ -20,6 +21,7 @@ interface CodeDrawerProps {
 }
 
 export function CodeDrawer({ code, canWrite, onClose }: CodeDrawerProps) {
+  useScrollLock(true);
   const dispatch = useAppDispatch();
   const redemptions = useGetAdminDiscountRedemptionsQuery({ id: code.id, limit: 50 });
   const [disableCode, disableState] = useDisableAdminDiscountCodeMutation();
@@ -35,7 +37,7 @@ export function CodeDrawer({ code, canWrite, onClose }: CodeDrawerProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div data-scroll-lock-root className="fixed inset-0 z-[100]">
       <button type="button" aria-label="Close details" onClick={onClose} className="absolute inset-0 bg-[#172033]/30" />
       <aside
         role="dialog"

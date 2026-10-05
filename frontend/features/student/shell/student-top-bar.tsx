@@ -20,16 +20,18 @@ export function StudentTopBar({
   right,
   onBack,
   backHref,
+  className = "",
 }: {
   title: ReactNode;
   right?: ReactNode;
   onBack?: () => void;
   backHref?: string;
+  className?: string;
 }) {
   const router = useRouter();
 
   return (
-    <div className="mb-5 flex items-center gap-3">
+    <div className={`mb-5 flex items-center gap-3 ${className}`}>
       <IconCircleButton
         aria-label="Go back"
         onClick={onBack ?? (() => backHref ? router.push(backHref) : router.back())}

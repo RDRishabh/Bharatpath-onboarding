@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 
 const navigation = [
   ["Dashboard", "/admin/dashboard"],
@@ -73,10 +74,12 @@ export function Drawer({
   readonly onClose: () => void;
   readonly children: ReactNode;
 }) {
+  useScrollLock(open);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-[#141b2e]/30" role="dialog" aria-modal="true" aria-label={title}>
+    <div data-scroll-lock-root className="fixed inset-0 z-50 flex justify-end bg-[#141b2e]/30" role="dialog" aria-modal="true" aria-label={title}>
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close drawer" onClick={onClose} />
       <section className="relative h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-xl">
         <div className="mb-5 flex items-center justify-between">

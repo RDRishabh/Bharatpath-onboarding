@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 import { ChevronDown, Loader2, Search } from "lucide-react";
 
@@ -20,7 +21,9 @@ interface AppSelectProps {
   options: AppSelectOption[];
   className?: string;
   menuClassName?: string;
-  menuPlacement?: "top" | "bottom";
+  menuPlacement?: "top" | "bottom" | "auto";
+  /** Render outside clipping and scrolling ancestors, positioned at the trigger. */
+  portal?: boolean;
   placeholder?: string;
   ariaLabel?: string;
   /** Show a search box inside the menu to filter options. Off by default. */
@@ -52,6 +55,7 @@ export function AppSelect({
   className = "",
   menuClassName = "",
   menuPlacement = "bottom",
+  portal = false,
   placeholder = "Select",
   ariaLabel,
   searchable = false,
@@ -70,7 +74,16 @@ export function AppSelect({
 
   const containerRef =
     useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [menuPosition, setMenuPosition] = useState<{
+    left: number;
+    width: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
+  } | null>(null);
+  const [resolvedPlacement, setResolvedPlacement] = useState<"top" | "bottom">("bottom");
 
   const selectedOption = options.find(
     (option) => option.value === value,
@@ -103,10 +116,8 @@ export function AppSelect({
       event: MouseEvent,
     ) {
       if (
-        containerRef.current &&
-        !containerRef.current.contains(
-          event.target as Node,
-        )
+        !containerRef.current?.contains(event.target as Node) &&
+        !menuRef.current?.contains(event.target as Node)
       ) {
         closeMenu();
       }
@@ -124,6 +135,49 @@ export function AppSelect({
       );
     };
   }, [closeMenu]);
+
+  useEffect(() => {
+    if (!open || !portal) return;
+
+    function updatePosition() {
+      const trigger = containerRef.current?.querySelector("button");
+      if (!trigger) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const viewportPadding = 8;
+      const gap = 6;
+      const spaceAbove = Math.max(0, rect.top - gap - viewportPadding);
+      const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - gap - viewportPadding);
+      const preferredHeight = Math.min(280, window.innerHeight * 0.45);
+      const placement = menuPlacement === "auto"
+        ? spaceBelow >= preferredHeight || spaceBelow >= spaceAbove ? "bottom" : "top"
+        : menuPlacement;
+      const availableSpace = placement === "top" ? spaceAbove : spaceBelow;
+      const width = Math.min(rect.width, window.innerWidth - viewportPadding * 2);
+      const left = Math.min(
+        Math.max(viewportPadding, rect.left),
+        window.innerWidth - width - viewportPadding,
+      );
+
+      setResolvedPlacement(placement);
+      setMenuPosition({
+        left,
+        width,
+        ...(placement === "top"
+          ? { bottom: window.innerHeight - rect.top + gap }
+          : { top: rect.bottom + gap }),
+        maxHeight: availableSpace,
+      });
+    }
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [menuPlacement, open, portal]);
 
   /* =====================================================
      CLOSE WITH ESCAPE
@@ -157,10 +211,10 @@ export function AppSelect({
 
   // Move focus into the search box when a searchable menu opens.
   useEffect(() => {
-    if (open && searchable) {
+    if (open && searchable && (!portal || menuPosition)) {
       searchInputRef.current?.focus();
     }
-  }, [open, searchable]);
+  }, [menuPosition, open, portal, searchable]);
 
   /* =====================================================
      SELECT OPTION
@@ -189,6 +243,66 @@ export function AppSelect({
       onLoadMoreOptions?.();
     }
   }
+
+  const menuContents = (
+    <>
+      {searchable && (
+        <div className="mb-1 flex items-center gap-2 rounded-[7px] bg-[#f5f6f9] px-2.5 py-1.5">
+          <Search size={13} className="shrink-0 text-[#98a1b0]" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={query}
+            onChange={(event) => handleSearchChange(event.target.value)}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            className="w-full bg-transparent text-[11px] text-[#283247] outline-none placeholder:text-[#98a1b0]"
+          />
+        </div>
+      )}
+
+      <div
+        onScroll={handleOptionsScroll}
+        className="bp-scrollbar max-h-[min(14rem,45vh)] overflow-y-auto overscroll-contain"
+      >
+        {isSearching ? (
+          <p role="status" className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-[#687386]">
+            <Loader2 aria-hidden="true" size={13} className="animate-spin" />
+            {loadingMessage}
+          </p>
+        ) : visibleOptions.length > 0 ? (
+          visibleOptions.map((option) => {
+            const selected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => handleSelect(option)}
+                className={`flex w-full items-center rounded-[7px] px-2.5 py-2 text-left text-[11px] transition-colors ${
+                  selected
+                    ? "bg-[#f2f0ff] font-semibold text-[#51449a]"
+                    : "font-medium text-[#4f5969] hover:bg-[#f7f8fa]"
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })
+        ) : (
+          <p className="px-2.5 py-2 text-[11px] text-[#98a1b0]">{noOptionsMessage}</p>
+        )}
+        {isLoadingMoreOptions ? (
+          <p role="status" className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-[#687386]">
+            <Loader2 aria-hidden="true" size={13} className="animate-spin" />
+            Loading more...
+          </p>
+        ) : null}
+      </div>
+    </>
+  );
+  const inlinePlacement = menuPlacement === "auto" ? resolvedPlacement : menuPlacement;
 
   return (
     <div
@@ -243,110 +357,29 @@ export function AppSelect({
           ================================================= */}
 
       {open && (
-        <div
-          role="listbox"
-          className={`
-            absolute
-            right-0
-            ${menuPlacement === "top" ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]"}
-            z-[80]
-            w-full
-            min-w-[140px]
-            overflow-hidden
-            rounded-[10px]
-            border border-[#e1e5ea]
-            bg-white
-            p-1
-            shadow-[0_8px_24px_rgba(19,26,38,0.10)]
-            ${menuClassName}
-          `}
-        >
-          {searchable && (
-            <div className="mb-1 flex items-center gap-2 rounded-[7px] bg-[#f5f6f9] px-2.5 py-1.5">
-              <Search size={13} className="shrink-0 text-[#98a1b0]" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={query}
-                onChange={(event) => handleSearchChange(event.target.value)}
-                placeholder={searchPlaceholder}
-                aria-label={searchPlaceholder}
-                className="w-full bg-transparent text-[11px] text-[#283247] outline-none placeholder:text-[#98a1b0]"
-              />
-            </div>
-          )}
-
-          <div
-            onScroll={handleOptionsScroll}
-            className="bp-scrollbar max-h-[min(14rem,45vh)] overflow-y-auto overscroll-contain"
-          >
-            {isSearching ? (
-              <p
-                role="status"
-                className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-[#687386]"
+        portal
+          ? menuPosition
+            ? createPortal(
+                <div
+                  ref={menuRef}
+                  role="listbox"
+                  style={{ ...menuPosition, position: "fixed" }}
+                  className={`z-[80] min-w-[140px] overflow-hidden rounded-[10px] border border-[#e1e5ea] bg-white p-1 shadow-[0_8px_24px_rgba(19,26,38,0.10)] ${menuClassName}`}
+                >
+                  {menuContents}
+                </div>,
+                document.body,
+              )
+            : null
+          : (
+              <div
+                ref={menuRef}
+                role="listbox"
+                className={`absolute right-0 ${inlinePlacement === "top" ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]"} z-[80] w-full min-w-[140px] overflow-hidden rounded-[10px] border border-[#e1e5ea] bg-white p-1 shadow-[0_8px_24px_rgba(19,26,38,0.10)] ${menuClassName}`}
               >
-                <Loader2
-                  aria-hidden="true"
-                  size={13}
-                  className="animate-spin"
-                />
-                {loadingMessage}
-              </p>
-            ) : visibleOptions.length > 0 ? (
-              visibleOptions.map((option) => {
-                const selected =
-                  option.value === value;
-
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    onClick={() =>
-                      handleSelect(option)
-                    }
-                    className={`
-                      flex
-                      w-full
-                      items-center
-                      rounded-[7px]
-                      px-2.5
-                      py-2
-                      text-left
-                      text-[11px]
-                      transition-colors
-                      ${
-                        selected
-                          ? "bg-[#f2f0ff] font-semibold text-[#51449a]"
-                          : "font-medium text-[#4f5969] hover:bg-[#f7f8fa]"
-                      }
-                    `}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })
-            ) : (
-              <p className="px-2.5 py-2 text-[11px] text-[#98a1b0]">
-                {noOptionsMessage}
-              </p>
-            )}
-            {isLoadingMoreOptions ? (
-              <p
-                role="status"
-                className="flex items-center gap-2 px-2.5 py-2 text-[11px] text-[#687386]"
-              >
-                <Loader2
-                  aria-hidden="true"
-                  size={13}
-                  className="animate-spin"
-                />
-                Loading more...
-              </p>
-            ) : null}
-          </div>
-        </div>
+                {menuContents}
+              </div>
+            )
       )}
     </div>
   );

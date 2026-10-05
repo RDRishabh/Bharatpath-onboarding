@@ -89,7 +89,6 @@ export function ParsingStep({
 }: Readonly<ParsingStepProps>) {
   const [stopPolling, setStopPolling] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [cursor, setCursor] = useState(0);
 
   const status = useGetResumeFileStatusQuery(resumeFileId ?? "", {
     skip: !resumeFileId,
@@ -116,7 +115,6 @@ export function ParsingStep({
     if (readable || failed || error) return;
     const timer = window.setInterval(() => {
       setElapsed((seconds) => seconds + 1);
-      setCursor((index) => (index + 1) % 5);
     }, 1400);
     return () => window.clearInterval(timer);
   }, [readable, failed, error]);
@@ -188,7 +186,17 @@ export function ParsingStep({
 
         <ul className="m-0 flex list-none flex-col p-0" aria-live="polite">
           {rows.map((row, index) => {
-            const active = !readable && !failed && !error && index === cursor;
+            // The API reports parsing as one QUEUED -> terminal operation; it
+            // does not report per-section progress. Keep the loader on the
+            // first pending row until that backend operation is actually done
+            // instead of pretending that sections completed on a timer.
+            const active =
+              phase === "reading" &&
+              !readable &&
+              !failed &&
+              !error &&
+              !status.isError &&
+              index === 0;
 
             return (
               <li

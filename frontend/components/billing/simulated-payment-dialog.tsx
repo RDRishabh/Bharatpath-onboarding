@@ -2,6 +2,7 @@
 
 import { Check, LockKeyhole, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { getApiErrorMessage } from "@/lib/api/error-message";
 import { useSimulatePaymentMutation } from "@/store/api/payment.api";
@@ -13,6 +14,7 @@ type SimulatedPaymentDialogProps = {
   title?: string;
   onComplete: () => unknown | Promise<unknown>;
   onClose: () => void;
+  checkoutContent?: ReactNode;
 };
 
 const money = (amountMinor: number, currency: string) =>
@@ -29,6 +31,7 @@ export function SimulatedPaymentDialog({
   title = "BharatPath payment",
   onComplete,
   onClose,
+  checkoutContent,
 }: SimulatedPaymentDialogProps) {
   const [stage, setStage] = useState<"ready" | "processing" | "success" | "error">("ready");
   const [message, setMessage] = useState<string | null>(null);
@@ -65,7 +68,7 @@ export function SimulatedPaymentDialog({
     <div className="fixed inset-0 z-[100] grid place-items-center bg-[#071225]/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="simulated-payment-title">
       <div className="relative w-full max-w-[430px] overflow-hidden rounded-[24px] bg-white shadow-2xl">
         {canClose && stage !== "success" ? (
-          <button type="button" onClick={onClose} aria-label="Close payment" className="absolute right-4 top-4 z-10 rounded-full p-2 text-[#64748b] transition hover:bg-[#f1f5f9]">
+          <button type="button" onClick={onClose} aria-label="Close payment" className="absolute right-4 top-4 z-10 rounded-full p-2 text-white/90 transition hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80">
             <X size={18} />
           </button>
         ) : null}
@@ -93,6 +96,8 @@ export function SimulatedPaymentDialog({
                 <div><p className="text-sm font-bold text-[#0A1931]">UPI payment</p><p className="mt-0.5 text-xs text-[#64748b]">Instant confirmation</p></div>
                 <span className="ml-auto h-4 w-4 rounded-full border-[5px] border-[#5F4DB2]" />
               </div>
+
+              {checkoutContent}
 
               {message ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-xs text-red-700">{message}</p> : null}
 

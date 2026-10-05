@@ -13,6 +13,7 @@ import {
   ScrollText,
   Tags,
   BadgePercent,
+  BookOpen,
 } from "lucide-react";
 
 export const employerNavigation = [
@@ -113,6 +114,12 @@ export const adminNavigation = [
     label: "Attributes",
     href: "/admin/search-filters",
     icon: Tags,
+  },
+  {
+    key: "courses",
+    label: "Courses",
+    href: "/admin/courses",
+    icon: BookOpen,
   },
   {
     key: "discount-codes",

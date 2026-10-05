@@ -9,6 +9,42 @@ states. Newest entries first.
 
 ---
 
+## 2026-10-05 — resume loading follows the backend parse state
+
+The resume-reading checklist no longer advances through contact, education,
+experience, skills, and certificates on a client-side timer. The backend
+exposes the parse as one authoritative `QUEUED` → terminal operation, not five
+section-level jobs, so the UI now keeps the loader on the first pending row
+until polling reports that parsing really finished. Only then does it show the
+section results returned by the completed resume version; failures stop the
+loader and retain the existing recovery actions.
+
+---
+
+## 2026-10-05 — sidebar identities never display internal IDs
+
+All four portal sidebars now use the server-authoritative identity returned by
+`GET /auth/me`: a candidate's profile name first, then the account email, then
+a readable role/account label. The frontend previously ignored `email` and
+`full_name` from that response and could display Cognito's opaque username
+claim (often a UUID). UUIDs, user IDs, and tenant IDs are now explicitly
+rejected as display-label fallbacks in both the shared portal sidebar and the
+student sidebar.
+
+---
+
+## 2026-10-05 — admin email-only user invitations verified end to end
+
+The admin Users page has a separate Invite action for candidates, employers,
+and institutions. Its drawer asks only for the recipient's email; the active
+tab supplies the backend's required account kind so Cognito selects the
+candidate or business user pool. This path does not create a local user,
+profile, or organisation. Integration coverage now holds all three mappings,
+email normalization, the no-local-account invariant, and the required kind.
+Invite failures also use invitation-specific wording in the frontend.
+
+---
+
 ## 2026-10-03 — Terraform records the mobile app's Cognito sign-in flow
 
 A plan for an unrelated change wanted to remove `ALLOW_USER_PASSWORD_AUTH`

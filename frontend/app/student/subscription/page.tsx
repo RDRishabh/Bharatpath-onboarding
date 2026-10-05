@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { DiscountCodeField, type DiscountPreview } from "@/components/billing/discount-code-field";
+import { DiscountCodeField } from "@/components/billing/discount-code-field";
 import { SimulatedPaymentDialog } from "@/components/billing/simulated-payment-dialog";
 import { StudentPage } from "@/features/student/shell";
 import { getApiErrorMessage } from "@/lib/api/error-message";
@@ -17,20 +17,22 @@ export default function CandidateSubscriptionPage() {
   const [preview] = usePreviewCandidateDiscountMutation();
   const [checkout, checkoutState] = useCheckoutCandidateSubscriptionMutation();
   const [cancel, cancelState] = useCancelCandidateSubscriptionMutation();
-  const [discounts, setDiscounts] = useState<Record<string, { code: string | null; price: DiscountPreview | null }>>({});
   const [error, setError] = useState<string | null>(null);
   const [simulatedCheckout, setSimulatedCheckout] = useState<CandidateCheckout | null>(null);
+  const [selectedPlanCode, setSelectedPlanCode] = useState<string | null>(null);
+
+  async function createCheckout(planCode: string, discountCode?: string) {
+    setError(null);
+    const result = await checkout({ planCode, discountCode }).unwrap();
+    if (isStubPaymentUrl(result.redirect_url)) setSimulatedCheckout(result);
+    else if (result.redirect_url) window.location.assign(result.redirect_url);
+    else throw new Error("Checkout was created, but no payment page was returned.");
+  }
 
   async function buy(planCode: string) {
-    setError(null);
-    try {
-      const result = await checkout({ planCode, discountCode: discounts[planCode]?.code ?? undefined }).unwrap();
-      if (isStubPaymentUrl(result.redirect_url)) setSimulatedCheckout(result);
-      else if (result.redirect_url) window.location.assign(result.redirect_url);
-      else setError("Checkout was created, but no payment page was returned.");
-    } catch (checkoutError) {
-      setError(getApiErrorMessage(checkoutError, "Checkout could not be started."));
-    }
+    setSelectedPlanCode(planCode);
+    try { await createCheckout(planCode); }
+    catch (checkoutError) { setError(getApiErrorMessage(checkoutError, "Checkout could not be started.")); }
   }
 
   return <StudentPage><div className="flex flex-col gap-5">
@@ -51,10 +53,9 @@ export default function CandidateSubscriptionPage() {
         <p className="text-xs font-semibold uppercase text-[#5F6B80]">{plan.period}</p>
         <p className="mt-2 text-3xl font-bold text-[#0A1931]">{money(plan.price_minor)}</p>
         <p className="mt-1 text-sm text-[#5F6B80]">{plan.months} month{plan.months === 1 ? "" : "s"}</p>
-        <DiscountCodeField tone="student" planCode={plan.code} preview={(args) => preview(args).unwrap()} onChange={(code, price) => setDiscounts((current) => ({ ...current, [plan.code]: { code, price } }))} />
-        <button type="button" disabled={checkoutState.isLoading} onClick={() => void buy(plan.code)} className="mt-4 w-full rounded-lg bg-[#5F4DB2] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#4A3E8F] disabled:opacity-50">{checkoutState.isLoading ? "Starting checkout…" : `Continue · ${money(discounts[plan.code]?.price?.amount_minor ?? plan.price_minor)}`}</button>
+        <button type="button" disabled={checkoutState.isLoading} onClick={() => void buy(plan.code)} className="mt-4 w-full rounded-lg bg-[#5F4DB2] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#4A3E8F] disabled:opacity-50">{checkoutState.isLoading ? "Starting checkout…" : `Continue · ${money(plan.price_minor)}`}</button>
       </section>)}
     </div>}
-    {simulatedCheckout ? <SimulatedPaymentDialog paymentId={simulatedCheckout.payment_id} amountMinor={simulatedCheckout.amount_minor} currency={simulatedCheckout.currency} title="BharatPath membership" onComplete={() => refetchSubscription()} onClose={() => setSimulatedCheckout(null)} /> : null}
+    {simulatedCheckout && selectedPlanCode ? <SimulatedPaymentDialog paymentId={simulatedCheckout.payment_id} amountMinor={simulatedCheckout.amount_minor} currency={simulatedCheckout.currency} title="BharatPath membership" checkoutContent={<DiscountCodeField tone="student" planCode={selectedPlanCode} preview={(args) => preview(args).unwrap()} onChange={(code) => createCheckout(selectedPlanCode, code ?? undefined)} />} onComplete={() => refetchSubscription()} onClose={() => { setSimulatedCheckout(null); setSelectedPlanCode(null); }} /> : null}
   </div></StudentPage>;
 }

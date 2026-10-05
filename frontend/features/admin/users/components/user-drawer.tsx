@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 
 import { DetailSkeleton } from "@/components/common/loading";
 import { ErrorState } from "@/components/ui";
+import { useScrollLock } from "@/hooks/use-scroll-lock";
 import { showAdminFeedback } from "@/store/admin";
 import { useAppDispatch } from "@/store/hooks";
 import {
@@ -19,11 +20,14 @@ import {
 } from "@/store/api/admin-api";
 
 import { useUsers } from "../hooks/use-users";
+import { FieldError, a11y, validateRequiredText } from "../../shared/form";
 
 export function UserDrawer() {
   const dispatch = useAppDispatch();
   const { segment, selectedId, closeUser } = useUsers();
+  useScrollLock(Boolean(selectedId));
   const [reason, setReason] = useState("");
+  const [reasonError, setReasonError] = useState<string | undefined>();
   const isCandidate = segment === "candidates";
   const isEmployer = segment === "employers";
   const candidateQuery = useGetAdminCandidateQuery(selectedId ?? "", {
@@ -70,7 +74,14 @@ export function UserDrawer() {
       if (status === "SUSPENDED") {
         await reinstateTenant(selectedId).unwrap();
         dispatch(showAdminFeedback("Organisation reinstated."));
-      } else if (reason.trim().length >= 3) {
+      } else {
+        // Kept on the suspension row for whoever lifts it; the backend takes 3-500 characters.
+        const problem = validateRequiredText(reason, "the reason for suspending", 3, 500);
+        if (problem) {
+          setReasonError(problem);
+          return;
+        }
+        setReasonError(undefined);
         await suspendTenant({ tenantId: selectedId, reason: reason.trim() }).unwrap();
         dispatch(showAdminFeedback("Organisation suspended."));
         setReason("");
@@ -90,7 +101,7 @@ export function UserDrawer() {
   };
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div data-scroll-lock-root className="fixed inset-0 z-[100]">
       <button type="button" aria-label="Close details" onClick={closeUser} className="absolute inset-0 bg-[#172033]/30" />
       <aside className="absolute right-0 top-0 flex h-full w-[520px] max-w-full flex-col bg-white shadow-[-20px_0_60px_-24px_rgba(0,0,0,0.5)]" role="dialog" aria-modal="true">
         <header className="flex items-start justify-between border-b border-[#e5e7eb] px-5 py-4">
@@ -155,9 +166,18 @@ export function UserDrawer() {
               ) : null}
 
               {!isCandidate && status !== "SUSPENDED" ? (
-                <label className="block text-[12px] font-semibold text-[#172033]">Suspension reason
-                  <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-[#e5e7eb] px-3 py-2 font-normal" placeholder="Required, at least 3 characters" />
-                </label>
+                <div>
+                  <label htmlFor="suspension-reason" className="block text-[12px] font-semibold text-[#172033]">Suspension reason</label>
+                  <textarea
+                    {...a11y("suspension-reason", reasonError)}
+                    value={reason}
+                    onChange={(event) => { setReason(event.target.value); setReasonError(undefined); }}
+                    rows={3}
+                    className={`mt-2 w-full rounded-lg border px-3 py-2 text-[13px] font-normal text-[#172033] outline-none ${reasonError ? "border-[#d92d20] focus:border-[#d92d20]" : "border-[#e5e7eb] focus:border-[#315c9f]"}`}
+                    placeholder="Required, 3 to 500 characters"
+                  />
+                  <FieldError id="suspension-reason-error" message={reasonError} />
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -165,7 +185,7 @@ export function UserDrawer() {
 
         {organisationDetail ? (
           <footer className="border-t border-[#e5e7eb] p-4">
-            <button type="button" disabled={isActing || (status !== "SUSPENDED" && reason.trim().length < 3)} onClick={() => void updateStatus()} className="w-full rounded-lg border border-[#c92f3f] px-4 py-3 text-[13px] font-semibold text-[#c92f3f] disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="button" disabled={isActing} onClick={() => void updateStatus()} className="w-full rounded-lg border border-[#c92f3f] px-4 py-3 text-[13px] font-semibold text-[#c92f3f] disabled:cursor-not-allowed disabled:opacity-50">
               {isActing ? "Saving..." : status === "SUSPENDED" ? "Reinstate organisation" : "Suspend organisation"}
             </button>
           </footer>
