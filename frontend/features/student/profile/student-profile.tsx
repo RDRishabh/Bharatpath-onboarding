@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -11,17 +11,16 @@ import {
   ClipboardCheck,
   Eye,
   FileText,
-  GraduationCap,
   Languages,
   Lock,
   MapPin,
   Mic2,
+  Pencil,
   type LucideIcon,
 } from "lucide-react";
 
 import {
   useGetStudentApplicationsQuery,
-  useGetStudentCollegeLinksQuery,
   useGetStudentCoursesQuery,
   useGetStudentProfileQuery,
   useGetStudentProfileViewsQuery,
@@ -47,6 +46,7 @@ import {
 import { Skeleton } from "@/components/common/loading";
 import { StudentProfileSkeleton } from "@/features/student/loading";
 import { StudentPage } from "@/features/student/shell";
+import { Modal } from "@/components/ui/modal";
 
 export function StudentProfile() {
   const router = useRouter();
@@ -54,21 +54,16 @@ export function StudentProfile() {
   const score = useGetStudentScoreQuery();
   const applications = useGetStudentApplicationsQuery({ limit: 100 });
   const courses = useGetStudentCoursesQuery();
-  const colleges = useGetStudentCollegeLinksQuery();
   const preferences = useGetNotificationPreferencesQuery();
   const [updatePreferences, preferencesState] =
     useUpdateNotificationPreferencesMutation();
 
   const notificationsEnabled = preferences.data?.push_enabled ?? false;
-  const activeCollegeLinks =
-    colleges.data?.filter((link) => link.revokedAt === null).length ?? 0;
-
   if (
     profile.isLoading ||
     score.isLoading ||
     applications.isLoading ||
     courses.isLoading ||
-    colleges.isLoading ||
     preferences.isLoading
   ) {
     return <StudentProfileSkeleton />;
@@ -113,7 +108,11 @@ export function StudentProfile() {
             label="Applications"
             onClick={() => router.push("/student/board")}
           />
-          <StatTile value={String(activeCollegeLinks)} label="Colleges" />
+          <StatTile
+            value={String(courses.data?.length ?? 0)}
+            label="Add-ons"
+            onClick={() => router.push("/student/courses")}
+          />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -127,7 +126,6 @@ export function StudentProfile() {
               <ProfileAction icon={Mic2} title="Interview report" detail="Practice history and feedback" tone="orange" onClick={() => router.push("/student/interview")} />
               <ProfileAction icon={BookOpen} title="Skill courses" detail={`${courses.data?.length ?? 0} available · ${courses.data?.filter((course) => course.completed).length ?? 0} completed`} tone="blue" onClick={() => router.push("/student/courses")} />
               <ProfileAction icon={Languages} title="Language" detail="English" tone="gold" />
-              <ProfileAction icon={GraduationCap} title="College links" detail={`${activeCollegeLinks} active`} tone="slate" />
             </div>
             {profile.data ? (
               <ProfileForm
@@ -137,7 +135,6 @@ export function StudentProfile() {
               <StudentCard>Loading profile…</StudentCard>
             )}
 
-            <ProfileViewsCard />
           </div>
 
           <div className="flex flex-col gap-2">
@@ -312,6 +309,7 @@ function ProfileForm({
 }: {
   profile: StudentProfileData;
 }) {
+  const [open, setOpen] = useState(false);
   const [updateName, nameState] = useUpdateStudentNameMutation();
   const [updateLocation, locationState] = useUpdateStudentLocationMutation();
   const [fullName, setFullName] = useState(profile.fullName ?? "");
@@ -339,52 +337,46 @@ function ProfileForm({
       if (saved) {
         showSuccessFeedback("Profile updated.");
       }
+      setOpen(false);
     } catch {
       // The mutation error is rendered below the form.
     }
   };
 
   return (
-    <StudentCard className="flex flex-col gap-3">
-      <Field
-        label="Full name"
-        value={fullName}
-        onChange={setFullName}
-        placeholder="Your full name"
-      />
-      <div className="grid grid-cols-[1fr_7rem] gap-2">
-        <Field
-          label="City"
-          value={city}
-          onChange={setCity}
-          placeholder="City"
-        />
-        <Field
-          label="State"
-          value={stateCode}
-          onChange={setStateCode}
-          placeholder="MH"
-          maxLength={2}
-        />
-      </div>
-      <PillButton
-        disabled={
-          nameState.isLoading || locationState.isLoading || !fullName.trim()
-        }
-        onClick={() => void saveProfile()}
-      >
-        {nameState.isLoading || locationState.isLoading
-          ? "Saving…"
-          : "Save profile"}
-      </PillButton>
-      {profileError ? (
-        <StudentErrorState
-          variant="inline"
-          error={profileError}
-          fallback="Could not save your profile."
-        />
-      ) : null}
-    </StudentCard>
+    <>
+      <StudentCard className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-[15px] font-semibold text-[#0A1931]">Personal details</h2>
+            <p className="mt-0.5 text-[12px] text-[#5F6B80]">Your name and location used for job discovery</p>
+          </div>
+          <button type="button" onClick={() => setOpen(true)} aria-label="Edit personal details" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-[#E7E0D4] text-[#5F4DB2] transition-colors hover:bg-[#F5F1FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5F4DB2]/30">
+            <Pencil size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <dl className="grid gap-3 border-t border-[#F0EBDF] pt-3 sm:grid-cols-2">
+          <div><dt className="text-[11px] font-medium text-[#7B8495]">Full name</dt><dd className="mt-1 truncate text-[14px] font-medium text-[#0A1931]">{profile.fullName || "Add your name"}</dd></div>
+          <div><dt className="text-[11px] font-medium text-[#7B8495]">Location</dt><dd className="mt-1 truncate text-[14px] font-medium text-[#0A1931]">{[profile.city, profile.stateCode].filter(Boolean).join(", ") || "Add your city and state"}</dd></div>
+        </dl>
+      </StudentCard>
+      <Modal open={open} title="Edit personal details" description="Keep your profile details up to date. Only your city and state are used for job discovery." onClose={() => setOpen(false)} closeDisabled={nameState.isLoading || locationState.isLoading}>
+        <div className="flex flex-col gap-4">
+          <Field label="Full name" value={fullName} onChange={setFullName} placeholder="Your full name" />
+          <div className="grid grid-cols-[1fr_7rem] gap-3">
+            <Field label="City" value={city} onChange={setCity} placeholder="City" />
+            <Field label="State" value={stateCode} onChange={setStateCode} placeholder="MH" maxLength={2} />
+          </div>
+          {profileError ? <StudentErrorState variant="inline" error={profileError} fallback="Could not save your profile." /> : null}
+          <div className="flex gap-2 pt-1">
+            <PillButton variant="secondary" className="flex-1" disabled={nameState.isLoading || locationState.isLoading} onClick={() => setOpen(false)}>Cancel</PillButton>
+            <PillButton className="flex-1" disabled={nameState.isLoading || locationState.isLoading || !fullName.trim()} onClick={() => void saveProfile()}>
+              {nameState.isLoading || locationState.isLoading ? "Saving…" : "Save changes"}
+            </PillButton>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
 

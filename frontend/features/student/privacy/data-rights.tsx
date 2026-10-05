@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { FileDown } from "lucide-react";
+import { FileDown, Trash2 } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 
 import {
   PillButton,
@@ -52,6 +53,7 @@ export function DataRights() {
   const [download] = useGetPrivacyDownloadMutation();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [deletionOpen, setDeletionOpen] = useState(false);
 
   async function run(key: string, action: () => Promise<unknown>) {
     setError("");
@@ -79,9 +81,10 @@ export function DataRights() {
         </span>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-3">
+      <div className="mt-3 flex flex-wrap gap-2">
         <PillButton
           variant="secondary"
+          className="px-4 py-2.5 text-[13px] leading-5"
           disabled={exporting.isLoading}
           onClick={() => void run("export", () => exportData().unwrap())}
         >
@@ -90,22 +93,14 @@ export function DataRights() {
         <button
           type="button"
           disabled={deleting.isLoading}
-          onClick={() => {
-            if (
-              window.confirm(
-                "Request deletion of your account and personal data? You can withdraw before the listed erasure time.",
-              )
-            ) {
-              void run("delete", () => deleteData().unwrap());
-            }
-          }}
-          className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-[#EBC7BA] bg-[#F8E6E0] px-4 py-4 text-[15px] font-semibold leading-5 text-[#993A22] transition-all hover:bg-[#F1D9D1] active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#993A22]/30"
+          onClick={() => { setError(""); setDeletionOpen(true); }}
+          className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-[#EBC7BA] bg-[#F8E6E0] px-4 py-2.5 text-[13px] font-semibold leading-5 text-[#993A22] transition-all hover:bg-[#F1D9D1] active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#993A22]/30"
         >
           {deleting.isLoading ? "Requesting…" : "Request deletion"}
         </button>
       </div>
 
-      {error ? (
+      {error && !deletionOpen ? (
         <StudentErrorState variant="inline" message={error} className="mt-3" />
       ) : null}
 
@@ -203,6 +198,31 @@ export function DataRights() {
           </p>
         )}
       </div>
+      <Modal
+        open={deletionOpen}
+        title="Request account deletion?"
+        description="This requests deletion of your account and personal data. You can withdraw your request before the listed erasure time."
+        onClose={() => setDeletionOpen(false)}
+        closeDisabled={deleting.isLoading}
+        panelClassName="max-w-[440px] rounded-[20px]"
+      >
+        <div className="mb-4 flex items-center gap-3 rounded-xl bg-[#F8E6E0] p-3 text-[13px] leading-5 text-[#993A22]">
+          <Trash2 size={20} className="shrink-0" aria-hidden="true" />
+          <p>Review your request carefully before continuing.</p>
+        </div>
+        {error ? <StudentErrorState variant="inline" message={error} className="mb-4" /> : null}
+        <div className="flex justify-end gap-2">
+          <PillButton variant="secondary" className="px-4 py-2.5 text-[13px]" disabled={deleting.isLoading} onClick={() => setDeletionOpen(false)}>Cancel</PillButton>
+          <button
+            type="button"
+            disabled={deleting.isLoading}
+            onClick={() => void run("delete", async () => { await deleteData().unwrap(); setDeletionOpen(false); })}
+            className="rounded-full bg-[#993A22] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-[#7E2F1C] disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#993A22]/40"
+          >
+            {deleting.isLoading ? "Requesting..." : "Request deletion"}
+          </button>
+        </div>
+      </Modal>
     </StudentCard>
   );
 }

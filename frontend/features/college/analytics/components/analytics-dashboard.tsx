@@ -121,7 +121,7 @@ export function AnalyticsDashboard() {
             ? `${data.totalApplications} applications`
             : undefined
         }
-        footer="Counted over students who have consented to share, as they stand now. A figure shown as — is withheld to protect individual privacy."
+        footer="Counted over students who have consented to share, as they stand now."
       >
         {data.funnelBelowFloor ? (
           <FunnelBelowFloorNote />
@@ -158,7 +158,7 @@ export function AnalyticsDashboard() {
               items={data.placementsByMonth.map((entry) => ({
                 label: entry.month,
                 value: entry.hires ?? 0,
-                display: entry.hires === null ? "—" : undefined,
+                display: entry.hires === null ? "0" : undefined,
               }))}
             />
           )}
@@ -190,9 +190,8 @@ export function AnalyticsDashboard() {
 
 /**
  * Bars are drawn relative to the largest count in their own column; the
- * number itself is what is displayed. A withheld cell (`null`) is a zero
- * width bar and an em dash — never a zero, which would add back up to the
- * total the floors withhold.
+ * number itself is what is displayed. A withheld cell (`null`) is rendered
+ * as zero with a zero-width bar.
  */
 function funnelProgress(rows: FunnelCount[]) {
   const max = Math.max(1, ...rows.map((row) => row.value ?? 0));
@@ -200,7 +199,7 @@ function funnelProgress(rows: FunnelCount[]) {
     id: row.id,
     label: row.label,
     value: row.value == null ? 0 : Math.round((row.value / max) * 100),
-    display: row.value == null ? "—" : String(row.value),
+    display: String(row.value ?? 0),
     tone: "info" as const,
   }));
 }

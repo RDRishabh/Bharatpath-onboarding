@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import type {
   CheckoutResult,
@@ -10,7 +10,7 @@ import type {
 } from "@/store/college/types";
 
 import { useSettings } from "../hooks/use-settings";
-import { DiscountCodeField, type DiscountPreview } from "@/components/billing/discount-code-field";
+import { DiscountCodeField } from "@/components/billing/discount-code-field";
 import { SimulatedPaymentDialog } from "@/components/billing/simulated-payment-dialog";
 import { isStubPaymentUrl } from "@/store/api/payment.api";
 import { usePreviewCollegeDiscountMutation } from "@/store/college/billing/billing.api";
@@ -46,8 +46,8 @@ const SUBSCRIPTION_LABELS: Record<CollegeSubscription["state"], string> = {
 
 export function Billing() {
   const [previewDiscount] = usePreviewCollegeDiscountMutation();
-  const [discounts, setDiscounts] = useState<Record<string, { code: string | null; price: DiscountPreview | null }>>({});
   const [simulatedCheckout, setSimulatedCheckout] = useState<CheckoutResult | null>(null);
+  const [selectedPlanCode, setSelectedPlanCode] = useState<string | null>(null);
   const {
     seats,
     subscription,
@@ -62,8 +62,8 @@ export function Billing() {
 
   const collegePlans = plans.filter((plan) => plan.audience === "COLLEGE");
 
-  const handleCheckout = async (planCode: string) => {
-    const result = await checkout(planCode, discounts[planCode]?.code ?? undefined);
+  const createCheckout = async (planCode: string, discountCode?: string) => {
+    const result = await checkout(planCode, discountCode);
     if (isStubPaymentUrl(result.redirectUrl)) {
       setSimulatedCheckout(result);
     } else if (result.redirectUrl) {
@@ -71,9 +71,14 @@ export function Billing() {
     }
   };
 
+  const handleCheckout = async (planCode: string) => {
+    setSelectedPlanCode(planCode);
+    await createCheckout(planCode);
+  };
+
   return (
     <div
-      className="flex w-full flex-col gap-4 px-4"
+      className="flex w-full flex-col gap-4"
       style={{
         fontFamily: "'General Sans', sans-serif",
       }}
@@ -110,11 +115,10 @@ export function Billing() {
             isCheckingOut={isCheckingOut}
             onSubscribe={() => handleCheckout(plan.code)}
             divided={index > 0}
-            discount={<DiscountCodeField planCode={plan.code} preview={(args) => previewDiscount(args).unwrap()} onChange={(code, price) => setDiscounts((current) => ({ ...current, [plan.code]: { code, price } }))} />}
           />
         ))}
       </section>
-      {simulatedCheckout ? <SimulatedPaymentDialog paymentId={simulatedCheckout.paymentId} amountMinor={simulatedCheckout.amountMinor} currency={simulatedCheckout.currency} title="College subscription" onComplete={refetchBilling} onClose={() => setSimulatedCheckout(null)} /> : null}
+      {simulatedCheckout && selectedPlanCode ? <SimulatedPaymentDialog paymentId={simulatedCheckout.paymentId} amountMinor={simulatedCheckout.amountMinor} currency={simulatedCheckout.currency} title="College subscription" checkoutContent={<DiscountCodeField planCode={selectedPlanCode} preview={(args) => previewDiscount(args).unwrap()} onChange={(code) => createCheckout(selectedPlanCode, code ?? undefined)} />} onComplete={refetchBilling} onClose={() => { setSimulatedCheckout(null); setSelectedPlanCode(null); }} /> : null}
     </div>
   );
 }
@@ -267,14 +271,12 @@ function PlanRow({
   isCheckingOut,
   onSubscribe,
   divided,
-  discount,
 }: Readonly<{
   plan: CollegePlan;
   isCurrent: boolean;
   isCheckingOut: boolean;
   onSubscribe: () => void;
   divided: boolean;
-  discount: ReactNode;
 }>) {
   return (
     <div
@@ -307,7 +309,6 @@ function PlanRow({
       >
         {isCurrent ? "Current" : "Choose"}
       </button>
-      <div className="md:col-span-3">{discount}</div>
     </div>
   );
 }

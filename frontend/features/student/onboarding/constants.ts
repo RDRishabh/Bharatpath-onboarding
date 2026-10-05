@@ -88,10 +88,9 @@ export const SCORE_CATEGORIES = [
 
 /** Steps that carry the "STEP n OF N" header, in order. */
 export const COUNTED_STEPS = [
-  "language",
-  "how",
   "account",
-  "about",
+  "location",
+  "subscription",
   "intake",
 ] as const;
 

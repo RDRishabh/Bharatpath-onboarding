@@ -63,31 +63,30 @@ export default function InterviewSessionPage() {
   const total = session.data?.questions_total ?? 0;
   const done = session.data?.state === "COMPLETED" || session.data?.state === "EVALUATED";
   const allStored = session.data?.answers.every((a) => a.upload_state === "STORED");
-  return <StudentPage>
-    {busy && (
+  return <StudentPage className={busy ? "flex min-h-full items-center justify-center" : ""}>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+    {busy ? (
       <div
-        className="fixed inset-0 z-[100] grid cursor-wait place-items-center bg-[#FFFCF7]/95 px-6 text-center backdrop-blur-sm"
-        role="alert"
-        aria-live="assertive"
+        className="flex flex-col items-center justify-center px-6 py-8 text-center"
+        role="status"
+        aria-live="polite"
         aria-busy="true"
       >
-        <div className="flex max-w-sm flex-col items-center">
-          <span className="grid h-16 w-16 place-items-center rounded-full bg-[#F1EAF7] text-[#5F4DB2]">
-            <LoaderCircle className="h-8 w-8 animate-spin" aria-hidden="true" />
-          </span>
-          <p className="mt-5 text-[18px] font-bold text-[#0A1931]">
-            {saveStage === "saving" ? "Saving your answer…" : "Preparing your next question…"}
-          </p>
-          <p className="mt-2 text-[13px] leading-5 text-[#5F6B80]">
-            Please keep this page open. This may take a few moments.
-          </p>
-        </div>
+        <span className="grid h-14 w-14 place-items-center rounded-full bg-[#F1EAF7] text-[#5F4DB2]">
+          <LoaderCircle className="h-7 w-7 animate-spin" aria-hidden="true" />
+        </span>
+        <p className="mt-4 text-[16px] font-bold text-[#0A1931]">
+          {saveStage === "saving" ? "Saving your answer…" : "Preparing your next question…"}
+        </p>
+        <p className="mt-2 text-[13px] leading-5 text-[#5F6B80]">
+          Please keep this page open. This may take a few moments.
+        </p>
       </div>
-    )}
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-    {session.isLoading && <StudentCard><p className="text-sm text-[#5F6B80]">Loading your interview…</p></StudentCard>}
-    {session.error && <StudentErrorState title="Interview unavailable" error={session.error} fallback="We could not load this interview." onRetry={() => void session.refetch()} />}
-    {session.data && <>
+    ) : session.isLoading ? (
+      <StudentCard><p className="text-sm text-[#5F6B80]">Loading your interview…</p></StudentCard>
+    ) : session.error ? (
+      <StudentErrorState title="Interview unavailable" error={session.error} fallback="We could not load this interview." onRetry={() => void session.refetch()} />
+    ) : session.data ? <>
       <StudentCard className="!p-5">
         <div className="flex items-center justify-between gap-3">
           <SectionEyebrow>{current ? `Question ${current.index + 1} of ${total}` : "Mock interview"}</SectionEyebrow>
@@ -131,7 +130,7 @@ export default function InterviewSessionPage() {
         <p className="text-[14px] font-semibold text-[#0A1931]">{nextState.isLoading ? "Interviewer is thinking…" : "Your next question is ready to request."}</p>
         <PillButton variant="secondary" disabled={nextState.isLoading} onClick={async () => { try { await nextQuestion(id).unwrap(); await session.refetch(); } catch { setError("Could not prepare the next question. Please retry."); } }} className="mt-4 !px-6 !py-3 !text-[14px]">Get next question</PillButton>
       </StudentCard>}
-    </>}
-    {error && <StudentErrorState variant="inline" message={error} />}
+    </> : null}
+    {!busy && error && <StudentErrorState variant="inline" message={error} />}
   </div></StudentPage>;
 }

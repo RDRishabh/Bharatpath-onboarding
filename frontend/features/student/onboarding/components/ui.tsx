@@ -23,7 +23,7 @@ import { COUNTED_STEPS, type CountedStep } from "../constants";
 /* -------------------------------------------------------------------------
  * Page frame
  * ---------------------------------------------------------------------- */
-export type SignupPhase = "start" | "resume" | "review" | "score";
+export type SignupPhase = "start" | "subscription" | "resume" | "review" | "score";
 
 interface SignupFrameProps {
   children: ReactNode;
@@ -98,6 +98,12 @@ const JOURNEY: ReadonlyArray<{
   icon: ReactNode;
 }> = [
   {
+    phase: "subscription",
+    title: "Unlock your membership",
+    body: "Choose a plan to access your score, job matches and member pricing.",
+    icon: <Lock className="h-4 w-4" aria-hidden="true" />,
+  },
+  {
     phase: "resume",
     title: "Give us your resume",
     body: "A file, pasted text, or a short form if you don't have one yet.",
@@ -117,7 +123,7 @@ const JOURNEY: ReadonlyArray<{
   },
 ];
 
-const PHASE_ORDER: SignupPhase[] = ["start", "resume", "review", "score"];
+const PHASE_ORDER: SignupPhase[] = ["start", "subscription", "resume", "review", "score"];
 
 function JourneyAside({ phase }: { phase: SignupPhase }) {
   const current = PHASE_ORDER.indexOf(phase);
