@@ -192,6 +192,7 @@ export function LoginForm() {
       }
 
       if (result.status === "TOTP_REQUIRED") {
+        setTotpCode("");
         setAuthStep("TOTP_CODE");
         return;
       }
@@ -207,6 +208,8 @@ export function LoginForm() {
         } catch {
           setQrCodeDataUrl(null);
         }
+        setTotpCode("");
+        setCodeCopied(false);
         setAuthStep("TOTP_SETUP");
         return;
       }
@@ -234,6 +237,7 @@ export function LoginForm() {
       if (result.status === "COMPLETE") {
         await completeSessionWithToken(result.accessToken, enteredEmail);
       } else if (result.status === "TOTP_REQUIRED") {
+        setTotpCode("");
         setAuthStep("TOTP_CODE");
       } else if (result.status === "TOTP_SETUP_REQUIRED") {
         setTotpSecret(result.sharedSecret);
@@ -242,6 +246,8 @@ export function LoginForm() {
           width: 200,
         });
         setQrCodeDataUrl(qr);
+        setTotpCode("");
+        setCodeCopied(false);
         setAuthStep("TOTP_SETUP");
       }
     } catch (err) {
@@ -670,8 +676,8 @@ export function LoginForm() {
           ) : null}
 
           {totpSecret && (
-            <div className="rounded-lg border border-[#e5e7eb] bg-[#f9fafb] p-3">
-              <div className="flex items-center justify-between text-xs text-[#6b7280]">
+            <div className="min-w-0 max-w-full rounded-lg border border-[#e5e7eb] bg-[#f9fafb] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#6b7280]">
                 <span>Can&apos;t scan? Enter secret key:</span>
                 <button
                   type="button"
@@ -691,7 +697,7 @@ export function LoginForm() {
                   )}
                 </button>
               </div>
-              <p className="mt-1 font-mono text-[13px] font-semibold text-[#111827] select-all">
+              <p className="mt-1 max-w-full break-all font-mono text-[13px] font-semibold text-[#111827] select-all">
                 {totpSecret}
               </p>
             </div>
@@ -708,7 +714,7 @@ export function LoginForm() {
               id="verifyTotp"
               type="text"
               maxLength={6}
-              placeholder="000000"
+              placeholder="6-digit code"
               value={totpCode}
               onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
               className="h-12 w-full rounded-lg border border-[#dfe2e8] bg-white text-center font-mono text-xl tracking-[0.3em] text-[#17233a] outline-none transition focus:border-[#3566b8] focus:ring-2 focus:ring-[#3566b8]/10"
