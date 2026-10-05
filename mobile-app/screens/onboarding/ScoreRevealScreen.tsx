@@ -40,6 +40,7 @@ interface ScoreRevealScreenProps {
   band?: string | null;
   mode?: 'initial' | 'recalculated';
   onSave?: () => void;
+  onShare?: () => void;
   onRaiseScore?: () => void;
   onAllCategories?: () => void;
   onNextFix?: () => void;
@@ -50,6 +51,7 @@ export function ScoreRevealScreen({
   band,
   mode = 'initial',
   onSave,
+  onShare,
   onRaiseScore,
   onAllCategories,
   onNextFix,
@@ -111,6 +113,9 @@ export function ScoreRevealScreen({
                   isRecalculated && styles.shareButtonRecalc,
                   pressed && styles.buttonPressed,
                 ]}
+                onPress={onShare}
+                accessibilityRole="button"
+                accessibilityLabel="Share score"
               >
                 <ShareNetwork size={16} color={isRecalculated ? '#0A1931' : '#FFFFFF'} weight="bold" />
               </Pressable>

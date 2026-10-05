@@ -2,8 +2,8 @@
  * BharatPath - Foundation Preview & Authentication Flow
  * Seamlessly connects Candidate Auth (Cognito-aligned) with the Onboarding & Core App.
  */
-import { useState, useMemo, useEffect } from 'react';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 
 import { SplashScreen } from '@/screens/splash/SplashScreen';
 import { IntroScreen } from '@/screens/onboarding/IntroScreen';
@@ -60,7 +60,15 @@ type AppStep =
 export default function FoundationPreview() {
   const router = useRouter();
   const params = useLocalSearchParams<{ step?: AppStep }>();
-  const { session, candidateFullName, refreshScore, rememberCandidate } = useAuthContext();
+  const {
+    session,
+    candidateFullName,
+    candidateScore: authCandidateScore,
+    setCandidateScore: setAuthCandidateScore,
+    updateCandidateScore,
+    refreshScore,
+    rememberCandidate,
+  } = useAuthContext();
   const [step, setStep] = useState<AppStep>(params.step || 'splash');
   const [fileMeta, setFileMeta] = useState<UploadedFileMeta | undefined>();
   const [intakePayload, setIntakePayload] = useState<ResumeIntakePayload | undefined>();
@@ -71,7 +79,18 @@ export default function FoundationPreview() {
 
   const [resumeVersionId, setResumeVersionId] = useState<string | undefined>();
   const [resumeVersionDetails, setResumeVersionDetails] = useState<ResumeVersionDetailResponse | null>(null);
-  const [candidateScore, setCandidateScore] = useState<CandidateScoreResponse | null>(null);
+  const [localCandidateScore, setLocalCandidateScore] = useState<CandidateScoreResponse | null>(null);
+  const [confirmedAtTimestamp, setConfirmedAtTimestamp] = useState<string | null>(null);
+
+  // Synchronize score with AuthContext
+  const candidateScore = authCandidateScore || localCandidateScore;
+
+  // Refresh candidate score on screen focus so newly scored resumes are reflected
+  useFocusEffect(
+    useCallback(() => {
+      refreshScore().catch(() => undefined);
+    }, [refreshScore])
+  );
 
   useEffect(() => {
     if (params.step) {
@@ -82,7 +101,7 @@ export default function FoundationPreview() {
         setUserPassword('');
         setResumeVersionId(undefined);
         setResumeVersionDetails(null);
-        setCandidateScore(null);
+        setLocalCandidateScore(null);
       }
     }
   }, [params.step]);
@@ -107,9 +126,32 @@ export default function FoundationPreview() {
         onFinish={async () => {
           const activeSession = session || (await getCurrentSession());
           if (activeSession) {
-            refreshScore().catch(() => undefined);
-            router.replace('/home');
-            return;
+            try {
+              const versions = await listResumeVersions();
+              const confirmed =
+                versions.find((v) => v.confirmed && !v.superseded) ||
+                versions.find((v) => v.confirmed);
+              if (confirmed) {
+                refreshScore().catch(() => undefined);
+                router.replace('/home');
+                return;
+              }
+              const unconfirmed = versions.find((v) => !v.confirmed && !v.superseded);
+              if (unconfirmed) {
+                const verDetails = await getResumeVersionDetails(unconfirmed.resume_version_id);
+                setResumeVersionId(unconfirmed.resume_version_id);
+                setResumeVersionDetails(verDetails);
+                setStep('review');
+                return;
+              }
+              // Active session without resume -> move to payment / intake
+              setStep('subscribe');
+              return;
+            } catch {
+              refreshScore().catch(() => undefined);
+              router.replace('/home');
+              return;
+            }
           }
           setStep('intro');
         }}
@@ -133,11 +175,16 @@ export default function FoundationPreview() {
       <SignUpScreen
         onBack={() => setStep('intro')}
         onNavigateToLogin={() => setStep('login')}
-        onSubmit={(data) => {
+        onSubmit={(data, isUnconfirmed) => {
           setUserEmail(data.email);
           setUserName(data.fullName);
           setUserPassword(data.password);
-          setStep('verify-email');
+          if (isUnconfirmed) {
+            setStep('verify-email');
+          } else {
+            // Account created & authenticated -> move directly to payment!
+            setStep('subscribe');
+          }
         }}
       />
     );
@@ -196,7 +243,8 @@ export default function FoundationPreview() {
             console.warn('Could not check existing resume versions:', e);
           }
 
-          router.replace('/home');
+          // If no resume submitted at all, proceed to payment for resume parsing
+          setStep('subscribe');
         }}
       />
     );
@@ -248,38 +296,8 @@ export default function FoundationPreview() {
             }
           }
 
-          // 4. Check for existing resume versions or proceed to home
-          try {
-            const versions = await listResumeVersions();
-            const confirmed =
-              versions.find((v) => v.confirmed && !v.superseded) ||
-              versions.find((v) => v.confirmed);
-
-            // If user resume is already submitted:
-            // Move directly to the Home page!
-            if (confirmed) {
-              const verDetails = await getResumeVersionDetails(confirmed.resume_version_id).catch(() => null);
-              setResumeVersionId(confirmed.resume_version_id);
-              if (verDetails) setResumeVersionDetails(verDetails);
-
-              refreshScore().catch(() => undefined);
-              router.replace('/home');
-              return;
-            }
-
-            const unconfirmed = versions.find((v) => !v.confirmed && !v.superseded);
-            if (unconfirmed) {
-              const verDetails = await getResumeVersionDetails(unconfirmed.resume_version_id);
-              setResumeVersionId(unconfirmed.resume_version_id);
-              setResumeVersionDetails(verDetails);
-              setStep('review');
-              return;
-            }
-          } catch (e) {
-            console.warn('Could not check existing resume versions:', e);
-          }
-
-          router.replace('/home');
+          // 4. Move to payment for resume parsing!
+          setStep('subscribe');
         }}
         onResendCode={async () => {
           await resendConfirmationCode(userEmail);
@@ -309,12 +327,12 @@ export default function FoundationPreview() {
 
   // 7. Membership - pay-first, before a CV is taken
   if (step === 'subscribe') {
-    const nextStepAfterSubscribe = resumeVersionId ? 'scoring' : 'intake';
     return (
       <SubscribeScreen
         candidateName={userName}
-        onSubscribed={() => setStep(nextStepAfterSubscribe)}
-        onSkip={() => setStep(nextStepAfterSubscribe)}
+        onSubscribed={() => setStep('intake')}
+        onSkip={() => setStep('intake')}
+        onBack={() => setStep('signup')}
       />
     );
   }
@@ -375,7 +393,13 @@ export default function FoundationPreview() {
             setUserName(extracted.name);
           }
         }}
-        onConfirm={() => setStep('scoring')}
+        onRequireSubscription={() => setStep('subscribe')}
+        onConfirm={(verId, confirmedAt) => {
+          if (confirmedAt) {
+            setConfirmedAtTimestamp(confirmedAt);
+          }
+          setStep('scoring');
+        }}
       />
     );
   }
@@ -386,8 +410,13 @@ export default function FoundationPreview() {
   if (step === 'scoring') {
     return (
       <ScoringScreen
+        minComputedAt={confirmedAtTimestamp}
         onReady={(score) => {
-          setCandidateScore(score);
+          setLocalCandidateScore(score);
+          setAuthCandidateScore(score);
+          if (score.value != null) {
+            updateCandidateScore(score.value, score.band, score.computed_at);
+          }
           setStep('score');
         }}
         onContinueWithoutScore={() => setStep('score')}
@@ -403,6 +432,7 @@ export default function FoundationPreview() {
         score={candidateScore?.value ?? undefined}
         band={candidateScore?.band}
         onSave={() => setStep('notifications')}
+        onShare={() => setStep('share')}
       />
     );
   }
@@ -428,9 +458,18 @@ export default function FoundationPreview() {
         candidateField={resumeInfo.field || undefined}
         candidateCity={resumeInfo.city || undefined}
         scoreDate={resumeInfo.scoreDate}
-        onBack={() => setStep('preview')}
-        onSave={() => setStep('preview')}
-        onShare={() => setStep('preview')}
+        onBack={() => {
+          refreshScore().catch(() => undefined);
+          router.replace('/home');
+        }}
+        onSave={() => {
+          refreshScore().catch(() => undefined);
+          router.replace('/home');
+        }}
+        onShare={() => {
+          refreshScore().catch(() => undefined);
+          router.replace('/home');
+        }}
       />
     );
   }
@@ -451,7 +490,9 @@ export default function FoundationPreview() {
       nextBandName={nextBandLabel(candidateScore?.band ?? null) || 'Solid'}
       activeTab="home"
       onTabPress={(tab, href) => {
-        if (tab !== 'home') {
+        if (tab === 'home') {
+          router.replace('/home');
+        } else {
           router.push(href as any);
         }
       }}

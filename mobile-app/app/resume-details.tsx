@@ -14,6 +14,7 @@ import { ReviewDetailsScreen } from '@/screens/onboarding/ReviewDetailsScreen';
 import { ParsingScreen } from '@/screens/onboarding/ParsingScreen';
 import { ScoringScreen } from '@/screens/onboarding/ScoringScreen';
 import { ScoreRevealScreen } from '@/screens/onboarding/ScoreRevealScreen';
+import { SubscribeScreen } from '@/screens/subscription/SubscribeScreen';
 import { PasteTextModal } from '@/screens/onboarding/PasteTextModal';
 import { UploadedFileMeta, ResumeIntakePayload } from '@/screens/onboarding/ResumeIntakeScreen';
 import { AppAlert } from '@/components/feedback/AppAlert';
@@ -24,8 +25,9 @@ import {
   ResumeVersionDetailResponse,
 } from '@/services/api/resume';
 import { getMyScore, CandidateScoreResponse } from '@/services/api/scoring';
+import { getCandidateSubscription } from '@/services/api/subscription';
 
-type Step = 'review' | 'parsing' | 'scoring' | 'score-reveal';
+type Step = 'review' | 'parsing' | 'scoring' | 'score-reveal' | 'subscribe';
 
 export default function ResumeDetailsRoute() {
   const router = useRouter();
@@ -42,11 +44,29 @@ export default function ResumeDetailsRoute() {
   const [intakePayload, setIntakePayload] = useState<ResumeIntakePayload | undefined>();
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
 
+  // Subscription state
+  const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
+  const [pendingPostSubscribeAction, setPendingPostSubscribeAction] = useState<'scoring' | 'upload' | null>(null);
+
+  const verifySubscription = async (): Promise<boolean> => {
+    try {
+      const sub = await getCandidateSubscription();
+      const active = !!sub?.has_access;
+      setHasSubscription(active);
+      return active;
+    } catch (err: any) {
+      if (err?.status === 402 || err?.code === 'subscription_required') {
+        setHasSubscription(false);
+        return false;
+      }
+      return false;
+    }
+  };
+
   // Score recalculation state
   const [candidateScore, setLocalCandidateScore] = useState<CandidateScoreResponse | null>(authScore || null);
   const [confirmedAt, setConfirmedAt] = useState<string | null>(null);
   const previousComputedAtRef = React.useRef<string | null>(authScore?.computed_at || null);
-  const previousScoreRef = React.useRef<number | null>(authScore?.value || null);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -56,6 +76,15 @@ export default function ResumeDetailsRoute() {
     }
   };
 
+  // Check subscription status on mount
+  useEffect(() => {
+    getCandidateSubscription()
+      .then((sub) => {
+        setHasSubscription(!!sub?.has_access);
+      })
+      .catch(() => undefined);
+  }, []);
+
   // Record candidate score at mount to distinguish old score from newly computed score
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +93,6 @@ export default function ResumeDetailsRoute() {
         if (cancelled) return;
         if (s.status === 'READY') {
           previousComputedAtRef.current = s.computed_at;
-          previousScoreRef.current = s.value;
           setLocalCandidateScore(s);
           setCandidateScore(s);
         }
@@ -181,7 +209,14 @@ export default function ResumeDetailsRoute() {
     setStep('parsing');
   };
 
-  const handleUploadNewPress = () => {
+  const handleUploadNewPress = async () => {
+    const hasAccess = await verifySubscription();
+    if (!hasAccess) {
+      setPendingPostSubscribeAction('upload');
+      setStep('subscribe');
+      return;
+    }
+
     AppAlert.alert(
       'Upload New Resume',
       'Choose how you would like to provide your updated resume:',
@@ -192,6 +227,47 @@ export default function ResumeDetailsRoute() {
       ]
     );
   };
+
+  // Subscription Gate: Shown only when user has no active subscription when editing/updating score
+  if (step === 'subscribe') {
+    return (
+      <SubscribeScreen
+        candidateName={candidateFullName || undefined}
+        onSubscribed={() => {
+          setHasSubscription(true);
+          if (pendingPostSubscribeAction === 'scoring') {
+            setPendingPostSubscribeAction(null);
+            setStep('scoring');
+          } else if (pendingPostSubscribeAction === 'upload') {
+            setPendingPostSubscribeAction(null);
+            setStep('review');
+            handlePickDocument();
+          } else {
+            setPendingPostSubscribeAction(null);
+            setStep('review');
+          }
+        }}
+        onSkip={() => {
+          setHasSubscription(true);
+          if (pendingPostSubscribeAction === 'scoring') {
+            setPendingPostSubscribeAction(null);
+            setStep('scoring');
+          } else if (pendingPostSubscribeAction === 'upload') {
+            setPendingPostSubscribeAction(null);
+            setStep('review');
+            handlePickDocument();
+          } else {
+            setPendingPostSubscribeAction(null);
+            setStep('review');
+          }
+        }}
+        onBack={() => {
+          setPendingPostSubscribeAction(null);
+          setStep('review');
+        }}
+      />
+    );
+  }
 
   // 1. Parsing Step (After selecting a new file or pasting)
   if (step === 'parsing') {
@@ -216,7 +292,6 @@ export default function ResumeDetailsRoute() {
       <ScoringScreen
         minComputedAt={confirmedAt}
         previousComputedAt={previousComputedAtRef.current}
-        previousScore={previousScoreRef.current}
         onReady={(score) => {
           setLocalCandidateScore(score);
           setCandidateScore(score);
@@ -313,12 +388,24 @@ export default function ResumeDetailsRoute() {
         versionId={versionId}
         versionDetails={versionDetails}
         onUploadNewResume={handleUploadNewPress}
+        onRequireSubscription={() => {
+          setPendingPostSubscribeAction('scoring');
+          setStep('subscribe');
+        }}
         onVersionUpdated={(newVerId, newDetails) => {
           setVersionId(newVerId);
           setVersionDetails(newDetails);
         }}
-        onConfirm={(_confirmedVerId, confAt) => {
+        onConfirm={async (_confirmedVerId, confAt) => {
           setConfirmedAt(confAt || new Date().toISOString());
+
+          const hasAccess = await verifySubscription();
+          if (!hasAccess) {
+            setPendingPostSubscribeAction('scoring');
+            setStep('subscribe');
+            return;
+          }
+
           setStep('scoring');
         }}
       />

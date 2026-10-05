@@ -56,10 +56,6 @@ interface ScoringScreenProps {
    * completed scoring the new version yet.
    */
   previousComputedAt?: string | null;
-  /**
-   * The previously known score value.
-   */
-  previousScore?: number | null;
 }
 
 export function ScoringScreen({
@@ -67,7 +63,6 @@ export function ScoringScreen({
   onContinueWithoutScore,
   minComputedAt,
   previousComputedAt,
-  previousScore,
 }: ScoringScreenProps) {
   const [statusIdx, setStatusIdx] = useState(0);
   const [pollCount, setPollCount] = useState(0);
@@ -84,31 +79,45 @@ export function ScoringScreen({
 
   const checkOnce = useCallback(async (): Promise<boolean> => {
     if (settledRef.current) return true;
-    const score = await getMyScore();
-    if (score.status === 'READY' && score.value != null) {
-      // 1. If we have a previous computed_at and the server returns the exact same timestamp,
-      // it means the background worker hasn't scored the new version yet. Wait up to 10 polls (~20s).
-      if (pollCount < 10 && previousComputedAt && score.computed_at && score.computed_at === previousComputedAt) {
-        return false;
-      }
+    try {
+      const score = await getMyScore();
+      if (score && score.status === 'READY' && score.value != null) {
+        // GET /score/me continues returning the previous READY row while the
+        // worker computes the newly confirmed resume. Never treat that old
+        // row as the new result, even when its numeric value happens to differ
+        // from locally cached state.
+        const computedTime = score.computed_at
+          ? new Date(score.computed_at).getTime()
+          : Number.NaN;
+        const confirmedTime = minComputedAt
+          ? new Date(minComputedAt).getTime()
+          : null;
+        const isPreviousRow =
+          previousComputedAt != null &&
+          score.computed_at === previousComputedAt;
+        const predatesConfirmation =
+          confirmedTime != null &&
+          (!Number.isFinite(computedTime) || computedTime < confirmedTime);
 
-      // 2. If we have a minimum confirmation timestamp, ensure the score was computed on or after it.
-      if (pollCount < 10 && minComputedAt && score.computed_at) {
-        const scoreTime = new Date(score.computed_at).getTime();
-        const minTime = new Date(minComputedAt).getTime();
-        // Allow up to 2 seconds clock drift
-        if (scoreTime < minTime - 2000) {
+        if (isPreviousRow || predatesConfirmation) {
           return false;
         }
-      }
 
-      settledRef.current = true;
-      setIsPolling(false);
-      onReady(score);
-      return true;
+        // This is either the first score, or a row computed after the current
+        // resume was confirmed. It is safe to display and cache.
+        settledRef.current = true;
+        setIsPolling(false);
+        onReady(score);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      if (pollCount >= MAX_POLLS - 1) {
+        throw err;
+      }
+      return false;
     }
-    return false;
-  }, [onReady, minComputedAt, previousComputedAt, pollCount]);
+  }, [minComputedAt, onReady, previousComputedAt, pollCount]);
 
   useEffect(() => {
     if (!isPolling || settledRef.current || error || pollCount >= MAX_POLLS) return;

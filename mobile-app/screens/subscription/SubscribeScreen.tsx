@@ -220,6 +220,11 @@ export function SubscribeScreen({
               <Text style={styles.linkText}>Go back</Text>
             </Pressable>
           )}
+          {onSkip && (
+            <Pressable onPress={onSkip} accessibilityRole="button" style={{ marginTop: 12 }}>
+              <Text style={styles.linkText}>Skip payment (dev / test)</Text>
+            </Pressable>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -411,10 +416,10 @@ export function SubscribeScreen({
             </Pressable>
           )}
 
-          {!hasAccess && paymentsUnavailable && onSkip && (
-            <Pressable onPress={onSkip} accessibilityRole="button">
+          {!hasAccess && onSkip && (
+            <Pressable onPress={onSkip} accessibilityRole="button" style={{ marginTop: 8, paddingVertical: 4 }}>
               <Text style={styles.linkText}>
-                Skip for now (this backend has no payment gateway)
+                {paymentsUnavailable ? 'Skip for now (this backend has no payment gateway)' : 'Skip payment for now (testing)'}
               </Text>
             </Pressable>
           )}

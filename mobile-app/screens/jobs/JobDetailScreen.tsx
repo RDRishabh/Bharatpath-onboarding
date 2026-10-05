@@ -31,14 +31,12 @@ import {
   ScrollView,
   Pressable,
   Platform,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
   ArrowLeft,
-  BookmarkSimple,
   ShareNetwork,
   SealCheck,
   CheckCircle,
@@ -98,7 +96,6 @@ export interface JobDetailScreenProps {
   onBack?: () => void;
   /** Called after a successful apply, with the employer name. */
   onApplied?: (employerName: string) => void;
-  onBookmark?: () => void;
   onShare?: () => void;
   /** Called when the job is gone (404) - usually navigate back. */
   onJobGone?: () => void;
@@ -117,7 +114,6 @@ export function JobDetailScreen({
   alreadyApplied = false,
   onBack,
   onApplied,
-  onBookmark,
   onShare,
   onJobGone,
   onSubscriptionRequired,
@@ -179,11 +175,6 @@ export function JobDetailScreen({
     onSubscriptionRequired,
   ]);
 
-  const handleBookmark = () => {
-    onBookmark?.();
-    AppAlert.alert('Job Saved', `${job.title} saved to your bookmarks.`);
-  };
-
   const handleShare = () => {
     onShare?.();
     AppAlert.alert('Share Job', `Sharing ${job.title} at ${employerName}.`);
@@ -214,18 +205,6 @@ export function JobDetailScreen({
               </Pressable>
 
               <View style={styles.navRightActions}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.navCircleBtn,
-                    pressed && styles.buttonPressed,
-                  ]}
-                  onPress={handleBookmark}
-                  accessibilityRole="button"
-                  accessibilityLabel="Save job"
-                >
-                  <BookmarkSimple size={17} color="#FFFFFF" weight="bold" />
-                </Pressable>
-
                 <Pressable
                   style={({ pressed }) => [
                     styles.navCircleBtn,
@@ -267,7 +246,7 @@ export function JobDetailScreen({
             <View style={styles.metricCard}>
               <CurrencyInr size={17} color="#5E4DB2" weight="duotone" />
               <Text style={styles.metricLabel}>MONTHLY</Text>
-              <Text style={styles.metricValueMono}>
+              <Text style={styles.metricValueMono} numberOfLines={2}>
                 {formatSalaryRangePaise(
                   job.salary_min_minor,
                   job.salary_max_minor,
@@ -279,7 +258,7 @@ export function JobDetailScreen({
               <View style={styles.metricCard}>
                 <Briefcase size={17} color="#5F6B80" weight="duotone" />
                 <Text style={styles.metricLabel}>WORK MODE</Text>
-                <Text style={styles.metricValueSans}>
+                <Text style={styles.metricValueSans} numberOfLines={2}>
                   {workModeLabel(job.work_mode)}
                 </Text>
               </View>
@@ -289,17 +268,22 @@ export function JobDetailScreen({
               <View style={styles.metricCard}>
                 <Clock size={17} color="#5F6B80" weight="duotone" />
                 <Text style={styles.metricLabel}>EXPERIENCE</Text>
-                <Text style={styles.metricValueSans}>
+                <Text style={styles.metricValueSans} numberOfLines={2}>
                   {formatExperienceMonths(job.experience_min_months)}
                 </Text>
               </View>
             ) : null}
 
             {job.location ? (
-              <View style={styles.metricCard}>
+              <View
+                style={[
+                  styles.metricCard,
+                  !job.experience_min_months && styles.metricCardWide,
+                ]}
+              >
                 <MapPin size={17} color="#5F6B80" weight="duotone" />
                 <Text style={styles.metricLabel}>LOCATION</Text>
-                <Text style={styles.metricValueSans} numberOfLines={1}>
+                <Text style={styles.metricValueSans} numberOfLines={2}>
                   {job.location}
                 </Text>
               </View>
@@ -520,17 +504,17 @@ const styles = StyleSheet.create({
   },
   navyHero: {
     backgroundColor: '#5F4DB2',
-    paddingBottom: 28,
+    paddingBottom: 24,
   },
   heroSafeArea: {
     paddingHorizontal: 20,
-    gap: 18,
+    gap: 20,
   },
   topNavRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 8,
+    paddingTop: 10,
   },
   navRightActions: {
     flexDirection: 'row',
@@ -550,11 +534,11 @@ const styles = StyleSheet.create({
   roleHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 14,
+    gap: 16,
   },
   companyBadge: {
-    width: 52,
-    height: 52,
+    width: 56,
+    height: 56,
     borderRadius: 16,
     backgroundColor: 'rgba(255, 252, 247, 0.1)',
     borderWidth: 1,
@@ -570,12 +554,13 @@ const styles = StyleSheet.create({
   },
   roleInfo: {
     flex: 1,
-    gap: 4,
+    minWidth: 0,
+    gap: 6,
   },
   roleTitleText: {
     fontFamily: 'GeneralSans-Bold',
-    fontSize: 24,
-    lineHeight: 28,
+    fontSize: 23,
+    lineHeight: 29,
     letterSpacing: -0.6,
     color: '#FFFFFF',
   },
@@ -583,6 +568,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap',
   },
   companyNameText: {
     fontFamily: 'GeneralSans-Regular',
@@ -597,16 +583,16 @@ const styles = StyleSheet.create({
     color: '#9DA9BE',
   },
   scoreClearanceCard: {
-    padding: 16,
+    padding: 18,
     borderRadius: 16,
     backgroundColor: 'rgba(255, 252, 247, 0.08)',
     borderWidth: 1,
     borderColor: 'rgba(255, 252, 247, 0.18)',
-    gap: 10,
+    gap: 8,
   },
   clearanceHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
   },
   clearanceCheckCircle: {
@@ -616,6 +602,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFCF7',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 2,
   },
   clearanceTitleText: {
     flex: 1,
@@ -632,24 +619,30 @@ const styles = StyleSheet.create({
   },
   detailsBody: {
     paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 40,
-    gap: 20,
+    paddingTop: 28,
+    paddingBottom: 48,
+    gap: 28,
   },
   metricsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    columnGap: 12,
+    rowGap: 12,
   },
   metricCard: {
-    flex: 1,
-    minWidth: 100,
+    flexBasis: '47%',
+    flexGrow: 1,
+    minHeight: 118,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: Colors.surface.border,
     borderRadius: 16,
-    padding: 14,
-    gap: 6,
+    padding: 16,
+    gap: 8,
+    justifyContent: 'flex-start',
+  },
+  metricCardWide: {
+    flexBasis: '100%',
   },
   metricLabel: {
     fontFamily: Platform.select({
@@ -669,19 +662,19 @@ const styles = StyleSheet.create({
       android: 'SpaceMono-Bold',
       default: 'monospace',
     }),
-    fontSize: 15,
-    lineHeight: 18,
+    fontSize: 16,
+    lineHeight: 21,
     color: Colors.navy,
     fontWeight: '700',
   },
   metricValueSans: {
     fontFamily: 'GeneralSans-Semibold',
-    fontSize: 15,
-    lineHeight: 18,
+    fontSize: 16,
+    lineHeight: 21,
     color: Colors.navy,
   },
   sectionBlock: {
-    gap: 10,
+    gap: 12,
   },
   sectionEyebrow: {
     fontFamily: Platform.select({
@@ -698,7 +691,7 @@ const styles = StyleSheet.create({
   bodyDescription: {
     fontFamily: 'GeneralSans-Regular',
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 23,
     color: Colors.text.primary,
   },
   skillsEyebrowRow: {

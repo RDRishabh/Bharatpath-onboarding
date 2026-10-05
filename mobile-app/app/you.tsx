@@ -143,7 +143,9 @@ export default function YouRoute() {
 
   const handleTabPress = (tab: TabName, href: string) => {
     setActiveTab(tab);
-    if (tab !== 'you') {
+    if (tab === 'home') {
+      router.replace('/home');
+    } else if (tab !== 'you') {
       router.push(href as any);
     }
   };

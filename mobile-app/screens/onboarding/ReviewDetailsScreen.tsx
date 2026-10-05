@@ -65,6 +65,7 @@ export interface ReviewDetailsScreenProps {
     versionDetails: ResumeVersionDetailResponse
   ) => void;
   onUploadNewResume?: () => void;
+  onRequireSubscription?: () => void;
 }
 
 // Parse header lines into structured basics
@@ -123,6 +124,7 @@ export function ReviewDetailsScreen({
   versionDetails,
   onVersionUpdated,
   onUploadNewResume,
+  onRequireSubscription,
 }: ReviewDetailsScreenProps) {
   const [activeVersionId, setActiveVersionId] = useState(versionId);
   const [details, setDetails] = useState(versionDetails);
@@ -195,6 +197,9 @@ export function ReviewDetailsScreen({
       ? error.message
       : fallback;
 
+  const isSubscriptionRequiredError = (error: unknown): boolean =>
+    error instanceof ApiError && (error.status === 402 || error.code === 'subscription_required');
+
   const adoptEditedVersion = async (newVersionId: string) => {
     const newDetails = await getResumeVersionDetails(newVersionId);
     setActiveVersionId(newVersionId);
@@ -235,6 +240,11 @@ export function ReviewDetailsScreen({
       await adoptEditedVersion(res.resume_version_id);
       setEditingSectionIndex(null);
     } catch (err) {
+      if (isSubscriptionRequiredError(err)) {
+        setEditingSectionIndex(null);
+        onRequireSubscription?.();
+        return;
+      }
       setConfirmError(errorMessage(err, 'Failed to save section changes.'));
     } finally {
       setIsSavingEdit(false);
@@ -262,6 +272,11 @@ export function ReviewDetailsScreen({
       await adoptEditedVersion(res.resume_version_id);
       setEditingSectionIndex(null);
     } catch (err) {
+      if (isSubscriptionRequiredError(err)) {
+        setEditingSectionIndex(null);
+        onRequireSubscription?.();
+        return;
+      }
       setConfirmError(errorMessage(err, 'Failed to delete section.'));
     } finally {
       setIsSavingEdit(false);
@@ -294,6 +309,11 @@ export function ReviewDetailsScreen({
       await adoptEditedVersion(res.resume_version_id);
       setIsAddSectionOpen(false);
     } catch (err) {
+      if (isSubscriptionRequiredError(err)) {
+        setIsAddSectionOpen(false);
+        onRequireSubscription?.();
+        return;
+      }
       setConfirmError(errorMessage(err, 'Failed to add section.'));
     } finally {
       setIsSavingEdit(false);
@@ -339,6 +359,11 @@ export function ReviewDetailsScreen({
       await adoptEditedVersion(res.resume_version_id);
       setFixingItemInfo(null);
     } catch (err) {
+      if (isSubscriptionRequiredError(err)) {
+        setFixingItemInfo(null);
+        onRequireSubscription?.();
+        return;
+      }
       setConfirmError(errorMessage(err, 'Failed to apply suggestion.'));
     } finally {
       setIsSavingEdit(false);
@@ -355,6 +380,11 @@ export function ReviewDetailsScreen({
       await adoptEditedVersion(created.resume_version_id);
       setIsStructuredEditorOpen(false);
     } catch (error) {
+      if (isSubscriptionRequiredError(error)) {
+        setIsStructuredEditorOpen(false);
+        onRequireSubscription?.();
+        return;
+      }
       setConfirmError(errorMessage(error, 'Could not save your resume changes.'));
     } finally {
       setIsSavingEdit(false);
@@ -370,6 +400,11 @@ export function ReviewDetailsScreen({
       await adoptEditedVersion(created.resume_version_id);
       setIsTextEditorOpen(false);
     } catch (error) {
+      if (isSubscriptionRequiredError(error)) {
+        setIsTextEditorOpen(false);
+        onRequireSubscription?.();
+        return;
+      }
       setConfirmError(errorMessage(error, 'Could not save your resume changes.'));
     } finally {
       setIsSavingEdit(false);
@@ -385,6 +420,10 @@ export function ReviewDetailsScreen({
         const res = await confirmResumeVersion(activeVersionId);
         onConfirm?.(activeVersionId, res?.confirmed_at);
       } catch (error) {
+        if (isSubscriptionRequiredError(error)) {
+          onRequireSubscription?.();
+          return;
+        }
         setConfirmError(errorMessage(error, 'Could not confirm this resume version.'));
       } finally {
         setIsConfirming(false);
@@ -561,7 +600,9 @@ export function ReviewDetailsScreen({
                                 }
                               >
                                 <Text style={styles.dashedChipText}>{item.text}</Text>
-                                <PencilLine size={12} color="#7A5C0E" weight="bold" />
+                                <View style={styles.dashedChipIcon}>
+                                  <PencilLine size={13} color="#7A5C0E" weight="bold" />
+                                </View>
                               </Pressable>
                             ) : (
                               <View key={`${item.text}-${itemIdx}`} style={styles.solidChip}>
@@ -995,20 +1036,24 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 8,
   },
   title: {
+    flexShrink: 1,
     fontFamily: 'GeneralSans-Bold',
-    fontSize: 32,
-    lineHeight: 38,
-    letterSpacing: -0.8,
+    fontSize: 27,
+    lineHeight: 33,
+    letterSpacing: -0.6,
     color: '#0A1931',
   },
   toFixBadge: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
+    gap: 5,
+    paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: Radii.pill, // 999
     backgroundColor: '#FFFFFF',
@@ -1017,22 +1062,23 @@ const styles = StyleSheet.create({
   },
   toFixBadgeText: {
     fontFamily: 'GeneralSans-Bold',
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 16,
     color: '#7A5C0E',
   },
   allFixedBadge: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
+    gap: 5,
+    paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: Radii.pill,
     backgroundColor: '#E6F1EA',
   },
   allFixedBadgeText: {
     fontFamily: 'GeneralSans-Bold',
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 16,
     color: '#1F6B45',
   },
@@ -1115,36 +1161,44 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+    width: '100%',
   },
   solidChip: {
     paddingHorizontal: 14,
     paddingVertical: 9,
-    borderRadius: Radii.pill,
+    borderRadius: 14,
     backgroundColor: '#F5EFE0',
+    maxWidth: '100%',
   },
   solidChipText: {
     fontFamily: 'GeneralSans-Medium',
     fontSize: 14,
-    lineHeight: 18,
+    lineHeight: 20,
     color: '#0A1931',
   },
   dashedChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 9,
-    borderRadius: Radii.pill,
+    borderRadius: 14,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E6C79A',
     borderStyle: 'dashed',
+    maxWidth: '100%',
   },
   dashedChipText: {
+    flexShrink: 1,
     fontFamily: 'GeneralSans-Medium',
     fontSize: 14,
-    lineHeight: 18,
+    lineHeight: 20,
     color: '#7A5C0E',
+  },
+  dashedChipIcon: {
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   keyValueList: {
     gap: 12,

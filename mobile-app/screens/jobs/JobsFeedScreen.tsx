@@ -358,6 +358,9 @@ function JobCard({ job, onPress }: JobCardProps) {
             {employerName}
           </Text>
         </View>
+      </View>
+
+      <View style={styles.jobStatusRow}>
         <EligibilityChip eligibility={job.eligibility} />
       </View>
 
@@ -463,9 +466,9 @@ const styles = StyleSheet.create({
   },
   headerSection: {
     paddingHorizontal: 20,
-    paddingTop: Spacing.xl,
-    paddingBottom: 12,
-    gap: 14,
+    paddingTop: Spacing.lg,
+    paddingBottom: 16,
+    gap: 16,
     backgroundColor: Colors.offWhite,
   },
   topRow: {
@@ -526,7 +529,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.surface.border,
     borderRadius: 999,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    minHeight: 52,
+    paddingVertical: 10,
   },
   searchInput: {
     flex: 1,
@@ -540,7 +544,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingVertical: 12,
+    minHeight: 52,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 14,
     borderWidth: 1,
@@ -576,6 +581,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 20,
+    paddingTop: 2,
     paddingBottom: 110, // space for floating bottom tab bar
   },
   listContentEmpty: {
@@ -590,8 +596,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.surface.border,
     borderRadius: 20,
-    padding: 16,
-    gap: 14,
+    padding: 18,
+    gap: 16,
   },
   jobCardTop: {
     flexDirection: 'row',
@@ -599,8 +605,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   badge: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
@@ -614,6 +620,12 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 4,
     minWidth: 0,
+  },
+  jobStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingLeft: 60,
   },
   jobTitle: {
     fontFamily: 'GeneralSans-Bold',
@@ -631,7 +643,8 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    columnGap: 8,
+    rowGap: 6,
     flexWrap: 'wrap',
   },
   salaryText: {
@@ -715,6 +728,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: Colors.green.bg,
+    alignSelf: 'flex-start',
   },
   chipEligibleText: {
     fontFamily: Platform.select({
@@ -736,6 +750,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: '#F0EBDF',
+    alignSelf: 'flex-start',
   },
   chipBelowText: {
     fontFamily: Platform.select({
@@ -757,6 +772,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: '#F0EBDF',
+    alignSelf: 'flex-start',
   },
   chipPendingText: {
     fontFamily: Platform.select({
