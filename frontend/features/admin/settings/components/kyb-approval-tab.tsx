@@ -10,6 +10,9 @@ interface KybApprovalTabProps {
   kybMode: KybMode;
   isLoading?: boolean;
   hasError?: boolean;
+  isSaving?: boolean;
+  saveError?: boolean;
+  onModeChange: (mode: KybMode) => void;
 }
 
 const approvalOptions: Array<{
@@ -35,6 +38,9 @@ export function KybApprovalTab({
   kybMode,
   isLoading,
   hasError,
+  isSaving,
+  saveError,
+  onModeChange,
 }: KybApprovalTabProps) {
   return (
     <div className="grid min-w-0 grid-cols-1 gap-4 pt-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,348px)]">
@@ -66,9 +72,10 @@ export function KybApprovalTab({
               <button
                 key={option.key}
                 type="button"
-                disabled
+                disabled={Boolean(hasError || isLoading || isSaving || kybMode === option.key)}
+                onClick={() => onModeChange(option.key)}
                 className={[
-                  "flex w-full cursor-pointer items-start gap-3 rounded-[12px] border p-4 text-left transition-colors",
+                  "flex w-full items-start gap-3 rounded-[12px] border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70",
                   active
                     ? "border-[#6557e5] bg-[#f7f5ff]"
                     : "border-[#e5e8ee] bg-white hover:bg-[#fafbfc]",
@@ -119,16 +126,16 @@ export function KybApprovalTab({
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#b17a19]" />
 
           <p className="text-[11px] leading-[17px] text-[#9a6c19]">
-            {hasError ? "The effective approval mode is unavailable." : isLoading ? "Reading the current mode..." : kybMode === "auto"
+            {hasError ? "The effective approval mode is unavailable." : saveError ? "Could not save the approval mode. Try again." : isSaving ? "Saving the approval mode..." : isLoading ? "Reading the current mode..." : kybMode === "auto"
               ? "Automatic approval is live. Spot-check the audit trail weekly."
-              : "Manual approval is live. This API does not expose a settings mutation; change it through the deployment configuration."}
+              : "Manual approval is live. New employer submissions will wait for an operator decision."}
           </p>
         </div>
       </section>
 
       <section className="min-w-0 rounded-[12px] border border-[#e5e8ee] bg-white p-5">
         <h2 className="text-[14px] font-semibold text-[#172033]">Configuration access</h2>
-        <p className="mt-2 text-[12px] leading-[18px] text-[#7b8494]">The Admin API exposes the effective approval mode but does not expose mutations or individual automatic-check settings.</p>
+        <p className="mt-2 text-[12px] leading-[18px] text-[#7b8494]">Changing the mode applies to new KYB submissions. Existing submissions keep their current review state.</p>
       </section>
     </div>
   );

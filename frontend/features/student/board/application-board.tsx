@@ -10,7 +10,6 @@ import { StudentPage } from "@/features/student/shell";
 import { useCursorLoadMore } from "@/lib/pagination/use-cursor-load-more";
 
 const APPLICATIONS_PAGE_SIZE = 20;
-const ACTIVE_STAGES = new Set(["SUBMITTED", "VIEWED", "SHORTLISTED", "INTERVIEW", "DECISION"]);
 const FILTERS = [{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "closed", label: "Closed" }] as const;
 
 export function ApplicationBoard() {
@@ -23,14 +22,14 @@ export function ApplicationBoard() {
         fetchApplications({
           cursor,
           limit: APPLICATIONS_PAGE_SIZE,
+          filter: filter === "all" ? undefined : filter,
         }).unwrap(),
-      [fetchApplications],
+      [fetchApplications, filter],
     ),
+    [filter],
   );
   const loadMoreFromObserver = useEffectEvent(applications.loadMore);
-  const visibleApplications = applications.items.filter((application) =>
-    filter === "all" || (filter === "active" ? ACTIVE_STAGES.has(application.stage) : !ACTIVE_STAGES.has(application.stage)),
-  );
+  const visibleApplications = applications.items;
 
   useEffect(() => {
     const sentinel = loadMoreSentinelRef.current;

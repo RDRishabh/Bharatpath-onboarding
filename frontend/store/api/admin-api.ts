@@ -641,6 +641,14 @@ export const adminApi = baseApi.injectEndpoints({
       query: (params) => ({ url: "/admin/kyb/submissions", params: params ?? undefined }),
       providesTags: ["Admin"],
     }),
+    setAdminKybApprovalMode: builder.mutation<{ review_required: boolean }, boolean>({
+      query: (review_required) => ({
+        url: "/admin/settings/kyb-approval",
+        method: "PUT",
+        body: { review_required },
+      }),
+      invalidatesTags: ["Admin"],
+    }),
     getAdminKybSubmission: builder.query<KybSubmission, string>({
       query: (submissionId) => `/admin/kyb/submissions/${submissionId}`,
       providesTags: ["Admin"],
@@ -796,6 +804,7 @@ export const {
   useImportAdminSearchFiltersMutation,
   useUpdateAdminSearchFilterMutation,
   useGetAdminKybSubmissionsQuery,
+  useSetAdminKybApprovalModeMutation,
   useGetAdminKybSubmissionQuery,
   useDecideAdminKybMutation,
   useGetAdminIntegritySignalsQuery,
