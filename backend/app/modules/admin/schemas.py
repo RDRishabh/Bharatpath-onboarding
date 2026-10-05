@@ -411,17 +411,6 @@ class ProvisionCandidateRequest(_Base):
     state_code: str | None = None
 
 
-class InviteAccountRequest(_Base):
-    """Email-only invitation. The recipient supplies their own account details."""
-
-    email: str = Field(min_length=3, max_length=320, pattern=_EMAIL_PATTERN)
-    kind: Literal["CANDIDATE", "EMPLOYER", "COLLEGE"]
-
-
-class InviteAccountResponse(_Base):
-    invitation: Literal["SENT"] = "SENT"
-
-
 _PREFILL_NOTE = (
     "Saved as a draft the person finds filled at first sign-in (2026-10-03). Field codes "
     "come from GET /admin/accounts/forms. Undertakings and documents are refused "

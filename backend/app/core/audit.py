@@ -90,8 +90,6 @@ class AuditAction(StrEnum):
     #: candidate, or an organisation with its first owner. Metadata holds the
     #: kind and ids, never the address the invitation went to.
     ACCOUNT_PROVISIONED = "account_provisioned"
-    #: Staff emailed a sign-up invitation without creating or prefilling an account.
-    ACCOUNT_INVITED = "account_invited"
     #: Staff sent a provisioned account's invitation again.
     ACCOUNT_INVITATION_RESENT = "account_invitation_resent"
 

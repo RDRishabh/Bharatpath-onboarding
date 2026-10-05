@@ -108,8 +108,6 @@ from app.modules.admin.schemas import (
     InterviewRecordingRow,
     InterviewSessionRow,
     InvitationResentResponse,
-    InviteAccountRequest,
-    InviteAccountResponse,
     KybBacklog,
     KybSubmissionRow,
     KybSubmissionsPage,
@@ -1257,31 +1255,6 @@ def account_forms() -> AccountFormsResponse:
             },
         ),
     )
-
-
-async def invite_account(
-    session: AsyncSession,
-    *,
-    ctx: TenantContext,
-    payload: InviteAccountRequest,
-    request_id: str | None = None,
-) -> InviteAccountResponse:
-    """Send only an invitation. No local user, organisation, or profile is
-    created; the recipient enters those details through the normal sign-up flow."""
-    pool = "CANDIDATE" if payload.kind == "CANDIDATE" else "BUSINESS"
-    await identity_service.send_invitation(pool=pool, email=payload.email.strip().lower())
-    await audit_event(
-        session,
-        action=AuditAction.ACCOUNT_INVITED,
-        actor_id=ctx.user_id,
-        actor_role=ctx.role,
-        target_type="account_invitation",
-        target_id=None,
-        tenant_id=None,
-        request_id=request_id,
-        metadata={"kind": payload.kind},
-    )
-    return InviteAccountResponse()
 
 
 async def provision_candidate(
