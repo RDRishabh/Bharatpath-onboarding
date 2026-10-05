@@ -70,7 +70,8 @@ export const SUCCESS_MESSAGES: Record<string, SuccessMessage> = {
 
   /* College billing */
   createCollegeCheckout: "Redirecting you to payment…",
-  cancelCollegeSubscription: "Subscription cancelled.",
+  cancelCollegeSubscription: "Renewal cancelled. Access continues until the period ends.",
+  cancelCandidateSubscription: "Renewal cancelled. Access continues until the period ends.",
   createCollegeMandate: "Redirecting you to set up UPI AutoPay…",
 
   /* College settings */

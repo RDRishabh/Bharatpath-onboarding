@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CancelSubscriptionDialog } from "@/components/billing/cancel-subscription-dialog";
 
 import type {
   CheckoutResult,
@@ -45,6 +46,7 @@ const SUBSCRIPTION_LABELS: Record<CollegeSubscription["state"], string> = {
 };
 
 export function Billing() {
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [previewDiscount] = usePreviewCollegeDiscountMutation();
   const [simulatedCheckout, setSimulatedCheckout] = useState<CheckoutResult | null>(null);
   const [selectedPlanCode, setSelectedPlanCode] = useState<string | null>(null);
@@ -89,10 +91,11 @@ export function Billing() {
           subscription={subscription}
           isLoading={isLoadingBilling}
           isCancelling={isCancelling}
-          onCancel={cancelSubscription}
+          onCancel={() => setCancelOpen(true)}
         />
       </div>
 
+      <CancelSubscriptionDialog open={cancelOpen} planCode={subscription?.planCode} periodEnd={subscription?.currentPeriodEnd} onCancel={cancelSubscription} onClose={() => setCancelOpen(false)} />
       {/* Plans */}
       <section className="overflow-hidden rounded-[12px] border border-[#e1e5eb] bg-white shadow-[0_4px_12px_rgba(19,26,38,0.024)]">
         <div className="border-b border-[#e1e5eb] px-5 py-4 text-[14px] font-semibold leading-[18px] text-[#131A26]">
@@ -203,7 +206,7 @@ function SubscriptionBlock({
   subscription: CollegeSubscription | null;
   isLoading: boolean;
   isCancelling: boolean;
-  onCancel: () => Promise<unknown>;
+  onCancel: () => void;
 }>) {
   const state = subscription?.state ?? "NONE";
   const isActive = state === "ACTIVE" || state === "GRACE";
@@ -237,7 +240,7 @@ function SubscriptionBlock({
         </div>
 
         <div className="flex items-center justify-between">
-          <dt className="text-[#64748b]">Renews on</dt>
+          <dt className="text-[#64748b]">{subscription?.cancelAt || !subscription?.renewsAutomatically ? "Access until" : "Renews on"}</dt>
           <dd className="font-semibold text-[#131A26]">
             {formatDate(subscription?.currentPeriodEnd ?? null)}
           </dd>
@@ -251,7 +254,8 @@ function SubscriptionBlock({
         </div>
       </dl>
 
-      {isActive && (
+      {subscription?.cancelAt && <p role="status" className="text-[13px] text-[#64748b]">Renewal cancelled. Access continues until {formatDate(subscription.cancelAt)}.</p>}
+      {isActive && !subscription?.cancelAt && (
         <button
           type="button"
           disabled={isCancelling || isLoading}
