@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { AlertCircle, X } from "lucide-react";
 
 import {
   ApplicationPipeline,
@@ -19,6 +20,8 @@ import { useApplicationsPage } from "../hooks/use-applications-page";
 
 export function ApplicationsPageContent() {
   const {
+    stageErrorToast,
+    dismissStageError,
     applications,
     loadedApplicationCount,
     pageSize,
@@ -145,6 +148,7 @@ export function ApplicationsPageContent() {
 
         {error ? (
           <EmployerErrorState
+            variant="inline"
             error={error}
             fallback="Something went wrong with that action. Please try again."
             className="mt-3"
@@ -195,6 +199,24 @@ export function ApplicationsPageContent() {
       />
 
       {dialog}
+      {stageErrorToast !== null ? (
+        <div
+          role="alert"
+          aria-atomic="true"
+          className="fixed bottom-5 right-5 z-100 flex max-w-sm items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800 shadow-lg"
+        >
+          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="flex-1 font-semibold">This task cannot be performed.</span>
+          <button
+            type="button"
+            onClick={dismissStageError}
+            aria-label="Dismiss message"
+            className="grid h-7 w-7 place-items-center rounded-md hover:bg-red-100"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

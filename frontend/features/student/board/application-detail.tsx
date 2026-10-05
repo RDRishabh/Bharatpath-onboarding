@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useGetApplicationMessagesQuery } from "@/store/student/learning.api";
-import { Check, ExternalLink, Undo2 } from "lucide-react";
+import { CalendarDays, Check, ExternalLink, Undo2 } from "lucide-react";
 
 import {
   useConfirmStudentHireMutation,
@@ -143,7 +143,64 @@ export function ApplicationDetail() {
         </div>
 
         <div className="flex flex-col gap-3">
-          {messages.data && messages.data.length > 0 ? <StudentCard><span className="text-[15px] font-semibold text-[#0A1931]">Employer messages</span><div className="mt-3 space-y-3">{messages.data.map((message) => <div key={message.id} className="border-t pt-3 text-sm"><p className="font-semibold">{message.kind} · {formatDateTime(message.created_at)}</p><p>{message.body}</p>{message.scheduled_at && <p>Scheduled: {formatDateTime(message.scheduled_at)}</p>}{message.link && <a href={message.link} target="_blank" rel="noreferrer" className="text-[#5F4DB2] underline">Open invitation link</a>}</div>)}</div></StudentCard> : null}
+          {messages.data && messages.data.length > 0 ? (
+            <StudentCard>
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-[15px] font-semibold text-[#0A1931]">
+                    Employer messages
+                  </h2>
+                </div>
+                <span className="text-[12px] text-[#5F6B80]">
+                  {messages.data.length} {messages.data.length === 1 ? "update" : "updates"}
+                </span>
+              </div>
+              <ol className="mt-3 divide-y divide-[#EEE9F3] border-t border-[#EEE9F3]">
+                {messages.data.map((message) => {
+                  const isInterview = message.kind === "INTERVIEW";
+                  const isAssessment = message.kind === "ASSESSMENT";
+                  const label = isInterview ? "Interview" : isAssessment ? "Assessment" : "Message";
+
+                  return (
+                    <li key={message.id} className="py-4 last:pb-0">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[12px] font-semibold text-[#5F4DB2]">
+                          {label}
+                        </span>
+                        <time dateTime={message.created_at} className="text-[11px] text-[#5F6B80]">
+                          {formatDateTime(message.created_at)}
+                        </time>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-[#3A4761]">
+                        {message.body}
+                      </p>
+                      {message.scheduled_at ? (
+                        <div className="mt-2 flex items-start gap-2 text-[#5F6B80]">
+                          <CalendarDays size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                          <time dateTime={message.scheduled_at} className="text-[12px] font-medium leading-relaxed text-[#3A4761]">
+                            <span className="font-normal text-[#5F6B80]">Scheduled: </span>
+                            {formatDateTime(message.scheduled_at)}
+                          </time>
+                        </div>
+                      ) : null}
+                      {message.link ? (
+                        <a
+                          href={message.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex min-h-9 items-center gap-1.5 rounded text-[12px] font-semibold text-[#5F4DB2] underline-offset-4 transition-colors hover:text-[#4A3E8F] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5F4DB2]"
+                        >
+                          {isInterview ? "Open invitation" : isAssessment ? "Open assessment" : "Open link"}
+                          <ExternalLink size={14} aria-hidden="true" />
+                          <span className="sr-only"> (opens in a new tab)</span>
+                        </a>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            </StudentCard>
+          ) : null}
           {item.interview ? (
             <StudentCard>
               <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#4A3E8F]">

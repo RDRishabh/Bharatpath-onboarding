@@ -34,6 +34,8 @@ import type {
   EmployerApplication,
 } from "../types";
 
+import { canMoveApplicationStage } from "../transitions";
+
 const APPLICATIONS_PAGE_SIZE = 50;
 const JOB_OPTIONS_PAGE_SIZE = 10;
 
@@ -44,6 +46,18 @@ interface ApplicationBatch {
 
 export function useApplicationsPage() {
   const dispatch = useAppDispatch();
+  const [stageErrorToast, setStageErrorToast] = useState<number | null>(null);
+  const stageErrorToastId = useRef(0);
+  const showStageError = useCallback(() => {
+    setStageErrorToast(++stageErrorToastId.current);
+  }, []);
+  const dismissStageError = useCallback(() => setStageErrorToast(null), []);
+
+  useEffect(() => {
+    if (stageErrorToast === null) return;
+    const timeout = window.setTimeout(dismissStageError, 4_000);
+    return () => window.clearTimeout(timeout);
+  }, [stageErrorToast, dismissStageError]);
   const searchParams = useSearchParams();
   const jobIdParam = searchParams.get("jobId");
   const [loadApplications, applicationsState] =
@@ -322,6 +336,10 @@ export function useApplicationsPage() {
       if (!selectedApplication) {
         return;
       }
+      if (!canMoveApplicationStage(selectedApplication, stage)) {
+        showStageError();
+        return;
+      }
 
       const apiStage = {
         1: "VIEWED",
@@ -332,6 +350,7 @@ export function useApplicationsPage() {
       const target = apiStage[stage as keyof typeof apiStage];
 
       if (!target) {
+        showStageError();
         return;
       }
 
@@ -343,9 +362,9 @@ export function useApplicationsPage() {
         .then((application) => {
           dispatch(replaceApplication(application));
         })
-        .catch(() => undefined);
+        .catch(showStageError);
     },
-    [dispatch, moveApplication, selectedApplication],
+    [dispatch, moveApplication, selectedApplication, showStageError],
   );
 
   const handleMoveToColumn = useCallback(
@@ -354,7 +373,27 @@ export function useApplicationsPage() {
         (item) => item.id === applicationId,
       );
 
-      if (!application || application.stage === 4) {
+      if (!application) {
+        return;
+      }
+
+      // Dropping back into the same column is not a stage change.
+      if (application.stage === column.stage &&
+        (column.outcome === undefined || application.outcome === column.outcome)) {
+        return;
+      }
+
+      if (application.outcome !== null) {
+        showStageError();
+        return;
+      }
+
+      if (
+        column.outcome !== "rejected" &&
+        (column.outcome !== undefined && column.outcome !== null ||
+          !canMoveApplicationStage(application, column.stage))
+      ) {
+        showStageError();
         return;
       }
 
@@ -379,6 +418,7 @@ export function useApplicationsPage() {
       }
 
       if (!target) {
+        showStageError();
         return;
       }
 
@@ -387,9 +427,9 @@ export function useApplicationsPage() {
         .then((updatedApplication) => {
           dispatch(replaceApplication(updatedApplication));
         })
-        .catch(() => undefined);
+        .catch(showStageError);
     },
-    [applications, dispatch, moveApplication],
+    [applications, dispatch, moveApplication, showStageError],
   );
 
   /*
@@ -443,6 +483,8 @@ export function useApplicationsPage() {
    */
 
   return {
+    stageErrorToast,
+    dismissStageError,
     applications,
     loadedApplicationCount: allApplications.length,
     pageSize: APPLICATIONS_PAGE_SIZE,

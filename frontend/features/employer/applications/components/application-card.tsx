@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   BriefcaseBusiness,
   MapPin,
@@ -50,6 +52,7 @@ export function ApplicationCard({
   application,
   onClick,
 }: ApplicationCardProps) {
+  const [isDragging, setIsDragging] = useState(false);
   const {
     candidate,
   } = application;
@@ -62,11 +65,18 @@ export function ApplicationCard({
   return (
     <button
       type="button"
-      draggable
+      draggable={application.outcome === null}
       onDragStart={(event) => {
+        if (application.outcome !== null) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("application-id", application.id);
+        setIsDragging(true);
       }}
+      onDragEnd={() => setIsDragging(false)}
+      data-dragging={isDragging || undefined}
       onClick={onClick}
       className="
         group
@@ -74,20 +84,27 @@ export function ApplicationCard({
         w-full
         flex-col
         cursor-pointer
-        active:cursor-grabbing
-        rounded-[10px]
+        rounded-xl
         border
         border-[#e1e5eb]
         bg-white
         p-3
         text-left
         shadow-[0_1px_2px_rgba(19,26,38,0.04)]
-        transition
-        hover:border-[#d4d9e1]
-        hover:shadow-[0_4px_10px_rgba(19,26,38,0.07)]
+        transition-[border-color,box-shadow,background-color,opacity]
+        duration-200
+        hover:border-[#a9bfdb]
+        hover:shadow-[0_4px_12px_rgba(49,95,155,0.10)]
         focus:outline-none
-        focus:ring-2
-        focus:ring-[#315f9b]/20
+        focus-visible:ring-2
+        focus-visible:ring-[#315f9b]/30
+        focus-visible:ring-offset-2
+        data-[dragging=true]:cursor-grabbing
+        data-[dragging=true]:border-[#6f96c6]
+        data-[dragging=true]:bg-[#f7faff]
+        data-[dragging=true]:shadow-[0_6px_18px_rgba(49,95,155,0.16)]
+        data-[dragging=true]:opacity-70
+        motion-reduce:transition-none
       "
       style={{
         gap: "8px",

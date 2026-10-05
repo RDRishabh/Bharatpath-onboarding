@@ -95,13 +95,13 @@ export function ErrorState({
     <div
       role="alert"
       className={[
-        "flex items-start gap-2 rounded-lg border border-[#f0c8cc]",
-        "bg-[#fff7f7] p-3 text-[12px] text-[#9f2432]",
+        "flex items-start gap-2.5 rounded-lg border border-[#f0d4d8]",
+        "bg-[#fff7f7] px-3 py-2.5 text-[12px] leading-5 text-[#9f2432]",
         className ?? "",
       ].join(" ")}
     >
       <AlertCircle
-        className="mt-px h-4 w-4 shrink-0 text-[#c52b2b]"
+        className="mt-0.5 h-4 w-4 shrink-0 text-[#c52b2b]"
         aria-hidden="true"
       />
 

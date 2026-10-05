@@ -107,19 +107,23 @@ export function ApplicationDrawer({
               currentStageLabel={currentStageLabel}
             />
 
-            <StageMoveControls
-              currentStage={currentStage}
-              onMoveStage={onMoveStage}
-            />
+            {application.outcome === null && (
+              <StageMoveControls
+                currentStage={currentStage}
+                application={application}
+                onMoveStage={onMoveStage}
+              />
+            )}
 
-            {currentStage === 3 && (
+            {currentStage === 3 && application.outcome === null && (
               <InterviewField
                 meetingLink={application.meetingLink}
                 onMeetingLinkChange={onMeetingLinkChange}
               />
             )}
 
-            {currentStage === 4 && (
+            {currentStage === 4 &&
+              (application.outcome === null || application.outcome === "hired") && (
               <HirePanel
                 employerConfirmed={Boolean(application.hireEmployerConfirmed)}
                 candidateConfirmed={Boolean(application.hireCandidateConfirmed)}

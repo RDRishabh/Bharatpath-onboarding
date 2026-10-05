@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Skeleton } from "@/components/common/loading";
 import { AppSelect } from "@/components/ui/app-select";
-import { TablePagination } from "@/components/ui";
+import { createPortal } from "react-dom";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableHeader,
+  TablePagination,
+  TableRow,
+} from "@/components/ui/table";
 import { EmployerErrorState } from "@/features/employer/components/employer-error-state";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -16,7 +26,7 @@ import {
   useGetEmployerTeamQuery,
 } from "@/store/employer/settings";
 import type { TeamMember } from "@/store/employer/settings";
-import { Search, UserPlus } from "lucide-react";
+import { MoreVertical, Search, UserPlus } from "lucide-react";
 
 const EMPTY_TEAM: TeamMember[] = [];
 
@@ -63,6 +73,7 @@ export function TeamTab() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -168,124 +179,125 @@ export function TeamTab() {
         />
       </div>
 
-      <section className="overflow-visible rounded-xl border border-[#e0e4e9] bg-white shadow-[0_1px_2px_rgba(17,24,39,0.02)]">
-        <div className="grid min-h-[37px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] bg-[#f4f6f8] px-[18px] text-[10px] font-extrabold text-[#657083] max-sm:grid-cols-[minmax(0,1fr)_90px_70px_22px] max-sm:gap-2 max-sm:px-2.5">
-          <span>MEMBER</span>
-          <span>ROLE</span>
-          <span>STATUS</span>
-          <span />
-        </div>
-
-        {isLoading ? (
-          <div aria-busy="true">
-            <span className="sr-only">Loading team members…</span>
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div
-                key={index}
-                className="grid min-h-[57px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] border-t border-[#edf0f3] px-[18px] max-sm:grid-cols-[minmax(0,1fr)_90px_70px_22px] max-sm:gap-2 max-sm:px-2.5"
-              >
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <Skeleton width={30} height={30} radius={8} />
-                  <div className="min-w-0 flex-1">
-                    <Skeleton width="55%" height={11} radius={6} />
-                    <Skeleton className="mt-1.5" width="70%" height={9} radius={6} />
+      <TableContainer
+        aria-busy={isLoading}
+        footer={
+          !isLoading && !isError && totalCount > 0 && (
+            <TablePagination
+              currentPage={safePage}
+              totalCount={totalCount}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setCurrentPage(1);
+              }}
+              itemLabel="members"
+            />
+          )
+        }
+      >
+        {isLoading && <span className="sr-only">Loading team members...</span>}
+        <Table className="min-w-[480px]" aria-label="Team members">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Member</TableHead>
+              <TableHead className="w-[105px]">Role</TableHead>
+              <TableHead className="w-[95px]">Status</TableHead>
+              <TableHead className="w-[52px]">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 4 }).map((_, index) => (
+                <TableRow key={index}>
+                  <TableCell>
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Skeleton width={30} height={30} radius={8} />
+                      <div className="min-w-0 flex-1">
+                        <Skeleton width="55%" height={11} radius={6} />
+                        <Skeleton className="mt-1.5" width="70%" height={9} radius={6} />
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell><Skeleton width={64} height={18} radius={999} /></TableCell>
+                  <TableCell><Skeleton width={56} height={18} radius={999} /></TableCell>
+                  <TableCell />
+                </TableRow>
+              ))
+            ) : isError ? (
+              <TableRow>
+                <TableCell colSpan={4} className="py-5">
+                  <EmployerErrorState fallback="Unable to load team members. Please try again." />
+                </TableCell>
+              </TableRow>
+            ) : filteredMembers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="py-5 text-xs text-[#718096]">
+                  No team members match the selected filters.
+                </TableCell>
+              </TableRow>
+            ) : pagedMembers.map((member) => (
+              <TableRow key={member.id}>
+                <TableCell>
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-[#f2f4f6] text-[10px] font-bold text-[#526074]">
+                      {initials(member.name)}
+                    </div>
+                    <div className="min-w-0">
+                      <strong className="block truncate text-xs">{member.name}</strong>
+                      {member.email && (
+                        <small className="mt-0.5 block truncate text-[10px] text-[#718096]">
+                          {member.email}
+                        </small>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <Skeleton width={64} height={18} radius={999} />
-                <Skeleton width={56} height={18} radius={999} />
-                <span />
-              </div>
+                </TableCell>
+                <TableCell>
+                  <span className={[
+                    "inline-flex rounded-full px-2 py-1 text-[10px] font-bold",
+                    member.role === "Owner"
+                      ? "bg-[#edf1fb] text-[#34518e]"
+                      : "bg-[#f2f4f6] text-[#5b6575]",
+                  ].join(" ")}>
+                    {member.role}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <span className={`text-[11px] ${member.status === "Active" ? "text-[#13875e]" : "text-[#5266a4]"}`}>
+                    {member.status}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  {member.canRemove && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label={`Actions for ${member.name}`}
+                        className="cursor-pointer border-0 bg-transparent text-[17px] text-[#4e5a6c]"
+                        onClick={(event) => {
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setMenuPosition({
+                            top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - (member.status === "Invited" ? 90 : 54))),
+                            left: Math.max(8, rect.right - 145),
+                          });
+                          dispatch(toggleMemberMenu(member.id));
+                        }}
+                      >
+                        <MoreVertical size={17} />
+                      </button>
+                      <MemberMenu memberId={member.id} status={member.status} position={menuPosition} />
+                    </>
+                  )}
+                </TableCell>
+              </TableRow>
             ))}
-          </div>
-        ) : isError ? (
-          <div className="px-[18px] py-5">
-            <EmployerErrorState fallback="Unable to load team members. Please try again." />
-          </div>
-        ) : filteredMembers.length === 0 ? (
-          <div className="px-[18px] py-5 text-xs text-[#718096]">
-            No team members match the selected filters.
-          </div>
-        ) : pagedMembers.map((member) => (
-          <div
-            key={member.id}
-            className="grid min-h-[57px] grid-cols-[minmax(0,1fr)_105px_95px_28px] items-center gap-[18px] border-t border-[#edf0f3] px-[18px] max-sm:grid-cols-[minmax(0,1fr)_90px_70px_22px] max-sm:gap-2 max-sm:px-2.5"
-          >
-            <div className="flex min-w-0 items-center gap-2.5">
-              <div className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-[#f2f4f6] text-[10px] font-bold text-[#526074]">
-                {initials(member.name)}
-              </div>
-
-              <div className="min-w-0">
-                <strong className="block truncate text-xs">
-                  {member.name}
-                </strong>
-
-                {member.email && (
-                  <small className="mt-0.5 block truncate text-[10px] text-[#718096]">
-                    {member.email}
-                  </small>
-                )}
-              </div>
-            </div>
-
-            <span
-              className={[
-                "w-fit rounded-full px-2 py-1 text-[10px] font-bold",
-                member.role === "Owner"
-                  ? "bg-[#edf1fb] text-[#34518e]"
-                  : "bg-[#f2f4f6] text-[#5b6575]",
-              ].join(" ")}
-            >
-              {member.role}
-            </span>
-
-            <span
-              className={[
-                "text-[11px]",
-                member.status === "Active"
-                  ? "text-[#13875e]"
-                  : "text-[#5266a4]",
-              ].join(" ")}
-            >
-              {member.status}
-            </span>
-
-            {member.canRemove ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  aria-label={`Actions for ${member.name}`}
-                  className="cursor-pointer border-0 bg-transparent text-[17px] text-[#4e5a6c]"
-                  onClick={() => dispatch(toggleMemberMenu(member.id))}
-                >
-                  ⋮
-                </button>
-
-                <MemberMenu
-                  memberId={member.id}
-                  status={member.status}
-                />
-              </div>
-            ) : (
-              <span />
-            )}
-          </div>
-        ))}
-
-        {!isLoading && !isError && totalCount > 0 && (
-          <TablePagination
-            currentPage={safePage}
-            totalCount={totalCount}
-            pageSize={pageSize}
-            onPageChange={setCurrentPage}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setCurrentPage(1);
-            }}
-            itemLabel="members"
-          />
-        )}
-      </section>
+          </TableBody>
+        </Table>
+      </TableContainer>
     </>
   );
 }
@@ -293,19 +305,37 @@ export function TeamTab() {
 function MemberMenu({
   memberId,
   status,
+  position,
 }: {
   memberId: string;
   status: "Active" | "Invited";
+  position: { top: number; left: number };
 }) {
   const dispatch = useAppDispatch();
   const openId = useAppSelector(
     (state) => state.employerSettings.memberMenuOpenId,
   );
 
+  useEffect(() => {
+    if (openId !== memberId) return;
+    const closeMenu = () => dispatch(toggleMemberMenu(memberId));
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [dispatch, memberId, openId]);
+
   if (openId !== memberId) return null;
 
-  return (
-    <div className="absolute right-0 top-7 z-10 w-[145px] rounded-lg border border-[#dfe4ea] bg-white p-1 shadow-[0_10px_28px_rgba(17,24,39,0.12)]">
+  return createPortal(
+    <div style={position} className="fixed z-50 w-[145px] rounded-lg border border-[#dfe4ea] bg-white p-1 shadow-[0_10px_28px_rgba(17,24,39,0.12)]">
       {status === "Invited" && (
         <button
           type="button"
@@ -323,6 +353,7 @@ function MemberMenu({
       >
         Remove member
       </button>
-    </div>
+    </div>,
+    document.body,
   );
 }

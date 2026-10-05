@@ -520,7 +520,7 @@ export default function StudentInterviewPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-[#E7E0D4] bg-white p-5 shadow-[0_4px_20px_rgba(10,25,49,0.04)] sm:p-6">
+        <section id="interview-history" className="scroll-mt-24 rounded-2xl border border-[#E7E0D4] bg-white p-5 shadow-[0_4px_20px_rgba(10,25,49,0.04)] sm:p-6">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-[14px] font-bold text-[#0A1931]">

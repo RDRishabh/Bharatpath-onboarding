@@ -103,13 +103,16 @@ export function ApplicationColumn({
         border
         border-[#e1e5eb]
         bg-[#f5f7f9]
-        transition-colors
+        transition-[border-color,background-color,box-shadow]
+        duration-200
+        motion-reduce:transition-none
       "
       aria-label={`Drop application in ${column.label}`}
       data-drop-target={isDropTarget || undefined}
       style={isDropTarget ? {
-        borderColor: "#315f9b",
-        backgroundColor: "#eef4fc",
+        borderColor: "#8eafd5",
+        backgroundColor: "#f0f5fc",
+        boxShadow: "inset 0 0 0 1px rgba(49,95,155,0.08), 0 4px 16px rgba(49,95,155,0.08)",
       } : undefined}
     >
       {/* HEADER */}
