@@ -193,7 +193,7 @@ export function CandidatesPage() {
         {/* -------------------------------------------------
             PAGINATION
 
-            FIXED — NEVER SCROLLS
+            FIXED - NEVER SCROLLS
             ------------------------------------------------- */}
 
         <CursorPagination

@@ -332,7 +332,7 @@ type SearchFilterListParams = AdminListParams & {
 };
 
 /*
- * GET /api/v1/admin/dashboard — everything the operations dashboard needs in
+ * GET /api/v1/admin/dashboard - everything the operations dashboard needs in
  * one audited request. Field names follow the backend contract; nested shapes
  * the contract does not spell out in full are typed conservatively and the
  * hook maps them defensively.

@@ -474,7 +474,7 @@ export function JobCreatePage({
                     ? "Every scored candidate in your pool meets this bar"
                     : `${thresholdPreview?.fewer_than_ten
                         ? "Fewer than 10 candidates"
-                        : `${thresholdPreview?.approximate_count ?? "—"} candidates`} in your pool currently meet this bar`}
+                        : `${thresholdPreview?.approximate_count ?? "-"} candidates`} in your pool currently meet this bar`}
                 </span>
               </div>
             ) : null}
