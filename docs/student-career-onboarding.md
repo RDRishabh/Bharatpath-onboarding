@@ -69,6 +69,16 @@ education and preferences cards. Reports and existing account/privacy controls
 follow these sections. The mobile You screen retains its layout; its Profile
 details entry displays the same saved data and opens the resume in an app modal.
 
+The admin candidate page now shows all saved career fields in Basic details,
+Employment, Education, and Headline/preferences sections, with draft/completed
+status and the profile update date. Its existing audited onboarding endpoint
+returns the career document and the same field labels/options used by candidates.
+Only platform admins and support agents can read this unmasked view; integrity
+reviewers, candidates, and unauthenticated callers retain their existing refusal.
+The declared career phone takes precedence over an older account phone. Older
+accounts without career data retain their contact details and show empty career
+fields. Passwords are never returned. This addition needs no further migration.
+
 ## Rollout
 
 Deploy the backend first, then the clients. The currently hosted backend does not

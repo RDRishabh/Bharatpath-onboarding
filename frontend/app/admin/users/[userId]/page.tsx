@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/common/loading";
 import { usePageHeader } from "@/components/layout/header-context";
 import { ErrorState } from "@/components/ui";
 import { CandidatePageSkeleton } from "@/features/admin/users/components/candidate-page-skeleton";
+import { CandidateOnboardingDetails } from "@/features/admin/users/components/candidate-onboarding-details";
 import { PracticeInterviews } from "@/features/admin/users/components/practice-interviews";
 import {
   useGetAdminCandidateQuery,
@@ -107,7 +108,7 @@ export default function AdminCandidatePage() {
       <div className="flex min-w-0 flex-col gap-5 xl:flex-1">
         {onboarding.isLoading ? <SectionSkeleton /> : <Section title="Onboarding details" detail={onboarding.data?.questionnaire.length ? `${onboarding.data.questionnaire.length} answers` : undefined}>
           {onboarding.error ? <Empty>Onboarding details are unavailable for this account.</Empty> : onboarding.data && <>
-            <dl className="grid gap-4 sm:grid-cols-2"><Field label="Full name" value={onboarding.data.full_name} /><Field label="Email" value={onboarding.data.email} /><Field label="Phone" value={onboarding.data.phone} /><Field label="Location" value={[onboarding.data.city, onboarding.data.state_code].filter(Boolean).join(", ")} /><Field label="Language" value={onboarding.data.locale} /></dl>
+            <CandidateOnboardingDetails onboarding={onboarding.data} />
             <div className="mt-5 border-t border-[#edf0f3] pt-4"><h3 className="mb-3 text-[12px] font-bold">Onboarding answers</h3>{onboarding.data.questionnaire.length ? <dl className="space-y-3">{onboarding.data.questionnaire.map((answer) => <div key={answer.code}><dt className="text-[11px] text-[#7b8494]">{answer.question}</dt><dd className="mt-0.5 text-[12px] font-medium text-[#172033]">{answer.answer}</dd></div>)}</dl> : <Empty>No questionnaire answers submitted.</Empty>}</div>
             {onboarding.data.college_links.length > 0 && <div className="mt-5 border-t border-[#edf0f3] pt-4"><h3 className="mb-3 text-[12px] font-bold">College links</h3><div className="space-y-2">{onboarding.data.college_links.map((link) => <div key={link.tenant_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#f8f9fb] px-3 py-2 text-[12px]"><span className="font-semibold">{link.college}</span><span className="text-[#7b8494]">{humanise(link.scope)} · {formatDate(link.granted_at)}</span></div>)}</div></div>}
           </>}
