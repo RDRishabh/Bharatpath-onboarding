@@ -30,6 +30,7 @@ import {
   loginSchema,
 } from "@/features/auth/schemas/login.schema";
 import { authService } from "@/features/auth/services/auth.service";
+import { passwordError } from "@/features/auth/hooks/use-signup-flow";
 import {
   CognitoPoolType,
   confirmNewPasswordCognito,
@@ -225,8 +226,9 @@ export function LoginForm() {
 
   const handleConfirmNewPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPassword || newPassword.length < 8) {
-      setServerError("Password must be at least 8 characters.");
+    const validationError = passwordError(newPassword, pool);
+    if (validationError) {
+      setServerError(validationError);
       return;
     }
 
@@ -579,7 +581,7 @@ export function LoginForm() {
               </button>
             </div>
             <p className="mt-1 text-[11px] text-[#6b7280]">
-              Must include at least 14 chars, uppercase, lowercase, number and symbol.
+              Must include at least {pool === "CANDIDATE" ? 8 : 12} characters, uppercase, lowercase, number and symbol.
             </p>
           </div>
 

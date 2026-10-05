@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -58,7 +58,7 @@ export function AccountStep({ onSignedUp }: Readonly<AccountStepProps>) {
     const next = {
       fullName: nameError(fullName),
       email: EMAIL_PATTERN.test(email.trim()) ? undefined : "Enter a valid email address.",
-      password: passwordError(password),
+      password: passwordError(password, "CANDIDATE"),
     };
     setErrors(next);
     if (next.fullName || next.email || next.password) return;
@@ -184,7 +184,7 @@ export function AccountStep({ onSignedUp }: Readonly<AccountStepProps>) {
       <Field
         id="signup-password"
         label="Password"
-        hint="At least 14 characters, with uppercase, lowercase, a number and a symbol."
+        hint="At least 8 characters, with uppercase, lowercase, a number and a symbol."
         error={errors.password}
       >
         <div className="relative">

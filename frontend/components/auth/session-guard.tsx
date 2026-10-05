@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { handleSessionExpired } from "@/lib/auth/handle-session-expired";
+import { handleSessionExpired, isSessionExpired, subscribeSessionExpired, redirectAfterSessionExpired } from "@/lib/auth/handle-session-expired";
+import { Modal } from "@/components/ui/modal";
 import { isPublicAuthPath } from "@/lib/auth/session-routes";
 import { getStoredToken } from "@/lib/auth/token";
 import { getTokenExpiration } from "@/lib/auth/token-expiration";
@@ -16,6 +17,8 @@ export function SessionGuard() {
   const pathname = usePathname();
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const expired = useSyncExternalStore(subscribeSessionExpired, isSessionExpired, () => false);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     if (isPublicAuthPath(pathname)) {
@@ -28,6 +31,7 @@ export function SessionGuard() {
       if (timeoutId !== undefined) {
         window.clearTimeout(timeoutId);
       }
+      if (isSessionExpired()) return;
 
       const token = getStoredToken();
       const expiration = token ? getTokenExpiration(token) : null;
@@ -40,16 +44,12 @@ export function SessionGuard() {
       }
 
       if (!expiration) {
-        dispatch(clearUser());
-        dispatch(clearTenant());
         handleSessionExpired();
         return;
       }
 
       const remaining = expiration * 1000 - Date.now();
       if (remaining <= 0) {
-        dispatch(clearUser());
-        dispatch(clearTenant());
         handleSessionExpired();
         return;
       }
@@ -79,5 +79,16 @@ export function SessionGuard() {
     };
   }, [dispatch, pathname, router]);
 
-  return null;
+  return (
+    <Modal open={expired} title="Your session has expired" description="Please sign in again to continue." onClose={() => {}} closeDisabled panelClassName="max-w-[420px] rounded-[20px]">
+      <button type="button" disabled={redirecting} onClick={() => {
+        setRedirecting(true);
+        dispatch(clearUser());
+        dispatch(clearTenant());
+        void redirectAfterSessionExpired();
+      }} className="w-full rounded-xl bg-[#5F4DB2] px-4 py-3 text-sm font-semibold text-white hover:bg-[#4A3E8F] disabled:opacity-60">
+        {redirecting ? "Opening login..." : "Go to login"}
+      </button>
+    </Modal>
+  );
 }

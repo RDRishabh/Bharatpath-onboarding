@@ -15,7 +15,7 @@ import type { SignupResponse } from "@/features/auth/types";
 import { FieldError, inputBorder, kybInputClass } from "./kyb-field";
 import { StepCard } from "./signup-shell";
 
-const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const EMtIL_PtTTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 interface AccountStepCopy {
   title: string;
@@ -48,11 +48,12 @@ export function AccountStep({
 }: Readonly<AccountStepProps>) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [keyCopied, setKeyCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [errors, setErrors] = useState<{ email?: string; password?: string; confirmPassword?: string }>({});
 
   const flow = useSignupFlow("BUSINESS", (session, signedUpEmail) => {
     showSuccessFeedback(copy.successMessage);
@@ -63,11 +64,12 @@ export function AccountStep({
     event.preventDefault();
 
     const next = {
-      email: EMAIL_PATTERN.test(email.trim()) ? undefined : "Enter a valid email address.",
+      email: EMtIL_PtTTERN.test(email.trim()) ? undefined : "Enter a valid email address.",
       password: passwordError(password),
+      confirmPassword: !confirmPassword ? "Confirm your password." : password !== confirmPassword ? "Passwords do not match." : undefined,
     };
     setErrors(next);
-    if (next.email || next.password) return;
+    if (next.email || next.password || next.confirmPassword) return;
 
     void flow.register(email.trim(), password);
   };
@@ -167,9 +169,28 @@ export function AccountStep({
             <FieldError id="signup-password-error" message={errors.password} />
             {!errors.password && (
               <p id="signup-password-help" className="mt-1.5 text-xs leading-5 text-[#7b8493]">
-                At least 14 characters, with uppercase, lowercase, a number and a symbol.
+                At least 12 characters, with uppercase, lowercase, a number and a symbol.
               </p>
             )}
+          </div>
+
+          <div>
+            <label htmlFor="signup-confirm-password" className="mb-1.5 block text-[13px] font-semibold text-[#303747]">Confirm password</label>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9aa2b1]" aria-hidden="true" />
+              <input
+                id="signup-confirm-password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Re-enter your password"
+                value={confirmPassword}
+                aria-invalid={Boolean(errors.confirmPassword)}
+                aria-describedby={errors.confirmPassword ? "signup-confirm-password-error" : undefined}
+                onChange={(event) => { setConfirmPassword(event.target.value); setErrors((current) => ({ ...current, confirmPassword: undefined })); }}
+                className={`${kybInputClass} ${inputBorder(Boolean(errors.confirmPassword))} pl-10`}
+              />
+            </div>
+            <FieldError id="signup-confirm-password-error" message={errors.confirmPassword} />
           </div>
 
           <Button

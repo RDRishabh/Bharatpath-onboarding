@@ -4,6 +4,7 @@ import {
 } from "@reduxjs/toolkit/query/react";
 
 import { getStoredToken } from "@/lib/auth/token";
+import { handleSessionExpired } from "@/lib/auth/handle-session-expired";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
@@ -61,7 +62,12 @@ const rawBaseQuery = fetchBaseQuery({
 export const baseApi = createApi({
   reducerPath: "api",
 
-  baseQuery: rawBaseQuery,
+  baseQuery: async (args, api, extraOptions) => {
+    const hadSession = Boolean(getStoredToken());
+    const result = await rawBaseQuery(args, api, extraOptions);
+    if (hadSession && result.error?.status === 401) handleSessionExpired();
+    return result;
+  },
 
   tagTypes: [
     "Auth",
