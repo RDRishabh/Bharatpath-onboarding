@@ -103,7 +103,9 @@ export function useUsers() {
           .map((part) => part[0])
           .join("")
           .toUpperCase(),
-        identifier: tenant.id,
+        // The tenant list does not include GSTIN or another public
+        // organisation identifier. Never present its internal ID as one.
+        identifier: "—",
         meta:
           tenant.type === "EMPLOYER"
             ? "Employer organisation"

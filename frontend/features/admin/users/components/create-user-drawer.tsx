@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 
 import { Button, SelectDropdown } from "@/components/ui";
+import { AppSelect } from "@/components/ui/app-select";
 import { useScrollLock } from "@/hooks/use-scroll-lock";
 import { INSTITUTION_TYPES } from "@/features/college/onboarding/institution-types";
 import { INDIAN_STATES } from "@/features/student/onboarding/constants";
@@ -340,14 +341,16 @@ export function CreateUserDrawer({ segment, mode, onClose }: CreateUserDrawerPro
                   </FormField>
                   <div>
                     <span className="mb-1.5 block text-[12px] font-semibold text-[#344054]">State (optional)</span>
-                    <SelectDropdown
+                    <AppSelect
                       value={stateCode}
                       onChange={(value) => { setStateCode(value); touch("state"); }}
                       options={INDIAN_STATES.map((state) => ({ value: state.code, label: state.name }))}
                       placeholder="Select state"
                       ariaLabel="State"
-                      containerClassName="w-full"
-                      className={shown("state") ? "rounded-lg !border-[#d92d20]" : DROPDOWN_CLASS}
+                      searchable
+                      searchPlaceholder="Search states"
+                      menuPlacement="top"
+                      className={`[&>button]:h-10 [&>button]:rounded-lg [&>button]:px-3.5 [&>button]:text-[13px] [&>button>span]:text-[13px] [&>button>span]:font-medium [&>button>span]:text-[#303747] [&>button]:border-[#dfe2e8] [&>button]:focus:border-[#5b4fcf] [&>button]:focus:ring-2 [&>button]:focus:ring-[#5b4fcf]/20 ${shown("state") ? "[&>button]:!border-[#d92d20]" : ""}`}
                     />
                     <FieldError id="candidate-state-error" message={shown("state")} />
                   </div>
@@ -404,6 +407,7 @@ export function CreateUserDrawer({ segment, mode, onClose }: CreateUserDrawerPro
                 answers={draftAnswers}
                 loading={accountForms.isLoading}
                 error={accountForms.isError}
+                menuPlacement={segment === "institutions" ? "top" : "bottom"}
                 excludedCodes={PREFILL_EXCLUDED[segment]}
                 errorFor={(code) => shown(`answer:${code}`)}
                 onChange={(code, value) => {
@@ -443,6 +447,7 @@ function AdminPrefillFields({
   answers,
   loading,
   error,
+  menuPlacement,
   excludedCodes,
   errorFor,
   onChange,
@@ -452,6 +457,7 @@ function AdminPrefillFields({
   answers: Record<string, unknown>;
   loading: boolean;
   error: boolean;
+  menuPlacement: "top" | "bottom";
   excludedCodes: ReadonlySet<string>;
   errorFor: (code: string) => string | undefined;
   onChange: (code: string, value: unknown) => void;
@@ -492,6 +498,7 @@ function AdminPrefillFields({
                 error={errorFor(field.code)}
                 value={answers[field.code]}
                 options={field.options_source ? (form.options[field.options_source] ?? []) : []}
+                menuPlacement={menuPlacement}
                 onChange={(value) => onChange(field.code, value)}
               />
               </div>
